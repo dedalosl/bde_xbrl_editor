@@ -138,4 +138,4 @@ After configuring the instance structure (entity, period, tables, dimensional co
 - Reopening and editing an existing instance (covered by a separate instance editing feature).
 - Inline XBRL (iXBRL) output format.
 - Automatic population of default or pre-filled fact values.
-- Multi-entity or consolidated reporting instances.
+- Multi-entity reporting instances.
