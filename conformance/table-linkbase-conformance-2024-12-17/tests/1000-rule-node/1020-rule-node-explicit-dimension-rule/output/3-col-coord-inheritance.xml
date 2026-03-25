@@ -1,0 +1,100 @@
+<?xml version='1.0' encoding='utf-8'?>
+<tableModel xmlns="http://xbrl.org/2014/table/model" xmlns:rend="http://www.xbrl.org/table-examples" xml:base="..">
+  <!--Entry point file: table-linkbase-3-col-coord-inheritance.xml-->
+  <tableSet>
+    <!--TableSet linkbase file: table-linkbase-3-col-coord-inheritance.xml, line 38-->
+    <!--TableSet namespace: http://xbrl.org/2014/table-->
+    <!--TableSet linkrole: http://www.xbrl.org/table-examples/table3-->
+    <label>This example shows how the first column of the previous example could be put after the columns with dimension E. The first axis coordinate is made abstract, but a new child axis coordinate is added with no coordinates (inherits those of its parent). This example could have been done with the parent-child-order attribute, but the idea is to show that it is possible to represen t different parent-child orders in a single axis. Should we include a mechanism to establish the predefined order of parents regarding children or shall that feature be part of the set of "ribbons and laces" specification?</label>
+    <table>
+      <headers axis="y">
+        <group>
+          <label>Two rows (primary items m1, m2)</label>
+          <header>
+            <!--ruleNode: label table3-y.1, file table-linkbase-3-col-coord-inheritance.xml, line 144-->
+            <!--   aspect concept: rend:m1-->
+            <cell>
+              <label>Label: m1</label>
+              <label>1</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:m1</value>
+              </constraint>
+            </cell>
+            <!--ruleNode: label table3-y.2, file table-linkbase-3-col-coord-inheritance.xml, line 168-->
+            <!--   aspect concept: rend:m2-->
+            <cell>
+              <label>Label: m2</label>
+              <label>2</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:m2</value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+      </headers>
+      <headers axis="x">
+        <group>
+          <label>Three columns (dimension [D, E] = [d0, e1], [d0, e2], [d0, e0])</label>
+          <header>
+            <!--ruleNode: label table3-x.1, file table-linkbase-3-col-coord-inheritance.xml, line 53-->
+            <!--   aspect rend:D: rend:d0-->
+            <cell span="3">
+              <label>Label: D = d0</label>
+              <constraint>
+                <aspect>rend:D</aspect>
+                <value/>
+              </constraint>
+            </cell>
+          </header>
+          <header>
+            <!--ruleNode: label table3-x.1.1, file table-linkbase-3-col-coord-inheritance.xml, line 72-->
+            <!--   aspect rend:E: rend:e1-->
+            <cell>
+              <label>Label: E = e1</label>
+              <label>1</label>
+              <constraint>
+                <aspect>rend:E</aspect>
+                <value>rend:e1</value>
+              </constraint>
+            </cell>
+            <!--ruleNode: label table3-x.1.2, file table-linkbase-3-col-coord-inheritance.xml, line 98-->
+            <!--   aspect rend:E: rend:e2-->
+            <cell>
+              <label>Label: E = e2</label>
+              <label>2</label>
+              <constraint>
+                <aspect>rend:E</aspect>
+                <value>rend:e2</value>
+              </constraint>
+            </cell>
+            <!--ruleNode: label table3-x.1.3, file table-linkbase-3-col-coord-inheritance.xml, line 124-->
+            <!--   aspect rend:E: rend:e0-->
+            <cell>
+              <label>3</label>
+              <constraint>
+                <aspect>rend:E</aspect>
+                <value/>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+      </headers>
+      <cells axis="z">
+        <cells axis="y">
+          <cells axis="x">
+            <cell/>
+            <cell/>
+            <cell/>
+          </cells>
+          <cells axis="x">
+            <cell/>
+            <cell/>
+            <cell/>
+          </cells>
+        </cells>
+      </cells>
+    </table>
+  </tableSet>
+</tableModel>

@@ -1,0 +1,94 @@
+<?xml version='1.0' encoding='utf-8'?>
+<tableModel xmlns="http://xbrl.org/2014/table/model" xmlns:rend="http://www.xbrl.org/table-examples" xmlns:xbrli="http://www.xbrl.org/2003/instance" xml:base=".." xmlns:iso4217="http://www.xbrl.org/2003/iso4217">
+  <tableSet>
+    <label>Multiple levels of merge rule nodes to merge constraints through</label>
+    <table>
+      <headers axis="y">
+        <group>
+          <label>Two rows (primary items m1, m2)</label>
+          <header>
+            <cell>
+              <label>Label: m1</label>
+              <label>1</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:m1</value>
+              </constraint>
+            </cell>
+            <cell>
+              <label>Label: m2</label>
+              <label>2</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:m2</value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+      </headers>
+      <headers axis="x">
+        <group>
+          <label>Two columns (dimension D = d1, d2) with merged entity identifier and unit constraints</label>
+          <header>
+            <cell>
+              <label>Label: D = d1</label>
+              <label>1</label>
+              <constraint>
+                <aspect>entity-identifier</aspect>
+                <value>
+                  <xbrli:identifier scheme="http://scheme">01</xbrli:identifier>
+                </value>
+              </constraint>
+              <constraint>
+                <aspect>unit</aspect>
+                <value>
+                  <xbrli:unit>
+                    <xbrli:measure>iso4217:EUR</xbrli:measure>
+                  </xbrli:unit>
+                </value>
+              </constraint>
+              <constraint>
+                <aspect>rend:D</aspect>
+                <value>rend:d1</value>
+              </constraint>
+            </cell>
+            <cell>
+              <label>Label: D = d2</label>
+              <label>2</label>
+              <constraint>
+                <aspect>entity-identifier</aspect>
+                <value>
+                  <xbrli:identifier scheme="http://scheme">01</xbrli:identifier>
+                </value>
+              </constraint>
+              <constraint>
+                <aspect>unit</aspect>
+                <value>
+                  <xbrli:unit>
+                    <xbrli:measure>iso4217:EUR</xbrli:measure>
+                  </xbrli:unit>
+                </value>
+              </constraint>
+              <constraint>
+                <aspect>rend:D</aspect>
+                <value>rend:d2</value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+      </headers>
+      <cells axis="z">
+        <cells axis="y">
+          <cells axis="x">
+            <cell/>
+            <cell/>
+          </cells>
+          <cells axis="x">
+            <cell/>
+            <cell/>
+          </cells>
+        </cells>
+      </cells>
+    </table>
+  </tableSet>
+</tableModel>

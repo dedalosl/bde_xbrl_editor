@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2007 XBRL International. All Rights Reserved. -->
+<?xml-stylesheet type="text/xsl" href="../../xsl/test.xsl"?>
+<testcase
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../xsd/test.xsd"
+  xmlns:xbrlfe="http://xbrl.org/2008/formula/error"
+  xmlns:binding="http://xbrl.org/2008/binding/errors"
+  xmlns:label="http://xbrl.org/2008/label/error"
+  xmlns:reference="http://xbrl.org/2008/reference/error"  
+  >
+  <creator>
+    <name>David Bell</name>
+    <email>david.x.bell@rrd.com</email>
+  </creator>
+  <number>47208</number>
+  <name>Segment dimension matching filter test</name>
+  <description>
+    Tests of segment dimension matching filter where matchAny='true'.
+    Assumes that non-sequential matching works as these tests only check sequence behaviour.
+  </description>
+  <reference specification="MATCH-FILTER" id="sec-segment-dimension-matching-filter"/>
+
+  <variation id="V-101">
+    <name>Explicit dimensions are equal, they have same member</name>
+    <description>Test individual items against sequence of all items, all facts match</description>
+    <data>
+      <schema>47208-segDimMatch-concepts.xsd</schema>
+      <linkbase>47208-segDimMatch-definition.xml</linkbase>
+      <linkbase>47208-segDimMatch-explDim1-formula-V101.xml</linkbase>
+      <instance readMeFirst="true">47208-segDimMatch-instance-V101.xml</instance>
+    </data>
+    <result>
+      <instance>47208-segDimMatch-result-V101.xml</instance>
+    </result>
+  </variation>  
+
+  <variation id="V-102">
+    <name>Explicit dimensions are equal, they have same member</name>
+    <description>Test all items against sequence of items with explicit dimension member2</description>
+    <data>
+      <schema>47208-segDimMatch-concepts.xsd</schema>
+      <linkbase>47208-segDimMatch-definition.xml</linkbase>
+      <linkbase>47208-segDimMatch-explDim1-formula-V102.xml</linkbase>
+      <instance readMeFirst="true">47208-segDimMatch-instance-V102.xml</instance>
+    </data>
+    <result>
+      <instance>47208-segDimMatch-result-V102.xml</instance>
+    </result>
+  </variation>  
+  
+  <variation id="V-103">
+    <name>Explicit dimensions are equal, they have same member</name>
+    <description>As above but complemented to produce inverse result</description>
+    <data>
+      <schema>47208-segDimMatch-concepts.xsd</schema>
+      <linkbase>47208-segDimMatch-definition.xml</linkbase>
+      <linkbase>47208-segDimMatch-explDim1-formula-V103.xml</linkbase>
+      <instance readMeFirst="true">47208-segDimMatch-instance-V103.xml</instance>
+    </data>
+    <result>
+      <instance>47208-segDimMatch-result-V103.xml</instance>
+    </result>
+  </variation>  
+  
+  <variation id="V-104">
+    <name>Typed dimensions are equal, they have same member</name>
+    <description>Test individual items against sequence of all items, all facts match</description>
+    <data>
+      <schema>47208-segDimMatch-concepts.xsd</schema>
+      <linkbase>47208-segDimMatch-definition.xml</linkbase>
+      <linkbase>47208-segDimMatch-typeDim1-formula-V104.xml</linkbase>
+      <instance readMeFirst="true">47208-segDimMatch-instance-V104.xml</instance>
+    </data>
+    <result>
+      <instance>47208-segDimMatch-result-V104.xml</instance>
+    </result>
+  </variation>  
+  
+  <variation id="V-105">
+    <name>Typed dimensions are equal, they have same member</name>
+    <description>Test all individual items against sequence of items with typed dimension 2</description>
+    <data>
+      <schema>47208-segDimMatch-concepts.xsd</schema>
+      <linkbase>47208-segDimMatch-definition.xml</linkbase>
+      <linkbase>47208-segDimMatch-typeDim1-formula-V105.xml</linkbase>
+      <instance readMeFirst="true">47208-segDimMatch-instance-V105.xml</instance>
+    </data>
+    <result>
+      <instance>47208-segDimMatch-result-V105.xml</instance>
+    </result>
+  </variation>  
+  
+  <variation id="V-106">
+    <name>Explicit dimensions are equal, they have same member</name>
+    <description>As above but complemented to produce inverse result</description>
+    <data>
+      <schema>47208-segDimMatch-concepts.xsd</schema>
+      <linkbase>47208-segDimMatch-definition.xml</linkbase>
+      <linkbase>47208-segDimMatch-typeDim1-formula-V106.xml</linkbase>
+      <instance readMeFirst="true">47208-segDimMatch-instance-V106.xml</instance>
+    </data>
+    <result>
+      <instance>47208-segDimMatch-result-V106.xml</instance>
+    </result>
+  </variation>  
+  
+  
+
+</testcase>
+

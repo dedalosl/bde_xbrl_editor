@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2011-09-16"
+  name="1030-rule-node-typed-dimension-rule-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Herm Fischer</name>
+        <email>fischer@markv.com</email>
+    </creator>
+    <number>1030</number>
+    <name>Rule Node Typed Dimension Rule Testcase</name>
+    <description>Table linkbase test case using a rule node with a typed dimension rule</description>
+
+    <variation id="v-01">
+        <name>Simple Table, rows: primary items, columns: typed dimension</name>
+        <description>Simple table with two columns, and two rows (primary items m1, m2).</description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">typed-dimension-table.xml</linkbase>
+            <linkbase>typed-dimension-example-definition.xml</linkbase>
+            <linkbase>typed-dimension-example-label.xml</linkbase>
+            <schema>typed-dimension-example.xsd</schema>
+        </data>
+        <result>
+            <table>output/typed-dimension-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-01i">
+        <name>v-01 with instance data</name>
+        <description>Same as v-01 with instance data.</description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">typed-dimension-instance.xml</instance>
+            <linkbase>typed-dimension-table.xml</linkbase>
+            <linkbase>typed-dimension-example-definition.xml</linkbase>
+            <linkbase>typed-dimension-example-label.xml</linkbase>
+            <schema>typed-dimension-example.xsd</schema>
+        </data>
+        <result>
+            <table>output/typed-dimension.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-02">
+        <name>Rule nodes with typed dimension rules that use XPath expressions</name>
+        <description>
+          Simple table with two rows (primary items Number of Employees, Average
+          Salary) and three columns (typed dimension Age = ..-20, 21-40, 41-..).
+          The typed values are specified by XPath expressions that extract them
+          from the instance. In this variation there is no instance, so the
+          table cannot be rendered.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">typed-dimension-value-expression-table.xml</linkbase>
+            <linkbase>typed-dimension-example-definition.xml</linkbase>
+            <linkbase>typed-dimension-example-label.xml</linkbase>
+            <schema>typed-dimension-example.xsd</schema>
+        </data>
+        <!--
+          This should be a failure as there is no instance to act as the context
+          item for the XPath expression. The expected error code would be
+          XTDE1270 but according to the XSLT spec where this code is defined the
+          errors are non-normative and "there is no implication that an
+          implementation must signal errors using these error codes".
+        -->
+        <result expected="invalid"/>
+    </variation>
+    
+    <variation id="v-02i">
+        <name>Rule nodes with typed dimension rules that use XPath expressions, with instance</name>
+        <description>
+          Simple table with two rows (primary items Number of Employees, Average
+          Salary) and three columns (typed dimension Age = ..-20, 21-40, 41-..).
+          The typed values are specified by XPath expressions that extract them
+          from the instance, but this will not work as the context item for these
+          expressions is undefined.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">typed-dimension-value-expression-instance.xml</instance>
+            <linkbase>typed-dimension-value-expression-table.xml</linkbase>
+            <linkbase>typed-dimension-example-definition.xml</linkbase>
+            <linkbase>typed-dimension-example-label.xml</linkbase>
+            <schema>typed-dimension-example.xsd</schema>
+        </data>
+        <!-- even with an instance, the context item of the XPath expression is undefined according to the table linkbase specification. -->
+        <result expected="invalid"/>
+    </variation>
+    
+    <variation id="v-03">
+        <name>Rule node with typed dimension rule that has omit</name>
+        <description>
+          Simple table with a two rows (primary items Maximum Salary, Bonus)
+          and six columns (typed dimension Age = ..-20, 21-40, 41-.. and typed
+          dimension Department = Sales, Admin).  Values for the Sales
+          department are not broken down by age but apply to all ages, so the
+          age constraint is removed for these columns.  In this variation there
+          is no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">typed-dimension-with-omit-table.xml</linkbase>
+            <linkbase>typed-dimension-example-definition.xml</linkbase>
+            <linkbase>typed-dimension-example-label.xml</linkbase>
+            <schema>typed-dimension-example.xsd</schema>
+        </data>
+        <result>
+            <table>output/typed-dimension-with-omit-no-data.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-03i">
+        <name>Rule node with typed dimension rule that has omit, with instance</name>
+        <description>
+          Simple table with a two rows (primary items Maximum Salary, Bonus)
+          and six columns (typed dimension Age = ..-20, 21-40, 41-.. and typed
+          dimension Department = Sales, Admin).  Values for the Sales
+          department are not broken down by age but apply to all ages, so the
+          age constraint is removed for these columns.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">typed-dimension-with-omit-instance.xml</instance>
+            <linkbase>typed-dimension-with-omit-table.xml</linkbase>
+            <linkbase>typed-dimension-example-definition.xml</linkbase>
+            <linkbase>typed-dimension-example-label.xml</linkbase>
+            <schema>typed-dimension-example.xsd</schema>
+        </data>
+        <result>
+            <table>output/typed-dimension-with-omit.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-04">
+        <name>Simple Table with an incomplete typed dimension rule.</name>
+        <description>Simple table with one x axis node for an incomplete typed dimension rule.</description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">incomplete-typed-dimension-rule-table.xml</linkbase>
+            <linkbase>typed-dimension-example-definition.xml</linkbase>
+            <linkbase>typed-dimension-example-label.xml</linkbase>
+            <schema>typed-dimension-example.xsd</schema>
+        </data>
+        <result>
+           <error>xbrlte:incompleteAspectRule</error>
+        </result>
+    </variation>
+
+</testcase>

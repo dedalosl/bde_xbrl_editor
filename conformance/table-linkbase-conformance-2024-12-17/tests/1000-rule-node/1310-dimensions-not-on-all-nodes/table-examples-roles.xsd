@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schema xmlns="http://www.w3.org/2001/XMLSchema" xmlns:label="http://xbrl.org/2008/label"
+        xmlns:gen="http://xbrl.org/2008/generic"
+        xmlns:df="http://xbrl.org/2008/filter/dimension"
+        xmlns:xlink="http://www.w3.org/1999/xlink"
+        xmlns:reference="http://xbrl.org/2008/reference"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xmlns:link="http://www.xbrl.org/2003/linkbase"
+        xmlns:table="http://xbrl.org/2014/table"
+        xmlns:filaxis="http://xbrl.org/2011/axis/filter"
+        xmlns:expaxis="http://xbrl.org/2011/axis/explicit"
+        xmlns:formula="http://xbrl.org/2008/formula"
+        attributeFormDefault="unqualified"
+        elementFormDefault="qualified"
+        targetNamespace="http://www.xbrl.org/table-examples-roles">
+   <annotation>
+      <appinfo>
+         <link:roleType roleURI="http://www.xbrl.org/table-examples/table1" id="table1">
+            <link:usedOn>link:presentationLink</link:usedOn>
+            <link:usedOn>link:definitionLink</link:usedOn>
+            <link:usedOn>link:labelLink</link:usedOn>
+            <link:usedOn>gen:link</link:usedOn>
+         </link:roleType>
+         <link:roleType roleURI="http://www.xbrl.org/table-examples/table2" id="table2">
+            <link:usedOn>link:presentationLink</link:usedOn>
+            <link:usedOn>link:definitionLink</link:usedOn>
+            <link:usedOn>link:labelLink</link:usedOn>
+            <link:usedOn>gen:link</link:usedOn>
+         </link:roleType>
+         <link:roleType roleURI="http://www.xbrl.org/table-examples/table3" id="table3">
+            <link:usedOn>link:presentationLink</link:usedOn>
+            <link:usedOn>link:definitionLink</link:usedOn>
+            <link:usedOn>link:labelLink</link:usedOn>
+            <link:usedOn>gen:link</link:usedOn>
+         </link:roleType>
+         <link:roleType roleURI="http://www.xbrl.org/table-examples/table4" id="table4">
+            <link:usedOn>link:presentationLink</link:usedOn>
+            <link:usedOn>link:definitionLink</link:usedOn>
+            <link:usedOn>link:labelLink</link:usedOn>
+            <link:usedOn>gen:link</link:usedOn>
+         </link:roleType>
+         <link:roleType roleURI="http://www.xbrl.org/table-examples/table5" id="table5">
+            <link:usedOn>link:presentationLink</link:usedOn>
+            <link:usedOn>link:definitionLink</link:usedOn>
+            <link:usedOn>link:labelLink</link:usedOn>
+            <link:usedOn>gen:link</link:usedOn>
+         </link:roleType>
+         <link:roleType roleURI="http://www.xbrl.org/table-examples/table6" id="table6">
+            <link:usedOn>link:presentationLink</link:usedOn>
+            <link:usedOn>link:definitionLink</link:usedOn>
+            <link:usedOn>link:labelLink</link:usedOn>
+            <link:usedOn>gen:link</link:usedOn>
+         </link:roleType>
+         <link:roleType roleURI="http://www.xbrl.org/table-examples/table7" id="table7">
+            <link:usedOn>link:presentationLink</link:usedOn>
+            <link:usedOn>link:definitionLink</link:usedOn>
+            <link:usedOn>link:labelLink</link:usedOn>
+            <link:usedOn>gen:link</link:usedOn>
+         </link:roleType>
+         <link:roleType roleURI="http://www.xbrl.org/table-examples/table8" id="table8">
+            <link:usedOn>link:presentationLink</link:usedOn>
+            <link:usedOn>link:definitionLink</link:usedOn>
+            <link:usedOn>link:labelLink</link:usedOn>
+            <link:usedOn>gen:link</link:usedOn>
+         </link:roleType>
+         <link:roleType roleURI="http://www.xbrl.org/table-examples/table9" id="table9">
+            <link:usedOn>link:presentationLink</link:usedOn>
+            <link:usedOn>link:definitionLink</link:usedOn>
+            <link:usedOn>link:labelLink</link:usedOn>
+            <link:usedOn>gen:link</link:usedOn>
+         </link:roleType>
+         <link:roleType roleURI="http://www.xbrl.org/table-examples/table10" id="table10">
+            <link:usedOn>link:presentationLink</link:usedOn>
+            <link:usedOn>link:definitionLink</link:usedOn>
+            <link:usedOn>link:labelLink</link:usedOn>
+            <link:usedOn>gen:link</link:usedOn>
+         </link:roleType>
+         <link:roleType roleURI="http://www.xbrl.org/table-examples/table11" id="table11">
+            <link:usedOn>link:presentationLink</link:usedOn>
+            <link:usedOn>link:definitionLink</link:usedOn>
+            <link:usedOn>link:labelLink</link:usedOn>
+            <link:usedOn>gen:link</link:usedOn>
+         </link:roleType>
+         <link:roleType roleURI="http://www.xbrl.org/table-examples/table12" id="table12">
+            <link:usedOn>link:presentationLink</link:usedOn>
+            <link:usedOn>link:definitionLink</link:usedOn>
+            <link:usedOn>link:labelLink</link:usedOn>
+            <link:usedOn>gen:link</link:usedOn>
+         </link:roleType>
+         <link:roleType roleURI="http://www.xbrl.org/table-examples/table13" id="table13">
+            <link:usedOn>link:presentationLink</link:usedOn>
+            <link:usedOn>link:definitionLink</link:usedOn>
+            <link:usedOn>link:labelLink</link:usedOn>
+            <link:usedOn>gen:link</link:usedOn>
+         </link:roleType>
+         <link:roleType roleURI="http://www.xbrl.org/table-examples/table14" id="table14">
+            <link:usedOn>link:presentationLink</link:usedOn>
+            <link:usedOn>link:definitionLink</link:usedOn>
+            <link:usedOn>link:labelLink</link:usedOn>
+            <link:usedOn>gen:link</link:usedOn>
+         </link:roleType>
+         <link:roleType roleURI="http://www.xbrl.org/table-examples/table15" id="table15">
+            <link:usedOn>link:presentationLink</link:usedOn>
+            <link:usedOn>link:definitionLink</link:usedOn>
+            <link:usedOn>link:labelLink</link:usedOn>
+            <link:usedOn>gen:link</link:usedOn>
+         </link:roleType>
+         <link:roleType id="coordinate-code"
+                        roleURI="http://www.xbrl.org/table-examples/coordinate-code">
+            <link:usedOn>label:label</link:usedOn>
+         </link:roleType>
+      </appinfo>
+   </annotation>
+   <!-- this xsd is 'discovered' from table linkbases because of roleRefs, however the linkbases don't discover the
+        main concepts schema and definition linkbase, which is why an import is needed to get them discovered -->
+   <import namespace="http://www.xbrl.org/table-examples" schemaLocation="table-examples.xsd"/>
+</schema>

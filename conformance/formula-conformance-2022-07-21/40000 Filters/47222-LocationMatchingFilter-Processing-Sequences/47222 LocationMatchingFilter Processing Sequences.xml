@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2007 XBRL International. All Rights Reserved. -->
+<?xml-stylesheet type="text/xsl" href="../../xsl/test.xsl"?>
+<testcase
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../xsd/test.xsd"
+  xmlns:xbrlfe="http://xbrl.org/2008/formula/error"
+  xmlns:binding="http://xbrl.org/2008/binding/errors"
+  xmlns:label="http://xbrl.org/2008/label/error"
+  xmlns:reference="http://xbrl.org/2008/reference/error"  
+  >
+
+  <creator>
+    <name>David Bell</name>
+    <email>david.x.bell@rrd.com</email>
+  </creator>
+  <number>47222</number>
+  <name>Matching filter sequence test</name>
+  <description>
+    Tests of location matching filters against sequences where matchAny='true'.
+    Assumes that non-sequential matching works as these tests only check sequence behaviour.
+  </description>
+  <reference specification="MATCH-FILTER" id="sec-concept-matching-filter"/>
+  
+
+  <variation id="V-101">
+    <name>Single fact matches location of one or more other facts in a sequence</name>
+    <description>Single fact of concept a matches location of concept b in selected sequence</description>
+    <reference specification="MATCH-FILTER" id="sec-location-matching-filter"/>
+    <data>
+      <schema>47222-concepts.xsd</schema>
+      <linkbase>47222-locationMatching-formula-V101.xml</linkbase>
+      <instance readMeFirst="true">47222-locationMatching-instance-V101.xml</instance>
+    </data>
+    <result>
+      <instance>47222-locationMatching-result-V101.xml</instance>
+    </result>
+  </variation>  
+
+  <variation id="V-102">
+    <name>Single fact does not match any locations of facts in a sequence</name>
+    <description>Single fact concept a does not match any location of concepts c or d in selected sequence</description>
+    <reference specification="MATCH-FILTER" id="sec-location-matching-filter"/>
+    <data>
+      <schema>47222-concepts.xsd</schema>
+      <linkbase>47222-locationMatching-formula-V102.xml</linkbase>
+      <instance readMeFirst="true">47222-locationMatching-instance-V102.xml</instance>
+    </data>
+    <result>
+      <!-- no facts -->
+      <instance>47222-locationMatching-result-V102.xml</instance>
+    </result>
+  </variation>  
+  
+  <variation id="V-103">
+    <name>Multiple facts match location of one or more other facts in a sequence</name>
+    <description>Two facts of concept b match location of other concepts in selected sequence</description>
+    <reference specification="MATCH-FILTER" id="sec-location-matching-filter"/>
+    <data>
+      <schema>47222-concepts.xsd</schema>
+      <linkbase>47222-locationMatching-formula-V103.xml</linkbase>
+      <instance readMeFirst="true">47222-locationMatching-instance-V103.xml</instance>
+    </data>
+    <result>
+      <instance>47222-locationMatching-result-V103.xml</instance>
+    </result>
+  </variation>  
+  
+</testcase>
+

@@ -1,0 +1,303 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2008 XBRL International. All Rights Reserved. -->
+<?xml-stylesheet type="text/xsl" href="../../xsl/test.xsl"?>
+<testcase
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrli="http://www.xbrl.org/2003/instance"
+  xmlns:xfi="http://www.xbrl.org/2008/function/instance"
+  xmlns:xfie="http://www.xbrl.org/2008/function/instance/error"
+  xmlns:xqt-err="http://www.w3.org/2005/xqt-errors"
+  xmlns:seve="http://xbrl.org/2022/assertion-severity/error"
+  xmlns:xlink="http://www.w3.org/1999/xlink"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="
+    http://xbrl.org/2008/conformance   ../../xsd/test.xsd
+  ">
+  <creator>
+    <name>Herm Fischer</name>
+    <email>fischer@markv.com</email>
+  </creator>
+
+
+  <number>60111</number>
+
+  <name>Assertion Severity 2.0</name>
+
+  <description>
+    Tests assertion severity 2.0.
+  </description>
+
+  <variation id="V-01">
+    <name>A simple fact with satisfied and not satisfied messages</name>
+    <description>
+       The expressions in the message show variable node-name, value, contextRef and period dates.
+     </description>
+      
+    <data>
+      <schema>assertion-severity-test1.xsd</schema>
+      <linkbase>assertion-severity-test1-formula.xml</linkbase>
+      <instance readMeFirst="true">assertion-severity-test1-instance.xml</instance>
+    </data>
+    <result>
+      <assertionTests 
+         assertionID="test-assertion"
+         countSatisfied="1"
+         countNotSatisfied="1" />
+    </result>
+  </variation>
+  
+    <variation id="V-02">
+    <name>Wrong source element on assertion-unsatisfied relationship</name>
+    <description>
+       Tests wrong source element on assertion-unsatisfied relationship
+     </description>
+      
+    <data>
+      <schema>assertion-severity-test1.xsd</schema>
+      <linkbase>assertion-severity-test2-formula.xml</linkbase>
+      <instance readMeFirst="true">assertion-severity-test2-instance.xml</instance>
+    </data>
+    <result>
+      <error>seve:assertionSeveritySourceError</error>
+    </result>
+  </variation>
+  
+    <variation id="V-03">
+    <name>Wrong target element on assertion-unsatisfied relationship</name>
+    <description>
+       Tests wrong target element on assertion-unsatisfied relationship
+     </description>
+      
+    <data>
+      <schema>assertion-severity-test1.xsd</schema>
+      <linkbase>assertion-severity-test3-formula.xml</linkbase>
+      <instance readMeFirst="true">assertion-severity-test3-instance.xml</instance>
+    </data>
+    <result>
+      <error>seve:assertionSeverityTargetError</error>
+    </result>
+  </variation>
+  
+    <variation id="V-04">
+    <name>Multiple target elements on assertion-unsatisfied relationship using same arc and label</name>
+    <description>
+       Tests multiple target elements on assertion-unsatisfied relationship
+     </description>
+      
+    <data>
+      <schema>assertion-severity-test1.xsd</schema>
+      <linkbase>assertion-severity-test4-formula.xml</linkbase>
+      <instance readMeFirst="true">assertion-severity-test4-instance.xml</instance>
+    </data>
+    <result>
+      <error>seve:multipleSeveritiesForAssertionError</error>
+    </result>
+  </variation>
+  
+  <variation id="V-04a">
+    <name>Multiple target elements on assertion-unsatisfied relationship using separate arcs and labels</name>
+    <description>
+      Tests multiple target elements on assertion-unsatisfied relationship
+    </description>
+    
+    <data>
+      <schema>assertion-severity-test1.xsd</schema>
+      <linkbase>assertion-severity-test4a-formula.xml</linkbase>
+      <instance readMeFirst="true">assertion-severity-test4a-instance.xml</instance>
+    </data>
+    <result>
+      <error>seve:multipleSeveritiesForAssertionError</error>
+    </result>
+  </variation>
+
+<!--  
+
+  Custom severities have been removed form the schema and linkbase definitions.
+  This test is no obsolete for REC 2016.
+
+<variation id="V-05">
+    <name>Custom severities not allowed</name>
+    <description>
+       Tests custom severity
+     </description>
+      
+    <data>
+      <schema>assertion-severity-test1.xsd</schema>
+      <linkbase>assertion-severity-test5-formula.xml</linkbase>
+      <instance readMeFirst="true">assertion-severity-test5-instance.xml</instance>
+    </data>
+	<result expected="invalid"/>
+  </variation>
+-->  
+
+  <variation id="V-06">
+    <name>Own instantiations of severity not allowed</name>
+    <description>
+       Tests that only links to the instantiations of severity in severities.xml are permitted
+     </description>
+      
+    <data>
+      <schema>assertion-severity-test1.xsd</schema>
+      <linkbase>assertion-severity-test6-formula.xml</linkbase>
+      <instance readMeFirst="true">assertion-severity-test6-instance.xml</instance>
+    </data>
+    <result>
+      <error>seve:assertionSeverityTargetError</error>
+    </result>
+  </variation>
+
+  <variation id="V-07">
+    <name>Multiple error</name>
+    <description>
+      More than one check is failed (multiple severities and invalid target).
+      Some or both of seve:assertionSeverityTargetError and seve:multipleSeveritiesForAssertionError
+      are expected; exactly which is processor-specific.
+     </description>
+      
+    <data>
+      <schema>assertion-severity-test1.xsd</schema>
+      <linkbase>assertion-severity-test7-formula.xml</linkbase>
+      <instance readMeFirst="true">assertion-severity-test7-instance.xml</instance>
+    </data>
+    <result expected="invalid"/>
+  </variation>
+
+  <variation id="V-10">
+    <name>A simple fact with dynamic severity</name>
+    <description>
+       The assertion severity target resource severity expression is error.
+     </description>
+      
+    <data>
+      <schema>assertion-severity-test1.xsd</schema>
+      <linkbase>assertion-severity-dyn-test1-formula.xml</linkbase>
+      <instance readMeFirst="true">assertion-severity-dyn-test1-instance.xml</instance>
+    </data>
+    <result>
+      <assertionTests 
+         assertionID="test-assertion"
+         countSatisfied="1"
+         countNotSatisfied="1" />
+    </result>
+  </variation>
+
+  <variation id="V-11">
+    <creator>
+        <name>David Bell</name>
+        <email>dbell@ubpartner.com</email>
+    </creator>
+    <name>A simple fact with nonsense dynamic severity</name>
+    <description>
+       The assertion evaluation is satisfied and not affected by nonsense severity expression.
+     </description>
+      
+    <data>
+      <schema>assertion-severity-test1.xsd</schema>
+      <linkbase>assertion-severity-dyn-test2-formula.xml</linkbase>
+      <instance readMeFirst="true">assertion-severity-dyn-test2-instance.xml</instance>
+    </data>
+    <result>
+      <assertionTests 
+         assertionID="test-assertion"
+         countSatisfied="1"
+         countNotSatisfied="0" />
+    </result>
+  </variation>
+
+  <variation id="V-12">
+    <name>Multiple effective relationships</name>
+    <description>
+       The assertion severity ending resource has multiple relationships, one a static and second a dynamic expression.
+     </description>
+      
+    <data>
+      <schema>assertion-severity-test1.xsd</schema>
+      <linkbase>assertion-severity-dyn-test3-formula.xml</linkbase>
+      <instance readMeFirst="true">assertion-severity-dyn-test3-instance.xml</instance>
+    </data>
+    <result>
+      <error>seve:multipleSeveritiesForAssertionError</error>
+    </result>
+  </variation>
+  
+  <variation id="V-13">
+    <name>Severity is determined by amount that accounts are out of balance.</name>
+    <description>
+       The assertion accepts assets within 10 euros of liabilities, shows warning if out of balance by less than 1k euros and error if more out of balance.
+     </description>
+      
+    <data>
+      <schema>assertion-dyn-multiseverity1.xsd</schema>
+      <linkbase>assertion-dyn-multiseverity-formula1.xml</linkbase>
+      <instance readMeFirst="true">assertion-dyn-multiseverity-instance1.xml</instance>
+    </data>
+    <result>
+      <assertionTests 
+         assertionID="test-assertion"
+         countSatisfied="1"
+         countNotSatisfied="2" />
+    </result>
+  </variation>
+    
+  <variation id="V-14">
+      <creator>
+          <name>David Bell</name>
+          <email>dbell@ubpartner.com</email>
+      </creator>
+      <name>A simple fact with nonsense dynamic severity</name>
+      <description>
+          The assertion evaluation is not satisfied and severity expression returns an invalid value.
+      </description>
+        
+      <data>
+          <schema>assertion-severity-test1.xsd</schema>
+          <linkbase>assertion-severity-dyn-test2-formula.xml</linkbase>
+          <instance readMeFirst="true">assertion-severity-dyn-test2a-instance.xml</instance>
+      </data>
+      <result>
+        <error>seve:invalidSeverityExpressionResultError</error>
+      </result>
+  </variation>
+    
+    
+  <variation id="V-15">
+      <creator>
+          <name>David Bell</name>
+          <email>dbell@ubpartner.com</email>
+      </creator>
+      <name>A simple fact with simple incorrect severity expression- "error" instead of "ERROR"</name>
+      <description>
+          The assertion evaluation is not satisfied and severity expression is invalid because the severity is not all caps.
+      </description>
+        
+      <data>
+          <schema>assertion-severity-test1.xsd</schema>
+          <linkbase>assertion-severity-dyn-test4-formula.xml</linkbase>
+          <instance readMeFirst="true">assertion-severity-dyn-test4-instance.xml</instance>
+      </data>
+      <result>
+        <error>seve:invalidSeverityExpressionResultError</error>
+      </result>
+  </variation>
+  
+  <variation id="V-16">
+      <creator>
+          <name>David Bell</name>
+          <email>dbell@ubpartner.com</email>
+      </creator>
+      <name>Dynamic severity with incorrect severity definitions - "error" instead of "ERROR", "warning" instead of "WARNING"</name>
+      <description>
+          The assertion evaluation is not satisfied and severity expression is invalid because the severity results are not all caps.
+      </description>
+        
+      <data>
+          <schema>assertion-severity-test1.xsd</schema>
+          <linkbase>assertion-severity-dyn-test5-formula.xml</linkbase>
+          <instance readMeFirst="true">assertion-severity-dyn-test5-instance.xml</instance>
+      </data>
+      <result>
+        <error>seve:invalidSeverityExpressionResultError</error>
+      </result>
+  </variation>
+</testcase>
+

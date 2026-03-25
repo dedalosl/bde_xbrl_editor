@@ -1,0 +1,66 @@
+<html xmlns:model="http://xbrl.org/((~status_date_uri~))/table/model">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<style type="text/css">
+          table { 
+            border-spacing:0;
+            margin-bottom: 24px;
+          }
+
+          th {
+            background: #eee;
+            font-weight: bold;
+          }
+
+          th.zHeader {
+            background: #ddd;
+          }
+
+          th.rowHeader {
+            vertical-align: top;
+            overflow: visible;
+          }
+
+          td, th {
+            border-top: 1px solid black;
+            border-left: 1px solid black;
+            border-bottom: 0;
+            border-right: 0;
+            white-space: nowrap;
+          }
+
+          th.merged-with-above {
+            border-top: 0;
+          }
+
+          th.merged-with-left {
+            border-left: 0;
+          }
+
+          th.last-row, td.last-row {
+            border-bottom: 1px solid black;
+          }
+
+          th.last-col, td.last-col {
+            border-right: 1px solid black;
+          }
+        </style>
+</head>
+<body><table>
+<tr>
+<th rowspan="1" colspan="1">table12</th>
+<th>Label: D = d1, E = e1</th>
+<th class="last-col">Label: D = d1, E = e2</th>
+</tr>
+<tr>
+<th class="rowHeader">Label: m1</th>
+<td>101</td>
+<td class="last-col">201</td>
+</tr>
+<tr>
+<th class="rowHeader last-row">Label: m2</th>
+<td class="last-row">102</td>
+<td class="last-col last-row">202</td>
+</tr>
+</table></body>
+</html>

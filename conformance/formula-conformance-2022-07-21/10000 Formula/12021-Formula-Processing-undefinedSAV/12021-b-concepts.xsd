@@ -1,0 +1,34 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<!-- Copyright 2007 XBRL International. All Rights Reserved. -->
+<schema xmlns="http://www.w3.org/2001/XMLSchema" xmlns:eg="http://xbrl.org/formula/conformance/example"
+	xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:xbrli="http://www.xbrl.org/2003/instance"
+	xmlns:xlink="http://www.w3.org/1999/xlink" attributeFormDefault="unqualified"
+	blockDefault="" elementFormDefault="qualified" finalDefault=""
+	targetNamespace="http://xbrl.org/formula/conformance/example">
+	
+	<import namespace="http://www.xbrl.org/2003/instance"
+		schemaLocation="http://www.xbrl.org/2003/xbrl-instance-2003-12-31.xsd" />
+	<element abstract="false" id="eg_assets" name="assets"
+		nillable="true" substitutionGroup="xbrli:item" type="xbrli:monetaryItemType"
+		xbrli:periodType="instant" />
+	<element abstract="false" id="eg_equity" name="equity"
+		nillable="true" substitutionGroup="xbrli:item" type="xbrli:monetaryItemType"
+		xbrli:periodType="instant" />
+	<element abstract="false" id="eg_liabilities" name="liabilities"
+		nillable="true" substitutionGroup="xbrli:item" type="xbrli:monetaryItemType"
+		xbrli:periodType="instant" />
+	<element abstract="false" id="eg_auditExpensesPurpose" name="auditExpensesPurpose"
+		nillable="true" substitutionGroup="xbrli:item" type="xbrli:stringItemType"
+		xbrli:periodType="instant" />
+		
+	<element abstract="false" id="eg_EquityGrouping" name="EquityGrouping"
+		nillable="true" substitutionGroup="xbrli:tuple">
+		<complexType mixed="false">
+			<sequence maxOccurs="1" minOccurs="1">
+				<element maxOccurs="1" minOccurs="1" ref="eg:assets" />
+				<element maxOccurs="1" minOccurs="1" ref="eg:equity" />
+			</sequence>
+			<attribute name="id" type="ID" use="optional" />
+		</complexType>
+	</element>
+</schema>

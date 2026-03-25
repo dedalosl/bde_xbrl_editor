@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2012-07-26"
+  name="0141-breakdown-tree-arc-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Herm Fischer</name>
+        <email>fischer@markv.com</email>
+    </creator>
+    <number>0141</number>
+    <name>Breakdown-tree Arc Testcase</name>
+    <description>Table linkbase test case for breakdown-tree arc errors</description>
+    
+    <variation id="v-01">
+        <name>Breakdown-tree arc with an invalid source element</name>
+        <description>
+          Invalid table that has a breakdown-tree arc with a table as the
+          source element.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">table-linkbase-breakdown-tree-source-error.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:breakdownTreeSourceError</error>
+        </result>
+    </variation>
+
+    <variation id="v-02">
+        <name>Breakdown-tree arc with an invalid target element</name>
+        <description>
+          Invalid table that has a breakdown-tree arc with a breakdown as the
+          target element.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">table-linkbase-breakdown-tree-target-error.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:breakdownTreeTargetError</error>
+        </result>
+    </variation>
+
+</testcase>

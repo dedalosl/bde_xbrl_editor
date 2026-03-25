@@ -1,0 +1,10 @@
+<!-- Neil Wills RR Donnelley -->
+<linkbase xmlns="http://www.xbrl.org/2003/linkbase" xmlns:gen="http://xbrl.org/2008/generic" xmlns:label="http://xbrl.org/2008/label" xmlns:xl="http://www.xbrl.org/2001/XLink" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://xbrl.org/2008/generic http://www.xbrl.org/2008/generic-link.xsd http://xbrl.org/2008/label http://www.xbrl.org/2008/generic-label.xsd">
+	<arcroleRef arcroleURI="http://xbrl.org/arcrole/2008/element-label" xlink:href="http://www.xbrl.org/2008/generic-label.xsd#element-label" xlink:type="simple"/>
+  <roleRef roleURI="http://www.xbrl.org/2008/role/label" xlink:href="http://www.xbrl.org/2008/generic-label.xsd#standard-label" xlink:type="simple"/>
+	<gen:link xlink:type="extended" xlink:role="http://www.xbrl.org/2003/role/link">
+		<loc xlink:type="locator" xlink:href="201-12-LinkbaseRefStandardRoleExample.xsd#fixedAssets" xlink:label="aaa" xlink:title="aaa"/>
+		<label:label xlink:type="resource" xlink:label="aaaLabel" xlink:title="aaa Title" xlink:role="http://www.xbrl.org/2008/role/label" xml:lang="en">Fixed Assets</label:label>
+		<gen:arc xlink:type="arc" xlink:from="aaa" xlink:to="aaaLabel" xlink:show="replace" xlink:actuate="onRequest" xlink:title="aaa Label" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"/>
+	</gen:link>
+</linkbase>

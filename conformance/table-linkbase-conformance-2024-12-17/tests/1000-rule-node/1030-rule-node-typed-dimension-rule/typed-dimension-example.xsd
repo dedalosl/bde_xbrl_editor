@@ -1,0 +1,75 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:ex="http://www.xbrl.org/table-examples-typed" xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:gen="http://xbrl.org/2008/generic" xmlns:label="http://xbrl.org/2008/label" xmlns:xbrldt="http://xbrl.org/2005/xbrldt" xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:xlink="http://www.w3.org/1999/xlink" attributeFormDefault="unqualified" blockDefault="" elementFormDefault="qualified" finalDefault="" targetNamespace="http://www.xbrl.org/table-examples-typed">
+   <xsd:import namespace="http://xbrl.org/2005/xbrldt" schemaLocation="http://www.xbrl.org/2005/xbrldt-2005.xsd"/>
+   <xsd:import namespace="http://www.xbrl.org/2003/instance" schemaLocation="http://www.xbrl.org/2003/xbrl-instance-2003-12-31.xsd"/>
+   <xsd:element abstract="false" id="ex_NumberOfEmployees" name="NumberOfEmployees" nillable="true" substitutionGroup="xbrli:item" type="xbrli:pureItemType" xbrli:periodType="instant"/>
+   <xsd:annotation>
+      <xsd:appinfo>
+         <link:linkbaseRef xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase" xlink:href="typed-dimension-example-label.xml" xlink:role="http://www.xbrl.org/2003/role/labelLinkbaseRef" xlink:type="simple"/>
+         <link:roleType id="employees" roleURI="http://www.xbrl.org/table-examples-typed/hypercubes/Employees">
+            <link:usedOn>link:definitionLink</link:usedOn>
+            <link:usedOn>link:presentationLink</link:usedOn>
+         </link:roleType>
+         <link:roleType id="roles" roleURI="http://www.xbrl.org/table-examples-typed/hypercubes/Roles">
+            <link:usedOn>link:definitionLink</link:usedOn>
+            <link:usedOn>link:presentationLink</link:usedOn>
+         </link:roleType>
+         <link:linkbaseRef xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase" xlink:href="typed-dimension-example-definition.xml" xlink:role="http://www.xbrl.org/2003/role/definitionLinkbaseRef" xlink:type="simple"/>
+	     <link:roleType id="table1" roleURI="http://www.xbrl.org/table-examples/table1">
+	        <link:usedOn>link:presentationLink</link:usedOn>
+	        <link:usedOn>link:definitionLink</link:usedOn>
+	        <link:usedOn>link:labelLink</link:usedOn>
+	        <link:usedOn>gen:link</link:usedOn>
+	     </link:roleType>
+	     <link:roleType id="table2" roleURI="http://www.xbrl.org/table-examples/table2">
+	        <link:usedOn>link:presentationLink</link:usedOn>
+	        <link:usedOn>link:definitionLink</link:usedOn>
+	        <link:usedOn>link:labelLink</link:usedOn>
+	        <link:usedOn>gen:link</link:usedOn>
+	     </link:roleType>
+	     <link:roleType id="table3" roleURI="http://www.xbrl.org/table-examples/table3">
+	        <link:usedOn>link:presentationLink</link:usedOn>
+	        <link:usedOn>link:definitionLink</link:usedOn>
+	        <link:usedOn>link:labelLink</link:usedOn>
+	        <link:usedOn>gen:link</link:usedOn>
+	     </link:roleType>
+	     <link:roleType id="table4" roleURI="http://www.xbrl.org/table-examples/table4">
+            <link:usedOn>link:presentationLink</link:usedOn>
+            <link:usedOn>link:definitionLink</link:usedOn>
+            <link:usedOn>link:labelLink</link:usedOn>
+            <link:usedOn>gen:link</link:usedOn>
+         </link:roleType>
+	     <link:roleType id="coordinate-code" roleURI="http://www.xbrl.org/table-examples/coordinate-code">
+	        <link:usedOn>label:label</link:usedOn>
+	     </link:roleType>
+      </xsd:appinfo>
+   </xsd:annotation>
+   <xsd:element abstract="true" id="ex_Employees" name="Employees" nillable="true" substitutionGroup="xbrldt:hypercubeItem" type="xbrli:stringItemType" xbrli:periodType="duration"/>
+   <xsd:element abstract="true" id="ex_PrimaryItemsForEmployees" name="PrimaryItemsForEmployees" nillable="false" substitutionGroup="xbrli:item" type="xbrli:stringItemType" xbrli:periodType="duration"/>
+   <xsd:element abstract="true" id="ex_Age" name="Age" nillable="true" substitutionGroup="xbrldt:dimensionItem" type="xbrli:stringItemType" xbrldt:typedDomainRef="#ex_Age.domain" xbrli:periodType="duration"/>
+   <xsd:element abstract="true" id="ex_Roles" name="Roles" nillable="true" substitutionGroup="xbrldt:hypercubeItem" type="xbrli:stringItemType" xbrli:periodType="duration"/>
+   <xsd:element abstract="true" id="ex_PrimaryItemsForRoles" name="PrimaryItemsForRoles" nillable="false" substitutionGroup="xbrli:item" type="xbrli:stringItemType" xbrli:periodType="duration"/>
+   <xsd:element abstract="true" id="ex_Department" name="Department" nillable="true" substitutionGroup="xbrldt:dimensionItem" type="xbrli:stringItemType" xbrldt:typedDomainRef="#ex_Department.domain" xbrli:periodType="duration"/>
+   <!-- typed dimension members -->
+   <xsd:element abstract="false" id="ex_Age.domain" name="Age.domain" nillable="false">
+      <xsd:simpleType>
+         <xsd:restriction base="xsd:string">
+            <xsd:enumeration value=".. - 20"/>
+            <xsd:enumeration value="21 - 40"/>
+            <xsd:enumeration value="41 - .."/>
+         </xsd:restriction>
+      </xsd:simpleType>
+   </xsd:element>
+   <xsd:element abstract="false" id="ex_Department.domain" name="Department.domain" nillable="false">
+      <xsd:simpleType>
+         <xsd:restriction base="xsd:string">
+            <xsd:enumeration value="Admin"/>
+            <xsd:enumeration value="Development"/>
+            <xsd:enumeration value="Sales"/>
+         </xsd:restriction>
+      </xsd:simpleType>
+   </xsd:element>
+   <xsd:element abstract="false" id="ex_AverageSalary" name="AverageSalary" nillable="true" substitutionGroup="xbrli:item" type="xbrli:monetaryItemType" xbrli:periodType="instant"/>
+   <xsd:element abstract="false" id="ex_MaximumSalary" name="MaximumSalary" nillable="true" substitutionGroup="xbrli:item" type="xbrli:monetaryItemType" xbrli:periodType="instant"/>
+   <xsd:element abstract="false" id="ex_Bonus" name="Bonus" nillable="true" substitutionGroup="xbrli:item" type="xbrli:pureItemType" xbrli:periodType="instant"/>
+</xsd:schema>

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2015-10-05"
+  name="0180-table-missing-aspect-value-unit-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Revathy Ramanan</name>
+        <email>revathy.ramanan@irisbusiness.com</email>
+    </creator>
+    <number>0180</number>
+    <name>Table Missing Aspect ValueTestcase  - Unit</name>
+    <description>Table linkbase test case for tables where a row/column lacks a value for a participating unit aspect. This would be be error as per Table Linkbase 1.0 specs.
+	However specification update considered to relax unit aspect from missingAspectValue error.</description>
+    
+    <variation id="v-01">
+        <name>Simple Table, first column on x-axis is missing unit aspect</name>
+        <description>Simple table where the x-axis breakdown has the unit aspect but the first column provides no value.</description>
+        <reference useCase="Bank of Mauritius"/>
+        <data>
+            <linkbase readMeFirst="true">table-linkbase-missing-aspect-value-unit.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+             <table>output/output.xml</table>
+        </result>
+    </variation>
+    
+</testcase>

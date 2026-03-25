@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:label="http://xbrl.org/2008/label" 
+               xmlns:gen="http://xbrl.org/2008/generic"
+               xmlns:xlink="http://www.w3.org/1999/xlink"
+               xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+               xmlns:link="http://www.xbrl.org/2003/linkbase"
+               xmlns:table="http://xbrl.org/2014/table"
+               xmlns:formula="http://xbrl.org/2008/formula"
+               xmlns:rend="http://www.xbrl.org/table-examples"
+               xmlns:xs="http://www.w3.org/2001/XMLSchema"
+               xsi:schemaLocation="             
+                  http://www.xbrl.org/2003/linkbase http://www.xbrl.org/2003/xbrl-linkbase-2003-12-31.xsd
+                  http://xbrl.org/2008/generic http://www.xbrl.org/2008/generic-link.xsd
+                  http://xbrl.org/2008/label http://www.xbrl.org/2008/generic-label.xsd
+                  http://xbrl.org/2014/table http://www.xbrl.org/2014/table.xsd
+               ">
+   <link:roleRef roleURI="http://www.xbrl.org/table-examples/table8" xlink:type="simple" xlink:href="table-examples-roles.xsd#table8"/>
+   <link:arcroleRef arcroleURI="http://xbrl.org/arcrole/2008/element-label" xlink:type="simple" xlink:href="http://www.xbrl.org/2008/generic-label.xsd#element-label"/>
+   <link:arcroleRef arcroleURI="http://xbrl.org/arcrole/2014/table-breakdown" xlink:type="simple" xlink:href="http://www.xbrl.org/2014/table.xsd#table-breakdown"/>
+   <link:arcroleRef arcroleURI="http://xbrl.org/arcrole/2014/breakdown-tree" xlink:type="simple" xlink:href="http://www.xbrl.org/2014/table.xsd#breakdown-tree"/>
+   <link:arcroleRef arcroleURI="http://xbrl.org/arcrole/2014/definition-node-subtree" xlink:type="simple" xlink:href="http://www.xbrl.org/2014/table.xsd#definition-node-subtree"/>
+   <link:roleRef roleURI="http://www.xbrl.org/table-examples/coordinate-code" xlink:type="simple" xlink:href="table-examples-roles.xsd#coordinate-code"/>
+   <link:roleRef roleURI="http://www.xbrl.org/2008/role/label" xlink:type="simple" xlink:href="http://www.xbrl.org/2008/generic-label.xsd#standard-label"/>
+
+   <gen:link xlink:type="extended" xlink:role="http://www.xbrl.org/table-examples/table8">
+
+      <table:table xlink:type="resource" xlink:label="table8" id="table8"/>
+      <label:label xlink:type="resource" xlink:label="label_table8" id="label_table8" xlink:role="http://www.xbrl.org/2008/role/label" xml:lang="en">Table with tags and constraint sets on the same axis</label:label>
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label" xlink:from="table8" xlink:to="label_table8"/>
+
+      <!-- X axis -->
+      <table:breakdown xlink:type="resource" xlink:label="table8-x" id="table8-x"/>
+      <table:tableBreakdownArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2014/table-breakdown" axis="x" xlink:from="table8" xlink:to="table8-x" order="1"/>
+
+      <table:ruleNode xlink:type="resource" xlink:label="table8-x.1" id="table8-x.1">
+        <table:ruleSet tag="start">
+          <formula:period>
+            <formula:instant value="xs:date('2001-12-31')"/>
+          </formula:period>
+        </table:ruleSet>
+        <table:ruleSet tag="end">
+          <formula:period>
+            <formula:instant value="xs:date('2002-12-31')"/>
+          </formula:period>
+        </table:ruleSet>
+      </table:ruleNode>
+      <table:breakdownTreeArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2014/breakdown-tree" xlink:from="table8-x" xlink:to="table8-x.1" order="1"/>
+      <label:label xlink:type="resource" xlink:label="label_table8-x.11" id="label_table8-x.11" xlink:role="http://www.xbrl.org/2008/role/label" xml:lang="en">2002</label:label>
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label" xlink:from="table8-x.1" xlink:to="label_table8-x.11"/>
+
+      <!-- Add rules with tag selectors as children of the constraint set -->
+      <table:breakdown parentChildOrder="parent-first" xlink:type="resource" xlink:label="table8-x2" id="table8-x2"/>
+      <table:tableBreakdownArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2014/table-breakdown" axis="x" xlink:from="table8" xlink:to="table8-x2" order="2"/>
+
+      <table:ruleNode xlink:type="resource" xlink:label="table8-x2.1" id="table8-x2.1" tagSelector="start">
+         <formula:concept>
+            <formula:qname>rend:m1</formula:qname>
+         </formula:concept>
+      </table:ruleNode>
+      <table:breakdownTreeArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2014/breakdown-tree" xlink:from="table8-x2" xlink:to="table8-x2.1" order="1"/>
+      <label:label xlink:type="resource" xlink:label="label_table8-x2.11" id="label_table8-x2.11" xlink:role="http://www.xbrl.org/2008/role/label" xml:lang="en">m1</label:label>
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label" xlink:from="table8-x2.1" xlink:to="label_table8-x2.11"/>
+
+      <table:ruleNode xlink:type="resource" xlink:label="table8-x2.2" id="table8-x2.2" tagSelector="end">
+         <formula:concept>
+            <formula:qname>rend:m2</formula:qname>
+         </formula:concept>
+      </table:ruleNode>
+      <table:breakdownTreeArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2014/breakdown-tree" xlink:from="table8-x2" xlink:to="table8-x2.2" order="2"/>
+      <label:label xlink:type="resource" xlink:label="label_table8-x2.21" id="label_table8-x2.21" xlink:role="http://www.xbrl.org/2008/role/label" xml:lang="en">m2</label:label>
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label" xlink:from="table8-x2.2" xlink:to="label_table8-x2.21"/>
+   </gen:link>
+
+</link:linkbase>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?><link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.xbrl.org/2003/linkbase http://www.xbrl.org/2003/xbrl-linkbase-2003-12-31.xsd">
+   <link:labelLink xlink:role="http://www.xbrl.org/2003/role/link" xlink:type="extended">
+      <link:label id="id_32bf23" xlink:label="lbl_label3325731" xlink:role="http://www.xbrl.org/2003/role/label" xlink:type="resource" xml:lang="en">Hypercube</link:label>
+      <link:loc xlink:href="targetDimensionDomainIndirectSubstitutionValid.xsd#foo_Hypercube" xlink:label="lbl_Hypercube" xlink:type="locator"/>
+      <link:labelArc order="1.0" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="lbl_Hypercube" xlink:to="lbl_label3325731" xlink:type="arc"/>
+      <link:label id="id_1f95fc4" xlink:label="lbl_label33120196" xlink:role="http://www.xbrl.org/2003/role/label" xlink:type="resource" xml:lang="en">Primary Items for Hypercube</link:label>
+      <link:loc xlink:href="targetDimensionDomainIndirectSubstitutionValid.xsd#foo_PrimaryItemsForHypercube" xlink:label="lbl_PrimaryItemsForHypercube" xlink:type="locator"/>
+      <link:labelArc order="1.0" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="lbl_PrimaryItemsForHypercube" xlink:to="lbl_label33120196" xlink:type="arc"/>
+      <link:label id="id_27ca20" xlink:label="lbl_label2607648" xlink:role="http://www.xbrl.org/2003/role/label" xlink:type="resource" xml:lang="en">Dimension</link:label>
+      <link:loc xlink:href="targetDimensionDomainIndirectSubstitutionValid.xsd#foo_Dimension" xlink:label="lbl_Dimension" xlink:type="locator"/>
+      <link:labelArc order="1.0" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="lbl_Dimension" xlink:to="lbl_label2607648" xlink:type="arc"/>
+      <link:label id="id_fdb3de" xlink:label="lbl_label16626654" xlink:role="http://www.xbrl.org/2003/role/label" xlink:type="resource" xml:lang="en">Member</link:label>
+      <link:loc xlink:href="targetDimensionDomainIndirectSubstitutionValid.xsd#foo_Member" xlink:label="lbl_Member" xlink:type="locator"/>
+      <link:labelArc order="1.0" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="lbl_Member" xlink:to="lbl_label16626654" xlink:type="arc"/>
+   </link:labelLink>
+</link:linkbase>

@@ -1,0 +1,20 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:custom="http://www.xbrl.org/table-examples/custom-links" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.xbrl.org/2003/linkbase http://www.xbrl.org/2003/xbrl-linkbase-2003-12-31.xsd http://www.xbrl.org/table-examples/custom-links custom-presentation.xsd">
+   <link:roleRef roleURI="http://www.xbrl.org/table-examples/custom-link" xlink:type="simple" xlink:href="custom-presentation.xsd#custom-link-role"/>
+   <link:arcroleRef arcroleURI="http://xbrl.org/table-examples/parent-child" xlink:type="simple" xlink:href="custom-presentation.xsd#parent-child"/>
+   <custom:presentationLink xlink:role="http://www.xbrl.org/table-examples/custom-link" xlink:type="extended">
+      <link:loc xlink:href="table-examples.xsd#r_base" xlink:label="lbl_base" xlink:type="locator"/>
+      <link:loc xlink:href="table-examples.xsd#r_o1" xlink:label="lbl_o1" xlink:type="locator"/>
+      <link:loc xlink:href="table-examples.xsd#r_o2" xlink:label="lbl_o2" xlink:type="locator"/>
+      <link:loc xlink:href="table-examples.xsd#r_o3" xlink:label="lbl_o3" xlink:type="locator"/>
+      <link:loc xlink:href="table-examples.xsd#r_o4" xlink:label="lbl_o4" xlink:type="locator"/>
+      <link:loc xlink:href="table-examples.xsd#r_o5" xlink:label="lbl_o5" xlink:type="locator"/>
+      <link:loc xlink:href="table-examples.xsd#r_o6" xlink:label="lbl_o6" xlink:type="locator"/>
+      <custom:presentationArc order="1.0" xlink:arcrole="http://www.xbrl.org/2003/arcrole/parent-child" xlink:from="lbl_base" xlink:to="lbl_o1" xlink:type="arc"/>
+      <custom:presentationArc order="2.0" xlink:arcrole="http://www.xbrl.org/2003/arcrole/parent-child" xlink:from="lbl_base" xlink:to="lbl_o2" xlink:type="arc"/>
+      <custom:presentationArc order="3.0" xlink:arcrole="http://www.xbrl.org/2003/arcrole/parent-child" xlink:from="lbl_base" xlink:to="lbl_o3" xlink:type="arc"/>
+      <custom:presentationArc order="4.0" xlink:arcrole="http://www.xbrl.org/2003/arcrole/parent-child" xlink:from="lbl_base" xlink:to="lbl_o4" xlink:type="arc"/>
+      <custom:presentationArc order="5.0" xlink:arcrole="http://www.xbrl.org/2003/arcrole/parent-child" xlink:from="lbl_base" xlink:to="lbl_o5" xlink:type="arc"/>
+      <custom:presentationArc order="1.0" xlink:arcrole="http://www.xbrl.org/2003/arcrole/parent-child" xlink:from="lbl_o5" xlink:to="lbl_o6" xlink:type="arc"/>
+   </custom:presentationLink>
+</link:linkbase>

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- XBRL 2.1 Tests --><!-- Copyright 2009 XBRL International Inc.  See www.xbrl.org/legal.  All Rights Reserved. --><?xml-stylesheet type="text/xsl" href="../../testcase.xsl"?><testcase xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          name="Footnote elements tests"
+          description="4.11.1.2.1 for footnote"
+          outpath="out"          
+          owner="fischer@markv.com"
+          minimal="true"
+          xsi:noNamespaceSchemaLocation="../lib/test.xsd">
+   <variation id="V-01" name="311-01 valid footnote">
+      <description>Footnote has xml:lang on footnote element</description>
+      <data>
+         <xsd readMeFirst="false">IdScope.xsd</xsd>
+         <instance readMeFirst="true">311-01-instance.xml</instance>
+      </data>
+      <result expected="valid"/>
+   </variation>
+   <variation id="V-02" name="311-02 valid footnote lang on ancestor">
+      <description>Footnote has xml:lang on ancestor element</description>
+      <data>
+         <xsd readMeFirst="false">IdScope.xsd</xsd>
+         <instance readMeFirst="true">311-02-instance.xml</instance>
+      </data>
+      <result expected="valid"/>
+   </variation>
+   <variation id="V-03" name="311-03 valid footnote lang on link element">
+      <description>Footnote has xml:lang on link element</description>
+      <data>
+         <xsd readMeFirst="false">IdScope.xsd</xsd>
+         <instance readMeFirst="true">311-03-instance.xml</instance>
+      </data>
+      <result expected="valid"/>
+   </variation>
+   <variation id="V-04" name="311-04 valid footnote lang on ancestor">
+      <description>Footnote has xml:lang on xbrl element</description>
+      <data>
+         <xsd readMeFirst="false">IdScope.xsd</xsd>
+         <instance readMeFirst="true">311-04-instance.xml</instance>
+      </data>
+      <result expected="invalid"/>
+   </variation>
+   
+</testcase>

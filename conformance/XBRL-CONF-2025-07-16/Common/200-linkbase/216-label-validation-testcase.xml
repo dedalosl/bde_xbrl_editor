@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- XBRL 2.1 Tests -->
+<!-- Copyright 2016 XBRL International Inc.  See www.xbrl.org/legal.  All Rights Reserved. -->
+<?xml-stylesheet type="text/xsl" href="../../testcase.xsl"?>
+<testcase xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+name="Label element validation tests" 
+xsi:noNamespaceSchemaLocation="../lib/test.xsd"
+outpath="out"
+description="Test that label element validation is performed" 
+owner="fischer@markv.com" 
+minimal="true">
+
+        <variation id="V-01" name="v01-label-lang-on-label">
+                <description>
+                    Label has xml:lang attribute in scope on the label element.
+                </description>
+                <data>
+                        <xsd readMeFirst="true">216-label-01.xsd</xsd>
+                        <linkbase readMeFirst="false">216-label-01-label.xml</linkbase>
+                </data>
+                <result expected="valid"/>
+        </variation>
+
+        <variation id="V-02" name="v02-label-lang-on-parent">
+                <description>
+                        same as V-01 but xml:lang attribute in scope on labelLink element
+                </description>
+                <data>
+                        <xsd readMeFirst="true">216-label-02.xsd</xsd>
+                        <linkbase readMeFirst="false">216-label-02-label.xml</linkbase>
+                </data>
+                <result expected="valid"/>
+        </variation>
+        
+        <variation id="V-03" name="v03-label-lang-on-linkbase">
+                <description>
+                        same as V-01 but xml:lang attribute in scope on linkbase element
+                </description>
+                <data>
+                        <xsd readMeFirst="true">216-label-03.xsd</xsd>
+                        <linkbase readMeFirst="false">216-label-03-label.xml</linkbase>
+                </data>
+                <result expected="valid"/>
+        </variation>
+        
+        <variation id="V-04" name="v02-label-lang-missing">
+                <description>
+                        same as V-01 but no xml:lang attribute in scope
+                </description>
+                <data>
+                        <xsd readMeFirst="true">216-label-04.xsd</xsd>
+                        <linkbase readMeFirst="false">216-label-04-label.xml</linkbase>
+                </data>
+                <result expected="invalid"/>
+        </variation>
+        
+
+</testcase>

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:label="http://xbrl.org/2008/label"
+        xmlns:gen="http://xbrl.org/2008/generic"
+        xmlns:df="http://xbrl.org/2008/filter/dimension"
+        xmlns:xlink="http://www.w3.org/1999/xlink"
+        xmlns:reference="http://xbrl.org/2008/reference"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xmlns:link="http://www.xbrl.org/2003/linkbase"
+        xmlns:table="http://xbrl.org/2014/table"
+        xmlns:filaxis="http://xbrl.org/2011/axis/filter"
+        xmlns:expaxis="http://xbrl.org/2011/axis/explicit"
+        xmlns:formula="http://xbrl.org/2008/formula"
+        xmlns:custom="http://www.xbrl.org/table-examples/custom-links"
+        attributeFormDefault="unqualified"
+        elementFormDefault="qualified"
+        targetNamespace="http://www.xbrl.org/ambiguous-network-example">
+  <xsd:annotation>
+    <xsd:appinfo>
+        <!-- link in the custom linkbase -->
+        <link:linkbaseRef xlink:type="simple" xlink:href="ambiguous-network-custom.xml" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase"/>
+        <link:roleType roleURI="http://www.xbrl.org/table-examples/custom-link" id="custom-link-role">
+            <link:usedOn>custom:presentationLink</link:usedOn>
+            <link:usedOn>link:presentationLink</link:usedOn>
+        </link:roleType>
+        <link:arcroleType arcroleURI="http://xbrl.org/table-examples/parent-child" cyclesAllowed="undirected" id="parent-child">
+            <link:usedOn>custom:presentationArc</link:usedOn>
+        </link:arcroleType>
+    </xsd:appinfo>
+  </xsd:annotation>
+  <xsd:import namespace="http://www.xbrl.org/table-examples-roles" schemaLocation="table-examples-roles.xsd"/>
+</xsd:schema>

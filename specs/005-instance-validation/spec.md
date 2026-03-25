@@ -100,6 +100,7 @@ The user can export the validation result report to a file (plain text or struct
 - **FR-010**: The system MUST display a progress indicator during validation runs that take more than a few seconds, showing that validation is in progress.
 - **FR-011**: The system MUST allow the user to export the validation result report to a file on the local filesystem in a human-readable format.
 - **FR-012**: When the bound taxonomy has no formula linkbase, the system MUST still perform structural conformance checks, clearly inform the user that formula assertions are unavailable for this taxonomy, and not treat the absence of a formula linkbase as a validation failure.
+- **FR-013**: The system MUST validate that each fact in the instance has a dimensional context that satisfies the applicable hypercube constraints (closed hypercubes) defined in the taxonomy's definition linkbase. Violations MUST be reported as findings that include: the failing fact, the name of the violated hypercube, and the specific dimensional constraint that was breached.
 
 ### Key Entities
 

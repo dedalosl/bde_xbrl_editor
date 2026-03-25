@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2017-02-13"
+  name="3190-concept-relationship-node-tag-selectors-generic-preferred-label-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>David North</name>
+        <email>dtn@corefiling.com</email>
+    </creator>
+    <number>3190</number>
+    <name>Concept Relationship Node Tag Selectors Generic Preferred Label Testcase</name>
+    <description>Table linkbase test case using a concept relationship node with tag selectors for period line-up, and generic preferred label</description>
+
+    <variation id="v-01">
+        <name>Concept relationship node a period start preferred label on a non-abstract parent concept</name>
+        <description>
+          The concept relationship tree identified by the concept relationship
+          node has a non-abstract parent with a periodStart preferred label. The
+          table.periodStart tag should be added to the roll-up of that node.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">tag-selector-on-rollup-instance.xml</instance>
+            <linkbase>tag-selector-on-rollup-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <linkbase>table-examples-pre.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/tag-selector-on-rollup.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-02">
+        <name>Concept relationship node and both sorts of preferred label</name>
+        <description>
+          As per v-01, except both XBRL 2.1 and generic preferred labels are in use for
+          the tree pointed at by the relationship node, which is an error.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">tag-selector-on-rollup-table2.xml</linkbase>
+            <linkbase>table-examples2-definition.xml</linkbase>
+            <linkbase>table-examples2-label.xml</linkbase>
+            <linkbase>table-examples2-pre.xml</linkbase>
+            <schema>table-examples2-roles.xsd</schema>
+            <schema>table-examples2.xsd</schema>
+        </data>
+        <result>
+          <error>xbrlte:ambiguousPreferredLabel</error>
+          <error>xbrlte:ambiguousPreferredLabel</error>
+        </result>
+    </variation>
+
+
+</testcase>

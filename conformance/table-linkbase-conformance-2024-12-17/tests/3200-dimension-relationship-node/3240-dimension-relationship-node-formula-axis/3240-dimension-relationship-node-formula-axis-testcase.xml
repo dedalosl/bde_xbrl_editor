@@ -1,0 +1,314 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2011-09-16"
+  name="3200-dimension-relationship-node-formula-axis-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Herm Fischer</name>
+        <email>fischer@markv.com</email>
+    </creator>
+    <number>3240</number>
+    <name>Dimension Relationship Node Formula Axis Testcase</name>
+    <description>Table linkbase test case using a dimension relationship node with different formula axes</description>
+    
+    <variation id="v-01">
+        <name>Dimension relationship node with formulaAxis omitted</name>
+        <description>
+          Table with two columns (primary items m1, m2) and a tree of members
+          for explicit dimension F as rows.  No formula axis is specified, so
+          the tree walk defaults to 'descendant-or-self'.  This variation has no
+          instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">axis-omitted-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/axis-omitted-no-data.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-01i">
+        <name>Dimension relationship node with formulaAxis omitted</name>
+        <description>
+          Table with two columns (primary items m1, m2) and a tree of members
+          for explicit dimension F as rows.  No formula axis is specified, so
+          the tree walk defaults to 'descendant-or-self'.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">axis-omitted-instance.xml</instance>
+            <linkbase>axis-omitted-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/axis-omitted.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-02">
+        <name>Dimension relationship node with formulaAxis = descendant-or-self</name>
+        <description>
+          Table with two columns (primary items m1, m2) and a tree of members
+          for explicit dimension F as rows.  A formula axis of
+          'descendant-or-self' is specified, so the full tree of members is
+          included.  This variation has no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">descendant-or-self-axis-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/descendant-or-self-axis-no-data.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-02i">
+        <name>Dimension relationship node with formulaAxis = descendant-or-self (with instance)</name>
+        <description>
+          Table with two columns (primary items m1, m2) and a tree of members
+          for explicit dimension F as rows.  A formula axis of
+          'descendant-or-self' is specified, so the full tree of members is
+          included.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">descendant-or-self-axis-instance.xml</instance>
+            <linkbase>descendant-or-self-axis-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/descendant-or-self-axis.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-03">
+        <name>Dimension relationship node with formulaAxis = descendant</name>
+        <description>
+          Table with two columns (primary items m1, m2) and a tree of members
+          for explicit dimension F as rows.  A formula axis of
+          'descendant' is specified, so the relationship source itself is not
+          included.  This variation has no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">descendant-axis-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/descendant-axis-no-data.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-03i">
+        <name>Dimension relationship node with formulaAxis = descendant (with instance)</name>
+        <description>
+          Table with two columns (primary items m1, m2) and a tree of members
+          for explicit dimension F as rows.  A formula axis of
+          'descendant' is specified, so the relationship source itself is not
+          included.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">descendant-axis-instance.xml</instance>
+            <linkbase>descendant-axis-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/descendant-axis.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-04">
+        <name>Dimension relationship node with formulaAxis = child-or-self</name>
+        <description>
+          Table with two columns (primary items m1, m2) and a tree of members
+          for explicit dimension F as rows.  A formula axis of
+          'child-or-self' is specified, so only the relationship source and its
+          immediate children are included.  This variation has no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">child-or-self-axis-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/child-or-self-axis-no-data.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-04i">
+        <name>Dimension relationship node with formulaAxis = child-or-self (with instance)</name>
+        <description>
+          Table with two columns (primary items m1, m2) and a tree of members
+          for explicit dimension F as rows.  A formula axis of
+          'child-or-self' is specified, so only the relationship source and its
+          immediate children are included.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">child-or-self-axis-instance.xml</instance>
+            <linkbase>child-or-self-axis-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/child-or-self-axis.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-05">
+        <name>Dimension relationship node with formulaAxis = child</name>
+        <description>
+          Table with two columns (primary items m1, m2) and a tree of members
+          for explicit dimension F as rows.  A formula axis of
+          'child' is specified, so only the immediate children of the
+          relationship source are included.  The relationship source itself is
+          not included.  This variation has no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">child-axis-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/child-axis-no-data.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-05i">
+        <name>Dimension relationship node with formulaAxis = child (with instance)</name>
+        <description>
+          Table with two columns (primary items m1, m2) and a tree of members
+          for explicit dimension F as rows.  A formula axis of
+          'child' is specified, so only the immediate children of the
+          relationship source are included.  The relationship source itself is
+          not included.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">child-axis-instance.xml</instance>
+            <linkbase>child-axis-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/child-axis.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-06">
+        <name>Dimension relationship node with a formula axis expression</name>
+        <description>
+          Invalid table with a dimension relationship node that specifies the
+          formula axis using an XPath expression. This variation has no
+          instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">axis-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/axis-expression-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-06i">
+        <name>Dimension relationship node with a formula axis expression, with instance</name>
+        <description>
+          Invalid table with a dimension relationship node that specifies the
+          formula axis using an XPath expression.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">axis-expression-instance.xml</instance>
+            <linkbase>axis-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/axis-expression.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-07">
+        <name>Dimension relationship node with an invalid formula axis expression</name>
+        <description>
+          Invalid table with a dimension relationship node that specifies the
+          formula axis using an XPath expression that does not evaluate to a
+          valid value from the enumeration.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">invalid-axis-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:expressionNotCastableToRequiredType</error>
+        </result>
+    </variation>
+
+    <variation id="v-08">
+        <name>Dimension relationship node with a formula axis expression that evaluates to a sequence</name>
+        <description>
+          Invalid table with a dimension relationship node that specifies the
+          formula axis using an XPath expression that evaluates to a sequence of
+          values.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">sequence-axis-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:expressionNotCastableToRequiredType</error>
+        </result>
+    </variation>
+  
+</testcase>

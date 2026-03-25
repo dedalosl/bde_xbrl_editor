@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- edited with XMLSpy v2019 rel. 3 (x64) (http://www.altova.com) by Mr. Nobody (Altova GmbH) -->
+<xs:schema targetNamespace="http://www.test.com" elementFormDefault="qualified" xmlns:altovaext="http://www.altova.com/xslt-extensions" xmlns:altova-xfi="http://www.altova.com/xslt-extensions/xbrl" xmlns:test="http://www.test.com" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xl="http://www.xbrl.org/2003/XLink" xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:ref="http://www.xbrl.org/2004/ref" xmlns:xfi="http://www.xbrl.org/2008/function/instance" xmlns:xff="http://www.xbrl.org/2010/function/formula" xmlns:xbrldt="http://xbrl.org/2005/xbrldt" xmlns:formula="http://xbrl.org/2008/formula" xmlns:gen="http://xbrl.org/2008/generic" xmlns:label="http://xbrl.org/2008/label" xmlns:variable="http://xbrl.org/2008/variable" xmlns:enum="http://xbrl.org/2014/extensible-enumerations" xmlns:table="http://xbrl.org/2014/table">
+	<xs:annotation>
+		<xs:appinfo>
+			<link:roleType id="role1" roleURI="urn:role1">
+				<link:definition>role1</link:definition>
+				<link:usedOn>link:definitionLink</link:usedOn>
+			</link:roleType>
+			<link:roleType id="role2" roleURI="urn:role2">
+				<link:definition>role2</link:definition>
+				<link:usedOn>link:definitionLink</link:usedOn>
+			</link:roleType>
+			<link:linkbaseRef xlink:type="simple" xlink:role="http://www.xbrl.org/2003/role/definitionLinkbaseRef" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase" xlink:href="test2_def.xml"/>
+		</xs:appinfo>
+	</xs:annotation>
+	<xs:import namespace="http://www.xbrl.org/2003/instance" schemaLocation="http://www.xbrl.org/2003/xbrl-instance-2003-12-31.xsd"/>
+	<xs:import namespace="http://xbrl.org/2005/xbrldt" schemaLocation="http://www.xbrl.org/2005/xbrldt-2005.xsd"/>
+	<xs:element name="hc1" id="hc1" type="xbrli:stringItemType" substitutionGroup="xbrldt:hypercubeItem" nillable="true" abstract="true" xbrli:periodType="duration"/>
+	<xs:element name="member1" id="member1" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" nillable="true" abstract="true" xbrli:periodType="duration"/>
+	<xs:element name="member2" id="member2" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" nillable="true" abstract="true" xbrli:periodType="duration"/>
+	<xs:element name="member3" id="member3" type="xbrli:monetaryItemType" substitutionGroup="xbrli:item" nillable="true" abstract="true" xbrli:periodType="duration"/>
+	<xs:element name="dim1" id="dim1" type="xbrli:stringItemType" substitutionGroup="xbrldt:dimensionItem" nillable="true" abstract="true" xbrli:periodType="duration"/>
+	<xs:element name="fact1" id="fact1" type="xbrli:stringItemType" substitutionGroup="xbrli:item" nillable="true" abstract="false" xbrli:periodType="duration"/>
+</xs:schema>

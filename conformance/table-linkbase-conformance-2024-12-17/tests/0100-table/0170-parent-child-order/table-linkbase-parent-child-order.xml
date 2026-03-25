@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:label="http://xbrl.org/2008/label" 
+               xmlns:gen="http://xbrl.org/2008/generic"
+               xmlns:xlink="http://www.w3.org/1999/xlink"
+               xmlns:reference="http://xbrl.org/2008/reference"
+               xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+               xmlns:link="http://www.xbrl.org/2003/linkbase"
+               xmlns:table="http://xbrl.org/2014/table"
+               xmlns:formula="http://xbrl.org/2008/formula"
+               xmlns:rend="http://www.xbrl.org/table-examples"
+               xsi:schemaLocation="             
+			   http://www.xbrl.org/2003/linkbase http://www.xbrl.org/2003/xbrl-linkbase-2003-12-31.xsd
+			   http://xbrl.org/2008/generic http://www.xbrl.org/2008/generic-link.xsd
+			   http://xbrl.org/2008/reference http://www.xbrl.org/2008/generic-reference.xsd
+			   http://xbrl.org/2008/label http://www.xbrl.org/2008/generic-label.xsd
+			   http://xbrl.org/2008/filter/dimension http://www.xbrl.org/2008/dimension-filter.xsd
+			   http://xbrl.org/2014/table http://www.xbrl.org/2014/table.xsd
+               ">
+  <link:roleRef roleURI="http://www.xbrl.org/table-examples/table1"
+                xlink:type="simple"
+                xlink:href="table-examples-roles.xsd#table1"/>
+  <link:arcroleRef arcroleURI="http://xbrl.org/arcrole/2008/element-label" xlink:type="simple"
+                   xlink:href="http://www.xbrl.org/2008/generic-label.xsd#element-label"/>
+  <link:arcroleRef arcroleURI="http://xbrl.org/arcrole/2014/table-breakdown" xlink:type="simple"
+                   xlink:href="http://www.xbrl.org/2014/table.xsd#table-breakdown"/>
+  <link:arcroleRef arcroleURI="http://xbrl.org/arcrole/2014/breakdown-tree" xlink:type="simple"
+                   xlink:href="http://www.xbrl.org/2014/table.xsd#breakdown-tree"/>
+  <link:arcroleRef arcroleURI="http://xbrl.org/arcrole/2014/definition-node-subtree" xlink:type="simple"
+                   xlink:href="http://www.xbrl.org/2014/table.xsd#definition-node-subtree"/>
+  <link:roleRef roleURI="http://www.xbrl.org/table-examples/coordinate-code"
+                xlink:type="simple"
+                xlink:href="table-examples-roles.xsd#coordinate-code"/>
+  <link:roleRef roleURI="http://www.xbrl.org/2008/role/label" xlink:type="simple"
+                xlink:href="http://www.xbrl.org/2008/generic-label.xsd#standard-label"/>
+  <gen:link xlink:type="extended" xlink:role="http://www.xbrl.org/table-examples/table1">
+
+    <!-- The parentChildOrder here is inherited by table-y2, but overridden in the other two breakdowns. -->
+    <table:table xlink:type="resource" xlink:label="table" id="table" parentChildOrder="children-first"/>
+    <label:label xlink:type="resource" xlink:label="label_table" xlink:role="http://www.xbrl.org/2008/role/label" xml:lang="en" id="label_table">Table 1</label:label>
+    <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label" xlink:from="table" xlink:to="label_table"/>
+
+    <!-- This breakdown has a ruleNode specifying a parentChildOrder. -->
+    <table:breakdown xlink:type="resource" xlink:label="table-x1" id="table-x1"/>
+    <table:tableBreakdownArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2014/table-breakdown" axis="x" xlink:from="table" xlink:to="table-x1" order="1" />
+    <table:breakdownTreeArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2014/breakdown-tree" xlink:from="table-x1" xlink:to="ERollUp" order="1"/>
+    <table:definitionNodeSubtreeArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2014/definition-node-subtree" xlink:from="ERollUp" xlink:to="Em3" order="1"/>
+    <table:definitionNodeSubtreeArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2014/definition-node-subtree" xlink:from="ERollUp" xlink:to="Em4" order="2"/>
+    <table:ruleNode xlink:type="resource" xlink:label="ERollUp" id="ERollUp" parentChildOrder="parent-first"/>
+    <table:ruleNode xlink:type="resource" xlink:label="Em3" id="Em3">
+       <formula:explicitDimension dimension="rend:E">
+          <formula:member>
+             <formula:qname>rend:m3</formula:qname>
+          </formula:member>
+       </formula:explicitDimension>
+    </table:ruleNode>
+    <table:ruleNode xlink:type="resource" xlink:label="Em4" id="Em4">
+       <formula:explicitDimension dimension="rend:E">
+          <formula:member>
+             <formula:qname>rend:m4</formula:qname>
+          </formula:member>
+       </formula:explicitDimension>
+    </table:ruleNode>
+
+    <!-- This breakdown specifies a parentChildOrder. -->
+    <table:breakdown xlink:type="resource" xlink:label="table-y1" id="table-y1" parentChildOrder="parent-first"/>
+    <table:tableBreakdownArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2014/table-breakdown" axis="y" xlink:from="table" xlink:to="table-y1" order="1" />
+    <table:breakdownTreeArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2014/breakdown-tree" xlink:from="table-y1" xlink:to="DRollUp" order="1"/>
+    <table:definitionNodeSubtreeArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2014/definition-node-subtree" xlink:from="DRollUp" xlink:to="Dm1" order="1"/>
+    <table:definitionNodeSubtreeArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2014/definition-node-subtree" xlink:from="DRollUp" xlink:to="Dm2" order="2"/>
+    <table:ruleNode xlink:type="resource" xlink:label="DRollUp" id="DRollUp"/>
+    <table:ruleNode xlink:type="resource" xlink:label="Dm1" id="Dm1">
+       <formula:explicitDimension dimension="rend:D">
+          <formula:member>
+             <formula:qname>rend:m1</formula:qname>
+          </formula:member>
+       </formula:explicitDimension>
+    </table:ruleNode>
+    <table:ruleNode xlink:type="resource" xlink:label="Dm2" id="Dm2">
+       <formula:explicitDimension dimension="rend:D">
+          <formula:member>
+             <formula:qname>rend:m2</formula:qname>
+          </formula:member>
+       </formula:explicitDimension>
+    </table:ruleNode>
+
+    <!-- This breakdown inherits the table's parentChildOrder, not the default and not the order from the breakdown above it. -->
+    <table:breakdown xlink:type="resource" xlink:label="table-y2" id="table-y2"/>
+    <table:tableBreakdownArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2014/table-breakdown" axis="y" xlink:from="table" xlink:to="table-y2" order="2" />
+    <table:breakdownTreeArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2014/breakdown-tree" xlink:from="table-y2" xlink:to="Cd1" order="1"/>
+    <table:definitionNodeSubtreeArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2014/definition-node-subtree" xlink:from="Cd1" xlink:to="Cd2" order="1"/>
+    <table:definitionNodeSubtreeArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2014/definition-node-subtree" xlink:from="Cd1" xlink:to="Cd3" order="2"/>
+    <table:ruleNode xlink:type="resource" xlink:label="Cd1" id="Cd1">
+       <formula:concept>
+          <formula:qname>rend:d1</formula:qname>
+       </formula:concept>
+    </table:ruleNode>
+    <table:ruleNode xlink:type="resource" xlink:label="Cd2" id="Cd2">
+       <formula:concept>
+          <formula:qname>rend:d2</formula:qname>
+       </formula:concept>
+    </table:ruleNode>
+    <table:ruleNode xlink:type="resource" xlink:label="Cd3" id="Cd3">
+       <formula:concept>
+          <formula:qname>rend:d3</formula:qname>
+       </formula:concept>
+    </table:ruleNode>
+
+  </gen:link>
+</link:linkbase>

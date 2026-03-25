@@ -1,0 +1,35 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<xbrli:xbrl xmlns:xbrldi="http://xbrl.org/2006/xbrldi" xmlns:xbrli="http://www.xbrl.org/2003/instance" id="xbrlID" xmlns:rend="http://www.xbrl.org/table-examples" xmlns:iso4217="http://www.xbrl.org/2003/iso4217" xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <link:schemaRef xlink:type="simple" xlink:href="table-examples.xsd"/>
+  <link:linkbaseRef xlink:type="simple" xlink:href="table.xml" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase"/>
+  <xbrli:context id="context">
+    <xbrli:entity>
+      <xbrli:identifier scheme="http://www.example.com/">mySampleCo</xbrli:identifier>
+    </xbrli:entity>
+    <xbrli:period>
+      <xbrli:startDate>2014-01-01</xbrli:startDate>
+      <xbrli:endDate>2014-12-31</xbrli:endDate>
+    </xbrli:period>
+    <xbrli:scenario>
+      <xbrldi:explicitMember dimension="rend:Country">rend:UK</xbrldi:explicitMember>
+      <xbrldi:explicitMember dimension="rend:Product">rend:Cheese</xbrldi:explicitMember>
+    </xbrli:scenario>
+  </xbrli:context>
+  <xbrli:context id="context2">
+    <xbrli:entity>
+      <xbrli:identifier scheme="http://www.example.com/">mySampleCo</xbrli:identifier>
+    </xbrli:entity>
+    <xbrli:period>
+      <xbrli:startDate>2014-01-01</xbrli:startDate>
+      <xbrli:endDate>2014-12-31</xbrli:endDate>
+    </xbrli:period>
+    <xbrli:scenario>
+      <xbrldi:explicitMember dimension="rend:Product">rend:Wine</xbrldi:explicitMember>
+    </xbrli:scenario>
+  </xbrli:context>
+  <xbrli:unit id="unit">
+    <xbrli:measure>iso4217:GBP</xbrli:measure>
+  </xbrli:unit>
+  <rend:Sales contextRef="context" decimals="INF" unitRef="unit">3</rend:Sales>
+  <rend:Sales contextRef="context2" decimals="INF" unitRef="unit">4</rend:Sales>
+</xbrli:xbrl>

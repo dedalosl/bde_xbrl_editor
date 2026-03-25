@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2011-09-16"
+  name="6650-aspect-node-typed-dimension-filter-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:xfie="http://www.xbrl.org/2008/function/instance/error"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Herm Fischer</name>
+        <email>fischer@markv.com</email>
+    </creator>
+    <number>6650</number>
+    <name>Aspect Node Typed Dimension Filter Testcase</name>
+    <description>Table linkbase test case using an aspect node with a typed-dimension filter attached</description>
+    
+    <variation id="v-01">
+        <name>Aspect node for a typed dimension with a typed-dimension filter, with instance</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and unknown number
+          of columns (reported values of typed dimension R, filtered to just
+          odd values). In this variation there is no instance, so there are no
+          reported values of R.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">aspect-node-typed-dimension-filter-instance.xml</instance>
+            <linkbase>aspect-node-typed-dimension-filter-table.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+        </data>
+        <result>
+            <table>output/aspect-node-typed-dimension-filter.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-02">
+        <name>Aspect node for a typed dimension with a complemented typed-dimension filter, with instance</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and unknown number
+          of columns (reported values of typed dimension R, filtered to just
+          odd values using a complemented filter).
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">aspect-node-complemented-typed-dimension-filter-instance.xml</instance>
+            <linkbase>aspect-node-complemented-typed-dimension-filter-table.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+        </data>
+        <result>
+            <table>output/aspect-node-complemented-typed-dimension-filter.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-03">
+        <name>Aspect node for a typed dimension including 'unreported value' with a typed-dimension filter, with instance</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and unknown number
+          of columns (reported values of typed dimension T - although the aspect
+          node includes the 'unreported value', this is excluded by the
+          'fact-has-dimension' filter).
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">aspect-node-typed-dimension-filter-include-unreported-instance.xml</instance>
+            <linkbase>aspect-node-typed-dimension-filter-include-unreported-table.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+        </data>
+        <result>
+            <table>output/aspect-node-typed-dimension-filter-include-unreported.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-04">
+        <name>Aspect node for a typed dimension with an invalid typed dimension filter</name>
+        <description>
+          Table with an aspect node for a typed dimension with a filter that
+          attempts to filter a typed dimension that does not exist in the DTS.
+          In this variation there is no instance, so there are no facts to
+          filter and thus no error is raised.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">aspect-node-invalid-typed-dimension-filter-table.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+        </data>
+        <result>
+            <table>output/aspect-node-invalid-typed-dimension-filter-no-data.xml</table> 
+        </result>
+    </variation>
+
+    <variation id="v-04i">
+        <name>Aspect node for a typed dimension with an invalid typed dimension filter, with instance</name>
+        <description>
+          Table with an aspect node for a typed dimension with a filter that
+          attempts to filter a typed dimension that does not exist in the DTS.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">aspect-node-invalid-typed-dimension-filter-instance.xml</instance>
+            <linkbase>aspect-node-invalid-typed-dimension-filter-table.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+        </data>
+        <result>
+            <error>xfie:invalidTypedDimensionQName</error> 
+        </result>
+    </variation>
+
+</testcase>

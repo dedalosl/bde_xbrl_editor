@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<!-- Copyright 2003 XBRL International Inc.  See www.xbrl.org/legal.  All Rights Reserved. -->
+<xbrl xmlns="http://www.xbrl.org/2003/instance" xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:example="http://abc.com/test" xmlns:iso4217="http://www.xbrl.org/2003/iso4217" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://abc.com/test 301-20-LinkRolesShareFootnote.xsd">
+	<link:schemaRef xlink:href="301-20-LinkRolesShareFootnote.xsd" xlink:type="simple"/>
+    <link:roleRef roleURI="http://abc.com/role/linkrole1" xlink:href="301-20-LinkRolesShareFootnote.xsd#link1" xlink:type="simple"/>
+    <link:roleRef roleURI="http://abc.com/role/linkrole2" xlink:href="301-20-LinkRolesShareFootnote.xsd#link2" xlink:type="simple"/>
+	<link:footnoteLink xlink:type="extended" xlink:title="1" xlink:role="http://www.xbrl.org/2003/role/link">
+		<link:footnote id="footnote1" xlink:type="resource" xlink:label="footnote1" xlink:title="1" xml:lang="en">Including the effects of the merger, this represents a big long hairy footnote maybe from an inline source that would not be friendly to repeat in multiple different link roles.  So the footnote is nicely shared up in common to arcs in both linkrole1 and linkrole2.</link:footnote>
+	</link:footnoteLink>
+	<context id="ci1">
+		<entity>
+			<identifier scheme="www.example.com">example</identifier>
+		</entity>
+		<period>
+			<instant>2003-03-31</instant>
+		</period>
+	</context>
+	<context id="cd1">
+		<entity>
+			<identifier scheme="www.example.com">example</identifier>
+		</entity>
+		<period>
+			<startDate>2002-04-01</startDate>
+			<endDate>2003-03-31</endDate>
+		</period>
+	</context>
+	<unit id="u1">
+		<measure>iso4217:USD</measure>
+	</unit>
+	<example:fixedAssets id="f1" precision="4" contextRef="ci1" unitRef="u1">5000</example:fixedAssets>
+	<link:footnoteLink xlink:type="extended" xlink:title="1" xlink:role="http://abc.com/role/linkrole1">
+		<link:loc xlink:type="locator" xlink:label="fact1" xlink:href="#f1"/>
+		<link:loc xlink:type="locator" xlink:label="footnote1Loc" xlink:href="#footnote1"/>
+		<link:footnoteArc xlink:type="arc" xlink:from="fact1" xlink:to="footnote1Loc" xlink:title="fact1-footnote1" xlink:arcrole="http://www.xbrl.org/2003/arcrole/fact-footnote" xlink:show="replace" xlink:actuate="onRequest"/>
+	</link:footnoteLink>
+	<example:changeInRetainedEarnings id="f2" precision="4" contextRef="cd1" unitRef="u1">3000</example:changeInRetainedEarnings>
+	<link:footnoteLink xlink:type="extended" xlink:title="1" xlink:role="http://abc.com/role/linkrole2">
+		<link:loc xlink:type="locator" xlink:label="fact2" xlink:href="#f2"/>
+		<link:loc xlink:type="locator" xlink:label="footnote1Loc" xlink:href="#footnote1"/>
+		<link:footnoteArc xlink:type="arc" xlink:from="fact2" xlink:to="footnote1Loc" xlink:title="fact2-footnote1" xlink:arcrole="http://www.xbrl.org/2003/arcrole/fact-footnote" xlink:show="replace" xlink:actuate="onRequest"/>
+	</link:footnoteLink>
+</xbrl>

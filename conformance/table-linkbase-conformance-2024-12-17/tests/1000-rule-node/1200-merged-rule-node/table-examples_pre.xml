@@ -1,0 +1,12 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.xbrl.org/2003/linkbase http://www.xbrl.org/2003/xbrl-linkbase-2003-12-31.xsd">
+   <link:presentationLink xlink:role="http://www.xbrl.org/2003/role/link" xlink:type="extended">
+      <link:loc xlink:href="table-examples.xsd#r_base" xlink:label="lbl_base" xlink:type="locator"/>
+      <link:loc xlink:href="table-examples.xsd#rend_o1" xlink:label="lbl_o1" xlink:type="locator"/>
+      <link:presentationArc order="1.5" xlink:arcrole="http://www.xbrl.org/2003/arcrole/parent-child" xlink:from="lbl_base" xlink:to="lbl_o1" xlink:type="arc"/>
+      <link:loc xlink:href="table-examples.xsd#r_m1" xlink:label="lbl_m1" xlink:type="locator"/>
+      <link:presentationArc order="1.0" preferredLabel="http://www.xbrl.org/2003/role/periodStartLabel" xlink:arcrole="http://www.xbrl.org/2003/arcrole/parent-child" xlink:from="lbl_base" xlink:to="lbl_m1" xlink:type="arc"/>
+      <link:loc xlink:href="table-examples.xsd#r_m2" xlink:label="lbl_m2" xlink:type="locator"/>
+      <link:presentationArc order="2.0" preferredLabel="http://www.xbrl.org/2003/role/periodEndLabel" xlink:arcrole="http://www.xbrl.org/2003/arcrole/parent-child" xlink:from="lbl_base" xlink:to="lbl_m2" xlink:type="arc"/>
+   </link:presentationLink>
+</link:linkbase>

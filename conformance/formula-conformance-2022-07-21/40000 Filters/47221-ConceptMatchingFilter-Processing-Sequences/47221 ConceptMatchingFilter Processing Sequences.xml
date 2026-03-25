@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2007 XBRL International. All Rights Reserved. -->
+<?xml-stylesheet type="text/xsl" href="../../xsl/test.xsl"?>
+<testcase
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../xsd/test.xsd"
+  xmlns:xbrlfe="http://xbrl.org/2008/formula/error"
+  xmlns:binding="http://xbrl.org/2008/binding/errors"
+  xmlns:label="http://xbrl.org/2008/label/error"
+  xmlns:reference="http://xbrl.org/2008/reference/error"  
+  >
+  <creator>
+    <name>David Bell</name>
+    <email>david.x.bell@rrd.com</email>
+  </creator>
+  <number>47221</number>
+  <name>Matching filter sequence test</name>
+  <description>
+    Tests of concept matching filters against sequences where matchAny='true'.
+    Assumes that non-sequential matching works as these tests only check sequence behaviour.
+  </description>
+  <reference specification="MATCH-FILTER" id="sec-concept-matching-filter"/>
+
+  <variation id="V-101">
+    <name>Concept sequence match test. Three single facts with concepts that match second a fact contained in a sequence</name>
+    <description>Expecected result is 3 output facts, as each input fact concept will always match against a concept in the sequence</description>
+    <reference specification="MATCH-FILTER" id="sec-concept-matching-filter"/>
+    <data>
+      <schema>47221-concepts.xsd</schema>
+      <linkbase>47221-conceptMatching-formula-V101.xml</linkbase>
+      <instance readMeFirst="true">47221-conceptMatching-instance-V101.xml</instance>
+    </data>
+    <result>
+      <instance>47221-conceptMatching-result-V101.xml</instance>
+    </result>
+  </variation>  
+
+  <variation id="V-102">
+    <name>Concept sequence match test. Three single facts, of which two have concepts that match a second fact contained in a sequence</name>
+    <description>Expected result is 2 output facts, as only 2 input fact concepts will match against a concept in the sequence, due to complementing concept filter</description>
+    <reference specification="MATCH-FILTER" id="sec-concept-matching-filter"/>
+    <data>
+      <schema>47221-concepts.xsd</schema>
+      <linkbase>47221-conceptMatching-formula-V102.xml</linkbase>
+      <instance readMeFirst="true">47221-conceptMatching-instance-V102.xml</instance>
+    </data>
+    <result>
+      <instance>47221-conceptMatching-result-V102.xml</instance>
+    </result>
+  </variation>  
+  
+  <variation id="V-103">
+    <name>Concept sequence complement match test. Three single facts, one of which has a concept that does not match any facts in a sequence</name>
+    <description>As previous case but with complementing match filter. Produces 1 output fact for the fact that does not match, due to the matching filter being complemented</description>
+    <reference specification="MATCH-FILTER" id="sec-concept-matching-filter"/>
+    <data>
+      <schema>47221-concepts.xsd</schema>
+      <linkbase>47221-conceptMatching-formula-V103.xml</linkbase>
+      <instance readMeFirst="true">47221-conceptMatching-instance-V103.xml</instance>
+    </data>
+    <result>
+      <instance>47221-conceptMatching-result-V103.xml</instance>
+    </result>
+  </variation>  
+  
+</testcase>
+

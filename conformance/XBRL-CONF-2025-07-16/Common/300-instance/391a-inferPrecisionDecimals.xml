@@ -1,0 +1,586 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- XBRL 2.1 Tests -->
+<!-- Copyright 2003 XBRL International. All Rights Reserved. -->
+<?xml-stylesheet type="text/xsl" href="../../testcase.xsl"?>
+<testcase xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" name="Infer Decimals and Precision" description="Section 4.4 Items" outpath="out" owner="hugh_wallis@hyperion.com" minimal="false" xsi:noNamespaceSchemaLocation="../lib/test.xsd">
+
+<!-- 
+In all tests where the result element includes a file name, the file in the directory corresponding to outpath (above)
+is an XBRL instance document, containing a fact for each fact of the input instance document.  The test procedure must
+compare the v-equal corresponding fact of the out instance to that of the input instance, and assure that the 
+ptv:balance and  ptv:periodType elements of the fact in the out instance correspond to the XBRL processor's infoset gleaned
+from the DTS.  
+
+If ptv:decimals and/or ptv:precision are provided in the infoset fact, then they must match the infoset
+gleaned actual or inferred decimals or precision.
+
+If no v-equal fact can be found for each input instance fact in the out instance, then the test is deemed to have failed.
+
+The 391a files were produced by regex editing the 391 files, and commenting out input instance precision 0 facts, which are
+invalid for v-equality comparision when inferring decimals to check v-equality.  The out files were produced by open source
+Arelle plugin saveInfoset.py.
+
+(Herm Fischer 2012-06-11 per bug 391)
+-->
+
+	<variation id="V-01" name="InferDecimalsFromPrecision 01">
+		<description>Test variation 391a-01 using a base lexical representation of .0000 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-01-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-01-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-02" name="InferDecimalsFromPrecision 02">
+		<description>Test variation 391a-02 using a base lexical representation of 0.0000 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-02-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-02-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-03" name="InferDecimalsFromPrecision 03">
+		<description>Test variation 391a-03 using a base lexical representation of 0. for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-03-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-03-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-04" name="InferDecimalsFromPrecision 04">
+		<description>Test variation 391a-04 using a base lexical representation of 0000. for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-04-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-04-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-05" name="InferDecimalsFromPrecision 05">
+		<description>Test variation 391a-05 using a base lexical representation of 0 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-05-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-05-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-06" name="InferDecimalsFromPrecision 06">
+		<description>Test variation 391a-06 using a base lexical representation of 0000 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-06-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-06-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-07" name="InferDecimalsFromPrecision 07">
+		<description>Test variation 391a-07 using a base lexical representation of .001234 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-07-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-07-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-08" name="InferDecimalsFromPrecision 08">
+		<description>Test variation 391a-08 using a base lexical representation of 0.001234 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-08-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-08-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-09" name="InferDecimalsFromPrecision 09">
+		<description>Test variation 391a-09 using a base lexical representation of 0000.001234 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-09-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-09-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-10" name="InferDecimalsFromPrecision 10">
+		<description>Test variation 391a-10 using a base lexical representation of .00123400 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-10-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-10-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-11" name="InferDecimalsFromPrecision 11">
+		<description>Test variation 391a-11 using a base lexical representation of 0.00123400 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-11-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-11-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-12" name="InferDecimalsFromPrecision 12">
+		<description>Test variation 391a-12 using a base lexical representation of 0000.00123400 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-12-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-12-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-13" name="InferDecimalsFromPrecision 13">
+		<description>Test variation 391a-13 using a base lexical representation of .1234 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-13-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-13-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-14" name="InferDecimalsFromPrecision 14">
+		<description>Test variation 391a-14 using a base lexical representation of 0.1234 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-14-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-14-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-15" name="InferDecimalsFromPrecision 15">
+		<description>Test variation 391a-15 using a base lexical representation of 0000.1234 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-15-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-15-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-16" name="InferDecimalsFromPrecision 16">
+		<description>Test variation 391a-16 using a base lexical representation of .123400 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-16-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-16-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-17" name="InferDecimalsFromPrecision 17">
+		<description>Test variation 391a-17 using a base lexical representation of 0.123400 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-17-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-17-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-18" name="InferDecimalsFromPrecision 18">
+		<description>Test variation 391a-18 using a base lexical representation of 0000.123400 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-18-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-18-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-19" name="InferDecimalsFromPrecision 19">
+		<description>Test variation 391a-19 using a base lexical representation of 1234 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-19-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-19-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-20" name="InferDecimalsFromPrecision 20">
+		<description>Test variation 391a-20 using a base lexical representation of 001234 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-20-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-20-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-21" name="InferDecimalsFromPrecision 21">
+		<description>Test variation 391a-21 using a base lexical representation of 001234. for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-21-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-21-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-22" name="InferDecimalsFromPrecision 22">
+		<description>Test variation 391a-22 using a base lexical representation of 1234. for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-22-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-22-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-23" name="InferDecimalsFromPrecision 23">
+		<description>Test variation 391a-23 using a base lexical representation of 1234.0000 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-23-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-23-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-24" name="InferDecimalsFromPrecision 24">
+		<description>Test variation 391a-24 using a base lexical representation of 001234.0000 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-24-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-24-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-25" name="InferDecimalsFromPrecision 25">
+		<description>Test variation 391a-25 using a base lexical representation of 123400 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-25-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-25-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-26" name="InferDecimalsFromPrecision 26">
+		<description>Test variation 391a-26 using a base lexical representation of 00123400 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-26-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-26-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-27" name="InferDecimalsFromPrecision 27">
+		<description>Test variation 391a-27 using a base lexical representation of 123400. for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-27-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-27-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-28" name="InferDecimalsFromPrecision 28">
+		<description>Test variation 391a-28 using a base lexical representation of 00123400. for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-28-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-28-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-29" name="InferDecimalsFromPrecision 29">
+		<description>Test variation 391a-29 using a base lexical representation of 123400.0000 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-29-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-29-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-30" name="InferDecimalsFromPrecision 30">
+		<description>Test variation 391a-30 using a base lexical representation of 00123400.0000 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-30-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-30-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-31" name="InferDecimalsFromPrecision 31">
+		<description>Test variation 391a-31 using a base lexical representation of 1234.001234 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-31-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-31-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-32" name="InferDecimalsFromPrecision 32">
+		<description>Test variation 391a-32 using a base lexical representation of 001234.001234 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-32-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-32-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-33" name="InferDecimalsFromPrecision 33">
+		<description>Test variation 391a-33 using a base lexical representation of 123400.001234 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-33-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-33-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-34" name="InferDecimalsFromPrecision 34">
+		<description>Test variation 391a-34 using a base lexical representation of 00123400.001234 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-34-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-34-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-35" name="InferDecimalsFromPrecision 35">
+		<description>Test variation 391a-35 using a base lexical representation of 1234.00123400 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-35-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-35-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-36" name="InferDecimalsFromPrecision 36">
+		<description>Test variation 391a-36 using a base lexical representation of 001234.00123400 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-36-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-36-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-37" name="InferDecimalsFromPrecision 37">
+		<description>Test variation 391a-37 using a base lexical representation of 123400.00123400 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-37-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-37-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-38" name="InferDecimalsFromPrecision 38">
+		<description>Test variation 391a-38 using a base lexical representation of 00123400.00123400 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-38-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-38-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-39" name="InferDecimalsFromPrecision 39">
+		<description>Test variation 391a-39 using a base lexical representation of .001204 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-39-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-39-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-40" name="InferDecimalsFromPrecision 40">
+		<description>Test variation 391a-40 using a base lexical representation of 0.001204 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-40-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-40-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-41" name="InferDecimalsFromPrecision 41">
+		<description>Test variation 391a-41 using a base lexical representation of 0000.001204 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-41-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-41-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-42" name="InferDecimalsFromPrecision 42">
+		<description>Test variation 391a-42 using a base lexical representation of .00120400 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-42-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-42-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-43" name="InferDecimalsFromPrecision 43">
+		<description>Test variation 391a-43 using a base lexical representation of 0.00120400 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-43-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-43-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-44" name="InferDecimalsFromPrecision 44">
+		<description>Test variation 391a-44 using a base lexical representation of 0000.00120400 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-44-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-44-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-45" name="InferDecimalsFromPrecision 45">
+		<description>Test variation 391a-45 using a base lexical representation of .1204 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-45-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-45-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-46" name="InferDecimalsFromPrecision 46">
+		<description>Test variation 391a-46 using a base lexical representation of 0.1204 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-46-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-46-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-47" name="InferDecimalsFromPrecision 47">
+		<description>Test variation 391a-47 using a base lexical representation of 0000.1204 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-47-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-47-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-48" name="InferDecimalsFromPrecision 48">
+		<description>Test variation 391a-48 using a base lexical representation of .120400 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-48-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-48-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-49" name="InferDecimalsFromPrecision 49">
+		<description>Test variation 391a-49 using a base lexical representation of 0.120400 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-49-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-49-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-50" name="InferDecimalsFromPrecision 50">
+		<description>Test variation 391a-50 using a base lexical representation of 0000.120400 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-50-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-50-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-51" name="InferDecimalsFromPrecision 51">
+		<description>Test variation 391a-51 using a base lexical representation of 1204 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-51-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-51-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-52" name="InferDecimalsFromPrecision 52">
+		<description>Test variation 391a-52 using a base lexical representation of 001204 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-52-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-52-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-53" name="InferDecimalsFromPrecision 53">
+		<description>Test variation 391a-53 using a base lexical representation of 001204. for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-53-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-53-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-54" name="InferDecimalsFromPrecision 54">
+		<description>Test variation 391a-54 using a base lexical representation of 1204. for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-54-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-54-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-55" name="InferDecimalsFromPrecision 55">
+		<description>Test variation 391a-55 using a base lexical representation of 1204.0000 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-55-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-55-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-56" name="InferDecimalsFromPrecision 56">
+		<description>Test variation 391a-56 using a base lexical representation of 001204.0000 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-56-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-56-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-57" name="InferDecimalsFromPrecision 57">
+		<description>Test variation 391a-57 using a base lexical representation of 120400 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-57-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-57-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-58" name="InferDecimalsFromPrecision 58">
+		<description>Test variation 391a-58 using a base lexical representation of 00120400 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-58-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-58-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-59" name="InferDecimalsFromPrecision 59">
+		<description>Test variation 391a-59 using a base lexical representation of 120400. for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-59-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-59-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-60" name="InferDecimalsFromPrecision 60">
+		<description>Test variation 391a-60 using a base lexical representation of 00120400. for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-60-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-60-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-61" name="InferDecimalsFromPrecision 61">
+		<description>Test variation 391a-61 using a base lexical representation of 120400.0000 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-61-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-61-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-62" name="InferDecimalsFromPrecision 62">
+		<description>Test variation 391a-62 using a base lexical representation of 00120400.0000 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-62-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-62-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-63" name="InferDecimalsFromPrecision 63">
+		<description>Test variation 391a-63 using a base lexical representation of 1204.001204 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-63-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-63-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-64" name="InferDecimalsFromPrecision 64">
+		<description>Test variation 391a-64 using a base lexical representation of 001204.001204 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-64-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-64-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-65" name="InferDecimalsFromPrecision 65">
+		<description>Test variation 391a-65 using a base lexical representation of 120400.001204 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-65-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-65-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-66" name="InferDecimalsFromPrecision 66">
+		<description>Test variation 391a-66 using a base lexical representation of 00120400.001204 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-66-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-66-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-67" name="InferDecimalsFromPrecision 67">
+		<description>Test variation 391a-67 using a base lexical representation of 1204.00120400 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-67-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-67-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-68" name="InferDecimalsFromPrecision 68">
+		<description>Test variation 391a-68 using a base lexical representation of 001204.00120400 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-68-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-68-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-69" name="InferDecimalsFromPrecision 69">
+		<description>Test variation 391a-69 using a base lexical representation of 120400.00120400 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-69-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-69-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+	<variation id="V-70" name="InferDecimalsFromPrecision 70">
+		<description>Test variation 391a-70 using a base lexical representation of 00120400.00120400 for the data value with various exponent parts</description>
+		<data>
+			<xsd readMeFirst="false">391a-inferPrecisionDecimals.xsd</xsd>
+			<instance readMeFirst="true">391a-70-InferDecimalsFromPrecision.xml</instance>
+		</data>
+		<result expected="valid">391a-70-InferDecimalsFromPrecisionOut.xml</result>
+	</variation>
+</testcase>

@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2011-09-16"
+  name="1040-rule-node-period-rule-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Herm Fischer</name>
+        <email>fischer@markv.com</email>
+    </creator>
+    <number>1040</number>
+    <name>Rule Node Period Rule Testcase</name>
+    <description>Table linkbase test case using a rule node with a period rule</description>
+
+    <variation id="v-01">
+        <name>Rule nodes with instant period rules</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and two columns
+          (instant periods 2001-12-31, 2002-12-31). In this variation there is
+          no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">instant-periods-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/instant-periods-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-01i">
+        <name>Rule nodes with instant period rules, with instance</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and two columns
+          (instant periods 2001-12-31, 2002-12-31).
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">instant-periods-instance.xml</instance>
+            <linkbase>instant-periods-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/instant-periods.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-02">
+        <name>Rule nodes with duration period rules</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and two columns
+          (duration periods 2001, 2002). In this variation there is no
+          instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">duration-periods-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/duration-periods-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-02i">
+        <name>Rule nodes with duration period rules, with instance</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and two columns
+          (duration periods 2001, 2002).
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">duration-periods-instance.xml</instance>
+            <linkbase>duration-periods-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/duration-periods.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-03">
+        <name>Rule nodes with both instant and duration period rules</name>
+        <description>
+          Simple table with three rows (primary items m1, m2, o1) and three
+          columns (instant periods 2001-12-31, 2002-12-31 with a roll-up for
+          duration period 2002). In this variation there is no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">mixed-periods-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/mixed-periods-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-03i">
+        <name>Rule nodes with both instant and duration period rules, with instance</name>
+        <description>
+          Simple table with three rows (primary items m1, m2, o1) and three
+          columns (instant periods 2001-12-31, 2002-12-31 with a roll-up for
+          duration period 2002).
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">mixed-periods-instance.xml</instance>
+            <linkbase>mixed-periods-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/mixed-periods.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-04">
+        <name>Simple Table with an incomplete period rule.</name>
+        <description>Simple table with one x axis node for an incomplete period rule.</description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">incomplete-period-rule-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+           <error>xbrlte:incompleteAspectRule</error>
+        </result>
+    </variation>
+
+</testcase>

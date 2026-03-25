@@ -1,0 +1,209 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2013-10-17"
+  name="3150-concept-relationship-node-arcname-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Chris Rimes</name>
+        <email>cdr@corefiling.com</email>
+    </creator>
+    <number>3150</number>
+    <name>Concept Relationship Node Arcname Testcase</name>
+    <description>Table linkbase test case using a concept relationship node with different arcnames</description>
+    
+    <variation id="v-01">
+        <name>Concept relationship node for standard presentation arcs</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+          A second, non-standard, presentation linkbase is present, but this is
+          ignored.  This variation has no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">standard-presentation-arc-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <linkbase>table-examples-pre.xml</linkbase>
+            <linkbase>table-examples-custom.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <schema>custom-presentation.xsd</schema>
+        </data>
+        <result>
+            <table>output/standard-presentation-arc-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-01i">
+        <name>Concept relationship node for standard presentation arcs, with instance</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+          A second, non-standard, presentation linkbase is present, but this is
+          ignored.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">standard-presentation-arc-instance.xml</instance>
+            <linkbase>standard-presentation-arc-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <linkbase>table-examples-pre.xml</linkbase>
+            <linkbase>table-examples-custom.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <schema>custom-presentation.xsd</schema>
+        </data>
+        <result>
+            <table>output/standard-presentation-arc.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-02">
+        <name>Concept relationship node for custom presentation arcs</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in a custom presentation linkbase that
+          uses a non-standard arc name.  Relationships from the standard
+          presentation linkbase are ignored.  This variation has no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">custom-presentation-arc-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <linkbase>table-examples-pre.xml</linkbase>
+            <linkbase>table-examples-custom.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <schema>custom-presentation.xsd</schema>
+        </data>
+        <result>
+            <table>output/custom-presentation-arc-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-02i">
+        <name>Concept relationship node for custom presentation arcs, with instance</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in a custom presentation linkbase that
+          uses a non-standard arc name.  Relationships from the standard
+          presentation linkbase are ignored.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">custom-presentation-arc-instance.xml</instance>
+            <linkbase>custom-presentation-arc-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <linkbase>table-examples-pre.xml</linkbase>
+            <linkbase>table-examples-custom.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <schema>custom-presentation.xsd</schema>
+        </data>
+        <result>
+            <table>output/custom-presentation-arc.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-03">
+        <name>Concept relationship node with an arcname expression</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in a custom presentation linkbase that
+          uses a non-standard arc name specified using an XPath expression.
+          This variation has no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">arcname-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <linkbase>table-examples-pre.xml</linkbase>
+            <linkbase>table-examples-custom.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <schema>custom-presentation.xsd</schema>
+        </data>
+        <result>
+            <table>output/arcname-expression-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-03i">
+        <name>Concept relationship node with an arcname expression, with instance</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in a custom presentation linkbase that
+          uses a non-standard arc name specified using an XPath expression.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">arcname-expression-instance.xml</instance>
+            <linkbase>arcname-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <linkbase>table-examples-pre.xml</linkbase>
+            <linkbase>table-examples-custom.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <schema>custom-presentation.xsd</schema>
+        </data>
+        <result>
+            <table>output/arcname-expression.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-04">
+        <name>Concept relationship node with an arcname expression that does not evaluate to a QName</name>
+        <description>
+          Invalid table with a concept relationship node that specifies the
+          arc name using an XPath expression that does not evaluate to a QName.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">invalid-arcname-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:expressionNotCastableToRequiredType</error>
+        </result>
+    </variation>
+
+    <variation id="v-05">
+        <name>Concept relationship node with a arcname expression that evaluates to a sequence</name>
+        <description>
+          Invalid table with a concept relationship node that specifies the
+          arc name using an XPath expression that evaluates to a sequence of
+          more than one QName.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">sequence-arcname-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:expressionNotCastableToRequiredType</error>
+        </result>
+    </variation>
+  
+</testcase>

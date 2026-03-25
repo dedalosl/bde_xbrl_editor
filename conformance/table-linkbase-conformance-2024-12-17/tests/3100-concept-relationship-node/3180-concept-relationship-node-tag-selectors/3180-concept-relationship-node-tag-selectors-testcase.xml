@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2013-12-12"
+  name="3180-concept-relationship-node-tag-selectors-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Chris Rimes</name>
+        <email>cdr@corefiling.com</email>
+    </creator>
+    <number>3180</number>
+    <name>Concept Relationship Node Tag Selectors Testcase</name>
+    <description>Table linkbase test case using a concept relationship node with tag selectors for period line-up</description>
+    
+    <variation id="v-01">
+        <name>Concept relationship node with both instant and duration concepts</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  Each column actually contains 3 tagged periods:
+          a single duration and 2 instants corresponding to the start and end
+          of the same period.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+          Preferred labels are converted to tag selectors, which are used to
+          select the relevant period from the column.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">period-line-up-instance.xml</instance>
+            <linkbase>period-line-up-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/period-line-up.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-02">
+        <name>Concept relationship node a period start preferred label on a non-abstract parent concept</name>
+        <description>
+          The concept relationship tree identified by the concept relationship
+          node has a non-abstract parent with a periodStart preferred label. The
+          table.periodStart tag should be added to the roll-up of that node.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">tag-selector-on-rollup-instance.xml</instance>
+            <linkbase>tag-selector-on-rollup-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/tag-selector-on-rollup.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-03">
+        <name>Concept relationship node with merged rule node parent contributing a tag selector</name>
+        <description>
+        The tag selector should end up on the leaves of the resulting structural node tree
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">tag-selectors-relationship-node-instance.xml</instance>
+            <linkbase>tag-selectors-relationship-node-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/tag-selectors-relationship-node-output.xml</table>
+        </result>
+    </variation>
+
+
+
+</testcase>

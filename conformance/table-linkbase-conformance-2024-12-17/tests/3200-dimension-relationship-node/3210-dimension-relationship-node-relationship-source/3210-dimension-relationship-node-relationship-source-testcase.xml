@@ -1,0 +1,348 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2011-09-16"
+  name="3210-dimension-relationship-node-relationship-source-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Herm Fischer</name>
+        <email>fischer@markv.com</email>
+    </creator>
+    <number>3210</number>
+    <name>Dimension Relationship Node Relationship Source Testcase</name>
+    <description>Table linkbase test case using a dimension relationship node with different relationship sources</description>
+    
+    <variation id="v-01">
+        <name>Dimension relationship node with the relationship source omitted</name>
+        <description>
+          Simple table with two columns (primary items m1, m2) and a tree of
+          members for explicit dimension F as rows.  No relationship source is
+          specified, so the full tree of members starting from the domain
+          root(s) is included.  This variation has no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">dimension-relationship-node-source-omitted-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/dimension-relationship-node-source-omitted-no-data.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-01i">
+        <name>Dimension relationship node with the relationship source omitted, with instance</name>
+        <description>
+          Simple table with two columns (primary items m1, m2) and a tree of
+          members for explicit dimension F as rows.  No relationship source is
+          specified, so the full tree of members starting from the domain
+          root(s) is included.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">dimension-relationship-node-source-omitted-instance.xml</instance>
+            <linkbase >dimension-relationship-node-source-omitted-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/dimension-relationship-node-source-omitted.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-02">
+        <name>Dimension relationship node for part of a domain</name>
+        <description>
+          Simple table with two columns (primary items m1, m2) and a tree of
+          members for explicit dimension F as rows.  The specified relationship
+          source selects only part of the domain of the dimension - members that
+          are descendants of f4.  This variation has no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">dimension-relationship-node-partial-domain-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/dimension-relationship-node-partial-domain-no-data.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-02i">
+        <name>Dimension relationship node for part of a domain, with instance</name>
+        <description>
+          Simple table with two columns (primary items m1, m2) and a tree of
+          members for explicit dimension F as rows.  The specified relationship
+          source selects only part of the domain of the dimension - members that
+          are descendants of f4.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">dimension-relationship-node-partial-domain-instance.xml</instance>
+            <linkbase >dimension-relationship-node-partial-domain-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/dimension-relationship-node-partial-domain.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-03">
+        <name>Dimension relationship node with multiple relationship sources</name>
+        <description>
+          Simple table with two columns (primary items m1, m2) and a tree of
+          members for explicit dimension F as rows.  Several relationship
+          sources are specified, resulting in a tree with multiple roots.  This
+          variation has no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">dimension-relationship-node-multiple-sources-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/dimension-relationship-node-multiple-sources-no-data.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-03i">
+        <name>Dimension relationship node with multiple relationship sources, with instance</name>
+        <description>
+          Simple table with two columns (primary items m1, m2) and a tree of
+          members for explicit dimension F as rows.  Several relationship
+          sources are specified, resulting in a tree with multiple roots.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">dimension-relationship-node-multiple-sources-instance.xml</instance>
+            <linkbase >dimension-relationship-node-multiple-sources-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/dimension-relationship-node-multiple-sources.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-04">
+        <name>Dimension relationship node with invalid (non-existent) relationship source</name>
+        <description>
+          Invalid table with a dimension relationship node that specifies a
+          non-existent concept as the relationship source.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">dimension-relationship-node-invalid-source-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:invalidDimensionRelationshipSource</error>
+        </result>
+    </variation>
+    
+    <variation id="v-05">
+        <name>Dimension relationship node with invalid (hypercube) relationship source</name>
+        <description>
+          Invalid table with a dimension relationship node that specifies a
+          hypercube as the relationship source.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">dimension-relationship-node-invalid-hypercube-source-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:invalidDimensionRelationshipSource</error>
+        </result>
+    </variation>
+    
+    <variation id="v-06">
+        <name>Dimension relationship node with invalid (dimension) relationship source</name>
+        <description>
+          Invalid table with a dimension relationship node that specifies a
+          dimension as the relationship source.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">dimension-relationship-node-invalid-dimension-source-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:invalidDimensionRelationshipSource</error>
+        </result>
+    </variation>
+    
+    <variation id="v-07">
+        <name>Dimension relationship node with invalid (xfi:root) relationship source</name>
+        <description>
+          Invalid table with a dimension relationship node that specifies
+          xfi:root as the relationship source.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">dimension-relationship-node-invalid-xfi-root-source-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:invalidDimensionRelationshipSource</error>
+        </result>
+    </variation>
+    
+    <variation id="v-08">
+        <name>Dimension relationship node with a relationship source expression</name>
+        <description>
+          Simple table with two columns (primary items m1, m2) and a tree of
+          members for explicit dimension F as rows.  The relationship source is
+          specified by an XPath expression that evaluates to a QName.  This
+          variation has no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">dimension-relationship-node-source-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/dimension-relationship-node-source-expression-no-data.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-08i">
+        <name>Dimension relationship node with a relationship source expression, with instance</name>
+        <description>
+          Simple table with two columns (primary items m1, m2) and a tree of
+          members for explicit dimension F as rows.  The relationship source is
+          specified by an XPath expression that evaluates to a QName.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">dimension-relationship-node-source-expression-instance.xml</instance>
+            <linkbase >dimension-relationship-node-source-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/dimension-relationship-node-source-expression.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-09">
+        <name>Dimension relationship node with both relationship sources and relationship source expressions</name>
+        <description>
+          Simple table with two columns (primary items m1, m2) and a tree of
+          members for explicit dimension F as rows.  Several relationship
+          sources are specified, using a combination of literal QNames and
+          XPath expressions, resulting in a tree with multiple roots.  This
+          variation has no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">dimension-relationship-node-mixed-sources-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/dimension-relationship-node-mixed-sources-no-data.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-09i">
+        <name>Dimension relationship node with both relationship sources and relationship source expressions, with instance</name>
+        <description>
+          Simple table with two columns (primary items m1, m2) and a tree of
+          members for explicit dimension F as rows.  Several relationship
+          sources are specified, using a combination of literal QNames and
+          XPath expressions, resulting in a tree with multiple roots.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">dimension-relationship-node-mixed-sources-instance.xml</instance>
+            <linkbase >dimension-relationship-node-mixed-sources-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/dimension-relationship-node-mixed-sources.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-10">
+        <name>Dimension relationship node with a relationship source expression that does not evaluate to a QName</name>
+        <description>
+          Invalid table with a dimension relationship node that specifies a
+          relationship source using an XPath expression that does not evaluate
+          to a QName.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">dimension-relationship-node-invalid-source-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:expressionNotCastableToRequiredType</error>
+        </result>
+    </variation>
+  
+    <variation id="v-11">
+        <name>Dimension relationship node with a relationship source expression that evaluates to a sequence</name>
+        <description>
+          Invalid table with a dimension relationship node that specifies a
+          relationship source using an XPath expression that evaluates to a
+          sequence of more than one QName.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">dimension-relationship-node-sequence-source-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:expressionNotCastableToRequiredType</error>
+        </result>
+    </variation>
+  
+</testcase>

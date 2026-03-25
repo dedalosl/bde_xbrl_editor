@@ -1,0 +1,35 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.xbrl.org/2003/linkbase http://www.xbrl.org/2003/xbrl-linkbase-2003-12-31.xsd">
+   <link:labelLink xlink:role="http://www.xbrl.org/2003/role/link" xlink:type="extended">
+      <link:label id="id_8748ac" xlink:label="lbl_label8865964" xlink:role="http://www.xbrl.org/2003/role/label" xlink:type="resource" xml:lang="en">Number of Employees</link:label>
+      <link:loc xlink:href="typed-dimension-example.xsd#ex_NumberOfEmployees" xlink:label="lbl_NumberOfEmployees" xlink:type="locator"/>
+      <link:labelArc order="1.0" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="lbl_NumberOfEmployees" xlink:to="lbl_label8865964" xlink:type="arc"/>
+      <link:label id="id_136fb4a" xlink:label="lbl_label20380490" xlink:role="http://www.xbrl.org/2003/role/label" xlink:type="resource" xml:lang="en">Employees</link:label>
+      <link:loc xlink:href="typed-dimension-example.xsd#ex_Employees" xlink:label="lbl_Employees" xlink:type="locator"/>
+      <link:labelArc order="1.0" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="lbl_Employees" xlink:to="lbl_label20380490" xlink:type="arc"/>
+      <link:label id="id_1cd4621" xlink:label="lbl_label30230049" xlink:role="http://www.xbrl.org/2003/role/label" xlink:type="resource" xml:lang="en">Primary Items for Employees</link:label>
+      <link:loc xlink:href="typed-dimension-example.xsd#ex_PrimaryItemsForEmployees" xlink:label="lbl_PrimaryItemsForEmployees" xlink:type="locator"/>
+      <link:labelArc order="1.0" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="lbl_PrimaryItemsForEmployees" xlink:to="lbl_label30230049" xlink:type="arc"/>
+      <link:label id="id_1d1c8ab" xlink:label="lbl_label30525611" xlink:role="http://www.xbrl.org/2003/role/label" xlink:type="resource" xml:lang="en">Age</link:label>
+      <link:loc xlink:href="typed-dimension-example.xsd#ex_Age" xlink:label="lbl_Age" xlink:type="locator"/>
+      <link:labelArc order="1.0" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="lbl_Age" xlink:to="lbl_label30525611" xlink:type="arc"/>
+      <link:label id="id_b155e7" xlink:label="lbl_label11621863" xlink:role="http://www.xbrl.org/2003/role/label" xlink:type="resource" xml:lang="en">Average Salary</link:label>
+      <link:loc xlink:href="typed-dimension-example.xsd#ex_AverageSalary" xlink:label="lbl_AverageSalary" xlink:type="locator"/>
+      <link:labelArc order="1.0" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="lbl_AverageSalary" xlink:to="lbl_label11621863" xlink:type="arc"/>
+      <link:label id="id_15ebcf7" xlink:label="lbl_label22985975" xlink:role="http://www.xbrl.org/2003/role/label" xlink:type="resource" xml:lang="en">Department</link:label>
+      <link:label id="id_1bd0cab" xlink:label="lbl_label29166763" xlink:role="http://www.xbrl.org/2003/role/label" xlink:type="resource" xml:lang="en">Roles</link:label>
+      <link:loc xlink:href="typed-dimension-example.xsd#ex_Roles" xlink:label="lbl_Roles" xlink:type="locator"/>
+      <link:labelArc order="1.0" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="lbl_Roles" xlink:to="lbl_label29166763" xlink:type="arc"/>
+      <link:label id="id_b8a3b3" xlink:label="lbl_label12100531" xlink:role="http://www.xbrl.org/2003/role/label" xlink:type="resource" xml:lang="en">Primary Items for Roles</link:label>
+      <link:loc xlink:href="typed-dimension-example.xsd#ex_PrimaryItemsForRoles" xlink:label="lbl_PrimaryItemsForRoles" xlink:type="locator"/>
+      <link:labelArc order="1.0" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="lbl_PrimaryItemsForRoles" xlink:to="lbl_label12100531" xlink:type="arc"/>
+      <link:label id="id_1eb0d19" xlink:label="lbl_label32181529" xlink:role="http://www.xbrl.org/2003/role/label" xlink:type="resource" xml:lang="en">Bonus</link:label>
+      <link:loc xlink:href="typed-dimension-example.xsd#ex_Bonus" xlink:label="lbl_Bonus" xlink:type="locator"/>
+      <link:labelArc order="1.0" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="lbl_Bonus" xlink:to="lbl_label32181529" xlink:type="arc"/>
+      <link:loc xlink:href="typed-dimension-example.xsd#ex_Department" xlink:label="lbl_Department" xlink:type="locator"/>
+      <link:labelArc order="1.0" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="lbl_Department" xlink:to="lbl_label22985975" xlink:type="arc"/>
+      <link:label id="id_111553f" xlink:label="lbl_label17913151" xlink:role="http://www.xbrl.org/2003/role/label" xlink:type="resource" xml:lang="en">Maximum Salary</link:label>
+      <link:loc xlink:href="typed-dimension-example.xsd#ex_MaximumSalary" xlink:label="lbl_MaximumSalary" xlink:type="locator"/>
+      <link:labelArc order="1.0" xlink:arcrole="http://www.xbrl.org/2003/arcrole/concept-label" xlink:from="lbl_MaximumSalary" xlink:to="lbl_label17913151" xlink:type="arc"/>
+   </link:labelLink>
+</link:linkbase>

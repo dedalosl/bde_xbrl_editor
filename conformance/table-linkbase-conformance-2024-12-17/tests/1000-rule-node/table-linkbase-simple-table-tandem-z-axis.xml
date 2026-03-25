@@ -1,0 +1,321 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:label="http://xbrl.org/2008/label" 
+               xmlns:gen="http://xbrl.org/2008/generic"
+               xmlns:xlink="http://www.w3.org/1999/xlink"
+               xmlns:reference="http://xbrl.org/2008/reference"
+               xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+               xmlns:link="http://www.xbrl.org/2003/linkbase"
+               xmlns:table="http://xbrl.org/2014/table"
+               xmlns:formula="http://xbrl.org/2008/formula"
+               xmlns:rend="http://www.xbrl.org/table-examples"
+               xsi:schemaLocation="             
+			   http://www.xbrl.org/2003/linkbase http://www.xbrl.org/2003/xbrl-linkbase-2003-12-31.xsd
+			   http://xbrl.org/2008/generic http://www.xbrl.org/2008/generic-link.xsd
+			   http://xbrl.org/2008/reference http://www.xbrl.org/2008/generic-reference.xsd
+			   http://xbrl.org/2008/label http://www.xbrl.org/2008/generic-label.xsd
+			   http://xbrl.org/2008/filter/dimension http://www.xbrl.org/2008/dimension-filter.xsd
+			   http://xbrl.org/2014/table http://www.xbrl.org/2014/table.xsd
+               ">
+   <link:roleRef roleURI="http://www.xbrl.org/table-examples/table8"
+                 xlink:type="simple"
+                 xlink:href="table-examples-roles.xsd#table8"/>
+   <link:arcroleRef arcroleURI="http://xbrl.org/arcrole/2008/element-label" xlink:type="simple"
+                    xlink:href="http://www.xbrl.org/2008/generic-label.xsd#element-label"/>
+   <link:arcroleRef arcroleURI="http://xbrl.org/arcrole/2014/table-breakdown" xlink:type="simple"
+                    xlink:href="http://www.xbrl.org/2014/table.xsd#table-breakdown"/>
+   <link:arcroleRef arcroleURI="http://xbrl.org/arcrole/2014/breakdown-tree" xlink:type="simple"
+                    xlink:href="http://www.xbrl.org/2014/table.xsd#breakdown-tree"/>
+   <link:arcroleRef arcroleURI="http://xbrl.org/arcrole/2014/definition-node-subtree" xlink:type="simple"
+                    xlink:href="http://www.xbrl.org/2014/table.xsd#definition-node-subtree"/>
+   <link:roleRef roleURI="http://www.xbrl.org/table-examples/coordinate-code"
+                 xlink:type="simple"
+                 xlink:href="table-examples-roles.xsd#coordinate-code"/>
+   <link:roleRef roleURI="http://www.xbrl.org/2008/role/label" xlink:type="simple"
+                 xlink:href="http://www.xbrl.org/2008/generic-label.xsd#standard-label"/>
+   <gen:link xlink:type="extended"
+             xlink:role="http://www.xbrl.org/table-examples/table8">
+      <table:table xlink:type="resource" xlink:label="table8"
+                   id="table8"/>
+      <label:label xlink:type="resource" xlink:label="label_table81"
+                   xlink:role="http://www.xbrl.org/2008/role/label"
+                   xml:lang="en"
+                   id="label_table81">Table with a single breakdown for two dimensions on the z-axis</label:label>
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table8"
+               xlink:to="label_table81"/>
+
+      <table:breakdown parentChildOrder="parent-first" xlink:type="resource" xlink:label="table8-z" id="table8-z"/>
+      <table:tableBreakdownArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2014/table-breakdown"
+                          axis="z"
+                          xlink:from="table8"
+                          xlink:to="table8-z"
+                          order="4"/>
+<!-- Create appropriate label for first breakdown on Z axis -->
+      <label:label xlink:type="resource" xlink:label="label_table8-z"
+                   xlink:role="http://www.xbrl.org/2008/role/label"
+                   xml:lang="en"
+                   id="label_table8-z">Four slices (dimension [F, G] = [f1, g1], [f1, g2], [f2, g1], [f2, g2])</label:label>
+<!-- Connect label to Z axis content -->
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table8-z"
+               xlink:to="label_table8-z"/>
+      <table:ruleNode xlink:type="resource" xlink:label="table8-z.1" id="table8-z.1">
+         <formula:explicitDimension dimension="rend:F">
+            <formula:member>
+               <formula:qname>rend:f1</formula:qname>
+            </formula:member>
+         </formula:explicitDimension>
+         <formula:explicitDimension dimension="rend:G">
+            <formula:member>
+               <formula:qname>rend:g1</formula:qname>
+            </formula:member>
+         </formula:explicitDimension>
+      </table:ruleNode>
+      <table:breakdownTreeArc xlink:type="arc"
+               xlink:arcrole="http://xbrl.org/arcrole/2014/breakdown-tree"
+               xlink:from="table8-z"
+               xlink:to="table8-z.1"
+               order="2"/>
+      <label:label xlink:type="resource" xlink:label="label_table8-z.11"
+                   xlink:role="http://www.xbrl.org/2008/role/label"
+                   xml:lang="en"
+                   id="label_table8-z.11">Label: F = f1, G = g1</label:label>
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table8-z.1"
+               xlink:to="label_table8-z.11"/>
+      <label:label xlink:type="resource" xlink:label="label_table8-z.12"
+                   xlink:role="http://www.xbrl.org/table-examples/coordinate-code"
+                   xml:lang="en"
+                   id="label_table8-z.12">1</label:label>
+      <gen:arc order="2" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table8-z.1"
+               xlink:to="label_table8-z.12"/>
+      <table:ruleNode xlink:type="resource" xlink:label="table8-z.2" id="table8-z.2">
+         <formula:explicitDimension dimension="rend:F">
+            <formula:member>
+               <formula:qname>rend:f1</formula:qname>
+            </formula:member>
+         </formula:explicitDimension>
+         <formula:explicitDimension dimension="rend:G">
+            <formula:member>
+               <formula:qname>rend:g2</formula:qname>
+            </formula:member>
+         </formula:explicitDimension>
+      </table:ruleNode>
+      <table:breakdownTreeArc xlink:type="arc"
+               xlink:arcrole="http://xbrl.org/arcrole/2014/breakdown-tree"
+               xlink:from="table8-z"
+               xlink:to="table8-z.2"
+               order="4"/>
+      <label:label xlink:type="resource" xlink:label="label_table8-z.21"
+                   xlink:role="http://www.xbrl.org/2008/role/label"
+                   xml:lang="en"
+                   id="label_table8-z.21">Label: F = f1, G = g2</label:label>
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table8-z.2"
+               xlink:to="label_table8-z.21"/>
+      <label:label xlink:type="resource" xlink:label="label_table8-z.22"
+                   xlink:role="http://www.xbrl.org/table-examples/coordinate-code"
+                   xml:lang="en"
+                   id="label_table8-z.22">2</label:label>
+      <gen:arc order="2" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table8-z.2"
+               xlink:to="label_table8-z.22"/>
+      <table:ruleNode xlink:type="resource" xlink:label="table8-z.3" id="table8-z.3">
+         <formula:explicitDimension dimension="rend:F">
+            <formula:member>
+               <formula:qname>rend:f2</formula:qname>
+            </formula:member>
+         </formula:explicitDimension>
+         <formula:explicitDimension dimension="rend:G">
+            <formula:member>
+               <formula:qname>rend:g1</formula:qname>
+            </formula:member>
+         </formula:explicitDimension>
+      </table:ruleNode>
+      <table:breakdownTreeArc xlink:type="arc"
+               xlink:arcrole="http://xbrl.org/arcrole/2014/breakdown-tree"
+               xlink:from="table8-z"
+               xlink:to="table8-z.3"
+               order="6"/>
+      <label:label xlink:type="resource" xlink:label="label_table8-z.31"
+                   xlink:role="http://www.xbrl.org/2008/role/label"
+                   xml:lang="en"
+                   id="label_table8-z.31">Label: F = f2, G = g1</label:label>
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table8-z.3"
+               xlink:to="label_table8-z.31"/>
+      <label:label xlink:type="resource" xlink:label="label_table8-z.32"
+                   xlink:role="http://www.xbrl.org/table-examples/coordinate-code"
+                   xml:lang="en"
+                   id="label_table8-z.32">3</label:label>
+      <gen:arc order="2" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table8-z.3"
+               xlink:to="label_table8-z.32"/>
+      <table:ruleNode xlink:type="resource" xlink:label="table8-z.4" id="table8-z.4">
+         <formula:explicitDimension dimension="rend:F">
+            <formula:member>
+               <formula:qname>rend:f2</formula:qname>
+            </formula:member>
+         </formula:explicitDimension>
+         <formula:explicitDimension dimension="rend:G">
+            <formula:member>
+               <formula:qname>rend:g2</formula:qname>
+            </formula:member>
+         </formula:explicitDimension>
+      </table:ruleNode>
+      <table:breakdownTreeArc xlink:type="arc"
+               xlink:arcrole="http://xbrl.org/arcrole/2014/breakdown-tree"
+               xlink:from="table8-z"
+               xlink:to="table8-z.4"
+               order="8"/>
+      <label:label xlink:type="resource" xlink:label="label_table8-z.41"
+                   xlink:role="http://www.xbrl.org/2008/role/label"
+                   xml:lang="en"
+                   id="label_table8-z.41">Label: F = f2, G = g2</label:label>
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table8-z.4"
+               xlink:to="label_table8-z.41"/>
+      <label:label xlink:type="resource" xlink:label="label_table8-z.42"
+                   xlink:role="http://www.xbrl.org/table-examples/coordinate-code"
+                   xml:lang="en"
+                   id="label_table8-z.42">4</label:label>
+      <gen:arc order="2" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table8-z.4"
+               xlink:to="label_table8-z.42"/>
+
+      <table:breakdown parentChildOrder="parent-first" xlink:type="resource" xlink:label="table8-x" id="table8-x"/>
+      <table:tableBreakdownArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2014/table-breakdown"
+                          axis="x"
+                          xlink:from="table8"
+                          xlink:to="table8-x"
+                          order="6"/>
+<!-- Create appropriate label for first breakdown on X axis -->
+      <label:label xlink:type="resource" xlink:label="label_table8-x"
+                   xlink:role="http://www.xbrl.org/2008/role/label"
+                   xml:lang="en"
+                   id="label_table8-x">Two columns (dimension D = d1, d2)</label:label>
+<!-- Connect label to X axis content -->
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table8-x"
+               xlink:to="label_table8-x"/>
+
+      <table:ruleNode xlink:type="resource" xlink:label="table8-x.1" id="table8-x.1">
+         <formula:explicitDimension dimension="rend:D">
+            <formula:member>
+               <formula:qname>rend:d1</formula:qname>
+            </formula:member>
+         </formula:explicitDimension>
+      </table:ruleNode>
+      <table:breakdownTreeArc xlink:type="arc"
+               xlink:arcrole="http://xbrl.org/arcrole/2014/breakdown-tree"
+               xlink:from="table8-x"
+               xlink:to="table8-x.1"
+               order="2"/>
+      <label:label xlink:type="resource" xlink:label="label_table8-x.11"
+                   xlink:role="http://www.xbrl.org/2008/role/label"
+                   xml:lang="en"
+                   id="label_table8-x.11">Label: D = d1</label:label>
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table8-x.1"
+               xlink:to="label_table8-x.11"/>
+      <label:label xlink:type="resource" xlink:label="label_table8-x.12"
+                   xlink:role="http://www.xbrl.org/table-examples/coordinate-code"
+                   xml:lang="en"
+                   id="label_table8-x.12">1</label:label>
+      <gen:arc order="2" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table8-x.1"
+               xlink:to="label_table8-x.12"/>
+      <table:ruleNode xlink:type="resource" xlink:label="table8-x.2" id="table8-x.2">
+         <formula:explicitDimension dimension="rend:D">
+            <formula:member>
+               <formula:qname>rend:d2</formula:qname>
+            </formula:member>
+         </formula:explicitDimension>
+      </table:ruleNode>
+      <table:breakdownTreeArc xlink:type="arc"
+               xlink:arcrole="http://xbrl.org/arcrole/2014/breakdown-tree"
+               xlink:from="table8-x"
+               xlink:to="table8-x.2"
+               order="4"/>
+      <label:label xlink:type="resource" xlink:label="label_table8-x.21"
+                   xlink:role="http://www.xbrl.org/2008/role/label"
+                   xml:lang="en"
+                   id="label_table8-x.21">Label: D = d2</label:label>
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table8-x.2"
+               xlink:to="label_table8-x.21"/>
+      <label:label xlink:type="resource" xlink:label="label_table8-x.22"
+                   xlink:role="http://www.xbrl.org/table-examples/coordinate-code"
+                   xml:lang="en"
+                   id="label_table8-x.22">2</label:label>
+      <gen:arc order="2" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table8-x.2"
+               xlink:to="label_table8-x.22"/>
+
+      <table:breakdown parentChildOrder="parent-first" xlink:type="resource" xlink:label="table8-y" id="table8-y"/>
+      <table:tableBreakdownArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2014/table-breakdown"
+                          axis="y"
+                          xlink:from="table8"
+                          xlink:to="table8-y"
+                          order="8"/>
+<!-- Create appropriate label for first breakdown on Y axis -->
+      <label:label xlink:type="resource" xlink:label="label_table8-y"
+                   xlink:role="http://www.xbrl.org/2008/role/label"
+                   xml:lang="en"
+                   id="label_table8-y">Two rows (primary items m1, m2)</label:label>
+<!-- Connect label to Y axis content -->
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table8-y"
+               xlink:to="label_table8-y"/>
+
+      <table:ruleNode xlink:type="resource" xlink:label="table8-y.1" id="table8-y.1">
+         <formula:concept>
+            <formula:qname>rend:m1</formula:qname>
+         </formula:concept>
+      </table:ruleNode>
+      <table:breakdownTreeArc xlink:type="arc"
+               xlink:arcrole="http://xbrl.org/arcrole/2014/breakdown-tree"
+               xlink:from="table8-y"
+               xlink:to="table8-y.1"
+               order="2"/>
+      <label:label xlink:type="resource" xlink:label="label_table8-y.11"
+                   xlink:role="http://www.xbrl.org/2008/role/label"
+                   xml:lang="en"
+                   id="label_table8-y.11">Label: m1</label:label>
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table8-y.1"
+               xlink:to="label_table8-y.11"/>
+      <label:label xlink:type="resource" xlink:label="label_table8-y.12"
+                   xlink:role="http://www.xbrl.org/table-examples/coordinate-code"
+                   xml:lang="en"
+                   id="label_table8-y.12">1</label:label>
+      <gen:arc order="2" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table8-y.1"
+               xlink:to="label_table8-y.12"/>
+      <table:ruleNode xlink:type="resource" xlink:label="table8-y.2" id="table8-y.2">
+         <formula:concept>
+            <formula:qname>rend:m2</formula:qname>
+         </formula:concept>
+      </table:ruleNode>
+      <table:breakdownTreeArc xlink:type="arc"
+               xlink:arcrole="http://xbrl.org/arcrole/2014/breakdown-tree"
+               xlink:from="table8-y"
+               xlink:to="table8-y.2"
+               order="4"/>
+      <label:label xlink:type="resource" xlink:label="label_table8-y.21"
+                   xlink:role="http://www.xbrl.org/2008/role/label"
+                   xml:lang="en"
+                   id="label_table8-y.21">Label: m2</label:label>
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table8-y.2"
+               xlink:to="label_table8-y.21"/>
+      <label:label xlink:type="resource" xlink:label="label_table8-y.22"
+                   xlink:role="http://www.xbrl.org/table-examples/coordinate-code"
+                   xml:lang="en"
+                   id="label_table8-y.22">2</label:label>
+      <gen:arc order="2" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table8-y.2"
+               xlink:to="label_table8-y.22"/>
+   </gen:link>
+</link:linkbase>

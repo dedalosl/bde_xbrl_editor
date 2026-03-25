@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!-- Copyright 2003-2023 XBRL International. All Rights Reserved. -->
+<linkbase
+  xmlns='http://www.xbrl.org/2003/linkbase'
+  xmlns:gen='http://xbrl.org/2008/generic'
+  xmlns:xlink='http://www.w3.org/1999/xlink'
+  xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance'
+  xsi:schemaLocation='http://www.xbrl.org/2003/linkbase http://www.xbrl.org/2003/xbrl-linkbase-2003-12-31.xsd http://xbrl.org/2008/generic http://www.xbrl.org/2008/generic-link.xsd'
+>
+  <gen:link xlink:role='http://www.xbrl.org/2003/role/link' xlink:type='extended' >
+		<loc xlink:type="locator" xlink:href="202-02c-HrefResolutionCounterExample.xsd#element(/1/99)" xlink:label="unresolvableId"/>
+  </gen:link>
+</linkbase>

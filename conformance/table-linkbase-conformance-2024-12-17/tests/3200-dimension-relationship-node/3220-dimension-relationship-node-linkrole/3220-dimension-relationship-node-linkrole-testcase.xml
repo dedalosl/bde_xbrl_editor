@@ -1,0 +1,270 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2011-09-16"
+  name="3220-dimension-relationship-node-linkrole-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Herm Fischer</name>
+        <email>fischer@markv.com</email>
+    </creator>
+    <number>3220</number>
+    <name>Dimension Relationship Node Linkrole Testcase</name>
+    <description>Table linkbase test case using a dimension relationship node with different linkroles</description>
+    
+    <variation id="v-01">
+        <name>Dimension relationship node with link role omitted</name>
+        <description>
+          Table with two columns (primary items m1, m2) and a tree of members
+          for explicit dimension F as rows.  No link role is specified, so the
+          standard role (http://www.xbrl.org/2003/role/link) is assumed.  This
+          variation has no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">linkrole-omitted-table.xml</linkbase>
+            <linkbase>linkrole-omitted-definition.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>linkrole-omitted.xsd</schema>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/linkrole-omitted-no-data.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-01i">
+        <name>Dimension relationship node with link role omitted, with instance</name>
+        <description>
+          Table with two columns (primary items m1, m2) and a tree of members
+          for explicit dimension F as rows.  No link role is specified, so the
+          standard role (http://www.xbrl.org/2003/role/link) is assumed.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">linkrole-omitted-instance.xml</instance>
+            <linkbase>linkrole-omitted-table.xml</linkbase>
+            <linkbase>linkrole-omitted-definition.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>linkrole-omitted.xsd</schema>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/linkrole-omitted.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-02">
+        <name>Dimension relationship node with target role switch</name>
+        <description>
+          Table with two columns (primary items m1, m2) and a tree of members
+          for explicit dimension F as rows.  Discovering the domain-member tree
+          involves following a target role switch. Tests that processors
+          correctly follow consecutive relationships.  This variation has no
+          instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">target-role-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/target-role-no-data.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-02i">
+        <name>Dimension relationship node with target role switch, with instance</name>
+        <description>
+          Table with two columns (primary items m1, m2) and a tree of members
+          for explicit dimension F as rows.  Discovering the domain-member tree
+          involves following a target role switch. Tests that processors
+          correctly follow consecutive relationships.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">target-role-instance.xml</instance>
+            <linkbase>target-role-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/target-role.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-03">
+        <name>Dimension relationship node with parameterized link role</name>
+        <description>
+          Two tables each with two columns (primary items m1, m2) and a tree
+          of members for explicit dimension F as rows.  Each table displays the
+          domain-member tree for a different link role.  This variation has no
+          instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">linkrole-parameter-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/linkrole-parameter.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-04">
+        <name>Dimension relationship node with a link role expression that evaluates to an invalid URI</name>
+        <description>
+          Invalid table with a dimension relationship node that specifies the
+          link role using an XPath expression that evaluates to an invalid URI.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">invalid-linkrole-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:expressionNotCastableToRequiredType</error>
+        </result>
+    </variation>
+  
+    <variation id="v-05">
+        <name>Dimension relationship node with an empty link role expression</name>
+        <description>
+          Invalid table with a dimension relationship node that specifies the
+          link role using an XPath expression that evaluates to the empty string.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">empty-linkrole-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:expressionNotCastableToRequiredType</error>
+        </result>
+    </variation>
+  
+    <variation id="v-06">
+        <name>Dimension relationship node with a link role expression that evaluates to a sequence</name>
+        <description>
+          Invalid table with a dimension relationship node that specifies the
+          link role using an XPath expression that evaluates to a sequence of
+          more than one URI.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">sequence-linkrole-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:expressionNotCastableToRequiredType</error>
+        </result>
+    </variation>
+
+    <variation id="v-07">
+        <name>Dimension relationship node with a simple link role expression</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          members for explicit dimension F as rows. The link role is specified
+          using an XPath expression.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">linkrole-expression-instance.xml</instance>
+            <linkbase>linkrole-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/linkrole-expression.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-08">
+        <name>Failing test case for bug 845</name>
+        <description>
+            The specification says: "If no relationship source is specified, the root members of the domain of the participating dimension are used as the relationship sources. Specifically, the relationship sources are the targets of dimension-domain relationships with the specified link role whose source is the participating dimension."  To our understanding this means that we get all the targets of dimension-domain relationships in the give linkrole and from those starting points follow the consecutive domain-member relationships. What should happen if there are no dimension-domain relationships in the specified linkrole? Is it valid to report the xbrlte:closedDefinitionNodeZeroCardinality?
+        </description>
+        <data>
+            <instance readMeFirst="true">target-linkrole/test_error.xbrl</instance>
+            <linkbase>target-linkrole/test_def.xml</linkbase>
+            <linkbase>target-linkrole/test_tab_error.xml</linkbase>
+            <schema>target-linkrole/test.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:closedDefinitionNodeZeroCardinality</error>
+        </result>
+    </variation>
+
+    <variation id="v-09">
+        <name>Test case for bug 845</name>
+        <description>
+            The specification says: "If no relationship source is specified, the root members of the domain of the participating dimension are used as the relationship sources. Specifically, the relationship sources are the targets of dimension-domain relationships with the specified link role whose source is the participating dimension."  To our understanding this means that we get all the targets of dimension-domain relationships in the give linkrole and from those starting points follow the consecutive domain-member relationships. What should happen if there are no dimension-domain relationships in the specified linkrole? Is it valid to report the xbrlte:closedDefinitionNodeZeroCardinality?
+        </description>
+        <data>
+            <instance readMeFirst="true">target-linkrole/test_ok.xbrl</instance>
+            <linkbase>target-linkrole/test_def.xml</linkbase>
+            <linkbase>target-linkrole/test_tab_ok.xml</linkbase>
+            <schema>target-linkrole/test.xsd</schema>
+        </data>
+        <result>
+        </result>
+    </variation>
+
+    <variation id="v-10">
+        <name>Failing test case for bug 845 (dim-dom w/targetRole)	</name>
+        <description>
+            The specification says: "If no relationship source is specified, the root members of the domain of the participating dimension are used as the relationship sources. Specifically, the relationship sources are the targets of dimension-domain relationships with the specified link role whose source is the participating dimension."  To our understanding this means that we get all the targets of dimension-domain relationships in the give linkrole and from those starting points follow the consecutive domain-member relationships. What should happen if there are no dimension-domain relationships in the specified linkrole? Is it valid to report the xbrlte:closedDefinitionNodeZeroCardinality?
+        </description>
+        <data>
+            <instance readMeFirst="true">target-linkrole/test2_error.xbrl</instance>
+            <linkbase>target-linkrole/test_def.xml</linkbase>
+            <linkbase>target-linkrole/test_tab_error.xml</linkbase>
+            <schema>target-linkrole/test.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:closedDefinitionNodeZeroCardinality</error>
+        </result>
+    </variation>
+
+    <variation id="v-11">
+        <name>Test case for bug 845 (dim-dom w/targetRole)</name>
+        <description>
+            The specification says: "If no relationship source is specified, the root members of the domain of the participating dimension are used as the relationship sources. Specifically, the relationship sources are the targets of dimension-domain relationships with the specified link role whose source is the participating dimension."  To our understanding this means that we get all the targets of dimension-domain relationships in the give linkrole and from those starting points follow the consecutive domain-member relationships. What should happen if there are no dimension-domain relationships in the specified linkrole? Is it valid to report the xbrlte:closedDefinitionNodeZeroCardinality?
+        </description>
+        <data>
+            <instance readMeFirst="true">target-linkrole/test2_ok.xbrl</instance>
+            <linkbase>target-linkrole/test_def.xml</linkbase>
+            <linkbase>target-linkrole/test_tab_ok.xml</linkbase>
+            <schema>target-linkrole/test.xsd</schema>
+        </data>
+        <result>
+        </result>
+    </variation>
+
+</testcase>

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- XBRL 2.1 Tests -->
+<!-- Copyright 2003 XBRL International. All Rights Reserved. -->
+<?xml-stylesheet type="text/xsl" href="../../testcase.xsl"?>
+<testcase xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" name="Standard Roles" description="Standard roles used in errant situations" outpath="out" owner="fischer@markv.com" xsi:noNamespaceSchemaLocation="../lib/test.xsd" minimal="true">
+	
+	<variation id="V-01" name="221-01-StandardRolesAsExpected">
+		<description>Standard roles used as expected.</description>
+		<data>
+			<xsd readMeFirst="true">221-01-StandardRolesValidSituations.xsd</xsd>
+		</data>
+		<result expected="valid"/>
+	</variation>
+	<variation id="V-02" name="221-02-StandardRolesInvalidStandardLinkRole">
+		<description>Standard role on link is not defined for the element.</description>
+		<data>
+			<xsd readMeFirst="true">221-02-StandardRolesInvalidLinkRole.xsd</xsd>
+		</data>
+		<result expected="invalid"/>
+	</variation>
+	<variation id="V-03" name="221-03-StandardRolesInvalidStandardLabelRole">
+		<description>Standard role on label is not defined for the element.</description>
+		<data>
+			<xsd readMeFirst="true">221-03-StandardRolesInvalidLabelRole.xsd</xsd>
+		</data>
+		<result expected="invalid"/>
+	</variation>
+
+	<!-- 
+	Disabled pending spec clarification https://gitlab.xbrl.org/base-spec/base-spec/-/issues/303
+
+	<variation id="V-04" name="221-04-StandardRolesInvalidStandardLocRole">
+		<description>Standard role on loc is not defined for the element.</description>
+		<data>
+			<xsd readMeFirst="true">221-04-StandardRolesInvalidLocRole.xsd</xsd>
+		</data>
+		<result expected="invalid"/>
+	</variation>
+	-->
+
+	<variation id="V-05" name="221-05-StandardRolesInvalidStandardReferenceRole">
+		<description>Standard role on reference is not defined for the element.</description>
+		<data>
+			<xsd readMeFirst="true">221-05-StandardRolesInvalidReferenceRole.xsd</xsd>
+		</data>
+		<result expected="invalid"/>
+	</variation>
+	
+</testcase>

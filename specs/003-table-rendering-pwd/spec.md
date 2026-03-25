@@ -121,6 +121,7 @@ At the deepest (leaf) level of the row headers (Y-axis) and column headers (X-ax
 - **FR-011**: The system MUST handle tables with a very large number of rows or columns (over 200 rows) without freezing the interface — the table must remain scrollable and navigable.
 - **FR-012**: The system MUST display row and column headers as frozen (sticky) when the user scrolls the table body, so header context is always visible.
 - **FR-013**: The system MUST handle broken or incomplete table linkbase definitions (missing concepts, unresolvable references) gracefully, rendering as much of the table as possible and clearly indicating which parts could not be resolved.
+- **FR-013a**: When an instance is loaded alongside the taxonomy and multiple facts in the instance match the same cell coordinate (duplicate facts), the system MUST flag this as a validation error on that cell rather than silently displaying one of the values.
 - **FR-014**: The system MUST display the RC code (sourced from the Eurofiling RC-code label role in the taxonomy's label linkbase) alongside the standard label in every leaf-level row header and column header cell where such a code is declared; the RC code must be visually distinct from the descriptive label and must not replace it.
 
 ### Key Entities

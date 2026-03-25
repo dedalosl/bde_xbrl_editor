@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../infrastructure/test.xsl"?>
+<testcase
+  date="2011-09-16"
+  name="6000-aspect-node-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:xfie="http://www.xbrl.org/2008/function/instance/error"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../infrastructure/test.xsd">
+    <creator>
+        <name>Herm Fischer</name>
+        <email>fischer@markv.com</email>
+    </creator>
+    <number>6000</number>
+    <name>Aspect Node Testcase</name>
+    <description>table linkbase test cases using the aspect node</description>
+    
+    <variation id="v-01">
+        <name>Aspect node for a typed dimension with another aspect node as its child</name>
+        <description>
+          Simple table with two columns (primary items m1, m2), and unknown
+          number of rows (reported combinations of 2 typed dimensions) using
+          two aspect nodes in a parent-child configuration.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">typed-dimension-child-open-nodes-instance.xml</instance>
+            <linkbase>typed-dimension-child-open-nodes-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/typed-dimension-child-open-nodes.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-02">
+        <name>Aspect node for a typed dimension with two rule nodes as its children</name>
+        <description>
+          Simple table with two columns (primary items m1, m2), and unknown
+          number of rows based on combinations of the typed dimension and explicit
+          dimension members d1 and d2.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">typed-dimension-child-rule-nodes-instance.xml</instance>
+            <linkbase>typed-dimension-child-rule-nodes-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/typed-dimension-child-rule-nodes.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-03">
+        <name>Aspect node with a tag selector</name>
+        <description>
+          Simple table with a single column with two constraint sets: primary
+          items m1 (untagged) or m2 (tagged with 'two') and and unknown number
+          of rows (reported values of typed dimension T). The aspect node
+          selects tag 'two' so only facts for primary item m2 are included in
+          the table.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">aspect-node-tag-selector-instance.xml</instance>
+            <linkbase>aspect-node-tag-selector-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/aspect-node-tag-selector.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-04">
+        <name>Aspect node with a label</name>
+        <description>
+        Aspect nodes may not have labels, so this variation should result in an error.
+        </description>
+        <data>
+            <linkbase readMeFirst="true">aspect-node-labels-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:invalidUseOfLabel</error>
+        </result>
+    </variation>
+
+</testcase>

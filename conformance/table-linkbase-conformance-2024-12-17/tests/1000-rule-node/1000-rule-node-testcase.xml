@@ -1,0 +1,458 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../infrastructure/test.xsl"?>
+<testcase
+  date="2011-09-16"
+  name="1000-rule-node-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../infrastructure/test.xsd">
+    <creator>
+        <name>Herm Fischer</name>
+        <email>fischer@markv.com</email>
+    </creator>
+    <number>1000</number>
+    <name>Rule Node Testcase</name>
+    <description>Table linkbase test cases using the rule node</description>
+
+    <variation id="v-01">
+        <name>Simple table, cols: dimensions, rows: primary items, qnames: constant</name>
+        <description>
+            Simple table with two columns (dimension D = d1, d2), and two rows
+            (primary items m1, m2).  This variation has no instance, so the
+            table cells are empty.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">table-linkbase-simple-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/simple-table-no-data.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-01i">
+        <name>Simple table, cols: dimensions, rows: primary items, qnames: constant, with instance</name>
+        <description>
+            Simple table with two columns (dimension D = d1, d2), and two rows
+            (primary items m1, m2).
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">instance-simple-table.xml</instance>
+            <linkbase>table-linkbase-simple-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/simple-table.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-02">
+        <name>Table with dual breakdowns on the x-axis</name>
+        <description>
+            This example shows how two x axes produce cartesian products of
+            their ordinates. The first breakdown provides columns for D = d1,
+            d2, while the second breakdown provides columns for E = e1, e2. The
+            resulting table has four columns: D = d1 with sub-columns for E =
+            e1, e2 and D = d2 with the same sub-columns. This variation has no
+            instance, so the table cells are empty.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">table-linkbase-dual-x-axes.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/dual-x-axes-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-02i">
+        <name>Table with dual breakdowns on the x-axis, with instance</name>
+        <description>
+            This example shows how two x axes produce cartesian products of
+            their ordinates. The first breakdown provides columns for D = d1,
+            d2, while the second breakdown provides columns for E = e1, e2. The
+            resulting table has four columns: D = d1 with sub-columns for E =
+            e1, e2 and D = d2 with the same sub-columns.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">instance-dual-x-axes.xml</instance>
+            <linkbase>table-linkbase-dual-x-axes.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/dual-x-axes.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-03">
+        <name>Table with dual breakdowns on the y-axis</name>
+        <description>
+            This example shows how two y axes produce cartesian products of
+            their ordinates. The first breakdown provides rows for primary
+            items m1, m2, while the second breakdown provides rows for
+            dimension F = f1, f2. The resulting table has four rows: primary
+            item m1 with sub-rows for F = f1, f2 and primary item m2 with the
+            same sub-rows. This variation has no instance, so the table cells
+            are empty.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">table-linkbase-dual-y-axes.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/dual-y-axes-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-03i">
+        <name>Table with dual breakdowns on the y-axis, with instance</name>
+        <description>
+            This example shows how two y axes produce cartesian products of
+            their ordinates. The first breakdown provides rows for primary
+            items m1, m2, while the second breakdown provides rows for
+            dimension F = f1, f2. The resulting table has four rows: primary
+            item m1 with sub-rows for F = f1, f2 and primary item m2 with the
+            same sub-rows.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">instance-dual-y-axes.xml</instance>
+            <linkbase>table-linkbase-dual-y-axes.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/dual-y-axes.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-04">
+        <name>Table with dual breakdowns with roll-up on the x-axis</name>
+        <description>
+            This example shows how two x axes produce cartesian products of
+            their ordinates when the first has a roll-up column. The first
+            breakdown provides columns for D = d1, d2 and a roll-up for d0,
+            while the second breakdown provides columns for E = e1, e2. The
+            resulting table has six columns: D = d0 with sub-columns for E =
+            e1, e2; D = d1 and D = d2 with the same sub-columns. This variation
+            has no instance, so the table cells are empty.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">table-linkbase-dual-x-axes-totaled.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/dual-x-axes-totaled-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-04i">
+        <name>Table with dual breakdowns with roll-up on the x-axis, with instance</name>
+        <description>
+            This example shows how two x axes produce cartesian products of
+            their ordinates when the first has a roll-up column. The first
+            breakdown provides columns for D = d1, d2 and a roll-up for d0,
+            while the second breakdown provides columns for E = e1, e2. The
+            resulting table has six columns: D = d0 with sub-columns for E =
+            e1, e2; D = d1 and D = d2 with the same sub-columns.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">instance-dual-x-axes-totaled.xml</instance>
+            <linkbase>table-linkbase-dual-x-axes-totaled.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/dual-x-axes-totaled.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-05">
+        <name>Simple table with z-axis</name>
+        <description>
+            Simple table with two columns (dimension D = d1, d2), two rows
+            (primary items m1, m2) and a z-axis with choices of F = f1, f2. A
+            tool could render the z-axis with a combobox or other means to
+            choose between f1 and f2, or it could render two 2-D tables: one
+            with F = f1 and another with with F = f2. The z-axis members are
+            linear (not nested), so a combobox might show the z-axis choices as
+            a list without indentation. This variation has no instance, so the
+            table cells are empty.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">table-linkbase-simple-table-with-z-axis.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/simple-table-with-z-axis.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-06">
+        <name>Table with a nested breakdown on the z-axis</name>
+        <description>
+            Simple table with two columns (dimension D = d1, d2), two rows
+            (primary items m1, m2) and a z-axis with choices of F = f1, f2.
+            The z-axis members are nested, so a tool might render it as a
+            combobox with the z-axis choices as an indented list, with f2 as a
+            child of f1. This variation has no instance, so the table cells are
+            empty.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">table-linkbase-simple-table-nested-z-axis.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/simple-table-nested-z-axis.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-07">
+        <name>Table with dual breakdowns on the z-axis</name>
+        <description>
+            This example shows how two z axes produce cartesian products of
+            their ordinates. The first breakdown provides a choice of dimension
+            F = f1, f2, while the second breakdown provides a choice of
+            dimension G = g1, g2. The resulting table has a choice of four
+            different combinations of F and G. A tool might render the z-axis
+            using two separate comboboxes for the two dimensions, or it could
+            render four 2-D tables. This variation has no instance, so the table
+            cells are empty.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">table-linkbase-simple-table-dual-z-axes.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/simple-table-dual-z-axes-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-07i">
+        <name>Table with dual breakdowns on the z-axis, with instance</name>
+        <description>
+            This example shows how two z axes produce cartesian products of
+            their ordinates. The first breakdown provides a choice of dimension
+            F = f1, f2, while the second breakdown provides a choice of
+            dimension G = g1, g2. The resulting table has a choice of four
+            different combinations of F and G. A tool might render the z-axis
+            using two separate comboboxes for the two dimensions, or it could
+            render four 2-D tables.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">instance-simple-table-dual-z-axes.xml</instance>
+            <linkbase>table-linkbase-simple-table-dual-z-axes.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/simple-table-dual-z-axes.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-07n">
+        <name>Table with dual nested breakdowns on the z-axis</name>
+        <description>
+            This example shows how two z axes produce cartesian products of
+            their ordinates. The first breakdown provides a choice of dimension
+            F = f1, f2, while the second breakdown provides a choice of
+            dimension G = g1, g2. The F and G breakdowns are nested, so that a
+            tool might show each with indentation.  The resulting table has a choice of four
+            effective combinations of F and G. A tool might render the z-axis
+            using two separate comboboxes for the two dimensions, or it could
+            render four 2-D tables. This variation has no instance, so the table
+            cells are empty.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">table-linkbase-simple-table-dual-nested-z-axes.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/simple-table-dual-nested-z-axes-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-07ni">
+        <name>Table with dual nested breakdowns on the z-axis, with instance</name>
+        <description>
+            This example shows how two z axes produce cartesian products of
+            their ordinates. The first breakdown provides a choice of dimension
+            F = f1, f2, while the second breakdown provides a choice of
+            dimension G = g1, g2. The F and G breakdowns are nested, so that a
+            tool might show each with indentation.  The resulting table has a choice of four
+            effectove combinations of F and G. A tool might render the z-axis
+            using two separate comboboxes for the two dimensions, or it could
+            render four 2-D tables.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">instance-simple-table-dual-nested-z-axes.xml</instance>
+            <linkbase>table-linkbase-simple-table-dual-nested-z-axes.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/simple-table-dual-nested-z-axes.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-08">
+        <name>Table with a single breakdown for two dimensions on the z-axis</name>
+        <description>
+            This example shows how a single breakdown on the z-axis can be used
+            to produce a table with the same cartesian product of choices of
+            dimension member. The breakdown has four rules representing each of
+            the cartesian products of the dimensions, as if the dimensions were
+            like two bicycle passengers on a tandem bicycle, e.g. four tandem
+            bicycles each with a pair of dimension member riders.  In this case
+            a tool might display a single combobox with four list entries, each
+            entry being a pair of dimension members. This variation has no
+            instance, so the table cells are empty.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">table-linkbase-simple-table-tandem-z-axis.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/simple-table-tandem-z-axis.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-09">
+        <name>Table with two columns each with multiple dimension values</name>
+        <description>
+            A table with two columns each defined by a single rule node that
+            has values for both dimensions D and E. The resulting table has
+            four columns: (D = d1, E = e1) and (D = d1, E = e2). This variation
+            has no instance, so the table cells are empty.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">table-linkbase-multiple-rules.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/multiple-rules-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-09i">
+        <name>Table with two columns each with multiple dimension values, with instance</name>
+        <description>
+            A table with two columns each defined by a single rule node that
+            has values for both dimensions D and E. The resulting table has
+            four columns: (D = d1, E = e1) and (D = d1, E = e2).
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">instance-multiple-rules.xml</instance>
+            <linkbase>table-linkbase-multiple-rules.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/multiple-rules.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-10">
+        <name>Table with unrecognized aspect (not part of the dimensional aspect model)</name>
+        <description>
+        Table references a custom aspect.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">table-linkbase-custom-aspect.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <schema>custom-aspect.xsd</schema>
+        </data>
+        <result>
+          <error>xbrlte:unrecognisedAspectRule</error>
+        </result>
+    </variation>
+
+    <variation id="v-11">
+        <name>Instance with a tuple fact</name>
+        <description>
+        The tuple fact is not used in the table, but this checks that the
+        presence of a tuple in the instance does not cause any unexpected
+        failures.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">instance-with-tuple-instance.xml</instance>
+            <linkbase>instance-with-tuple-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+          <table>output/instance-with-tuple.xml</table>
+        </result>
+    </variation>
+
+</testcase>

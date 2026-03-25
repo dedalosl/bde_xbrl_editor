@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- XBRL 2.1 Tests -->
+<!-- Copyright 2014 XBRL International Inc.  See www.xbrl.org/legal.  All Rights Reserved. -->
+<?xml-stylesheet type="text/xsl" href="../../../../testcase.xsl"?>
+<testcase xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+name="Namespace definitions and redefinitions" 
+xsi:noNamespaceSchemaLocation="../../../lib/test.xsd"
+description="Test that the XBRL processor has properly implemented the XML names specification. Normative reference can be found here http://www.w3.org/TR/REC-xml-names/" 
+owner="ignacio@reportingstandard.com" 
+outpath="img"
+minimal="true">
+        
+        <variation id="V402-01" name="402-01-namespace-definitions-and-redefinitions">
+                <description>
+                        The instance document is not using standard prefixes on the elements. The prefixes are also redefined
+                        in the nested elements so, for example, the same prefix is used in different levels of the XML
+                        hierarchy and is legally redefined to target a different namespace.
+                        
+                        A conformant XML processor shall consider the XBRL instance a valid XBRL document and shall properly
+                        bind the prefixes to the namespaces on every element where the prefix is used
+                        
+                        (valid case)
+                </description>
+                <data>
+                        <instance readMeFirst="true">402-01-xml-namespace-01-valid.xbrl</instance>
+                        <xsd readMeFirst="false">402-01-tx-cor-2015-01-01.xsd</xsd>
+                </data>
+                <result expected="valid"/>
+        </variation>
+        
+</testcase>

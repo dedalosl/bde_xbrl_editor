@@ -1,0 +1,746 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2013-10-17"
+  name="3160-concept-relationship-node-formula-axis-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Chris Rimes</name>
+        <email>cdr@corefiling.com</email>
+    </creator>
+    <number>3160</number>
+    <name>Concept Relationship Node Formula Axis Testcase</name>
+    <description>Table linkbase test case using a concept relationship node with different formula axes</description>
+    
+    <variation id="v-01">
+        <name>Concept relationship node with formulaAxis omitted</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+          No formula axis is specified, so the tree walk defaults to
+          'descendant-or-self'.  This variation has no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">axis-omitted-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/axis-omitted-no-data.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-01i">
+        <name>Concept relationship node with formulaAxis omitted</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+          No formula axis is specified, so the tree walk defaults to
+          'descendant-or-self'.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">axis-omitted-instance.xml</instance>
+            <linkbase>axis-omitted-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/axis-omitted.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-02">
+        <name>Concept relationship node with formulaAxis = descendant-or-self</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+          A formula axis of 'descendant-or-self' is specified, so the
+          relationship source and all its descendants are is included.  This
+          variation has no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">descendant-or-self-axis-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/descendant-or-self-axis-no-data.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-02i">
+        <name>Concept relationship node with formulaAxis = descendant-or-self (with instance)</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+          A formula axis of 'descendant-or-self' is specified, so the
+          relationship source and all its descendants are is included.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">descendant-or-self-axis-instance.xml</instance>
+            <linkbase>descendant-or-self-axis-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/descendant-or-self-axis.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-03">
+        <name>Concept relationship node with formulaAxis = descendant</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+          A formula axis of 'descendant' is specified, so the relationship
+          source itself is not included but its descendants are.  This
+          variation has no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">descendant-axis-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/descendant-axis-no-data.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-03i">
+        <name>Concept relationship node with formulaAxis = descendant (with instance)</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+          A formula axis of 'descendant' is specified, so the relationship
+          source itself is not included but its descendants are.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">descendant-axis-instance.xml</instance>
+            <linkbase>descendant-axis-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/descendant-axis.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-04">
+        <name>Concept relationship node with formulaAxis = child-or-self</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+          A formula axis of 'child-or-self' is specified, so only the
+          relationship source and its immediate children are included.  This
+          variation has no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">child-or-self-axis-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/child-or-self-axis-no-data.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-04i">
+        <name>Concept relationship node with formulaAxis = child-or-self (with instance)</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+          A formula axis of 'child-or-self' is specified, so only the
+          relationship source and its immediate children are included.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">child-or-self-axis-instance.xml</instance>
+            <linkbase>child-or-self-axis-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/child-or-self-axis.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-05">
+        <name>Concept relationship node with formulaAxis = child</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+          A formula axis of 'child' is specified, so only the immediate
+          children of the relationship source are included.  The relationship
+          source itself is not included.  This variation has no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">child-axis-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/child-axis-no-data.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-05i">
+        <name>Concept relationship node with formulaAxis = child (with instance)</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+          A formula axis of 'child' is specified, so only the immediate
+          children of the relationship source are included.  The relationship
+          source itself is not included.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">child-axis-instance.xml</instance>
+            <linkbase>child-axis-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/child-axis.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-06">
+        <name>Concept relationship node with formulaAxis = sibling</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+          A formula axis of 'sibling' is specified, so only the siblings of the
+          relationship source are included.  The relationship source itself
+          is not included.  This variation has no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">sibling-axis-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/sibling-axis-no-data.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-06i">
+        <name>Concept relationship node with formulaAxis = sibling (with instance)</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+          A formula axis of 'sibling' is specified, so only the siblings of the
+          relationship source are included.  The relationship source itself
+          is not included.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">sibling-axis-instance.xml</instance>
+            <linkbase>sibling-axis-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/sibling-axis.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-07">
+        <name>Concept relationship node with formulaAxis = sibling-or-self</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+          A formula axis of 'sibling-or-self' is specified, so the relationship
+          source and all its siblings are included.  This variation has no
+          instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">sibling-or-self-axis-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/sibling-or-self-axis-no-data.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-07i">
+        <name>Concept relationship node with formulaAxis = sibling-or-self (with instance)</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+          A formula axis of 'sibling-or-self' is specified, so the relationship
+          source and all its siblings are included.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">sibling-or-self-axis-instance.xml</instance>
+            <linkbase>sibling-or-self-axis-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/sibling-or-self-axis.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-08">
+        <name>Concept relationship node with formulaAxis = sibling-or-descendant</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+          A formula axis of 'sibling-or-descendant' is specified, so the siblings
+          and descendants of the source are included (but not the siblings' descendants,
+          nor the source itself). The descendants of the source are inserted into the
+          resulting tree at the same level and position as the source would have been if
+          it were included.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">sibling-or-descendant-axis-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/sibling-or-descendant-axis-no-data.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-08i">
+        <name>Concept relationship node with formulaAxis = sibling-or-descendant (with instance)</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+          A formula axis of 'sibling-or-descendant' is specified, so the siblings
+          and descendants of the source are included (but not the siblings' descendants,
+          nor the source itself). The descendants of the source are inserted into the
+          resulting tree at the same level and position as the source would have been if
+          it were included.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">sibling-or-descendant-axis-instance.xml</instance>
+            <linkbase>sibling-or-descendant-axis-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/sibling-or-descendant-axis.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-08a">
+        <name>Concept relationship node with formulaAxis = sibling-or-descendant and
+        self having a non-trivial tree of descendants</name>
+        <description>
+          Similar to above, but demonstrates that the tree structure below self is
+          preserved and not flattened away.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">sibling-or-descendant-axis-descendant-tree-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/sibling-or-descendant-axis-descendant-tree-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-08ai">
+        <name>Concept relationship node with formulaAxis = sibling-or-descendant and
+        self having a non-trivial tree of descendants, with instance</name>
+        <description>
+          Similar to above, but demonstrates that the tree structure below self is
+          preserved and not flattened away.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">sibling-or-descendant-axis-descendant-tree-instance.xml</instance>
+            <linkbase>sibling-or-descendant-axis-descendant-tree-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/sibling-or-descendant-axis-descendant-tree.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-09">
+        <name>Concept relationship node with formulaAxis = sibling-or-descendant-or-self</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+          A formula axis of 'sibling-or-descendant-or-self' is specified, so the siblings
+          and descendants of the source are included, along with the source itself (but not
+          the siblings' descendants).
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">sibling-or-descendant-or-self-axis-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/sibling-or-descendant-or-self-axis-no-data.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-09i">
+        <name>Concept relationship node with formulaAxis = sibling-or-descendant-or-self (with instance)</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+          A formula axis of 'sibling-or-descendant-or-self' is specified, so the siblings
+          and descendants of the source are included, along with the source itself (but not
+          the siblings' descendants).
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">sibling-or-descendant-or-self-axis-instance.xml</instance>
+            <linkbase>sibling-or-descendant-or-self-axis-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/sibling-or-descendant-or-self-axis.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-10">
+        <name>Concept relationship node with formulaAxis = sibling-or-self starting from network root</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+          A formula axis of 'sibling-or-self' is specified, so the relationship
+          source and all its siblings are included.  In this variation, the
+          relationship source is at the root of the network, so its siblings
+          are the other network roots.  This variation has no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">root-sibling-or-self-axis-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/root-sibling-or-self-axis-no-data.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-10i">
+        <name>Concept relationship node with formulaAxis = sibling-or-self starting from network root (with instance)</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+          A formula axis of 'sibling-or-self' is specified, so the relationship
+          source and all its siblings are included.  In this variation, the
+          relationship source is at the root of the network, so its siblings
+          are the other network roots.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">root-sibling-or-self-axis-instance.xml</instance>
+            <linkbase>root-sibling-or-self-axis-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/root-sibling-or-self-axis.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-11">
+        <name>Concept relationship node for siblings with formulaAxis = sibling</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+          Even though the formula axis is 'sibling', both relationship sources
+          are included because they are siblings of each other.  This variation
+          has no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">sibling-axis-sibling-sources-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/sibling-axis-sibling-sources-no-data.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-11i">
+        <name>Concept relationship node for siblings with formulaAxis = sibling (with instance)</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+          Even though the formula axis is 'sibling', both relationship sources
+          are included because they are siblings of each other.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">sibling-axis-sibling-sources-instance.xml</instance>
+            <linkbase>sibling-axis-sibling-sources-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/sibling-axis-sibling-sources.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-12">
+        <name>Concept relationship node for siblings with formulaAxis = sibling-or-self</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+          A formula axis of 'sibling-or-self' is specified, so the relationship
+          sources and their siblings are included.  In this variation, the two
+          relationship source are each others' sibling, so each is included
+          twice.  This variation has no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">sibling-or-self-axis-sibling-sources-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/sibling-or-self-axis-sibling-sources-no-data.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-12i">
+        <name>Concept relationship node for siblings with formulaAxis = sibling-or-self (with instance)</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+          A formula axis of 'sibling-or-self' is specified, so the relationship
+          sources and their siblings are included.  In this variation, the two
+          relationship source are each others' sibling, so each is included
+          twice.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">sibling-or-self-axis-sibling-sources-instance.xml</instance>
+            <linkbase>sibling-or-self-axis-sibling-sources-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/sibling-or-self-axis-sibling-sources.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-13">
+        <name>Concept relationship node with formulaAxis = sibling-or-self but no relationship source</name>
+        <description>
+          Invalid table with a concept-relationship node that specifies a
+          formula axis of 'sibling-or-self', but no relationship source.  The
+          relationship source is assumed to be xfi:root, but this has no
+          siblings, so the resulting tree contains no concepts.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">sibling-or-self-axis-source-omitted-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:closedDefinitionNodeZeroCardinality</error>
+        </result>
+    </variation>
+  
+    <variation id="v-14">
+        <name>Concept relationship node with formulaAxis = sibling-or-self and a relationship source of xfi:root</name>
+        <description>
+          Invalid table with a concept-relationship node that specifies a
+          formula axis of 'sibling-or-self', but no relationship source.  The
+          relationship source is assumed to be xfi:root, but this has no
+          siblings, so the resulting tree contains no concepts.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">sibling-or-self-axis-xfi-root-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:closedDefinitionNodeZeroCardinality</error>
+        </result>
+    </variation>
+  
+    <variation id="v-15">
+        <name>Concept relationship node with a formula axis expression</name>
+        <description>
+          Invalid table with a concept relationship node that specifies the
+          formula axis using an XPath expression. This variation has no
+          instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">axis-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/axis-expression-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-15i">
+        <name>Concept relationship node with a formula axis expression, with instance</name>
+        <description>
+          Invalid table with a concept relationship node that specifies the
+          formula axis using an XPath expression.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">axis-expression-instance.xml</instance>
+            <linkbase>axis-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/axis-expression.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-16">
+        <name>Concept relationship node with an invalid formula axis expression</name>
+        <description>
+          Invalid table with a concept relationship node that specifies the
+          formula axis using an XPath expression that does not evaluate to a
+          valid value from the enumeration.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">invalid-axis-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:expressionNotCastableToRequiredType</error>
+        </result>
+    </variation>
+
+    <variation id="v-17">
+        <name>Concept relationship node with a formula axis expression that evaluates to a sequence</name>
+        <description>
+          Invalid table with a concept relationship node that specifies the
+          formula axis using an XPath expression that evaluates to a sequence of
+          values.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">sequence-axis-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:expressionNotCastableToRequiredType</error>
+        </result>
+    </variation>
+  
+</testcase>

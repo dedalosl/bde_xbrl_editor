@@ -1,0 +1,42 @@
+<?xml version="1.0"?>
+<!-- XBRL 2.1 Tests -->
+<!-- Copyright 2003 XBRL International Inc.  See www.xbrl.org/legal.  All Rights Reserved. -->
+<schema targetNamespace="http://www.someCompany.com"
+xmlns:my="http://www.someCompany.com"
+xmlns="http://www.w3.org/2001/XMLSchema"
+xmlns:xbrli="http://www.xbrl.org/2003/instance"
+elementFormDefault="qualified">
+
+	<import namespace="http://www.xbrl.org/2003/instance"
+	schemaLocation="http://www.xbrl.org/2003/xbrl-instance-2003-12-31.xsd"/>
+
+	<complexType name="stuffPerPureItemType">
+		<simpleContent>
+			<restriction base="xbrli:decimalItemType"/>
+		</simpleContent>
+	</complexType>
+
+	<element name="stuffPerPure" type="my:stuffPerPureItemType"
+	substitutionGroup="xbrli:item" id="StuffPerPure"
+	xbrli:periodType="instant"/>
+
+	<complexType name="monetaryPerPureItemType">
+		<simpleContent>
+			<restriction base="xbrli:monetaryItemType"/>
+		</simpleContent>
+	</complexType>
+	
+	<element name="moneyPerPure" type="my:monetaryPerPureItemType"
+		substitutionGroup="xbrli:item" id="MoneyPerPure"
+		xbrli:periodType="instant"/>
+	
+	<simpleType name="stuff">
+		<annotation>
+			<documentation>
+				This datatype serves as the datatype for stuff for testing.
+			</documentation>
+		</annotation>
+		<restriction base="decimal" />
+	</simpleType>
+	
+</schema>

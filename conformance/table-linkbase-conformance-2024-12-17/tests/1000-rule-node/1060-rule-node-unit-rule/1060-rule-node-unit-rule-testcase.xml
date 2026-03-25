@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2011-09-16"
+  name="1060-rule-node-unit-rule-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Herm Fischer</name>
+        <email>fischer@markv.com</email>
+    </creator>
+    <number>1060</number>
+    <name>Rule Node Unit Rule Testcase</name>
+    <description>Table linkbase test case using a rule node with a unit rule</description>
+
+    <variation id="v-01">
+        <name>Rule nodes with unit rules</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and two columns
+          (currency units EUR, USD). In this variation there is no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">unit-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/unit-no-data.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-01i">
+        <name>Rule nodes with unit rules, with instance</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and two columns
+          (currency units EUR, USD).
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">unit-instance.xml</instance>
+            <linkbase>unit-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/unit.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-02">
+        <name>Simple Table with an incomplete unit rule.</name>
+        <description>Simple table with one x axis node for an incomplete unit rule.</description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">incomplete-unit-rule-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+           <error>xbrlte:incompleteAspectRule</error>
+        </result>
+    </variation>
+
+</testcase>

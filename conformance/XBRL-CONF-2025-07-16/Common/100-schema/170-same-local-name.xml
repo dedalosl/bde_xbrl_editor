@@ -1,0 +1,13 @@
+<?xml-stylesheet type="text/xsl" href="../../testcase.xsl"?>
+
+<testcase name="SameLocalName" description="Element local names need not be unique in a taxonomy" outpath="out" owner="spec@xbrl.org" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../lib/test.xsd">
+
+	<variation id="V-01" name="170-01-same-local-name-valid">
+		<description>Element local names need not be unique in a taxonomy (base-spec#301)</description>
+		<data>
+			<xsd readMeFirst="true">170-01-same-local-name-valid.xsd</xsd>
+		</data>
+		<result expected="valid"/>
+	</variation>
+
+</testcase>

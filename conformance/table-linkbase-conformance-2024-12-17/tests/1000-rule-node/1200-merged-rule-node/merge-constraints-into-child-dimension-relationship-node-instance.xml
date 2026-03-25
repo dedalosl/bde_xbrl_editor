@@ -1,0 +1,193 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xbrli:xbrl
+  xmlns:rend="http://www.xbrl.org/table-examples"
+  xmlns:iso4217="http://www.xbrl.org/2003/iso4217"
+  xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:xbrldi="http://xbrl.org/2006/xbrldi"
+  xmlns:xbrli="http://www.xbrl.org/2003/instance"
+  xmlns:xl="http://www.xbrl.org/2003/XLink"
+  xmlns:xlink="http://www.w3.org/1999/xlink"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2006/xbrldi http://www.xbrl.org/2006/xbrldi-2006.xsd">
+    <link:schemaRef xlink:href="table-examples.xsd" xlink:type="simple"/>
+    <link:linkbaseRef  xlink:type="simple" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase" 
+      xlink:href="merge-constraints-into-child-dimension-relationship-node-table.xml"/>  
+    <xbrli:context id="F_f4_abc">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme">abc</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:instant>2001-12-31</xbrli:instant>
+        </xbrli:period>
+        <xbrli:scenario>
+            <xbrldi:explicitMember dimension="rend:F">rend:f4</xbrldi:explicitMember>
+        </xbrli:scenario>
+    </xbrli:context>
+    <xbrli:context id="F_f6_abc">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme">abc</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:instant>2001-12-31</xbrli:instant>
+        </xbrli:period>
+        <xbrli:scenario>
+            <xbrldi:explicitMember dimension="rend:F">rend:f6</xbrldi:explicitMember>
+        </xbrli:scenario>
+    </xbrli:context>
+    <xbrli:context id="F_f7_abc">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme">abc</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:instant>2001-12-31</xbrli:instant>
+        </xbrli:period>
+        <xbrli:scenario>
+            <xbrldi:explicitMember dimension="rend:F">rend:f7</xbrldi:explicitMember>
+        </xbrli:scenario>
+    </xbrli:context>
+    <xbrli:context id="F_f8_abc">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme">abc</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:instant>2001-12-31</xbrli:instant>
+        </xbrli:period>
+        <xbrli:scenario>
+            <xbrldi:explicitMember dimension="rend:F">rend:f8</xbrldi:explicitMember>
+        </xbrli:scenario>
+    </xbrli:context>
+    <xbrli:context id="F_f9_abc">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme">abc</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:instant>2001-12-31</xbrli:instant>
+        </xbrli:period>
+        <xbrli:scenario>
+            <xbrldi:explicitMember dimension="rend:F">rend:f9</xbrldi:explicitMember>
+        </xbrli:scenario>
+    </xbrli:context>
+    <xbrli:context id="F_f0_01">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme">01</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:instant>2001-12-31</xbrli:instant>
+        </xbrli:period>
+    </xbrli:context>
+    <xbrli:context id="F_f1_01">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme">01</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:instant>2001-12-31</xbrli:instant>
+        </xbrli:period>
+        <xbrli:scenario>
+            <xbrldi:explicitMember dimension="rend:F">rend:f1</xbrldi:explicitMember>
+        </xbrli:scenario>
+    </xbrli:context>
+    <xbrli:context id="F_f2_01">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme">01</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:instant>2001-12-31</xbrli:instant>
+        </xbrli:period>
+        <xbrli:scenario>
+            <xbrldi:explicitMember dimension="rend:F">rend:f2</xbrldi:explicitMember>
+        </xbrli:scenario>
+    </xbrli:context>
+    <xbrli:context id="F_f3_01">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme">01</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:instant>2001-12-31</xbrli:instant>
+        </xbrli:period>
+        <xbrli:scenario>
+            <xbrldi:explicitMember dimension="rend:F">rend:f3</xbrldi:explicitMember>
+        </xbrli:scenario>
+    </xbrli:context>
+    <xbrli:context id="F_f4_01">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme">01</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:instant>2001-12-31</xbrli:instant>
+        </xbrli:period>
+        <xbrli:scenario>
+            <xbrldi:explicitMember dimension="rend:F">rend:f4</xbrldi:explicitMember>
+        </xbrli:scenario>
+    </xbrli:context>
+    <xbrli:context id="F_f6_01">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme">01</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:instant>2001-12-31</xbrli:instant>
+        </xbrli:period>
+        <xbrli:scenario>
+            <xbrldi:explicitMember dimension="rend:F">rend:f6</xbrldi:explicitMember>
+        </xbrli:scenario>
+    </xbrli:context>
+    <xbrli:context id="F_f7_01">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme">01</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:instant>2001-12-31</xbrli:instant>
+        </xbrli:period>
+        <xbrli:scenario>
+            <xbrldi:explicitMember dimension="rend:F">rend:f7</xbrldi:explicitMember>
+        </xbrli:scenario>
+    </xbrli:context>
+    <xbrli:context id="F_f8_01">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme">01</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:instant>2001-12-31</xbrli:instant>
+        </xbrli:period>
+        <xbrli:scenario>
+            <xbrldi:explicitMember dimension="rend:F">rend:f8</xbrldi:explicitMember>
+        </xbrli:scenario>
+    </xbrli:context>
+    <xbrli:context id="F_f9_01">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme">01</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:instant>2001-12-31</xbrli:instant>
+        </xbrli:period>
+        <xbrli:scenario>
+            <xbrldi:explicitMember dimension="rend:F">rend:f9</xbrldi:explicitMember>
+        </xbrli:scenario>
+    </xbrli:context>
+    <xbrli:unit id="EUR">
+        <xbrli:measure>iso4217:EUR</xbrli:measure>
+    </xbrli:unit>
+    <rend:m1 id="m1_F_f4_abc" contextRef="F_f4_abc" decimals="0" unitRef="EUR">401</rend:m1>
+    <rend:m2 id="m2_F_f6_abc" contextRef="F_f6_abc" decimals="0" unitRef="EUR">602</rend:m2>
+    <rend:m1 id="m1_F_f7_abc" contextRef="F_f7_abc" decimals="0" unitRef="EUR">701</rend:m1>
+    <rend:m2 id="m2_F_f7_abc" contextRef="F_f7_abc" decimals="0" unitRef="EUR">702</rend:m2>
+    <rend:m1 id="m1_F_f9_abc" contextRef="F_f9_abc" decimals="0" unitRef="EUR">901</rend:m1>
+    <rend:m2 id="m2_F_f9_abc" contextRef="F_f9_abc" decimals="0" unitRef="EUR">902</rend:m2>
+    <rend:m1 id="m1_F_f0_01" contextRef="F_f0_01" decimals="0" unitRef="EUR">11</rend:m1>
+    <rend:m2 id="m2_F_f0_01" contextRef="F_f0_01" decimals="0" unitRef="EUR">12</rend:m2>
+    <rend:m1 id="m1_F_f1_01" contextRef="F_f1_01" decimals="0" unitRef="EUR">111</rend:m1>
+    <rend:m2 id="m2_F_f1_01" contextRef="F_f1_01" decimals="0" unitRef="EUR">112</rend:m2>
+    <rend:m1 id="m1_F_f2_01" contextRef="F_f2_01" decimals="0" unitRef="EUR">211</rend:m1>
+    <rend:m2 id="m2_F_f2_01" contextRef="F_f2_01" decimals="0" unitRef="EUR">212</rend:m2>
+    <rend:m1 id="m1_F_f3_01" contextRef="F_f3_01" decimals="0" unitRef="EUR">311</rend:m1>
+    <rend:m2 id="m2_F_f3_01" contextRef="F_f3_01" decimals="0" unitRef="EUR">312</rend:m2>
+    <rend:m1 id="m1_F_f4_01" contextRef="F_f4_01" decimals="0" unitRef="EUR">411</rend:m1>
+    <rend:m2 id="m2_F_f4_01" contextRef="F_f4_01" decimals="0" unitRef="EUR">412</rend:m2>
+    <rend:m1 id="m1_F_f6_01" contextRef="F_f6_01" decimals="0" unitRef="EUR">611</rend:m1>
+    <rend:m2 id="m2_F_f6_01" contextRef="F_f6_01" decimals="0" unitRef="EUR">612</rend:m2>
+    <rend:m1 id="m1_F_f7_01" contextRef="F_f7_01" decimals="0" unitRef="EUR">711</rend:m1>
+    <rend:m2 id="m2_F_f7_01" contextRef="F_f7_01" decimals="0" unitRef="EUR">712</rend:m2>
+    <rend:m1 id="m1_F_f8_01" contextRef="F_f8_01" decimals="0" unitRef="EUR">811</rend:m1>
+    <rend:m2 id="m2_F_f8_01" contextRef="F_f8_01" decimals="0" unitRef="EUR">812</rend:m2>
+    <rend:m1 id="m1_F_f9_01" contextRef="F_f9_01" decimals="0" unitRef="EUR">911</rend:m1>
+    <rend:m2 id="m2_F_f9_01" contextRef="F_f9_01" decimals="0" unitRef="EUR">912</rend:m2>
+</xbrli:xbrl>

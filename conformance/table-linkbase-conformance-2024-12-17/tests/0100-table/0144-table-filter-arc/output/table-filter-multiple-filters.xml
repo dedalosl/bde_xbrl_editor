@@ -1,0 +1,13 @@
+<tableModel xmlns="http://xbrl.org/2014/table/model">
+  <tableSet>
+    <label>Table-filter relationships to multiple filters</label>
+    <table>
+      <headers axis="y">
+        <group>
+          <label>Concept (open)</label>
+        </group>
+      </headers>
+      <cells axis="z"/>
+    </table>
+  </tableSet>
+</tableModel>

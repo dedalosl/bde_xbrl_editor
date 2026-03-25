@@ -1,0 +1,164 @@
+<?xml version='1.0' encoding='utf-8'?>
+<tableModel xmlns="http://xbrl.org/2014/table/model" xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:rend="http://www.xbrl.org/table-examples" xml:base="..">
+  <tableSet>
+    <label>Aspect node for a typed dimension with a complemented period filter</label>
+    <table>
+      <headers axis="y">
+        <group>
+          <label>Rows (typed dimension T)</label>
+          <header>
+            <cell>
+              <constraint>
+                <aspect>rend:T</aspect>
+                <value>
+                  <rend:stringDomain>abc</rend:stringDomain>
+                </value>
+              </constraint>
+            </cell>
+            <cell>
+              <constraint>
+                <aspect>rend:T</aspect>
+                <value>
+                  <rend:stringDomain>def</rend:stringDomain>
+                </value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+      </headers>
+      <headers axis="x">
+        <group>
+          <label>Three columns (periods 2001, 2001H1, 2001H2)</label>
+          <header>
+            <cell span="6">
+              <label>Label: 2001</label>
+              <constraint>
+                <aspect>period</aspect>
+                <value>
+                  <xbrli:startDate>2001-01-01T00:00:00Z</xbrli:startDate>
+                  <xbrli:endDate>2002-01-01T00:00:00Z</xbrli:endDate>
+                </value>
+              </constraint>
+            </cell>
+          </header>
+          <header>
+            <cell span="2" rollup="true"/>
+            <cell span="2">
+              <label>Label: First Half</label>
+              <constraint>
+                <aspect>period</aspect>
+                <value>
+                  <xbrli:startDate>2001-01-01T00:00:00Z</xbrli:startDate>
+                  <xbrli:endDate>2001-07-01T00:00:00Z</xbrli:endDate>
+                </value>
+              </constraint>
+            </cell>
+            <cell span="2">
+              <label>Label: Second Half</label>
+              <constraint>
+                <aspect>period</aspect>
+                <value>
+                  <xbrli:startDate>2001-07-01T00:00:00Z</xbrli:startDate>
+                  <xbrli:endDate>2002-01-01T00:00:00Z</xbrli:endDate>
+                </value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+        <group>
+          <label>Two columns (primary items o1, o2)</label>
+          <header>
+            <cell>
+              <label>Label: o1</label>
+              <label>1</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:o1</value>
+              </constraint>
+            </cell>
+            <cell>
+              <label>Label: o2</label>
+              <label>2</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:o2</value>
+              </constraint>
+            </cell>
+            <cell>
+              <label>Label: o1</label>
+              <label>1</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:o1</value>
+              </constraint>
+            </cell>
+            <cell>
+              <label>Label: o2</label>
+              <label>2</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:o2</value>
+              </constraint>
+            </cell>
+            <cell>
+              <label>Label: o1</label>
+              <label>1</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:o1</value>
+              </constraint>
+            </cell>
+            <cell>
+              <label>Label: o2</label>
+              <label>2</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:o2</value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+      </headers>
+      <cells axis="z">
+        <cells axis="y">
+          <cells axis="x">
+            <cell>
+              <fact>aspect-node-complemented-period-filter-instance.xml#o1_Y2001_T_abc</fact>
+            </cell>
+            <cell>
+              <fact>aspect-node-complemented-period-filter-instance.xml#o2_Y2001_T_abc</fact>
+            </cell>
+            <cell>
+              <fact>aspect-node-complemented-period-filter-instance.xml#o1_Y2001H1_T_abc</fact>
+            </cell>
+            <cell>
+              <fact>aspect-node-complemented-period-filter-instance.xml#o2_Y2001H1_T_abc</fact>
+            </cell>
+            <cell>
+              <fact>aspect-node-complemented-period-filter-instance.xml#o1_Y2001H2_T_abc</fact>
+            </cell>
+            <cell>
+              <fact>aspect-node-complemented-period-filter-instance.xml#o2_Y2001H2_T_abc</fact>
+            </cell>
+          </cells>
+          <cells axis="x">
+            <cell/>
+            <cell/>
+            <cell>
+              <fact>aspect-node-complemented-period-filter-instance.xml#o1_Y2001H1_T_def</fact>
+            </cell>
+            <cell>
+              <fact>aspect-node-complemented-period-filter-instance.xml#o2_Y2001H1_T_def</fact>
+            </cell>
+            <cell>
+              <fact>aspect-node-complemented-period-filter-instance.xml#o1_Y2001H2_T_def</fact>
+            </cell>
+            <cell>
+              <fact>aspect-node-complemented-period-filter-instance.xml#o2_Y2001H2_T_def</fact>
+            </cell>
+          </cells>
+        </cells>
+      </cells>
+    </table>
+  </tableSet>
+</tableModel>

@@ -1,0 +1,115 @@
+<?xml version='1.0' encoding='utf-8'?>
+<tableModel xmlns="http://xbrl.org/2014/table/model" xmlns:rend="http://www.xbrl.org/table-examples" xml:base="..">
+  <!--Entry point file: table-linkbase-coord-override.xml-->
+  <tableSet>
+    <!--TableSet linkbase file: table-linkbase-coord-override.xml, line 38-->
+    <!--TableSet namespace: http://xbrl.org/2014/table-->
+    <!--TableSet linkrole: http://www.xbrl.org/table-examples/table4-->
+    <label>This example shows how coordinate values of an ancestor can be overridden by a descendant It also shows an example of a coordinate that establishes the value for two different dimensions</label>
+    <table>
+      <headers axis="y">
+        <group>
+          <label>Two rows (primary items m1, m2)</label>
+          <header>
+            <!--ruleNode: label table4-y.1, file table-linkbase-coord-override.xml, line 143-->
+            <!--   aspect concept: rend:m1-->
+            <cell>
+              <label>Label: m1</label>
+              <label>1</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:m1</value>
+              </constraint>
+            </cell>
+            <!--ruleNode: label table4-y.2, file table-linkbase-coord-override.xml, line 167-->
+            <!--   aspect concept: rend:m2-->
+            <cell>
+              <label>Label: m2</label>
+              <label>2</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:m2</value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+      </headers>
+      <headers axis="x">
+        <group>
+          <label>Two columns (dimension [D, E] = [d0, e1], [d1, e2])</label>
+          <header>
+            <!--ruleNode: label table4-x.1, file table-linkbase-coord-override.xml, line 53-->
+            <!--   aspect rend:D: rend:d0-->
+            <cell span="3">
+              <label>Label: D = d0</label>
+              <label>1</label>
+              <constraint>
+                <aspect>rend:D</aspect>
+                <value/>
+              </constraint>
+            </cell>
+          </header>
+          <header>
+            <cell rollup="true">
+              <constraint>
+                <aspect>rend:E</aspect>
+                <value/>
+              </constraint>
+            </cell>
+            <!--ruleNode: label table4-x.1.1, file table-linkbase-coord-override.xml, line 79-->
+            <!--   aspect rend:E: rend:e1-->
+            <cell>
+              <label>Label: E = e1</label>
+              <label>2</label>
+              <constraint>
+                <aspect>rend:E</aspect>
+                <value>rend:e1</value>
+              </constraint>
+            </cell>
+            <!--ruleNode: label table4-x.1.2, file table-linkbase-coord-override.xml, line 105-->
+            <!--   aspect rend:D: rend:d1-->
+            <!--   aspect rend:E: rend:e2-->
+            <cell>
+              <label>Label: E = e2, D is overriden with D = d1</label>
+              <label>3</label>
+              <constraint>
+                <aspect>rend:E</aspect>
+                <value>rend:e2</value>
+              </constraint>
+              <constraint>
+                <aspect>rend:D</aspect>
+                <value>rend:d1</value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+      </headers>
+      <cells axis="z">
+        <cells axis="y">
+          <cells axis="x">
+            <cell>
+              <fact>instance-coord-override.xml#m1_D_d0_E_e0</fact>
+            </cell>
+            <cell>
+              <fact>instance-coord-override.xml#m1_D_d0_E_e1</fact>
+            </cell>
+            <cell>
+              <fact>instance-coord-override.xml#m1_D_d1_E_e2</fact>
+            </cell>
+          </cells>
+          <cells axis="x">
+            <cell>
+              <fact>instance-coord-override.xml#m2_D_d0_E_e0</fact>
+            </cell>
+            <cell>
+              <fact>instance-coord-override.xml#m2_D_d0_E_e1</fact>
+            </cell>
+            <cell>
+              <fact>instance-coord-override.xml#m2_D_d1_E_e2</fact>
+            </cell>
+          </cells>
+        </cells>
+      </cells>
+    </table>
+  </tableSet>
+</tableModel>

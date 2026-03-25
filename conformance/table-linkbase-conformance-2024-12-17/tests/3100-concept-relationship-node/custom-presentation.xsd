@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schema xmlns="http://www.w3.org/2001/XMLSchema" targetNamespace="http://www.xbrl.org/table-examples/custom-links" xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:gen="http://xbrl.org/2008/generic" xmlns:xl="http://www.xbrl.org/2003/XLink" xmlns:custom="http://www.xbrl.org/table-examples/custom-links" elementFormDefault="qualified">
+
+    <!-- Defines a custom version of the presentation linkbase, for conformance testing purposes. -->
+
+    <annotation>
+        <appinfo>
+            <link:arcroleType arcroleURI="http://xbrl.org/table-examples/parent-child" cyclesAllowed="undirected" id="parent-child">
+                <link:usedOn>custom:presentationArc</link:usedOn>
+            </link:arcroleType>
+        </appinfo>
+    </annotation>
+    
+    <import namespace="http://www.xbrl.org/2003/XLink" schemaLocation="http://www.xbrl.org/2003/xl-2003-12-31.xsd"/>
+    <import namespace="http://xbrl.org/2008/generic" schemaLocation="http://www.xbrl.org/2008/generic-link.xsd"/>
+    <import namespace="http://www.xbrl.org/2003/linkbase" schemaLocation="http://www.xbrl.org/2003/xbrl-linkbase-2003-12-31.xsd" />
+
+    <!-- custom presentation link -->
+    <element id="presentationLink" name="presentationLink" substitutionGroup="xl:extended">
+        <complexType>
+            <complexContent>
+                <restriction base="xl:extendedType">
+                    <choice minOccurs="0" maxOccurs="unbounded">
+	                    <element ref="xl:title"/>
+	                    <element ref="link:documentation"/>
+	                    <element ref="link:loc"/>
+                        <element ref="link:presentationArc"/>
+                        <element ref="link:definitionArc"/>
+                        <element ref="custom:presentationArc"/>
+                    </choice>
+                </restriction>
+            </complexContent>
+        </complexType>
+    </element>
+
+    <!-- custom presentation arc -->
+    <element id="presentationArc" name="presentationArc" substitutionGroup="xl:arc" type="xl:arcType"/>
+
+</schema>

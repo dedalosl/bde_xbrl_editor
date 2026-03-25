@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2013-10-17"
+  name="3120-concept-relationship-node-linkrole-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Chris Rimes</name>
+        <email>cdr@corefiling.com</email>
+    </creator>
+    <number>3120</number>
+    <name>Concept Relationship Node Linkrole Testcase</name>
+    <description>Table linkbase test case using a concept relationship node with different linkroles</description>
+    
+    <variation id="v-01">
+        <name>Concept relationship node with custom link role</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+          A custom link role for the presentation network is specified.  This
+          variation has no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">custom-linkrole-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/custom-linkrole-no-data.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-01i">
+        <name>Concept relationship node with custom link role, with instance</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+          A custom link role for the presentation network is specified.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">custom-linkrole-instance.xml</instance>
+            <linkbase>custom-linkrole-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/custom-linkrole.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-02">
+        <name>Concept relationship node with parameterized link role</name>
+        <description>
+          Two tables each with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  Each table displays the presentation network for a
+          different link role.  This variation has no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">linkrole-parameter-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/linkrole-parameter.xml</table>
+        </result>
+    </variation>
+ 
+    <variation id="v-03">
+        <name>Concept relationship node with a link role expression that evaluates to an invalid URI</name>
+        <description>
+          Invalid table with a concept relationship node that specifies the
+          link role using an XPath expression that evaluates to an invalid URI.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">invalid-linkrole-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:expressionNotCastableToRequiredType</error>
+        </result>
+    </variation>
+  
+    <variation id="v-04">
+        <name>Concept relationship node with an empty link role expression</name>
+        <description>
+          Invalid table with a concept relationship node that specifies the
+          link role using an XPath expression that evaluates to the empty string.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">empty-linkrole-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:expressionNotCastableToRequiredType</error>
+        </result>
+    </variation>
+  
+    <variation id="v-05">
+        <name>Concept relationship node with a link role expression that evaluates to a sequence</name>
+        <description>
+          Invalid table with a concept relationship node that specifies the
+          link role using an XPath expression that evaluates to a sequence of
+          more than one URI.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">sequence-linkrole-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:expressionNotCastableToRequiredType</error>
+        </result>
+    </variation>
+  
+    <variation id="v-06">
+        <name>Concept relationship node with a simple link role expression</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+          The link role is specified using an XPath expression.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">linkrole-expression-instance.xml</instance>
+            <linkbase>linkrole-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/linkrole-expression.xml</table>
+        </result>
+    </variation>
+  
+</testcase>

@@ -1,0 +1,313 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2011-09-16"
+  name="1070-rule-node-occ-rule-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xbrlfe="http://xbrl.org/2008/formula/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Herm Fischer</name>
+        <email>fischer@markv.com</email>
+    </creator>
+    <number>1070</number>
+    <name>Rule Node OCC Rule Testcase</name>
+    <description>Table linkbase test case using a rule node with an OCC rule</description>
+
+    <variation id="v-01">
+        <name>Rule nodes with OCC fragment rules for the segment</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and two columns
+          (occ fragment rules for segment). In this variation there is no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">occ-fragment-segment-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/occ-fragment-segment-no-data.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-01i">
+        <name>Rule nodes with OCC fragment rules for the segment, with instance</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and two columns
+          (occ fragment rules for segment).
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">occ-fragment-segment-instance.xml</instance>
+            <linkbase>occ-fragment-segment-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/occ-fragment-segment.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-02">
+        <name>Rule nodes with OCC fragment rules for the scenario</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and two columns
+          (occ fragment rules for scenario). In this variation there is no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">occ-fragment-scenario-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/occ-fragment-scenario-no-data.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-02i">
+        <name>Rule nodes with OCC fragment rules for the scenario, with instance</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and two columns
+          (occ fragment rules for scenario).
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">occ-fragment-scenario-instance.xml</instance>
+            <linkbase>occ-fragment-scenario-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/occ-fragment-scenario.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-03i">
+        <name>Rule nodes with OCC xpath rules for the segment, with instance</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and two columns
+          (occ xpath rules for segment - but these will not work as the
+          context item is undefined).
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">occ-xpath-segment-instance.xml</instance>
+            <linkbase>occ-xpath-segment-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <!-- even with an instance, the context item of the XPath expression is undefined according to the table linkbase specification. -->
+        <result expected="invalid"/>
+    </variation>
+
+    <variation id="v-04i">
+        <name>Rule nodes with OCC xpath rules for the scenario, with instance</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and two columns
+          (occ xpath rules for scenario - but these will not work as the
+          context item is undefined).
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">occ-xpath-scenario-instance.xml</instance>
+            <linkbase>occ-xpath-scenario-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <!-- even with an instance, the context item of the XPath expression is undefined according to the table linkbase specification. -->
+        <result expected="invalid"/>
+    </variation>
+    
+    <variation id="v-05">
+        <name>Rule nodes with an empty OCC rule for the segment</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and a single column
+          (empty OCC rule for segment). In this variation there is no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">occ-empty-segment-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/occ-empty-segment-no-data.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-05i">
+        <name>Rule nodes with an empty OCC rule for the segment, with instance</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and a single column
+          (empty OCC rule for segment).
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">occ-empty-segment-instance.xml</instance>
+            <linkbase>occ-empty-segment-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/occ-empty-segment.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-06">
+        <name>Rule nodes with an empty OCC rule for the scenario</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and a single column
+          (empty OCC rule for scenario). In this variation there is no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">occ-empty-scenario-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/occ-empty-scenario-no-data.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-06i">
+        <name>Rule nodes with an empty OCC rule for the scenario, with instance</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and a single column
+          (empty OCC rule for scenario).
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">occ-empty-scenario-instance.xml</instance>
+            <linkbase>occ-empty-scenario-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/occ-empty-scenario.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-07">
+        <name>Rule nodes with an occ fragment segment rule that is overridden by a child node</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and two columns
+          (occ rules for the segment). The root occ segment rule is overriden by
+           a child occ segment rule. In this variation there is no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">occ-fragment-overridden-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/occ-fragment-overridden-no-data.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-07i">
+        <name>Rule nodes with an occ fragment segment rule that is overridden by a child node, with instance</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and two columns
+          (occ rules for the segment). The root occ segment rule is overriden by
+           a child occ segment rule.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">occ-fragment-overridden-instance.xml</instance>
+            <linkbase>occ-fragment-overridden-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/occ-fragment-overridden.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-08">
+        <name>Rule nodes with an occ fragment segment rule that includes a dimension</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and two columns
+          where one of the OCC rules addresses a dimension which is invalid in
+          the dimensional aspect model.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">occ-fragment-includes-dimension-table.xml</linkbase>
+            <linkbase>occ-fragment-overridden-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlfe:badSubsequentOCCValue</error>
+        </result>
+    </variation>
+
+    <variation id="v-09">
+        <name>Rule node with two OCC rules for segment</name>
+        <description>
+          Multipe OCC rules for the same OCC are not allowed.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">occ-segment-multiple-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:multipleValuesForAspect</error>
+        </result>
+    </variation>
+
+    <variation id="v-10">
+        <name>Rule node with two OCC rules for scenario</name>
+        <description>
+          Multipe OCC rules for the same OCC are not allowed.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">occ-scenario-multiple-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:multipleValuesForAspect</error>
+        </result>
+    </variation>
+
+</testcase>

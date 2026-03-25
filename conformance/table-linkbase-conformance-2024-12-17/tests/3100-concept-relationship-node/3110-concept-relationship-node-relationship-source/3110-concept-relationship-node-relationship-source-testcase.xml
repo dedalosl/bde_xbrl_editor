@@ -1,0 +1,378 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2013-10-17"
+  name="3110-concept-relationship-node-relationship-source-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Chris Rimes</name>
+        <email>cdr@corefiling.com</email>
+    </creator>
+    <number>3110</number>
+    <name>Concept Relationship Node Relationship Source Testcase</name>
+    <description>Table linkbase test case using a concept relationship node with different relationship sources</description>
+    
+    <variation id="v-01">
+        <name>Concept relationship node with a relationship source of xfi:root</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+          The relationship source is the special value xfi:root, so the full
+          presentation network starting from the root(s) is included.  This
+          variation has no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">concept-relationship-node-xfi-root-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/concept-relationship-node-xfi-root-no-data.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-01i">
+        <name>Concept relationship node with a relationship source of xfi:root, with instance</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+          The relationship source is the special value xfi:root, so the full
+          presentation network starting from the root(s) is included.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">concept-relationship-node-xfi-root-instance.xml</instance>
+            <linkbase >concept-relationship-node-xfi-root-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/concept-relationship-node-xfi-root.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-02">
+        <name>Concept relationship node with the relationship source omitted</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          primary items as rows.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+          No relationship source is specified, so the full presentation network
+          starting from the root(s) is included.  This variation has no
+          instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">concept-relationship-node-source-omitted-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/concept-relationship-node-source-omitted-no-data.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-02i">
+        <name>Concept relationship node with the relationship source omitted, with instance</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          primary items as rows.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+          No relationship source is specified, so the full presentation network
+          starting from the root(s) is included.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">concept-relationship-node-source-omitted-instance.xml</instance>
+            <linkbase >concept-relationship-node-source-omitted-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/concept-relationship-node-source-omitted.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-03">
+        <name>Concept relationship node for part of a presentation network</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          primary items as rows.  The specified relationship source selects
+          only part of the presentation network - concepts that are descendants
+          of o5.  This variation has no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">concept-relationship-node-partial-tree-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/concept-relationship-node-partial-tree-no-data.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-03i">
+        <name>Concept relationship node for part of a presentation network, with instance</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          primary items as rows.  The specified relationship source selects
+          only part of the presentation network - concepts that are descendants
+          of o5.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">concept-relationship-node-partial-tree-instance.xml</instance>
+            <linkbase >concept-relationship-node-partial-tree-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/concept-relationship-node-partial-tree.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-04">
+        <name>Concept relationship node with multiple relationship sources</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          primary items as rows.  Several relationship sources are specified,
+          resulting in a tree with multiple roots.  This variation has no
+          instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">concept-relationship-node-multiple-sources-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/concept-relationship-node-multiple-sources-no-data.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-04i">
+        <name>Concept relationship node with multiple relationship sources, with instance</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          primary items as rows.  Several relationship sources are specified,
+          resulting in a tree with multiple roots.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">concept-relationship-node-multiple-sources-instance.xml</instance>
+            <linkbase >concept-relationship-node-multiple-sources-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/concept-relationship-node-multiple-sources.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-05">
+        <name>Concept relationship node with invalid (non-existent) relationship source</name>
+        <description>
+          Invalid table with a concept relationship node that specifies a
+          non-existent concept as the relationship source.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">concept-relationship-node-invalid-source-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:invalidConceptRelationshipSource</error>
+        </result>
+    </variation>
+    
+    <variation id="v-06">
+        <name>Concept relationship node with invalid (hypercube) relationship source</name>
+        <description>
+          Invalid table with a concept relationship node that specifies a
+          hypercube as the relationship source.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">concept-relationship-node-invalid-hypercube-source-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:invalidConceptRelationshipSource</error>
+        </result>
+    </variation>
+    
+    <variation id="v-07">
+        <name>Concept relationship node with invalid (dimension) relationship source</name>
+        <description>
+          Invalid table with a concept relationship node that specifies a
+          dimension as the relationship source.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">concept-relationship-node-invalid-dimension-source-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:invalidConceptRelationshipSource</error>
+        </result>
+    </variation>
+    
+    <variation id="v-08">
+        <name>Concept relationship node with a relationship source expression</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The relationship source is specified by an XPath
+          expression that evaluates to a QName.  This variation has no
+          instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">concept-relationship-node-source-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/concept-relationship-node-source-expression-no-data.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-08i">
+        <name>Concept relationship node with a relationship source expression, with instance</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The relationship source is specified by an XPath
+          expression that evaluates to a QName.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">concept-relationship-node-source-expression-instance.xml</instance>
+            <linkbase >concept-relationship-node-source-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/concept-relationship-node-source-expression.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-09">
+        <name>Concept relationship node with both relationship sources and relationship source expressions</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          primary items as rows.  Several relationship sources are specified,
+          using a combination of literal QNames and XPath expressions,
+          resulting in a tree with multiple roots.  This variation has no
+          instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">concept-relationship-node-mixed-sources-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/concept-relationship-node-mixed-sources-no-data.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-09i">
+        <name>Concept relationship node with both relationship sources and relationship source expressions, with instance</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          primary items as rows.  Several relationship sources are specified,
+          using a combination of literal QNames and XPath expressions,
+          resulting in a tree with multiple roots.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">concept-relationship-node-mixed-sources-instance.xml</instance>
+            <linkbase >concept-relationship-node-mixed-sources-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/concept-relationship-node-mixed-sources.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-10">
+        <name>Concept relationship node with a relationship source expression that does not evaluate to a QName</name>
+        <description>
+          Invalid table with a concept relationship node that specifies a
+          relationship source using an XPath expression that does not evaluate
+          to a QName.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">concept-relationship-node-invalid-source-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:expressionNotCastableToRequiredType</error>
+        </result>
+    </variation>
+  
+    <variation id="v-11">
+        <name>Concept relationship node with a relationship source expression that evaluates to a sequence</name>
+        <description>
+          Invalid table with a concept relationship node that specifies a
+          relationship source using an XPath expression that evaluates to a
+          sequence of more than one QName.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">concept-relationship-node-sequence-source-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:expressionNotCastableToRequiredType</error>
+        </result>
+    </variation>
+  
+</testcase>

@@ -1,0 +1,34 @@
+<?xml version='1.0' encoding='utf-8'?>
+<tableModel xmlns="http://xbrl.org/2014/table/model" xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:rend="http://www.xbrl.org/table-examples" xml:base="..">
+  <tableSet>
+    <label>Merge rule node with a tag selector and child aspect node</label>
+    <table>
+      <headers axis="y">
+        <group/>
+      </headers>
+      <headers axis="x">
+        <group>
+          <header>
+            <cell>
+              <label>2002</label>
+              <constraint tag="instant">
+                <aspect>period</aspect>
+                <value>
+                  <xbrli:instant>2002-01-01T00:00:00Z</xbrli:instant>
+                </value>
+              </constraint>
+              <constraint>
+                <aspect>period</aspect>
+                <value>
+                  <xbrli:startDate>2002-01-01T00:00:00Z</xbrli:startDate>
+                  <xbrli:endDate>2003-01-01T00:00:00Z</xbrli:endDate>
+                </value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+      </headers>
+      <cells axis="z"/>
+    </table>
+  </tableSet>
+</tableModel>
