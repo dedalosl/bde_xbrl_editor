@@ -35,7 +35,7 @@
 - [ ] T008 [P] Implement error hierarchy: `TaxonomyLoadError`, `UnsupportedTaxonomyFormatError`, `TaxonomyDiscoveryError` (with `failing_uris`), `TaxonomyParseError` (with `file_path`, `line`, `column`) — `src/bde_xbrl_editor/taxonomy/models.py`
 - [ ] T009 [P] Implement `LoaderSettings` frozen dataclass with `allow_network=False`, `language_preference=["es","en"]`, `local_catalog=None` — `src/bde_xbrl_editor/taxonomy/settings.py`
 - [ ] T010 [P] Implement all namespace and label-role constants: `LABEL_ROLE`, `TERSE_LABEL_ROLE`, `VERBOSE_LABEL_ROLE`, `DOCUMENTATION_ROLE`, `PERIOD_START_ROLE`, `PERIOD_END_ROLE`, `TOTAL_LABEL_ROLE`, `NEGATED_LABEL_ROLE`, `RC_CODE_ROLE`, XBRL/link/xlink namespace URIs, Eurofiling filing-indicator namespace, PWD table namespace — `src/bde_xbrl_editor/taxonomy/constants.py`
-- [ ] T011 [P] Implement `TaxonomyMetadata` frozen dataclass (name, version, publisher, entry_point_path, loaded_at, declared_languages) — `src/bde_xbrl_editor/taxonomy/models.py`
+- [ ] T011 [P] Implement `TaxonomyMetadata` frozen dataclass (name, version, publisher, entry_point_path, loaded_at, declared_languages, period_type) — `src/bde_xbrl_editor/taxonomy/models.py`
 - [ ] T012 [P] Implement `Concept` frozen dataclass (qname, data_type, period_type, balance, abstract, nillable, substitution_group) — `src/bde_xbrl_editor/taxonomy/models.py`
 - [ ] T013 Write unit tests for `QName` (equality, hashing, prefix ignored, `from_clark`, `__str__`) — `tests/unit/taxonomy/test_qname.py`
 
@@ -107,6 +107,7 @@
 - [ ] T046 [P] Add `conftest.py` shared fixtures: `bde_sample_taxonomy_path` pointing to `test_data/taxonomies/bde_sample/entry_point.xsd`; `loaded_taxonomy` fixture that loads once per session (`scope="session"`) — `tests/conftest.py`
 - [ ] T047 [P] Validate `LabelResolver.resolve()` never-raises guarantee with a fuzz-like test: random QNames not in taxonomy always return non-empty string — `tests/unit/taxonomy/test_label_resolver.py` (extend)
 - [ ] T048 [P] Verify error messages meet SC-004 (actionable, no "unknown error"): review each `TaxonomyLoadError` subclass to ensure `str(e)` is human-readable and specific — `src/bde_xbrl_editor/taxonomy/models.py`
+- [ ] T049 [P] Implement `LoaderSettings` persistence and UI: add a "Settings…" button to `TaxonomyLoaderWidget` that opens a `QDialog` allowing the user to view and edit `local_catalog` path and `allow_network` toggle; persist settings to a JSON config file (`~/.bde_xbrl_editor/settings.json`) loaded at startup — `src/bde_xbrl_editor/ui/widgets/taxonomy_loader_widget.py`, `src/bde_xbrl_editor/ui/widgets/loader_settings_dialog.py`
 
 ---
 
@@ -166,5 +167,5 @@ The spec's P1 story (load) is the only hard prerequisite for all downstream feat
 | Phase 3: US1 (Load) | 20 | 17 |
 | Phase 4: US2 (Cache) | 6 | 4 |
 | Phase 5: US3 (Inspect) | 4 | 3 |
-| Phase 6: Polish | 5 | 4 |
-| **Total** | **48** | **39** |
+| Phase 6: Polish | 6 | 5 |
+| **Total** | **49** | **40** |
