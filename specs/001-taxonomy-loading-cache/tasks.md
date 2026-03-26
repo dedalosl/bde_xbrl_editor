@@ -62,11 +62,11 @@
 - [ ] T026 [P] [US1] Implement PySide6 progress dialog wrapper: `QProgressDialog` subclass that wraps the progress callback protocol `(message, current, total)` and posts updates safely on the main thread — `src/bde_xbrl_editor/ui/widgets/progress_dialog.py`
 - [ ] T027 [P] [US1] Implement taxonomy file-picker widget: `QWidget` with `QLineEdit` (path display), `QPushButton` ("Browse…"), `QPushButton` ("Load"); triggers `TaxonomyLoader.load()` in a background thread; shows `ProgressDialog`; emits `taxonomy_loaded(TaxonomyStructure)` signal on success; shows `QMessageBox` on error — `src/bde_xbrl_editor/ui/widgets/taxonomy_loader_widget.py`
 - [ ] T028 [P] [US1] Implement minimal `QMainWindow` shell: menu bar with File → Open Taxonomy; embeds `TaxonomyLoaderWidget`; displays loaded taxonomy name and table count in status bar — `src/bde_xbrl_editor/ui/main_window.py`, `src/bde_xbrl_editor/ui/app.py`
-- [ ] T029 [P] [US1] Write unit tests: DTS discovery with mock filesystem (path resolution, network block, circular reference detection) — `tests/unit/taxonomy/test_discovery.py`
+- [ ] T029 [P] [US1] Write unit tests: DTS discovery with mock filesystem (path resolution, network block, circular reference detection); also test negative path: pass a non-XBRL file to `TaxonomyLoader.load()` and assert `TaxonomyLoadError` is raised with a non-empty, human-readable `str(e)` (FR-007, SC-004) — `tests/unit/taxonomy/test_discovery.py`
 - [ ] T030 [P] [US1] Write unit tests: schema parser (concept extraction, type mapping, abstract flag) — `tests/unit/taxonomy/test_schema_parser.py`
 - [ ] T031 [P] [US1] Write unit tests: `LabelResolver` (standard vs generic precedence, priority, prohibited, language fallback, never-raises guarantee) — `tests/unit/taxonomy/test_label_resolver.py`
 - [ ] T032 [P] [US1] Write unit tests: PWD table parser (breakdown tree construction, node types, RC-code extraction) — `tests/unit/taxonomy/test_table_pwd_parser.py`
-- [ ] T033 [US1] Write integration test: load BDE sample taxonomy end-to-end; assert correct concept count, table count, at least one label per concept, at least one RC-code on a leaf node — `tests/integration/taxonomy/test_bde_taxonomy_load.py`
+- [ ] T033 [US1] Write integration test: load BDE sample taxonomy end-to-end; assert correct concept count, table count, at least one label per concept, at least one RC-code on a leaf node; pass a counting progress callback and assert it is called ≥5 times during load (FR-010) — `tests/integration/taxonomy/test_bde_taxonomy_load.py`
 
 ---
 
