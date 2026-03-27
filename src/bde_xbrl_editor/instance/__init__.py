@@ -11,26 +11,35 @@ from bde_xbrl_editor.instance.context_builder import (
     deduplicate_contexts,
     generate_context_id,
 )
+from bde_xbrl_editor.instance.editor import InstanceEditor
 from bde_xbrl_editor.instance.factory import InstanceFactory
 from bde_xbrl_editor.instance.models import (
     ContextId,
     DimensionalConfiguration,
+    DuplicateFactError,
+    EditOperation,
     Fact,
     FilingIndicator,
     InstanceCreationError,
+    InstanceParseError,
     InstanceSaveError,
     InvalidDimensionMemberError,
     InvalidEntityIdentifierError,
+    InvalidFactValueError,
     InvalidReportingPeriodError,
     MissingDimensionValueError,
+    OrphanedFact,
     ReportingEntity,
     ReportingPeriod,
+    TaxonomyResolutionError,
     UnitId,
     XbrlContext,
     XbrlInstance,
     XbrlUnit,
 )
+from bde_xbrl_editor.instance.parser import InstanceParser
 from bde_xbrl_editor.instance.serializer import InstanceSerializer
+from bde_xbrl_editor.instance.validator import XbrlTypeValidator
 
 __all__ = [
     # Primary entry points
@@ -47,9 +56,19 @@ __all__ = [
     "Fact",
     "ContextId",
     "UnitId",
+    # Feature 004 additions
+    "InstanceEditor",
+    "InstanceParser",
+    "XbrlTypeValidator",
+    "OrphanedFact",
+    "EditOperation",
     # Errors
     "InstanceCreationError",
     "InstanceSaveError",
+    "InstanceParseError",
+    "TaxonomyResolutionError",
+    "DuplicateFactError",
+    "InvalidFactValueError",
     "InvalidReportingPeriodError",
     "InvalidEntityIdentifierError",
     "MissingDimensionValueError",
