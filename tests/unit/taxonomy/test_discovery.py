@@ -9,7 +9,6 @@ import pytest
 
 from bde_xbrl_editor.taxonomy.discovery import discover_dts
 from bde_xbrl_editor.taxonomy.models import (
-    TaxonomyDiscoveryError,
     TaxonomyParseError,
     UnsupportedTaxonomyFormatError,
 )
@@ -123,21 +122,31 @@ class TestDiscoveryBasic:
 
 
 class TestNetworkBlock:
-    def test_network_blocked_raises_discovery_error(self, tmp_path):
+    def test_network_blocked_skips_remote_url_gracefully(self, tmp_path):
+        # Remote URLs with no local catalog mapping are silently skipped so that
+        # taxonomies with external imports still load from their local files.
         entry = write_xsd(tmp_path, "entry.xsd", XSD_WITH_REMOTE)
-        with pytest.raises(TaxonomyDiscoveryError) as exc_info:
-            discover_dts(entry, LoaderSettings(allow_network=False))
-        err = exc_info.value
-        assert "allow_network" in str(err) or "Network" in str(err)
-        assert len(err.failing_uris) >= 1
-        assert "http://external.example/schema.xsd" in err.failing_uris[0][0]
+        schemas, _ = discover_dts(entry, LoaderSettings(allow_network=False))
+        # Entry point itself is always included
+        assert any(p.name == "entry.xsd" for p in schemas)
 
-    def test_error_message_is_human_readable(self, tmp_path):
+    def test_local_catalog_resolves_remote_url(self, tmp_path):
+        # If a local_catalog mapping exists, the remote URL is resolved locally.
+        # XSD_WITH_REMOTE imports http://external.example/schema.xsd,
+        # so the catalog must map http://external.example/ → tmp_path,
+        # meaning the resolved local file is tmp_path/schema.xsd.
+        local_schema = tmp_path / "schema.xsd"
+        local_schema.write_text(
+            '<?xml version="1.0"?>'
+            '<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"'
+            ' targetNamespace="http://external.example"/>',
+            encoding="utf-8",
+        )
+        catalog = {"http://external.example/": tmp_path}
+        settings = LoaderSettings(allow_network=False, local_catalog=catalog)
         entry = write_xsd(tmp_path, "entry.xsd", XSD_WITH_REMOTE)
-        with pytest.raises(TaxonomyDiscoveryError) as exc_info:
-            discover_dts(entry, LoaderSettings(allow_network=False))
-        assert len(str(exc_info.value)) > 20
-        assert "http" in str(exc_info.value).lower() or "network" in str(exc_info.value).lower()
+        schemas, _ = discover_dts(entry, settings)
+        assert any(p.name == "schema.xsd" for p in schemas)
 
 
 class TestNegativePaths:

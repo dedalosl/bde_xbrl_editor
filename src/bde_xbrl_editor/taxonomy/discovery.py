@@ -155,10 +155,8 @@ def discover_dts(
                     continue
                 resolved = _resolve_href(schema_loc, base_dir, settings)
                 if resolved is None:
-                    if _is_remote(schema_loc) and not settings.allow_network:
-                        failing_uris.append(
-                            (schema_loc, "Network access disabled (allow_network=False)")
-                        )
+                    # Remote URL with no local catalog mapping — skip silently.
+                    # Only flag missing LOCAL files as failures.
                     continue
                 queue.append((resolved, False))
 
@@ -174,10 +172,7 @@ def discover_dts(
                     continue
                 resolved = _resolve_href(href, base_dir, settings)
                 if resolved is None:
-                    if _is_remote(href) and not settings.allow_network:
-                        failing_uris.append(
-                            (href, "Network access disabled (allow_network=False)")
-                        )
+                    # Remote URL with no local catalog mapping — skip silently.
                     continue
                 queue.append((resolved, True))
 
