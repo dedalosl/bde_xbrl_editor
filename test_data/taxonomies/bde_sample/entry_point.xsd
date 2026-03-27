@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Minimal taxonomy entry point for unit tests.
+  This is a stub only — not a real BDE taxonomy.
+  Integration tests will skip automatically when this stub is detected.
+  To run integration tests, replace this directory with a real BDE taxonomy.
+-->
+<xs:schema
+  xmlns:xs="http://www.w3.org/2001/XMLSchema"
+  xmlns:xbrli="http://www.xbrl.org/2003/instance"
+  xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:xlink="http://www.w3.org/1999/xlink"
+  xmlns:test="http://example.com/xbrl/test"
+  targetNamespace="http://example.com/xbrl/test"
+  elementFormDefault="qualified"
+  attributeFormDefault="unqualified">
+
+  <xs:import namespace="http://www.xbrl.org/2003/instance"
+             schemaLocation="http://www.xbrl.org/2003/xbrl-instance-2003-12-31.xsd"/>
+
+  <xs:annotation>
+    <xs:appinfo>
+      <link:linkbaseRef
+        xlink:type="simple"
+        xlink:href="label_en.xml"
+        xlink:role="http://www.xbrl.org/2003/role/labelLinkbaseRef"
+        xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase"/>
+    </xs:appinfo>
+  </xs:annotation>
+
+  <!-- Sample monetary concept -->
+  <xs:element
+    name="Assets"
+    id="test_Assets"
+    type="xbrli:monetaryItemType"
+    substitutionGroup="xbrli:item"
+    xbrli:periodType="instant"
+    xbrli:balance="debit"
+    abstract="false"
+    nillable="true"/>
+
+  <!-- Sample string concept -->
+  <xs:element
+    name="EntityName"
+    id="test_EntityName"
+    type="xbrli:stringItemType"
+    substitutionGroup="xbrli:item"
+    xbrli:periodType="duration"
+    abstract="false"
+    nillable="true"/>
+
+</xs:schema>
