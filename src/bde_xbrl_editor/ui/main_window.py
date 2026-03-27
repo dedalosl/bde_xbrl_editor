@@ -1,8 +1,9 @@
-"""QMainWindow shell — Feature 001 minimal UI."""
+"""QMainWindow shell — Features 001 + 002 UI."""
 
 from __future__ import annotations
 
 from PySide6.QtWidgets import (
+    QDialog,
     QMainWindow,
     QStatusBar,
 )
@@ -42,6 +43,13 @@ class MainWindow(QMainWindow):
         self._reload_action.triggered.connect(self._on_reload)
 
         file_menu.addSeparator()
+
+        self._new_instance_action = file_menu.addAction("&New Instance…")
+        self._new_instance_action.setShortcut("Ctrl+N")
+        self._new_instance_action.setEnabled(False)
+        self._new_instance_action.triggered.connect(self._on_new_instance)
+
+        file_menu.addSeparator()
         quit_action = file_menu.addAction("&Quit")
         quit_action.setShortcut("Ctrl+Q")
         quit_action.triggered.connect(self.close)
@@ -73,8 +81,8 @@ class MainWindow(QMainWindow):
             f"{concept_count} concepts, {table_count} tables"
         )
         self._reload_action.setEnabled(True)
+        self._new_instance_action.setEnabled(True)
 
-        # Show taxonomy info panel
         from bde_xbrl_editor.ui.widgets.taxonomy_info_panel import TaxonomyInfoPanel
 
         panel = TaxonomyInfoPanel(structure, parent=self)
@@ -86,3 +94,18 @@ class MainWindow(QMainWindow):
             self._loader_widget._path_edit.setText(str(entry_point))
             self.setCentralWidget(self._loader_widget)
             self._loader_widget._on_load()
+
+    def _on_new_instance(self) -> None:
+        if self._current_taxonomy is None:
+            return
+        from bde_xbrl_editor.ui.widgets.instance_creation_wizard.wizard import (
+            InstanceCreationWizard,
+        )
+
+        wizard = InstanceCreationWizard(taxonomy=self._current_taxonomy, parent=self)
+        if wizard.exec() == QDialog.DialogCode.Accepted:
+            instance = wizard.created_instance
+            if instance and instance.source_path:
+                self._status.showMessage(
+                    f"Instance created: {instance.source_path}"
+                )
