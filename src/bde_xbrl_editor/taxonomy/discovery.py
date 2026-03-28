@@ -80,15 +80,17 @@ def discover_dts(
     entry_point: Path,
     settings: LoaderSettings,
     progress_callback=None,
-) -> tuple[list[Path], list[Path]]:
+) -> tuple[list[Path], list[Path], list[str]]:
     """Discover all schema and linkbase files reachable from entry_point.
 
     Returns:
-        (schema_paths, linkbase_paths) — deduplicated lists of absolute Paths.
+        (schema_paths, linkbase_paths, skipped_remote_urls) — deduplicated
+        lists of absolute Paths plus a list of remote URLs that could not be
+        resolved locally and were skipped (informational, not an error).
 
     Raises:
         UnsupportedTaxonomyFormatError — entry_point is not a valid XBRL XSD.
-        TaxonomyDiscoveryError — one or more references could not be resolved.
+        TaxonomyDiscoveryError — a LOCAL file reference could not be resolved.
         TaxonomyParseError — a file in the DTS is not well-formed XML.
     """
     entry_point = entry_point.resolve()
@@ -107,6 +109,7 @@ def discover_dts(
     visited_schemas: set[Path] = set()
     visited_linkbases: set[Path] = set()
     failing_uris: list[tuple[str, str]] = []
+    skipped_remote: list[str] = []  # informational only
 
     # Queue: (file_path, is_linkbase)
     queue: list[tuple[Path, bool]] = [(entry_point, False)]
@@ -155,8 +158,8 @@ def discover_dts(
                     continue
                 resolved = _resolve_href(schema_loc, base_dir, settings)
                 if resolved is None:
-                    # Remote URL with no local catalog mapping — skip silently.
-                    # Only flag missing LOCAL files as failures.
+                    if _is_remote(schema_loc):
+                        skipped_remote.append(schema_loc)
                     continue
                 queue.append((resolved, False))
 
@@ -172,7 +175,8 @@ def discover_dts(
                     continue
                 resolved = _resolve_href(href, base_dir, settings)
                 if resolved is None:
-                    # Remote URL with no local catalog mapping — skip silently.
+                    if _is_remote(href):
+                        skipped_remote.append(href)
                     continue
                 queue.append((resolved, True))
 
@@ -189,6 +193,8 @@ def discover_dts(
                 continue
             resolved = _resolve_href(href, base_dir, settings)
             if resolved is None:
+                if _is_remote(href):
+                    skipped_remote.append(href)
                 continue
             queue.append((resolved, True))
 
@@ -206,4 +212,8 @@ def discover_dts(
             6,
         )
 
-    return list(visited_schemas), list(visited_linkbases)
+    # De-duplicate skipped remote URLs (preserve order)
+    seen: set[str] = set()
+    unique_skipped = [u for u in skipped_remote if not (u in seen or seen.add(u))]  # type: ignore[func-returns-value]
+
+    return list(visited_schemas), list(visited_linkbases), unique_skipped

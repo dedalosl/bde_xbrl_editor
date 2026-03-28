@@ -138,6 +138,12 @@ class TaxonomyLoader:
     def __init__(self, cache: TaxonomyCache, settings: LoaderSettings | None = None) -> None:
         self._cache = cache
         self._settings = settings or LoaderSettings()
+        self._last_skipped_urls: list[str] = []
+
+    @property
+    def last_skipped_urls(self) -> list[str]:
+        """Remote URLs that were skipped (not in local catalog) during the last load."""
+        return self._last_skipped_urls
 
     # ------------------------------------------------------------------
     # Public API
@@ -194,9 +200,10 @@ class TaxonomyLoader:
 
         # Step 1: DTS discovery
         progress("Discovering DTS…", 1)
-        schema_paths, linkbase_paths = discover_dts(
+        schema_paths, linkbase_paths, skipped_urls = discover_dts(
             entry_point, self._settings, progress_callback=None
         )
+        self._last_skipped_urls: list[str] = skipped_urls
 
         # Step 2: Parse schemas → concepts
         progress("Parsing schemas…", 2)

@@ -34,75 +34,57 @@ class MultiLevelColumnHeader(QHeaderView):
         return QSize(super().sizeHint().width(), self._grid.depth * _LEVEL_HEIGHT)
 
     def paintSection(self, painter: QPainter, rect: QRect, logical_index: int) -> None:
-        """Paint a single column section — overridden to suppress default painting.
+        """Paint all header levels for this column section.
 
-        We handle all painting in paintEvent via the grid.
+        For spanning cells we paint the full-width cell only when we are at
+        the left-most logical index of that span, so each cell is drawn once.
         """
-        # Suppress the default single-row paint; all done in paintEvent
-        pass
-
-    def paintEvent(self, event: Any) -> None:
-        """Paint all header levels with correct spanning."""
         if self._grid is None:
-            super().paintEvent(event)
+            super().paintSection(painter, rect, logical_index)
             return
 
-        painter = QPainter(self.viewport())
-        try:
-            self._paint_all_levels(painter)
-        finally:
-            painter.end()
+        painter.save()
+        painter.setClipping(False)
 
-    def _paint_all_levels(self, painter: QPainter) -> None:
-        if self._grid is None:
-            return
-
-        # Build cumulative leaf widths map: leaf_index → x_offset
-        # We use the visible section widths
-        leaf_x_offsets: list[int] = []
-        x = 0
-        for i in range(self.count()):
-            leaf_x_offsets.append(x)
-            x += self.sectionSize(i)
-
-        # For each level, paint each HeaderCell
         for level_idx, cells in enumerate(self._grid.levels):
             y = level_idx * _LEVEL_HEIGHT
             leaf_cursor = 0
             for cell in cells:
-                if leaf_cursor >= len(leaf_x_offsets):
+                span = 1 if cell.is_leaf else cell.span
+                span_end = leaf_cursor + span
+
+                if leaf_cursor <= logical_index < span_end:
+                    # Only paint from the leftmost section of this span
+                    if logical_index == leaf_cursor:
+                        x_start = self.sectionViewportPosition(leaf_cursor)
+                        full_width = sum(
+                            self.sectionSize(leaf_cursor + k)
+                            for k in range(span)
+                            if leaf_cursor + k < self.count()
+                        )
+                        cell_rect = QRect(x_start, y, full_width, _LEVEL_HEIGHT)
+                        self._paint_cell(painter, cell_rect, cell)
                     break
-                x_start = leaf_x_offsets[leaf_cursor]
-                # Width = sum of section sizes for span
-                width = sum(
-                    self.sectionSize(leaf_cursor + k)
-                    for k in range(cell.span)
-                    if leaf_cursor + k < self.count()
-                )
-                rect = QRect(x_start, y, width, _LEVEL_HEIGHT)
 
-                # Draw cell background + border
-                painter.fillRect(rect, self.palette().window())
-                painter.setPen(self.palette().mid().color())
-                painter.drawRect(rect.adjusted(0, 0, -1, -1))
+                leaf_cursor += span
 
-                # Draw label
-                painter.setPen(self.palette().windowText().color())
-                if cell.rc_code:
-                    # Draw main label in upper portion, RC code below
-                    label_rect = QRect(x_start + 2, y + 2, width - 4, _LEVEL_HEIGHT // 2 - 2)
-                    rc_rect = QRect(x_start + 2, y + _LEVEL_HEIGHT // 2, width - 4, _LEVEL_HEIGHT // 2 - 2)
-                    painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, cell.label)
-                    rc_font = QFont(painter.font())
-                    rc_font.setPointSizeF(rc_font.pointSizeF() * _RC_FONT_SCALE)
-                    painter.setFont(rc_font)
-                    painter.drawText(rc_rect, Qt.AlignmentFlag.AlignCenter, cell.rc_code)
-                    painter.setFont(QFont())  # reset
-                else:
-                    inner_rect = rect.adjusted(2, 2, -2, -2)
-                    painter.drawText(inner_rect, Qt.AlignmentFlag.AlignCenter, cell.label)
+        painter.restore()
 
-                if not cell.is_leaf:
-                    leaf_cursor += cell.span
-                else:
-                    leaf_cursor += 1
+    def _paint_cell(self, painter: QPainter, rect: QRect, cell: Any) -> None:
+        painter.fillRect(rect, self.palette().window())
+        painter.setPen(self.palette().mid().color())
+        painter.drawRect(rect.adjusted(0, 0, -1, -1))
+        painter.setPen(self.palette().windowText().color())
+
+        if cell.rc_code:
+            label_rect = QRect(rect.x() + 2, rect.y() + 2, rect.width() - 4, _LEVEL_HEIGHT // 2 - 2)
+            rc_rect = QRect(rect.x() + 2, rect.y() + _LEVEL_HEIGHT // 2, rect.width() - 4, _LEVEL_HEIGHT // 2 - 2)
+            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, cell.label)
+            rc_font = QFont(painter.font())
+            rc_font.setPointSizeF(rc_font.pointSizeF() * _RC_FONT_SCALE)
+            painter.setFont(rc_font)
+            painter.drawText(rc_rect, Qt.AlignmentFlag.AlignCenter, cell.rc_code)
+            painter.setFont(QFont())
+        else:
+            inner_rect = rect.adjusted(2, 2, -2, -2)
+            painter.drawText(inner_rect, Qt.AlignmentFlag.AlignCenter, cell.label)
