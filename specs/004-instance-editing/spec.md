@@ -123,6 +123,7 @@ The application tracks whether the currently open instance has unsaved changes a
 - **FR-013**: The saved instance file MUST be a well-formed XBRL 2.1 XML document; the system must not produce malformed XML under any editing scenario.
 - **FR-014**: The system MUST preserve all facts, contexts, units, and metadata from the original instance that were not modified by the user — no silent data loss during save.
 - **FR-015**: The system MUST handle instances containing facts for concepts not present in the bound taxonomy by preserving those facts unchanged in the saved file, and informing the user that orphaned facts exist.
+- **FR-016**: The taxonomy loader settings dialog MUST provide a structured catalog editor for URL-to-path mappings. The editor MUST present existing mappings in a table with separate URL prefix and local path columns, allow adding new mappings via dedicated input fields (with a filesystem browse button for the path), allow deleting selected mappings, and allow reordering mappings via Move Up/Move Down controls (evaluation order matters: the first matching prefix wins).
 
 ### Key Entities
 
