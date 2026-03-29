@@ -17,11 +17,11 @@
 
 **Purpose**: Create all new package and file stubs — no logic yet
 
-- [ ] T001 Create `src/bde_xbrl_editor/conformance/__init__.py` (empty re-export stub)
-- [ ] T002 [P] Create `src/bde_xbrl_editor/conformance/__main__.py`, `registry.py`, `models.py`, `parser.py`, `executor.py`, `runner.py` (empty files with module docstrings)
-- [ ] T003 [P] Create reporters sub-package: `src/bde_xbrl_editor/conformance/reporters/__init__.py`, `reporters/console.py`, `reporters/json_reporter.py` (empty files with docstrings)
-- [ ] T004 [P] Create suite data directory structure: `tests/conformance/suite-data/xbrl-2.1/`, `tests/conformance/suite-data/dimensions-1.0/`, `tests/conformance/suite-data/table-linkbase-1.0/`, `tests/conformance/suite-data/formula-1.0/`; add `.gitkeep` in each; add `tests/conformance/formula_skip_list.py` stub
-- [ ] T005 [P] Create test directories and files: `tests/unit/conformance/__init__.py`, `test_parser.py`, `test_executor.py`, `test_runner.py`, `test_registry.py`, `test_reporters.py`; `tests/integration/conformance/__init__.py`, `test_xbrl21_suite.py`, `test_dimensions_suite.py`, `test_formula_suite.py`, `test_table_linkbase_suite.py`
+- [X] T001 Create `src/bde_xbrl_editor/conformance/__init__.py` (empty re-export stub)
+- [X] T002 [P] Create `src/bde_xbrl_editor/conformance/__main__.py`, `registry.py`, `models.py`, `parser.py`, `executor.py`, `runner.py` (empty files with module docstrings)
+- [X] T003 [P] Create reporters sub-package: `src/bde_xbrl_editor/conformance/reporters/__init__.py`, `reporters/console.py`, `reporters/json_reporter.py` (empty files with docstrings)
+- [X] T004 [P] Create suite data directory structure: `tests/conformance/suite-data/xbrl-2.1/`, `tests/conformance/suite-data/dimensions-1.0/`, `tests/conformance/suite-data/table-linkbase-1.0/`, `tests/conformance/suite-data/formula-1.0/`; add `.gitkeep` in each; add `tests/conformance/formula_skip_list.py` stub
+- [X] T005 [P] Create test directories and files: `tests/unit/conformance/__init__.py`, `test_parser.py`, `test_executor.py`, `test_runner.py`, `test_registry.py`, `test_reporters.py`; `tests/integration/conformance/__init__.py`, `test_xbrl21_suite.py`, `test_dimensions_suite.py`, `test_formula_suite.py`, `test_table_linkbase_suite.py`
 
 ---
 
@@ -31,10 +31,10 @@
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T006 Implement domain types in `src/bde_xbrl_editor/conformance/models.py`: `SuiteStatus` (str Enum: PASSED/FAILED/ERRORED/INCOMPLETE/SKIPPED), `TestResultOutcome` (str Enum: PASS/FAIL/ERROR/SKIPPED), `ExpectedOutcomeType` (VALID/ERROR/WARNING), `ExpectedOutcome` (outcome_type, error_code), `TestVariation` (variation_id, name, description, input_files, instance_file, taxonomy_file, expected_outcome, mandatory), `TestCase` (test_case_id, description, source_file, suite_id, variations), `TestCaseResult` (variation_id, test_case_id, suite_id, outcome, mandatory, expected_outcome, actual_error_codes, exception_message, description, input_files, duration_ms), `SuiteResult` (suite_id, label, blocking, status, results, informational_note; computed: total, passed, failed, failed_optional, errored, skipped, failures), `SuiteRunReport` (run_timestamp, runner_version, suite_results, exit_code; computed: overall_passed, blocking_failures)
-- [ ] T007 [P] Implement `SUITE_REGISTRY` constant and `SuiteDefinition` dataclass in `src/bde_xbrl_editor/conformance/registry.py` — 4 entries: xbrl21 (blocking=True), dimensions (blocking=True), table-linkbase (blocking=False, informational_note), formula (blocking=True, informational_note); each with correct index_filename and subdirectory
-- [ ] T008 [P] Implement error types in `src/bde_xbrl_editor/conformance/`: `SuiteDataMissingError` (suite_id, expected_path), `TestCaseParseError` (file_path, reason), `ConformanceConfigError` (message with valid options list)
-- [ ] T009 [P] Implement `FORMULA_SKIP_LIST` frozenset in `tests/conformance/formula_skip_list.py` — empty frozenset with documented structure and inline comments for future variation ID entries (custom functions, tuple producers, filter chaining)
+- [X] T006 Implement domain types in `src/bde_xbrl_editor/conformance/models.py`: `SuiteStatus` (str Enum: PASSED/FAILED/ERRORED/INCOMPLETE/SKIPPED), `TestResultOutcome` (str Enum: PASS/FAIL/ERROR/SKIPPED), `ExpectedOutcomeType` (VALID/ERROR/WARNING), `ExpectedOutcome` (outcome_type, error_code), `TestVariation` (variation_id, name, description, input_files, instance_file, taxonomy_file, expected_outcome, mandatory), `TestCase` (test_case_id, description, source_file, suite_id, variations), `TestCaseResult` (variation_id, test_case_id, suite_id, outcome, mandatory, expected_outcome, actual_error_codes, exception_message, description, input_files, duration_ms), `SuiteResult` (suite_id, label, blocking, status, results, informational_note; computed: total, passed, failed, failed_optional, errored, skipped, failures), `SuiteRunReport` (run_timestamp, runner_version, suite_results, exit_code; computed: overall_passed, blocking_failures)
+- [X] T007 [P] Implement `SUITE_REGISTRY` constant and `SuiteDefinition` dataclass in `src/bde_xbrl_editor/conformance/registry.py` — 4 entries: xbrl21 (blocking=True), dimensions (blocking=True), table-linkbase (blocking=False, informational_note), formula (blocking=True, informational_note); each with correct index_filename and subdirectory
+- [X] T008 [P] Implement error types in `src/bde_xbrl_editor/conformance/`: `SuiteDataMissingError` (suite_id, expected_path), `TestCaseParseError` (file_path, reason), `ConformanceConfigError` (message with valid options list)
+- [X] T009 [P] Implement `FORMULA_SKIP_LIST` frozenset in `tests/conformance/formula_skip_list.py` — empty frozenset with documented structure and inline comments for future variation ID entries (custom functions, tuple producers, filter chaining)
 
 **Checkpoint**: Domain types, registry, error types ready — user story phases can now proceed
 
@@ -46,17 +46,17 @@
 
 **Independent Test**: Run `ConformanceRunner.run()` against local suite data for the XBRL 2.1 suite; verify `SuiteRunReport` contains one `SuiteResult` with `suite_id="xbrl21"`; verify `exit_code=0` if all mandatory cases pass; verify `exit_code=1` if any mandatory case fails; verify `run()` never raises.
 
-- [ ] T010 [US1] Implement `ConformanceSuiteParser._parse_index()` and `_parse_test_case()` in `src/bde_xbrl_editor/conformance/parser.py` — lxml XML parsing; index file → list of test case file paths; test case file → `TestCase` with all `TestVariation` objects; all input file paths resolved to absolute paths relative to suite data directory
-- [ ] T011 [US1] Implement `ConformanceSuiteParser.load_suite()` in `src/bde_xbrl_editor/conformance/parser.py` — check index file exists (raise `SuiteDataMissingError` if not); call `_parse_index()` then `_parse_test_case()` for each; skip and log warning on `TestCaseParseError`; return `list[TestCase]`
-- [ ] T012 [US1] Implement `TestCaseExecutor._match_outcome()` in `src/bde_xbrl_editor/conformance/executor.py` — 5 outcome cases: VALID+no-errors→PASS; VALID+errors→FAIL(actual codes); ERROR(code)+finding-matching-rule_id→PASS; ERROR(code)+no-match→FAIL; ERROR(code)+load_error-matching-code→PASS; returns `tuple[TestResultOutcome, tuple[str, ...]]`
-- [ ] T013 [US1] Implement `TestCaseExecutor.execute()` in `src/bde_xbrl_editor/conformance/executor.py` — (1) skip-list check → SKIPPED immediately; (2) load taxonomy via `TaxonomyLoader` with `TaxonomyCache`; (3) parse instance via `InstanceParser` if `instance_file` present; (4) run `InstanceValidator.validate_sync()`; (5) call `_match_outcome()`; (6) catch all exceptions → ERROR outcome; (7) measure wall-clock duration
-- [ ] T014 [US1] Implement `ConformanceRunner.run()` and `_compute_exit_code()` in `src/bde_xbrl_editor/conformance/runner.py` — for each selected suite: create one `TaxonomyCache`; call parser + executor per variation; aggregate into `SuiteResult`; call `_compute_exit_code()` (0 if all blocking suites have status PASSED; 1 otherwise); build `SuiteRunReport`; progress_callback per variation; never raises
-- [ ] T015 [US1] Implement `ConsoleReporter.print_report()` and `print_progress()` in `src/bde_xbrl_editor/conformance/reporters/console.py` — summary table: suite name, total/passed/failed/errored/skipped counts per spec; overall PASSED/FAILED banner; informational_note for non-blocking suites; ANSI colour when stdout is TTY; single-line progress update (overwritten in-place on TTY)
-- [ ] T016 [US1] Unit test: `ConformanceSuiteParser` — index parsing produces correct test case count; test case parsing produces correct variation count; `SuiteDataMissingError` when index not found; malformed XML skips case in `tests/unit/conformance/test_parser.py`
-- [ ] T017 [P] [US1] Unit test: `TestCaseExecutor._match_outcome()` — all 5 outcome combinations with crafted `ExpectedOutcome` + `ValidationFinding` fixtures in `tests/unit/conformance/test_executor.py`
-- [ ] T018 [P] [US1] Unit test: `SUITE_REGISTRY` — all 4 suites registered; `table-linkbase` has `blocking=False`; all `SuiteDefinition` fields non-null; xbrl21/dimensions/formula have `blocking=True` in `tests/unit/conformance/test_registry.py`
-- [ ] T019 [P] [US1] Integration test: XBRL 2.1 suite run — load from `tests/conformance/suite-data/xbrl-2.1/`; verify mandatory case count matches suite index; verify exit_code=0 when all mandatory pass in `tests/integration/conformance/test_xbrl21_suite.py`
-- [ ] T020 [P] [US1] Integration test: Dimensions 1.0 suite run — same pattern as XBRL 2.1; 100% mandatory pass target in `tests/integration/conformance/test_dimensions_suite.py`
+- [X] T010 [US1] Implement `ConformanceSuiteParser._parse_index()` and `_parse_test_case()` in `src/bde_xbrl_editor/conformance/parser.py` — lxml XML parsing; index file → list of test case file paths; test case file → `TestCase` with all `TestVariation` objects; all input file paths resolved to absolute paths relative to suite data directory
+- [X] T011 [US1] Implement `ConformanceSuiteParser.load_suite()` in `src/bde_xbrl_editor/conformance/parser.py` — check index file exists (raise `SuiteDataMissingError` if not); call `_parse_index()` then `_parse_test_case()` for each; skip and log warning on `TestCaseParseError`; return `list[TestCase]`
+- [X] T012 [US1] Implement `TestCaseExecutor._match_outcome()` in `src/bde_xbrl_editor/conformance/executor.py` — 5 outcome cases: VALID+no-errors→PASS; VALID+errors→FAIL(actual codes); ERROR(code)+finding-matching-rule_id→PASS; ERROR(code)+no-match→FAIL; ERROR(code)+load_error-matching-code→PASS; returns `tuple[TestResultOutcome, tuple[str, ...]]`
+- [X] T013 [US1] Implement `TestCaseExecutor.execute()` in `src/bde_xbrl_editor/conformance/executor.py` — (1) skip-list check → SKIPPED immediately; (2) load taxonomy via `TaxonomyLoader` with `TaxonomyCache`; (3) parse instance via `InstanceParser` if `instance_file` present; (4) run `InstanceValidator.validate_sync()`; (5) call `_match_outcome()`; (6) catch all exceptions → ERROR outcome; (7) measure wall-clock duration
+- [X] T014 [US1] Implement `ConformanceRunner.run()` and `_compute_exit_code()` in `src/bde_xbrl_editor/conformance/runner.py` — for each selected suite: create one `TaxonomyCache`; call parser + executor per variation; aggregate into `SuiteResult`; call `_compute_exit_code()` (0 if all blocking suites have status PASSED; 1 otherwise); build `SuiteRunReport`; progress_callback per variation; never raises
+- [X] T015 [US1] Implement `ConsoleReporter.print_report()` and `print_progress()` in `src/bde_xbrl_editor/conformance/reporters/console.py` — summary table: suite name, total/passed/failed/errored/skipped counts per spec; overall PASSED/FAILED banner; informational_note for non-blocking suites; ANSI colour when stdout is TTY; single-line progress update (overwritten in-place on TTY)
+- [X] T016 [US1] Unit test: `ConformanceSuiteParser` — index parsing produces correct test case count; test case parsing produces correct variation count; `SuiteDataMissingError` when index not found; malformed XML skips case in `tests/unit/conformance/test_parser.py`
+- [X] T017 [P] [US1] Unit test: `TestCaseExecutor._match_outcome()` — all 5 outcome combinations with crafted `ExpectedOutcome` + `ValidationFinding` fixtures in `tests/unit/conformance/test_executor.py`
+- [X] T018 [P] [US1] Unit test: `SUITE_REGISTRY` — all 4 suites registered; `table-linkbase` has `blocking=False`; all `SuiteDefinition` fields non-null; xbrl21/dimensions/formula have `blocking=True` in `tests/unit/conformance/test_registry.py`
+- [X] T019 [P] [US1] Integration test: XBRL 2.1 suite run — load from `tests/conformance/suite-data/xbrl-2.1/`; verify mandatory case count matches suite index; verify exit_code=0 when all mandatory pass in `tests/integration/conformance/test_xbrl21_suite.py`
+- [X] T020 [P] [US1] Integration test: Dimensions 1.0 suite run — same pattern as XBRL 2.1; 100% mandatory pass target in `tests/integration/conformance/test_dimensions_suite.py`
 
 ---
 
@@ -66,8 +66,8 @@
 
 **Independent Test**: Invoke `python -m bde_xbrl_editor.conformance --suite dimensions`; verify only the Dimensions 1.0 suite appears in output; verify other suites are not executed; invoke with `--suite unknown` and verify `ConformanceConfigError` is raised with valid options listed.
 
-- [ ] T021 [US2] Implement `__main__.py` with argparse in `src/bde_xbrl_editor/conformance/__main__.py` — arguments: `--suite` (choices: xbrl21/dimensions/table-linkbase/formula/all; default: all), `--suite-data-dir` (default: `tests/conformance/suite-data/`), `--verbose`, `--stop-on-first-failure`, `--output-format` (console/json; default: console), `--output-file`; normalise "all" → all 4 suite IDs; raise `ConformanceConfigError` on unrecognised suite; wire `ConformanceRunner` + reporters; call `sys.exit(report.exit_code)`
-- [ ] T022 [US2] Wire `selected_suites` into `ConformanceRunner.__init__()` in `src/bde_xbrl_editor/conformance/runner.py` — suites not in selected_suites get `SuiteResult(status=SuiteStatus.SKIPPED)` in `SuiteRunReport`; only selected suites are parsed and executed
+- [X] T021 [US2] Implement `__main__.py` with argparse in `src/bde_xbrl_editor/conformance/__main__.py` — arguments: `--suite` (choices: xbrl21/dimensions/table-linkbase/formula/all; default: all), `--suite-data-dir` (default: `tests/conformance/suite-data/`), `--verbose`, `--stop-on-first-failure`, `--output-format` (console/json; default: console), `--output-file`; normalise "all" → all 4 suite IDs; raise `ConformanceConfigError` on unrecognised suite; wire `ConformanceRunner` + reporters; call `sys.exit(report.exit_code)`
+- [X] T022 [US2] Wire `selected_suites` into `ConformanceRunner.__init__()` in `src/bde_xbrl_editor/conformance/runner.py` — suites not in selected_suites get `SuiteResult(status=SuiteStatus.SKIPPED)` in `SuiteRunReport`; only selected suites are parsed and executed
 
 ---
 
@@ -77,8 +77,8 @@
 
 **Independent Test**: Create a `SuiteRunReport` with one failing `TestCaseResult`; call `ConsoleReporter(verbose=True).print_report(report)`; verify output contains description, input file path, expected error code, and actual error codes; call with `verbose=False` and verify these details are absent.
 
-- [ ] T023 [US3] Extend `ConsoleReporter.print_report()` in `src/bde_xbrl_editor/conformance/reporters/console.py` — when `verbose=True`, after each suite summary print per-failing-variation detail block: test_case_id, variation_id, description, input_files paths, expected outcome, actual_error_codes, exception_message; concise mode shows only the summary table
-- [ ] T024 [US3] Unit test: `ConsoleReporter` — summary-only vs verbose output; ANSI codes present on TTY; `JsonReporter.to_dict()` schema structure in `tests/unit/conformance/test_reporters.py`
+- [X] T023 [US3] Extend `ConsoleReporter.print_report()` in `src/bde_xbrl_editor/conformance/reporters/console.py` — when `verbose=True`, after each suite summary print per-failing-variation detail block: test_case_id, variation_id, description, input_files paths, expected outcome, actual_error_codes, exception_message; concise mode shows only the summary table
+- [X] T024 [US3] Unit test: `ConsoleReporter` — summary-only vs verbose output; ANSI codes present on TTY; `JsonReporter.to_dict()` schema structure in `tests/unit/conformance/test_reporters.py`
 
 ---
 
@@ -88,7 +88,7 @@
 
 **Independent Test**: Construct a `SuiteRunReport` with one blocking suite (PASSED) and one non-blocking suite (FAILED); call `_compute_exit_code()` and verify result is `0`; verify `ConsoleReporter` displays the `informational_note` next to the TL 1.0 result block.
 
-- [ ] T025 [US4] Integration test: Table Linkbase 1.0 suite run — load from `tests/conformance/suite-data/table-linkbase-1.0/`; verify `SuiteResult.blocking=False`; verify `exit_code=0` even when TL 1.0 cases fail; verify `informational_note` appears in output in `tests/integration/conformance/test_table_linkbase_suite.py`
+- [X] T025 [US4] Integration test: Table Linkbase 1.0 suite run — load from `tests/conformance/suite-data/table-linkbase-1.0/`; verify `SuiteResult.blocking=False`; verify `exit_code=0` even when TL 1.0 cases fail; verify `informational_note` appears in output in `tests/integration/conformance/test_table_linkbase_suite.py`
 
 ---
 
@@ -98,9 +98,9 @@
 
 **Independent Test**: Run `ConformanceRunner` with a report that has one blocking-FAILED suite; verify `exit_code=1`; call `JsonReporter.to_dict()` on the report and parse the JSON; verify it contains `"exit_code": 1` and `"suite_results"` array with correct `"status"` fields; verify a report with all-PASSED blocking suites returns `"exit_code": 0`.
 
-- [ ] T026 [US5] Implement `JsonReporter.to_dict()` and `JsonReporter.write()` in `src/bde_xbrl_editor/conformance/reporters/json_reporter.py` — `to_dict()` converts `SuiteRunReport` to documented JSON schema (run_timestamp ISO8601, runner_version, exit_code, suite_results array with total/passed/failed/errored/skipped counts and failures detail); `write()` serialises to file; raises `PermissionError` on unwritable path
-- [ ] T027 [US5] Unit test: `ConformanceRunner` exit code logic — all blocking PASSED → 0; any blocking FAILED → 1; INCOMPLETE blocking → 1; non-blocking-only failures → 0; stop_on_first_failure terminates early in `tests/unit/conformance/test_runner.py`
-- [ ] T028 [P] [US5] Integration test: Formula 1.0 scoped suite — in-scope value/existence/consistency assertions pass; skip-listed variations appear as SKIPPED in results; exit_code respects blocking flag in `tests/integration/conformance/test_formula_suite.py`
+- [X] T026 [US5] Implement `JsonReporter.to_dict()` and `JsonReporter.write()` in `src/bde_xbrl_editor/conformance/reporters/json_reporter.py` — `to_dict()` converts `SuiteRunReport` to documented JSON schema (run_timestamp ISO8601, runner_version, exit_code, suite_results array with total/passed/failed/errored/skipped counts and failures detail); `write()` serialises to file; raises `PermissionError` on unwritable path
+- [X] T027 [US5] Unit test: `ConformanceRunner` exit code logic — all blocking PASSED → 0; any blocking FAILED → 1; INCOMPLETE blocking → 1; non-blocking-only failures → 0; stop_on_first_failure terminates early in `tests/unit/conformance/test_runner.py`
+- [X] T028 [P] [US5] Integration test: Formula 1.0 scoped suite — in-scope value/existence/consistency assertions pass; skip-listed variations appear as SKIPPED in results; exit_code respects blocking flag in `tests/integration/conformance/test_formula_suite.py`
 
 ---
 
@@ -108,8 +108,8 @@
 
 **Purpose**: Public API exports and entry point registration
 
-- [ ] T029 Populate `src/bde_xbrl_editor/conformance/__init__.py` re-exports: `ConformanceRunner`, `SuiteRunReport`, `SuiteResult`, `TestCaseResult`, `SuiteStatus`, `TestResultOutcome`, `SUITE_REGISTRY`, `SuiteDataMissingError`, `ConformanceConfigError`
-- [ ] T030 [P] Register CLI entry point in `pyproject.toml` — add `bde-xbrl-conformance = "bde_xbrl_editor.conformance.__main__:main"` under `[project.scripts]`; verify `python -m bde_xbrl_editor.conformance --help` works
+- [X] T029 Populate `src/bde_xbrl_editor/conformance/__init__.py` re-exports: `ConformanceRunner`, `SuiteRunReport`, `SuiteResult`, `TestCaseResult`, `SuiteStatus`, `TestResultOutcome`, `SUITE_REGISTRY`, `SuiteDataMissingError`, `ConformanceConfigError`
+- [X] T030 [P] Register CLI entry point in `pyproject.toml` — add `bde-xbrl-conformance = "bde_xbrl_editor.conformance.__main__:main"` under `[project.scripts]`; verify `python -m bde_xbrl_editor.conformance --help` works
 
 ---
 
