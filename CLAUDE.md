@@ -103,4 +103,40 @@ ruff format .
 4. **UI / API Layer**: PySide6 widgets, main window
 
 <!-- MANUAL ADDITIONS START -->
+The actual conformance data lives at conformance/ (not the default tests/conformance/suite-data/), so you need to pass --suite-data-dir. The registry maps suite IDs to subdirectory names, so you need a directory that contains xbrl-2.1/, dimensions-1.0/, etc.                                             
+
+The integration test conftest creates those symlinks dynamically. For manual use, the easiest approach is to point directly at the existing data. However, the registry subdirectory names (xbrl-2.1, dimensions-1.0, etc.) don't match the actual directory names (XBRL-CONF-2025-07-16, etc.).
+
+The simplest way to run it:                
+  # Run a single suite (e.g. XBRL 2.1) using the pytest integration tests                              
+  python -m pytest tests/integration/conformance/test_xbrl21_suite.py -v -k "not slow"                 
+
+  # Or run all suites at once via pytest (parser-level, fast)                                          
+  python -m pytest tests/integration/conformance/ -v -k "not slow"                                     
+                
+  For the full CLI runner against the actual data, you first need to set up the suite-data directory   
+  with properly named subdirectories. Create symlinks once:
+    
+    mkdir -p tests/conformance/suite-data                      
+    ln -sfn "$(pwd)/conformance/XBRL-CONF-2025-07-16"              tests/conformance/suite-data/xbrl-2.1
+    ln -sfn "$(pwd)/conformance/XBRL-XDT-CONF-2025-09-09"
+    tests/conformance/suite-data/dimensions-1.0
+    ln -sfn "$(pwd)/conformance/table-linkbase-conformance-2024-12-17"
+    tests/conformance/suite-data/table-linkbase-1.0
+    ln -sfn "$(pwd)/conformance/formula-conformance-2022-07-21"
+    tests/conformance/suite-data/formula-1.0   
+
+  Then run:
+  # All suites
+  python -m bde_xbrl_editor.conformance
+
+  # Single suite
+  python -m bde_xbrl_editor.conformance --suite xbrl21
+                                                                                                       
+  # With verbose output and JSON report
+  python -m bde_xbrl_editor.conformance --suite xbrl21 --verbose --output-format json --output-file    
+  report.json                                                                                          
+   
+  The exit code will be 0 if all blocking suites (XBRL 2.1, Dimensions 1.0, Formula 1.0) pass, 1 if any
+   mandatory case fails
 <!-- MANUAL ADDITIONS END -->
