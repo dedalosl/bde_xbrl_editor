@@ -76,10 +76,14 @@ def _build_breakdown_node(
     aspect_constraints: dict[str, Any] = {}
     # Extract aspect constraints from child elements
     for child_el in el:
+        if not isinstance(child_el.tag, str):  # skip comments / PIs
+            continue
         local = child_el.tag.split("}")[-1] if "}" in child_el.tag else child_el.tag
         if local == "ruleSet":
             # Rule nodes have ruleSets with aspect values
             for aspect_el in child_el:
+                if not isinstance(aspect_el.tag, str):
+                    continue
                 aspect_local = aspect_el.tag.split("}")[-1] if "}" in aspect_el.tag else aspect_el.tag
                 aspect_constraints[aspect_local] = aspect_el.text or aspect_el.get("value")
         elif local in ("concept", "period", "unit", "explicitDimension", "typedDimension"):
@@ -167,6 +171,8 @@ def _parse_linkbase_element(container: etree._Element, tables: list[TableDefinit
         node_children: dict[str, list[str]] = {}  # parent_xl → [child_xl]
 
         for el in parent.iter():
+            if not isinstance(el.tag, str):  # skip comments / PIs
+                continue
             tag_local = el.tag.split("}")[-1] if "}" in el.tag else el.tag
             if tag_local == "tableBreakdownArc":
                 frm = el.get(_XLINK_FROM, "")

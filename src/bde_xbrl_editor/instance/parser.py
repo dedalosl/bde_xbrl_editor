@@ -229,6 +229,8 @@ class InstanceParser:
         filing_indicators: list[FilingIndicator] = []
         # They may be inside ef-find:fIndicators wrapper or directly as children
         for child in root:
+            if not isinstance(child.tag, str):  # skip comments / PIs
+                continue
             local = child.tag.split("}")[-1] if "}" in child.tag else child.tag
             ns = child.tag.split("}")[0][1:] if "}" in child.tag else ""
             if ns == FILING_IND_NS and local == "fIndicators":
@@ -243,6 +245,8 @@ class InstanceParser:
         known_concepts = taxonomy.concepts if taxonomy else {}
 
         for child in root:
+            if not isinstance(child.tag, str):  # skip comments / PIs
+                continue
             if child.tag in _NON_FACT_TAGS:
                 continue
             # Skip fIndicators wrapper
