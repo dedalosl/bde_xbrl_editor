@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Slot
 from PySide6.QtWidgets import QProgressDialog, QWidget
 
 
@@ -11,7 +11,8 @@ class TaxonomyProgressDialog(QProgressDialog):
 
     Adapts the ``progress_callback(message, current_step, total_steps)``
     protocol used by TaxonomyLoader to Qt's QProgressDialog interface.
-    All updates are posted on the main thread (caller's responsibility).
+    Thread-safe: update_progress is a Qt slot, so connections from worker
+    threads are delivered on the main thread via the event queue.
     """
 
     def __init__(self, parent: QWidget | None = None) -> None:
@@ -24,12 +25,9 @@ class TaxonomyProgressDialog(QProgressDialog):
         self.setCancelButton(None)  # Loading is non-cancellable in v1
         self.setMinimumDuration(500)  # Only show if loading takes > 500 ms
 
-    def as_callback(self):
-        """Return a progress_callback function compatible with TaxonomyLoader."""
-
-        def callback(message: str, current_step: int, total_steps: int) -> None:
-            self.setLabelText(message)
-            if total_steps > 0:
-                self.setValue(int(current_step / total_steps * 100))
-
-        return callback
+    @Slot(str, int, int)
+    def update_progress(self, message: str, current_step: int, total_steps: int) -> None:
+        """Qt slot — safe to connect from a worker thread (auto-queued)."""
+        self.setLabelText(message)
+        if total_steps > 0:
+            self.setValue(int(current_step / total_steps * 100))

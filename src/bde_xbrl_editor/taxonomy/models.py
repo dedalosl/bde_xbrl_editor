@@ -9,8 +9,12 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
+from decimal import Decimal
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
+
+if TYPE_CHECKING:
+    pass
 
 # ---------------------------------------------------------------------------
 # QName — fundamental identifier
@@ -281,6 +285,71 @@ class TaxonomyMetadata:
 
 
 # ---------------------------------------------------------------------------
+# Formula linkbase domain types (Feature 005 — parsed during taxonomy loading)
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class DimensionFilter:
+    """Filter that restricts a fact variable to facts with a specific dimension value."""
+
+    dimension_qname: QName
+    member_qnames: tuple[QName, ...] = field(default_factory=tuple)
+    exclude: bool = False
+
+
+@dataclass(frozen=True)
+class FactVariableDefinition:
+    """A bound fact variable in a formula assertion."""
+
+    variable_name: str
+    concept_filter: QName | None = None
+    period_filter: Literal["instant", "duration"] | None = None
+    dimension_filters: tuple[DimensionFilter, ...] = field(default_factory=tuple)
+    unit_filter: QName | None = None
+    fallback_value: str | None = None
+
+
+@dataclass(frozen=True)
+class FormulaAssertion:
+    """Base for all formula assertion types."""
+
+    assertion_id: str
+    label: str | None
+    severity: Any  # ValidationSeverity — late-bound to avoid circular import
+    abstract: bool
+    variables: tuple[FactVariableDefinition, ...]
+    precondition_xpath: str | None
+
+
+@dataclass(frozen=True)
+class ValueAssertionDefinition(FormulaAssertion):
+    """formula:valueAssertion — @test XPath must be true for each binding."""
+    test_xpath: str = ""
+
+
+@dataclass(frozen=True)
+class ExistenceAssertionDefinition(FormulaAssertion):
+    """formula:existenceAssertion — at least one binding must have a non-empty fact set."""
+    test_xpath: str | None = None
+
+
+@dataclass(frozen=True)
+class ConsistencyAssertionDefinition(FormulaAssertion):
+    """formula:consistencyAssertion — formula result must match fact value within radius."""
+    formula_xpath: str = ""
+    absolute_radius: Decimal | None = None
+    relative_radius: Decimal | None = None
+
+
+@dataclass(frozen=True)
+class FormulaAssertionSet:
+    """Complete set of formula assertions parsed from a formula linkbase."""
+
+    assertions: tuple[FormulaAssertion, ...] = field(default_factory=tuple)
+    abstract_count: int = 0
+
+
+# ---------------------------------------------------------------------------
 # TaxonomyStructure — the complete immutable taxonomy
 # ---------------------------------------------------------------------------
 
@@ -298,6 +367,7 @@ class TaxonomyStructure:
     dimensions: Mapping[QName, DimensionModel]
     tables: Sequence[TableDefinitionPWD]
     formula_linkbase_path: Path | None = None
+    formula_assertion_set: FormulaAssertionSet = field(default_factory=FormulaAssertionSet)
 
     def get_table(self, table_id: str) -> TableDefinitionPWD | None:
         """Return the table with the given ID, or None if not found."""

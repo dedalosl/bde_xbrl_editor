@@ -22,6 +22,7 @@ from bde_xbrl_editor.taxonomy.discovery import discover_dts
 from bde_xbrl_editor.taxonomy.label_resolver import LabelResolver
 from bde_xbrl_editor.taxonomy.linkbases.calculation import parse_calculation_linkbase
 from bde_xbrl_editor.taxonomy.linkbases.definition import parse_definition_linkbase
+from bde_xbrl_editor.taxonomy.linkbases.formula import parse_formula_linkbase
 from bde_xbrl_editor.taxonomy.linkbases.generic_label import parse_generic_label_linkbase
 from bde_xbrl_editor.taxonomy.linkbases.label import parse_label_linkbase
 from bde_xbrl_editor.taxonomy.linkbases.presentation import parse_presentation_linkbase
@@ -310,8 +311,16 @@ class TaxonomyLoader:
                         message=f"Unexpected error parsing table linkbase: {exc}",
                     ) from exc
 
-        # Step 6: Extract metadata
+        # Step 6: Parse formula linkbase (if present)
         progress("Assembling taxonomy structure…", 6)
+        from bde_xbrl_editor.taxonomy.models import FormulaAssertionSet  # noqa: PLC0415
+
+        formula_assertion_set: FormulaAssertionSet
+        if formula_linkbase_path is not None:
+            formula_assertion_set = parse_formula_linkbase(formula_linkbase_path)
+        else:
+            formula_assertion_set = FormulaAssertionSet()
+
         metadata = _extract_metadata(entry_point, declared_languages)
 
         # Step 7: Assemble TaxonomyStructure
@@ -326,6 +335,7 @@ class TaxonomyLoader:
             dimensions=dimensions,
             tables=tables,
             formula_linkbase_path=formula_linkbase_path,
+            formula_assertion_set=formula_assertion_set,
         )
 
         progress("Taxonomy loaded successfully", _TOTAL_STEPS)

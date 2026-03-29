@@ -1,0 +1,295 @@
+"""Unit tests for formula fact-filter predicates (validation/formula/filters.py)."""
+from __future__ import annotations
+
+from datetime import date
+from pathlib import Path
+
+import pytest
+
+from bde_xbrl_editor.instance.models import (
+    Fact,
+    ReportingEntity,
+    ReportingPeriod,
+    XbrlContext,
+    XbrlInstance,
+    XbrlUnit,
+)
+from bde_xbrl_editor.taxonomy.models import (
+    DimensionFilter,
+    FactVariableDefinition,
+    QName,
+)
+from bde_xbrl_editor.validation.formula.filters import apply_filters
+
+# ---------------------------------------------------------------------------
+# QName helpers
+# ---------------------------------------------------------------------------
+
+_TAX_NS = "http://example.com/tax"
+_DIM_NS = "http://example.com/dim"
+_MEM_NS = "http://example.com/mem"
+
+
+def _qn(local: str, ns: str = _TAX_NS) -> QName:
+    return QName(namespace=ns, local_name=local)
+
+
+# ---------------------------------------------------------------------------
+# Instance / context / fact builders
+# ---------------------------------------------------------------------------
+
+CONCEPT_A = _qn("ConceptA")
+CONCEPT_B = _qn("ConceptB")
+DIM_QN = _qn("CountryDim", _DIM_NS)
+MEM_ES = _qn("ES", _MEM_NS)
+MEM_PT = _qn("PT", _MEM_NS)
+
+
+def _entity() -> ReportingEntity:
+    return ReportingEntity(identifier="E001", scheme="http://www.example.com")
+
+
+def _instant_period() -> ReportingPeriod:
+    return ReportingPeriod(period_type="instant", instant_date=date(2024, 12, 31))
+
+
+def _duration_period() -> ReportingPeriod:
+    return ReportingPeriod(
+        period_type="duration",
+        start_date=date(2024, 1, 1),
+        end_date=date(2024, 12, 31),
+    )
+
+
+def _ctx(ctx_id: str, period: ReportingPeriod | None = None, dims: dict | None = None) -> XbrlContext:
+    return XbrlContext(
+        context_id=ctx_id,
+        entity=_entity(),
+        period=period or _instant_period(),
+        dimensions=dims or {},
+    )
+
+
+def _instance(
+    facts: list[Fact],
+    contexts: dict[str, XbrlContext],
+    units: dict[str, XbrlUnit] | None = None,
+) -> XbrlInstance:
+    inst = XbrlInstance(
+        taxonomy_entry_point=Path("tax.xsd"),
+        schema_ref_href="tax.xsd",
+        entity=_entity(),
+        period=_instant_period(),
+    )
+    inst.contexts.update(contexts)
+    inst.facts.extend(facts)
+    if units:
+        inst.units.update(units)
+    return inst
+
+
+def _var_def(
+    variable_name: str = "v",
+    concept_filter: QName | None = None,
+    period_filter: str | None = None,
+    dimension_filters: tuple = (),
+    unit_filter: QName | None = None,
+) -> FactVariableDefinition:
+    return FactVariableDefinition(
+        variable_name=variable_name,
+        concept_filter=concept_filter,
+        period_filter=period_filter,  # type: ignore[arg-type]
+        dimension_filters=dimension_filters,
+        unit_filter=unit_filter,
+    )
+
+
+# ---------------------------------------------------------------------------
+# No filters — all facts pass
+# ---------------------------------------------------------------------------
+
+
+class TestNoFilter:
+    def test_no_filter_returns_all_facts(self) -> None:
+        """When no filter is set, apply_filters returns all facts unchanged."""
+        ctx = _ctx("ctx1")
+        facts = [
+            Fact(concept=CONCEPT_A, context_ref="ctx1", unit_ref=None, value="1"),
+            Fact(concept=CONCEPT_B, context_ref="ctx1", unit_ref=None, value="2"),
+        ]
+        inst = _instance(facts, {"ctx1": ctx})
+        var = _var_def()
+        result = apply_filters(facts, var, inst)
+        assert len(result) == 2
+
+
+# ---------------------------------------------------------------------------
+# Concept filter
+# ---------------------------------------------------------------------------
+
+
+class TestConceptFilter:
+    def test_concept_filter_match(self) -> None:
+        """concept_filter keeps only facts with a matching concept."""
+        ctx = _ctx("ctx1")
+        facts = [
+            Fact(concept=CONCEPT_A, context_ref="ctx1", unit_ref=None, value="1"),
+            Fact(concept=CONCEPT_B, context_ref="ctx1", unit_ref=None, value="2"),
+        ]
+        inst = _instance(facts, {"ctx1": ctx})
+        var = _var_def(concept_filter=CONCEPT_A)
+        result = apply_filters(facts, var, inst)
+        assert len(result) == 1
+        assert result[0].concept == CONCEPT_A
+
+    def test_concept_filter_no_match(self) -> None:
+        """concept_filter returns empty list when no facts match the concept."""
+        ctx = _ctx("ctx1")
+        facts = [Fact(concept=CONCEPT_B, context_ref="ctx1", unit_ref=None, value="2")]
+        inst = _instance(facts, {"ctx1": ctx})
+        var = _var_def(concept_filter=CONCEPT_A)
+        result = apply_filters(facts, var, inst)
+        assert result == []
+
+    def test_concept_filter_multiple_facts_same_concept(self) -> None:
+        """concept_filter returns all facts that match, not just the first."""
+        ctx = _ctx("ctx1")
+        facts = [
+            Fact(concept=CONCEPT_A, context_ref="ctx1", unit_ref=None, value="10"),
+            Fact(concept=CONCEPT_A, context_ref="ctx1", unit_ref=None, value="20"),
+        ]
+        inst = _instance(facts, {"ctx1": ctx})
+        var = _var_def(concept_filter=CONCEPT_A)
+        result = apply_filters(facts, var, inst)
+        assert len(result) == 2
+
+
+# ---------------------------------------------------------------------------
+# Period filter
+# ---------------------------------------------------------------------------
+
+
+class TestPeriodFilter:
+    def test_period_filter_instant_keeps_instant_facts(self) -> None:
+        """period_filter='instant' retains only facts in instant contexts."""
+        ctx_instant = _ctx("ctx_i", period=_instant_period())
+        ctx_duration = _ctx("ctx_d", period=_duration_period())
+        facts = [
+            Fact(concept=CONCEPT_A, context_ref="ctx_i", unit_ref=None, value="1"),
+            Fact(concept=CONCEPT_A, context_ref="ctx_d", unit_ref=None, value="2"),
+        ]
+        inst = _instance(facts, {"ctx_i": ctx_instant, "ctx_d": ctx_duration})
+        var = _var_def(period_filter="instant")
+        result = apply_filters(facts, var, inst)
+        assert len(result) == 1
+        assert result[0].context_ref == "ctx_i"
+
+    def test_period_filter_duration_keeps_duration_facts(self) -> None:
+        """period_filter='duration' retains only facts in duration contexts."""
+        ctx_instant = _ctx("ctx_i", period=_instant_period())
+        ctx_duration = _ctx("ctx_d", period=_duration_period())
+        facts = [
+            Fact(concept=CONCEPT_A, context_ref="ctx_i", unit_ref=None, value="1"),
+            Fact(concept=CONCEPT_A, context_ref="ctx_d", unit_ref=None, value="2"),
+        ]
+        inst = _instance(facts, {"ctx_i": ctx_instant, "ctx_d": ctx_duration})
+        var = _var_def(period_filter="duration")
+        result = apply_filters(facts, var, inst)
+        assert len(result) == 1
+        assert result[0].context_ref == "ctx_d"
+
+    def test_period_filter_no_match_returns_empty(self) -> None:
+        """period_filter returns empty when all facts are in the wrong period type."""
+        ctx = _ctx("ctx1", period=_instant_period())
+        facts = [Fact(concept=CONCEPT_A, context_ref="ctx1", unit_ref=None, value="1")]
+        inst = _instance(facts, {"ctx1": ctx})
+        var = _var_def(period_filter="duration")
+        result = apply_filters(facts, var, inst)
+        assert result == []
+
+    def test_period_filter_skips_fact_with_missing_context(self) -> None:
+        """A fact referencing a non-existent context is dropped by the period filter."""
+        facts = [Fact(concept=CONCEPT_A, context_ref="ctx_MISSING", unit_ref=None, value="1")]
+        inst = _instance(facts, {})
+        var = _var_def(period_filter="instant")
+        result = apply_filters(facts, var, inst)
+        assert result == []
+
+
+# ---------------------------------------------------------------------------
+# Dimension filters — include
+# ---------------------------------------------------------------------------
+
+
+class TestDimensionFilterInclude:
+    def test_dim_filter_include_specific_member(self) -> None:
+        """Include filter with specific members retains only facts with matching members."""
+        ctx_es = _ctx("ctx_es", dims={DIM_QN: MEM_ES})
+        ctx_pt = _ctx("ctx_pt", dims={DIM_QN: MEM_PT})
+        facts = [
+            Fact(concept=CONCEPT_A, context_ref="ctx_es", unit_ref=None, value="1"),
+            Fact(concept=CONCEPT_A, context_ref="ctx_pt", unit_ref=None, value="2"),
+        ]
+        inst = _instance(facts, {"ctx_es": ctx_es, "ctx_pt": ctx_pt})
+        dim_filter = DimensionFilter(dimension_qname=DIM_QN, member_qnames=(MEM_ES,), exclude=False)
+        var = _var_def(dimension_filters=(dim_filter,))
+        result = apply_filters(facts, var, inst)
+        assert len(result) == 1
+        assert result[0].context_ref == "ctx_es"
+
+    def test_dim_filter_include_any_member(self) -> None:
+        """Include filter with empty member list retains any fact that has the dimension."""
+        ctx_es = _ctx("ctx_es", dims={DIM_QN: MEM_ES})
+        ctx_no_dim = _ctx("ctx_no_dim", dims={})
+        facts = [
+            Fact(concept=CONCEPT_A, context_ref="ctx_es", unit_ref=None, value="1"),
+            Fact(concept=CONCEPT_A, context_ref="ctx_no_dim", unit_ref=None, value="2"),
+        ]
+        inst = _instance(facts, {"ctx_es": ctx_es, "ctx_no_dim": ctx_no_dim})
+        dim_filter = DimensionFilter(dimension_qname=DIM_QN, member_qnames=(), exclude=False)
+        var = _var_def(dimension_filters=(dim_filter,))
+        result = apply_filters(facts, var, inst)
+        assert len(result) == 1
+        assert result[0].context_ref == "ctx_es"
+
+    def test_dim_filter_include_no_match_returns_empty(self) -> None:
+        """Include filter returns empty when no fact has the required member."""
+        ctx = _ctx("ctx1", dims={DIM_QN: MEM_PT})
+        facts = [Fact(concept=CONCEPT_A, context_ref="ctx1", unit_ref=None, value="1")]
+        inst = _instance(facts, {"ctx1": ctx})
+        dim_filter = DimensionFilter(dimension_qname=DIM_QN, member_qnames=(MEM_ES,), exclude=False)
+        var = _var_def(dimension_filters=(dim_filter,))
+        result = apply_filters(facts, var, inst)
+        assert result == []
+
+
+# ---------------------------------------------------------------------------
+# Dimension filters — exclude
+# ---------------------------------------------------------------------------
+
+
+class TestDimensionFilterExclude:
+    def test_dim_filter_exclude_specific_member(self) -> None:
+        """Exclude filter drops facts that have the excluded member."""
+        ctx_es = _ctx("ctx_es", dims={DIM_QN: MEM_ES})
+        ctx_pt = _ctx("ctx_pt", dims={DIM_QN: MEM_PT})
+        facts = [
+            Fact(concept=CONCEPT_A, context_ref="ctx_es", unit_ref=None, value="1"),
+            Fact(concept=CONCEPT_A, context_ref="ctx_pt", unit_ref=None, value="2"),
+        ]
+        inst = _instance(facts, {"ctx_es": ctx_es, "ctx_pt": ctx_pt})
+        dim_filter = DimensionFilter(dimension_qname=DIM_QN, member_qnames=(MEM_ES,), exclude=True)
+        var = _var_def(dimension_filters=(dim_filter,))
+        result = apply_filters(facts, var, inst)
+        assert len(result) == 1
+        assert result[0].context_ref == "ctx_pt"
+
+    def test_dim_filter_exclude_keeps_fact_without_dimension(self) -> None:
+        """Exclude filter retains facts that have no value for the dimension at all."""
+        ctx_no_dim = _ctx("ctx_no_dim", dims={})
+        facts = [Fact(concept=CONCEPT_A, context_ref="ctx_no_dim", unit_ref=None, value="1")]
+        inst = _instance(facts, {"ctx_no_dim": ctx_no_dim})
+        dim_filter = DimensionFilter(dimension_qname=DIM_QN, member_qnames=(MEM_ES,), exclude=True)
+        var = _var_def(dimension_filters=(dim_filter,))
+        result = apply_filters(facts, var, inst)
+        assert len(result) == 1

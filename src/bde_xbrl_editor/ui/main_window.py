@@ -1,11 +1,13 @@
-"""QMainWindow shell — Features 001 + 002 + 004 UI."""
+"""QMainWindow shell — Features 001 + 002 + 004 + 005 UI."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
+from PySide6.QtCore import QThread, Qt
 from PySide6.QtWidgets import (
     QDialog,
+    QDockWidget,
     QFileDialog,
     QMainWindow,
     QMessageBox,
@@ -23,7 +25,7 @@ class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("BDE XBRL Editor[*]")
-        self.resize(800, 600)
+        self.resize(1000, 700)
 
         self._cache = TaxonomyCache()
         self._settings = load_saved_settings()
@@ -32,6 +34,11 @@ class MainWindow(QMainWindow):
         self._editor = None  # InstanceEditor | None
         self._table_view = None  # XbrlTableView | None
 
+        # Validation
+        self._validation_thread: QThread | None = None
+        self._validation_worker = None  # ValidationWorker | None
+        self._validation_panel = None  # ValidationPanel | None
+
         self._setup_menu()
         self._setup_central()
         self._setup_statusbar()
@@ -39,6 +46,7 @@ class MainWindow(QMainWindow):
     def _setup_menu(self) -> None:
         menu_bar = self.menuBar()
         file_menu = menu_bar.addMenu("&File")
+
 
         open_taxonomy_action = file_menu.addAction("&Open Taxonomy…")
         open_taxonomy_action.setShortcut("Ctrl+O")
@@ -77,6 +85,17 @@ class MainWindow(QMainWindow):
         quit_action = file_menu.addAction("&Quit")
         quit_action.setShortcut("Ctrl+Q")
         quit_action.triggered.connect(self.close)
+
+        # Validation menu
+        validation_menu = menu_bar.addMenu("&Validation")
+        self._validate_action = validation_menu.addAction("&Validate Instance")
+        self._validate_action.setShortcut("Ctrl+Shift+V")
+        self._validate_action.setEnabled(False)
+        self._validate_action.triggered.connect(self._trigger_validation)
+
+        self._show_validation_panel_action = validation_menu.addAction("Show Validation Panel")
+        self._show_validation_panel_action.setEnabled(False)
+        self._show_validation_panel_action.triggered.connect(self._show_validation_panel)
 
     def _setup_central(self) -> None:
         self._loader_widget = TaxonomyLoaderWidget(
@@ -218,6 +237,7 @@ class MainWindow(QMainWindow):
 
         self._save_action.setEnabled(True)
         self._save_as_action.setEnabled(True)
+        self._validate_action.setEnabled(True)
 
         fname = Path(instance.source_path).name if instance.source_path else "instance"
         self.setWindowTitle(f"BDE XBRL Editor — {fname}[*]")
@@ -334,6 +354,108 @@ class MainWindow(QMainWindow):
             self._on_save()
             return True
         return reply == QMessageBox.StandardButton.Discard
+
+    # ------------------------------------------------------------------
+    # Validation (Feature 005)
+    # ------------------------------------------------------------------
+
+    def _ensure_validation_panel(self) -> None:
+        """Lazily create and dock the ValidationPanel."""
+        if self._validation_panel is not None:
+            return
+        from bde_xbrl_editor.ui.widgets.validation_panel import ValidationPanel  # noqa: PLC0415
+
+        self._validation_panel = ValidationPanel(self)
+        self._validation_panel.revalidate_requested.connect(self._trigger_validation)
+        self._validation_panel.navigate_to_cell.connect(self._on_navigate_to_cell)
+
+        dock = QDockWidget("Validation", self)
+        dock.setObjectName("ValidationDock")
+        dock.setWidget(self._validation_panel)
+        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, dock)
+        self._show_validation_panel_action.setEnabled(True)
+
+    def _show_validation_panel(self) -> None:
+        self._ensure_validation_panel()
+        dock = self._find_validation_dock()
+        if dock:
+            dock.setVisible(True)
+            dock.raise_()
+
+    def _find_validation_dock(self) -> QDockWidget | None:
+        for dock in self.findChildren(QDockWidget):
+            if dock.objectName() == "ValidationDock":
+                return dock
+        return None
+
+    def _trigger_validation(self) -> None:
+        """Start a background validation run. Guard against double-trigger."""
+        if self._current_instance is None or self._current_taxonomy is None:
+            return
+        if self._validation_thread is not None and self._validation_thread.isRunning():
+            return
+
+        self._ensure_validation_panel()
+        assert self._validation_panel is not None  # guaranteed by _ensure_validation_panel
+
+        from bde_xbrl_editor.ui.widgets.validation_panel import ValidationWorker  # noqa: PLC0415
+
+        self._validate_action.setEnabled(False)
+        self._validation_panel.show_progress(0, 1, "Starting validation…")
+
+        self._validation_worker = ValidationWorker(
+            taxonomy=self._current_taxonomy,
+            instance=self._current_instance,
+        )
+        self._validation_thread = QThread(self)
+
+        self._validation_worker.moveToThread(self._validation_thread)
+        self._validation_thread.started.connect(self._validation_worker.run)
+        self._validation_worker.progress_changed.connect(
+            self._on_validation_progress, Qt.ConnectionType.QueuedConnection
+        )
+        self._validation_worker.validation_completed.connect(
+            self._on_validation_done, Qt.ConnectionType.QueuedConnection
+        )
+        self._validation_worker.validation_failed.connect(
+            self._on_validation_error, Qt.ConnectionType.QueuedConnection
+        )
+        self._validation_thread.start()
+
+    def _on_validation_progress(self, current: int, total: int, message: str) -> None:
+        if self._validation_panel:
+            self._validation_panel.show_progress(current, total, message)
+
+    def _on_validation_done(self, report) -> None:
+        self._cleanup_validation_thread()
+        if self._validation_panel:
+            self._validation_panel.show_report(report)
+        status = "PASSED" if report.passed else f"FAILED ({report.error_count} error(s))"
+        self._status.showMessage(f"Validation {status}")
+
+    def _on_validation_error(self, error_message: str) -> None:
+        self._cleanup_validation_thread()
+        if self._validation_panel:
+            self._validation_panel.clear()
+        QMessageBox.critical(self, "Validation Error", error_message)
+
+    def _cleanup_validation_thread(self) -> None:
+        self._validate_action.setEnabled(
+            self._current_instance is not None and self._current_taxonomy is not None
+        )
+        if self._validation_thread:
+            self._validation_thread.quit()
+            self._validation_thread.wait()
+            self._validation_thread = None
+        self._validation_worker = None
+
+    def _on_navigate_to_cell(self, context_ref: str, finding) -> None:
+        """Navigate XbrlTableView to the cell for this finding (best-effort)."""
+        # Currently just scrolls to a matching table; full navigation depends on
+        # the table view's ability to locate a context_ref within a rendered cell.
+        if self._table_view is None:
+            return
+        # No-op for now; full implementation would locate cell by (concept, context_ref).
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
         """Warn if there are unsaved changes before closing (T034)."""

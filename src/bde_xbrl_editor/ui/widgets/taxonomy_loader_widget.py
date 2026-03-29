@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QThread, Signal
+from PySide6.QtCore import QObject, QThread, Qt, Signal
 from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
@@ -130,10 +130,13 @@ class TaxonomyLoaderWidget(QWidget):
         self._thread = QThread(self)
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
-        self._worker.finished.connect(self._on_load_finished)
-        self._worker.error.connect(self._on_load_error)
-        self._progress_callback = self._progress_dialog.as_callback()
-        self._worker.progress.connect(self._progress_callback)
+        self._worker.finished.connect(
+            self._on_load_finished, Qt.ConnectionType.QueuedConnection
+        )
+        self._worker.error.connect(
+            self._on_load_error, Qt.ConnectionType.QueuedConnection
+        )
+        self._worker.progress.connect(self._progress_dialog.update_progress)
         self._thread.start()
 
     def _on_load_finished(self, payload: object) -> None:
