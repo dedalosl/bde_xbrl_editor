@@ -17,6 +17,10 @@ from bde_xbrl_editor.taxonomy.cache import TaxonomyCache
 from bde_xbrl_editor.taxonomy.constants import (
     NS_FORMULA,
     NS_TABLE_PWD,
+    NS_XBRLDT,
+    ARCROLE_ALL,
+    ARCROLE_NOT_ALL,
+    ARCROLE_HYPERCUBE_DIMENSION,
 )
 from bde_xbrl_editor.taxonomy.discovery import discover_dts
 from bde_xbrl_editor.taxonomy.label_resolver import LabelResolver
@@ -127,6 +131,108 @@ def _extract_metadata(entry_point: Path, declared_languages: list[str]) -> Taxon
         declared_languages=tuple(sorted(set(declared_languages))),
         period_type=period_type,
     )
+
+
+_SG_HYPERCUBE = QName(NS_XBRLDT, "hypercubeItem")
+_SG_DIMENSION = QName(NS_XBRLDT, "dimensionItem")
+
+
+def _check_dimensional_constraints(
+    concepts: dict[QName, "Concept"],
+    definition_arcs: dict[str, list],
+) -> None:
+    """Check XBRL Dimensions 1.0 taxonomy structure constraints (xbrldte:* errors).
+
+    Raises TaxonomyParseError with the appropriate xbrldte: error code in the
+    message when a constraint is violated. The conformance runner's
+    _match_outcome() detects these codes in the exception message.
+    """
+    # Build lookup: qname → concept
+    # Check 1: hypercube items must be abstract (xbrldte:HypercubeElementIsNotAbstractError)
+    for qname, concept in concepts.items():
+        sg = concept.substitution_group
+        if sg and sg.namespace == NS_XBRLDT and sg.local_name == "hypercubeItem":
+            if not concept.abstract:
+                raise TaxonomyParseError(
+                    file_path="",
+                    message=(
+                        f"xbrldte:HypercubeElementIsNotAbstractError: "
+                        f"Hypercube element {qname} must be abstract"
+                    ),
+                )
+        # Check 2: dimension items must be abstract (xbrldte:DimensionElementIsNotAbstractError)
+        if sg and sg.namespace == NS_XBRLDT and sg.local_name == "dimensionItem":
+            if not concept.abstract:
+                raise TaxonomyParseError(
+                    file_path="",
+                    message=(
+                        f"xbrldte:DimensionElementIsNotAbstractError: "
+                        f"Dimension element {qname} must be abstract"
+                    ),
+                )
+
+    # Build sets of hypercube/dimension QNames for arc checks
+    hypercube_qnames = {
+        q for q, c in concepts.items()
+        if c.substitution_group and c.substitution_group.namespace == NS_XBRLDT
+        and c.substitution_group.local_name == "hypercubeItem"
+    }
+    dimension_qnames = {
+        q for q, c in concepts.items()
+        if c.substitution_group and c.substitution_group.namespace == NS_XBRLDT
+        and c.substitution_group.local_name == "dimensionItem"
+    }
+
+    for _elr, arcs in definition_arcs.items():
+        for arc in arcs:
+            arcrole = arc.arcrole
+
+            # Check 3: source of hypercube-dimension arc must be a hypercube
+            # (xbrldte:HypercubeDimensionSourceError)
+            if arcrole == ARCROLE_HYPERCUBE_DIMENSION:
+                if arc.source not in hypercube_qnames:
+                    raise TaxonomyParseError(
+                        file_path="",
+                        message=(
+                            f"xbrldte:HypercubeDimensionSourceError: "
+                            f"Source of hypercube-dimension arc must be a hypercube item, "
+                            f"got {arc.source}"
+                        ),
+                    )
+                # Check 4: target of hypercube-dimension arc must be a dimension
+                # (xbrldte:HypercubeDimensionTargetError)
+                if arc.target not in dimension_qnames:
+                    raise TaxonomyParseError(
+                        file_path="",
+                        message=(
+                            f"xbrldte:HypercubeDimensionTargetError: "
+                            f"Target of hypercube-dimension arc must be a dimension item, "
+                            f"got {arc.target}"
+                        ),
+                    )
+
+            # Check 5: target of all/notAll arc must be a hypercube
+            # (xbrldte:HasHypercubeTargetError)
+            if arcrole in (ARCROLE_ALL, ARCROLE_NOT_ALL):
+                if arc.target not in hypercube_qnames:
+                    raise TaxonomyParseError(
+                        file_path="",
+                        message=(
+                            f"xbrldte:HasHypercubeTargetError: "
+                            f"Target of hasHypercube arc must be a hypercube item, "
+                            f"got {arc.target}"
+                        ),
+                    )
+                # Check 6: all/notAll arc must have contextElement attribute
+                # (xbrldte:HasHypercubeMissingContextElementAttributeError)
+                if arc.context_element is None:
+                    raise TaxonomyParseError(
+                        file_path="",
+                        message=(
+                            "xbrldte:HasHypercubeMissingContextElementAttributeError: "
+                            "hasHypercube arc missing xbrldt:contextElement attribute"
+                        ),
+                    )
 
 
 class TaxonomyLoader:
@@ -293,6 +399,9 @@ class TaxonomyLoader:
                     file_path=str(lb_path),
                     message=f"Unexpected error: {exc}",
                 ) from exc
+
+        # Step 4b: XBRL Dimensions 1.0 taxonomy constraint checks (xbrldte:* errors)
+        _check_dimensional_constraints(concepts, definition_arcs)
 
         # Step 5: Parse table linkbases
         progress("Parsing table linkbases…", 5)

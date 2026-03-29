@@ -40,3 +40,6 @@ Thumbs.db
 
 # Project-specific
 *.tmp
+.claude/
+conformance/
+cache/

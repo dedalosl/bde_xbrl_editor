@@ -6,7 +6,7 @@ from pathlib import Path
 
 from lxml import etree
 
-from bde_xbrl_editor.taxonomy.constants import NS_XBRLI, NS_XSD
+from bde_xbrl_editor.taxonomy.constants import NS_XBRLI, NS_XSD, NS_XBRLDT
 from bde_xbrl_editor.taxonomy.models import (
     Concept,
     QName,
@@ -91,12 +91,17 @@ def parse_schema(schema_path: Path) -> dict[QName, Concept]:
         sg_raw = el.get("substitutionGroup")
         sg = _resolve_qname(sg_raw, ns_map, str(schema_path))
 
-        # Only collect XBRL items and tuples
+        # Only collect XBRL items, tuples, and dimensional concepts.
+        # xbrldt:hypercubeItem and xbrldt:dimensionItem extend xbrli:item
+        # transitively, so taxonomies that declare only dimensional concepts
+        # (no regular items) are still valid XBRL taxonomies.
         if sg is None:
             continue
-        if sg.local_name not in ("item", "tuple"):
-            continue
-        if sg.namespace != NS_XBRLI:
+        is_xbrli_direct = sg.namespace == NS_XBRLI and sg.local_name in ("item", "tuple")
+        is_dimensional = sg.namespace == NS_XBRLDT and sg.local_name in (
+            "hypercubeItem", "dimensionItem"
+        )
+        if not is_xbrli_direct and not is_dimensional:
             continue
 
         qname = QName(namespace=target_ns, local_name=name)
