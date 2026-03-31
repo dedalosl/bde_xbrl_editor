@@ -111,25 +111,27 @@ class DimensionalConstraintValidator:
 
         # --- 1. UNDECLARED_DIMENSION -----------------------------------------
         # A dimension present in the context is not declared in this hypercube.
-        for dim_qname in context_dims:
-            if dim_qname not in hc_dim_set:
-                findings.append(
-                    ValidationFinding(
-                        rule_id="dimensional.undeclared_dimension",
-                        severity=ValidationSeverity.ERROR,
-                        message=(
-                            f"Fact '{fact.concept}' in context '{fact.context_ref}' "
-                            f"uses dimension '{dim_qname}' which is not declared in "
-                            f"hypercube '{hc.qname}'."
-                        ),
-                        source="dimensional",
-                        concept_qname=fact.concept,
-                        context_ref=fact.context_ref,
-                        hypercube_qname=hc.qname,
-                        dimension_qname=dim_qname,
-                        constraint_type="UNDECLARED_DIMENSION",
+        # Only closed hypercubes disallow extra (undeclared) dimensions.
+        if hc.closed:
+            for dim_qname in context_dims:
+                if dim_qname not in hc_dim_set:
+                    findings.append(
+                        ValidationFinding(
+                            rule_id="xbrldie:PrimaryItemDimensionallyInvalidError",
+                            severity=ValidationSeverity.ERROR,
+                            message=(
+                                f"Fact '{fact.concept}' in context '{fact.context_ref}' "
+                                f"uses dimension '{dim_qname}' which is not declared in "
+                                f"closed hypercube '{hc.qname}'."
+                            ),
+                            source="dimensional",
+                            concept_qname=fact.concept,
+                            context_ref=fact.context_ref,
+                            hypercube_qname=hc.qname,
+                            dimension_qname=dim_qname,
+                            constraint_type="UNDECLARED_DIMENSION",
+                        )
                     )
-                )
 
         # --- 2. INVALID_MEMBER -----------------------------------------------
         # A member assigned to a dimension is not in the dimension's declared member list.
@@ -152,7 +154,7 @@ class DimensionalConstraintValidator:
             if member_qname not in declared_members:
                 findings.append(
                     ValidationFinding(
-                        rule_id="dimensional.invalid_member",
+                        rule_id="xbrldie:PrimaryItemDimensionallyInvalidError",
                         severity=ValidationSeverity.ERROR,
                         message=(
                             f"Fact '{fact.concept}' in context '{fact.context_ref}' "
@@ -185,7 +187,7 @@ class DimensionalConstraintValidator:
                 if not has_default:
                     findings.append(
                         ValidationFinding(
-                            rule_id="dimensional.closed_missing_dimension",
+                            rule_id="xbrldie:PrimaryItemDimensionallyInvalidError",
                             severity=ValidationSeverity.ERROR,
                             message=(
                                 f"Fact '{fact.concept}' in context '{fact.context_ref}' "
@@ -207,8 +209,10 @@ class DimensionalConstraintValidator:
         # hypercube are present in the context (the prohibited combination is
         # fully satisfied).
         if hc.arcrole == "notAll":
-            # A notAll hypercube with zero dimensions would always be prohibited;
-            # that is a degenerate case but we handle it consistently.
+            # A notAll hypercube with zero dimensions has no discriminating
+            # constraints; skip it (degenerate/incomplete model).
+            if not hc.dimensions:
+                return
             all_dims_present = all(d in context_dims for d in hc.dimensions)
             if all_dims_present:
                 # Report once per hypercube; use the first dimension (or None) as
@@ -216,7 +220,7 @@ class DimensionalConstraintValidator:
                 representative_dim = hc.dimensions[0] if hc.dimensions else None
                 findings.append(
                     ValidationFinding(
-                        rule_id="dimensional.prohibited_combination",
+                        rule_id="xbrldie:PrimaryItemDimensionallyInvalidError",
                         severity=ValidationSeverity.ERROR,
                         message=(
                             f"Fact '{fact.concept}' in context '{fact.context_ref}' "

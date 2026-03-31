@@ -159,8 +159,12 @@ def parse_definition_linkbase(
             primary_by_hc.setdefault(hc, []).append(primary)
 
         dims_by_hc: dict[QName, list[QName]] = {}
-        for hc, dim in hc_dims.get(elr, []):
-            dims_by_hc.setdefault(hc, []).append(dim)
+        # A hypercube's dimensions may be declared in a different ELR (via
+        # xbrldt:targetRole).  Collect dimensions from all ELRs so that
+        # cross-ELR targetRole relationships are resolved correctly.
+        for any_elr_dims in hc_dims.values():
+            for hc_q, dim_q in any_elr_dims:
+                dims_by_hc.setdefault(hc_q, []).append(dim_q)
 
         for hc, (arcrole, closed, ctx) in hc_map.items():
             arcrole_short: str = "all" if arcrole == ARCROLE_ALL else "notAll"

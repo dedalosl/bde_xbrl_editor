@@ -125,6 +125,9 @@ def parse_schema(schema_path: Path) -> dict[QName, Concept]:
         abstract = el.get("abstract", "false").lower() == "true"
         nillable = el.get("nillable", "false").lower() == "true"
 
+        # id attribute (used as XLink href fragment in linkbases)
+        xml_id = el.get("id") or None
+
         concepts[qname] = Concept(
             qname=qname,
             data_type=data_type,
@@ -133,6 +136,7 @@ def parse_schema(schema_path: Path) -> dict[QName, Concept]:
             abstract=abstract,
             nillable=nillable,
             substitution_group=sg,
+            xml_id=xml_id,
         )
 
     return concepts

@@ -21,6 +21,8 @@ from bde_xbrl_editor.taxonomy.constants import (
     ARCROLE_ALL,
     ARCROLE_NOT_ALL,
     ARCROLE_HYPERCUBE_DIMENSION,
+    ARCROLE_DIMENSION_DOMAIN,
+    ARCROLE_DIMENSION_DEFAULT,
 )
 from bde_xbrl_editor.taxonomy.discovery import discover_dts
 from bde_xbrl_editor.taxonomy.label_resolver import LabelResolver
@@ -90,7 +92,7 @@ def _build_concept_id_map(concepts: dict[QName, Concept]) -> dict[str, QName]:
     just "{localName}" as XLink locator href fragments.
     """
     id_map: dict[str, QName] = {}
-    for qname in concepts:
+    for qname, concept in concepts.items():
         # Standard XBRL id: prefixed or bare local name
         id_map[qname.local_name] = qname
         if qname.prefix:
@@ -98,6 +100,9 @@ def _build_concept_id_map(concepts: dict[QName, Concept]) -> dict[str, QName]:
         # Also add namespace-derived prefix
         ns_short = qname.namespace.rstrip("/").split("/")[-1].replace("-", "").replace(".", "")[:8]
         id_map[f"{ns_short}_{qname.local_name}"] = qname
+        # Use the actual @id attribute from the XSD element (most reliable)
+        if concept.xml_id:
+            id_map[concept.xml_id] = qname
     return id_map
 
 
@@ -183,6 +188,10 @@ def _check_dimensional_constraints(
         and c.substitution_group.local_name == "dimensionItem"
     }
 
+    # Build per-ELR dimension-default tracking to detect too many defaults
+    # (xbrldte:TooManyDefaultMembersError)
+    dim_defaults_seen: dict[tuple[str, QName], int] = {}  # (elr, dim_qname) → count
+
     for _elr, arcs in definition_arcs.items():
         for arc in arcs:
             arcrole = arc.arcrole
@@ -231,6 +240,34 @@ def _check_dimensional_constraints(
                         message=(
                             "xbrldte:HasHypercubeMissingContextElementAttributeError: "
                             "hasHypercube arc missing xbrldt:contextElement attribute"
+                        ),
+                    )
+
+            # Check 7: source of dimension-domain arc must be a dimension item
+            # (xbrldte:DimensionDomainSourceError)
+            if arcrole == ARCROLE_DIMENSION_DOMAIN:
+                if arc.source not in dimension_qnames:
+                    raise TaxonomyParseError(
+                        file_path="",
+                        message=(
+                            f"xbrldte:DimensionDomainSourceError: "
+                            f"Source of dimension-domain arc must be a dimension item, "
+                            f"got {arc.source}"
+                        ),
+                    )
+
+            # Check 8: dimension-default arcs — track for too many defaults
+            # (xbrldte:TooManyDefaultMembersError)
+            if arcrole == ARCROLE_DIMENSION_DEFAULT:
+                key = (_elr, arc.source)
+                dim_defaults_seen[key] = dim_defaults_seen.get(key, 0) + 1
+                if dim_defaults_seen[key] > 1:
+                    raise TaxonomyParseError(
+                        file_path="",
+                        message=(
+                            f"xbrldte:TooManyDefaultMembersError: "
+                            f"Dimension {arc.source} has more than one default member "
+                            f"in ELR {_elr}"
                         ),
                     )
 

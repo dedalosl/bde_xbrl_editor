@@ -118,6 +118,7 @@ class Concept:
     abstract: bool = False
     nillable: bool = True
     substitution_group: QName | None = None
+    xml_id: str | None = None  # @id attribute from the XSD element declaration
 
 
 # ---------------------------------------------------------------------------

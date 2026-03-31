@@ -172,21 +172,33 @@ def _not_all_hc() -> HypercubeModel:
 
 class TestUndeclaredDimension:
     def test_context_uses_undeclared_dimension(self) -> None:
-        """A dimension present in the context but absent from the hypercube is flagged."""
+        """A dimension present in the context but absent from a CLOSED hypercube is flagged."""
         unknown_dim = _qn("UnknownDim", _DIM_NS)
         ctx = _make_context("ctx1", dims={unknown_dim: MEM_QN_ES})
         fact = Fact(concept=CONCEPT_QN, context_ref="ctx1", unit_ref=None, value="1")
         inst = _make_instance([fact], {"ctx1": ctx})
-        taxonomy = _make_taxonomy(_all_open_hc(), dims={})
+        # Closed hypercube: undeclared dimensions are not allowed
+        taxonomy = _make_taxonomy(_all_closed_hc(), dims={})
         findings = DimensionalConstraintValidator(taxonomy).validate(inst)
         assert any(f.constraint_type == "UNDECLARED_DIMENSION" for f in findings)
+
+    def test_open_hypercube_allows_undeclared_dimension(self) -> None:
+        """An open hypercube allows extra (undeclared) dimensions in the context."""
+        unknown_dim = _qn("UnknownDim", _DIM_NS)
+        ctx = _make_context("ctx1", dims={unknown_dim: MEM_QN_ES})
+        fact = Fact(concept=CONCEPT_QN, context_ref="ctx1", unit_ref=None, value="1")
+        inst = _make_instance([fact], {"ctx1": ctx})
+        # Open hypercube: undeclared dimensions are fine
+        taxonomy = _make_taxonomy(_all_open_hc(), dims={})
+        findings = DimensionalConstraintValidator(taxonomy).validate(inst)
+        assert not any(f.constraint_type == "UNDECLARED_DIMENSION" for f in findings)
 
     def test_declared_dimension_no_undeclared_finding(self) -> None:
         """A dimension that is declared in the hypercube does not trigger UNDECLARED_DIMENSION."""
         ctx = _make_context("ctx1", dims={DIM_QN: MEM_QN_ES})
         fact = Fact(concept=CONCEPT_QN, context_ref="ctx1", unit_ref=None, value="1")
         inst = _make_instance([fact], {"ctx1": ctx})
-        taxonomy = _make_taxonomy(_all_open_hc(), dims={DIM_QN: _dim_model_with_members()})
+        taxonomy = _make_taxonomy(_all_closed_hc(), dims={DIM_QN: _dim_model_with_members()})
         findings = DimensionalConstraintValidator(taxonomy).validate(inst)
         assert not any(f.constraint_type == "UNDECLARED_DIMENSION" for f in findings)
 
@@ -196,7 +208,7 @@ class TestUndeclaredDimension:
         ctx = _make_context("ctx1", dims={unknown_dim: MEM_QN_ES})
         fact = Fact(concept=CONCEPT_QN, context_ref="ctx1", unit_ref=None, value="1")
         inst = _make_instance([fact], {"ctx1": ctx})
-        taxonomy = _make_taxonomy(_all_open_hc(), dims={})
+        taxonomy = _make_taxonomy(_all_closed_hc(), dims={})
         findings = DimensionalConstraintValidator(taxonomy).validate(inst)
         match = next((f for f in findings if f.constraint_type == "UNDECLARED_DIMENSION"), None)
         assert match is not None

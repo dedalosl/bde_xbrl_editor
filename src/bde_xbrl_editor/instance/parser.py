@@ -51,6 +51,7 @@ _XBRLI_MEASURE = f"{{{XBRLI_NS}}}measure"
 _XBRLI_SCENARIO = f"{{{XBRLI_NS}}}scenario"
 _XBRLI_SEGMENT = f"{{{XBRLI_NS}}}segment"
 _XBRLDI_MEMBER = f"{{{XBRLDI_NS}}}explicitMember"
+_XBRLDI_TYPED_MEMBER = f"{{{XBRLDI_NS}}}typedMember"
 _FILING_IND = f"{{{FILING_IND_NS}}}filingIndicator"
 _XLINK_HREF = f"{{{XLINK_NS}}}href"
 _XLINK_TYPE = f"{{{XLINK_NS}}}type"
@@ -101,26 +102,61 @@ def _parse_context(el: etree._Element) -> XbrlContext:
             end_date=_parse_date((end_el.text or "") if end_el is not None else ""),
         )
 
-    # Parse explicit dimensions from scenario/segment
+    # Parse explicit and typed dimensions from scenario/segment.
+    # Dimensions must be unique across BOTH segment and scenario combined.
+    # NOTE: scenario is a direct child of context; segment is inside entity.
     dimensions: dict[QName, QName] = {}
-    for container_tag in (_XBRLI_SCENARIO, _XBRLI_SEGMENT):
-        container = el.find(container_tag)
-        if container is not None:
-            for member_el in container.findall(_XBRLDI_MEMBER):
-                dim_str = member_el.get("dimension", "")
-                mem_str = (member_el.text or "").strip()
-                if dim_str and mem_str:
-                    try:
-                        # Resolve namespace prefixes in the context of this element
-                        dim_clark = _resolve_prefixed_qname(member_el, dim_str)
-                        mem_clark = _resolve_prefixed_qname(member_el, mem_str)
-                        dimensions[QName.from_clark(dim_clark)] = QName.from_clark(mem_clark)
-                    except Exception:  # noqa: BLE001
-                        pass
-            context_element: str = "scenario" if container_tag == _XBRLI_SCENARIO else "segment"
-            break
-    else:
-        context_element = "scenario"
+    context_element: str = "scenario"
+    _segment_container = entity_el.find(_XBRLI_SEGMENT) if entity_el is not None else None
+    _containers: list[tuple[etree._Element, str]] = []
+    if el.find(_XBRLI_SCENARIO) is not None:
+        _containers.append((el.find(_XBRLI_SCENARIO), "scenario"))
+    if _segment_container is not None:
+        _containers.append((_segment_container, "segment"))
+    for container, _ce in _containers:
+        if _ce == "segment":
+            context_element = "segment"
+        # Explicit dimensions
+        for member_el in container.findall(_XBRLDI_MEMBER):
+            dim_str = member_el.get("dimension", "")
+            mem_str = (member_el.text or "").strip()
+            if dim_str and mem_str:
+                try:
+                    dim_clark = _resolve_prefixed_qname(member_el, dim_str)
+                    mem_clark = _resolve_prefixed_qname(member_el, mem_str)
+                    dim_qname = QName.from_clark(dim_clark)
+                    if dim_qname in dimensions:
+                        raise InstanceParseError(
+                            "",
+                            f"xbrldie:RepeatedDimensionInInstanceError: "
+                            f"Dimension {dim_qname} appears more than once in "
+                            f"context '{context_id}'",
+                        )
+                    dimensions[dim_qname] = QName.from_clark(mem_clark)
+                except InstanceParseError:
+                    raise
+                except Exception:  # noqa: BLE001
+                    pass
+        # Typed dimensions (value is an XML child, not text)
+        for member_el in container.findall(_XBRLDI_TYPED_MEMBER):
+            dim_str = member_el.get("dimension", "")
+            if dim_str:
+                try:
+                    dim_clark = _resolve_prefixed_qname(member_el, dim_str)
+                    dim_qname = QName.from_clark(dim_clark)
+                    if dim_qname in dimensions:
+                        raise InstanceParseError(
+                            "",
+                            f"xbrldie:RepeatedDimensionInInstanceError: "
+                            f"Dimension {dim_qname} appears more than once in "
+                            f"context '{context_id}'",
+                        )
+                    # Use dim_qname itself as placeholder value for typed members
+                    dimensions[dim_qname] = dim_qname
+                except InstanceParseError:
+                    raise
+                except Exception:  # noqa: BLE001
+                    pass
 
     return XbrlContext(
         context_id=context_id,
