@@ -369,6 +369,9 @@ class TaxonomyStructure:
     tables: Sequence[TableDefinitionPWD]
     formula_linkbase_path: Path | None = None
     formula_assertion_set: FormulaAssertionSet = field(default_factory=FormulaAssertionSet)
+    # Files discovered during DTS traversal (populated by TaxonomyLoader)
+    schema_files: tuple[Path, ...] = field(default_factory=tuple)
+    linkbase_files: tuple[Path, ...] = field(default_factory=tuple)
 
     def get_table(self, table_id: str) -> TableDefinitionPWD | None:
         """Return the table with the given ID, or None if not found."""

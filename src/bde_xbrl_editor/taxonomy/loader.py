@@ -41,7 +41,7 @@ from bde_xbrl_editor.taxonomy.models import (
     TaxonomyStructure,
     UnsupportedTaxonomyFormatError,
 )
-from bde_xbrl_editor.taxonomy.schema import parse_schema
+from bde_xbrl_editor.taxonomy.schema import XBRL_SG_ROOTS, parse_schema_raw
 from bde_xbrl_editor.taxonomy.settings import LoaderSettings
 
 ProgressCallback = Callable[[str, int, int], None]
@@ -66,7 +66,7 @@ def _sniff_linkbase_type(path: Path) -> str:
         return "calc"
     if "def" in name or "definition" in name:
         return "def"
-    if "table" in name or "tbl" in name:
+    if "table" in name or "tbl" in name or "rend" in name:
         return "table"
     if "formula" in name or "form" in name:
         return "formula"
@@ -90,9 +90,25 @@ def _build_concept_id_map(concepts: dict[QName, Concept]) -> dict[str, QName]:
 
     XBRL uses element @id attributes of the form "{prefix}_{localName}" or
     just "{localName}" as XLink locator href fragments.
+
+    This map is the *fallback* used by parse_definition_linkbase when the
+    primary namespace-qualified lookup (which uses the schema URL from the
+    locator href) cannot resolve a concept — e.g. because the schema that
+    declares it was not reached via xs:import discovery.
+
+    When multiple concepts share the same xml:id (e.g. a dimension in
+    dict/dim/dim.xsd and a domain member in dict/dom/exp.xsd both declare
+    id="eba_NAC"), xbrldt:dimensionItem / xbrldt:hypercubeItem concepts must
+    win so that the fallback still returns the structurally-correct concept.
+    Achieve this by sorting so dimensional concepts are written last and
+    therefore overwrite any earlier entry with the same key.
     """
+    def _sg_priority(item: tuple[QName, Concept]) -> int:
+        sg = item[1].substitution_group
+        return 1 if (sg and sg.namespace == NS_XBRLDT) else 0
+
     id_map: dict[str, QName] = {}
-    for qname, concept in concepts.items():
+    for qname, concept in sorted(concepts.items(), key=_sg_priority):
         # Standard XBRL id: prefixed or bare local name
         id_map[qname.local_name] = qname
         if qname.prefix:
@@ -190,7 +206,11 @@ def _check_dimensional_constraints(
 
     # Build per-ELR dimension-default tracking to detect too many defaults
     # (xbrldte:TooManyDefaultMembersError)
-    dim_defaults_seen: dict[tuple[str, QName], int] = {}  # (elr, dim_qname) → count
+    # Maps (elr, dim_qname) → set of distinct default-member QNames seen.
+    # Duplicate arcs with the same (elr, source, target) in different linkbases
+    # are silently skipped per XBRL arc-equivalence rules; only genuinely distinct
+    # default members for the same dimension in the same ELR are an error.
+    dim_defaults_seen: dict[tuple[str, QName], set[QName]] = {}
 
     for _elr, arcs in definition_arcs.items():
         for arc in arcs:
@@ -198,8 +218,11 @@ def _check_dimensional_constraints(
 
             # Check 3: source of hypercube-dimension arc must be a hypercube
             # (xbrldte:HypercubeDimensionSourceError)
+            # Only enforced when the source concept is known to us — if its
+            # declaring schema was not loaded (e.g. remote schema not cached)
+            # the concept is absent from `concepts` and we cannot verify.
             if arcrole == ARCROLE_HYPERCUBE_DIMENSION:
-                if arc.source not in hypercube_qnames:
+                if arc.source in concepts and arc.source not in hypercube_qnames:
                     raise TaxonomyParseError(
                         file_path="",
                         message=(
@@ -210,7 +233,7 @@ def _check_dimensional_constraints(
                     )
                 # Check 4: target of hypercube-dimension arc must be a dimension
                 # (xbrldte:HypercubeDimensionTargetError)
-                if arc.target not in dimension_qnames:
+                if arc.target in concepts and arc.target not in dimension_qnames:
                     raise TaxonomyParseError(
                         file_path="",
                         message=(
@@ -223,7 +246,7 @@ def _check_dimensional_constraints(
             # Check 5: target of all/notAll arc must be a hypercube
             # (xbrldte:HasHypercubeTargetError)
             if arcrole in (ARCROLE_ALL, ARCROLE_NOT_ALL):
-                if arc.target not in hypercube_qnames:
+                if arc.target in concepts and arc.target not in hypercube_qnames:
                     raise TaxonomyParseError(
                         file_path="",
                         message=(
@@ -246,7 +269,7 @@ def _check_dimensional_constraints(
             # Check 7: source of dimension-domain arc must be a dimension item
             # (xbrldte:DimensionDomainSourceError)
             if arcrole == ARCROLE_DIMENSION_DOMAIN:
-                if arc.source not in dimension_qnames:
+                if arc.source in concepts and arc.source not in dimension_qnames:
                     raise TaxonomyParseError(
                         file_path="",
                         message=(
@@ -260,8 +283,9 @@ def _check_dimensional_constraints(
             # (xbrldte:TooManyDefaultMembersError)
             if arcrole == ARCROLE_DIMENSION_DEFAULT:
                 key = (_elr, arc.source)
-                dim_defaults_seen[key] = dim_defaults_seen.get(key, 0) + 1
-                if dim_defaults_seen[key] > 1:
+                targets = dim_defaults_seen.setdefault(key, set())
+                targets.add(arc.target)
+                if len(targets) > 1:
                     raise TaxonomyParseError(
                         file_path="",
                         message=(
@@ -270,6 +294,7 @@ def _check_dimensional_constraints(
                             f"in ELR {_elr}"
                         ),
                     )
+
 
 
 class TaxonomyLoader:
@@ -344,18 +369,28 @@ class TaxonomyLoader:
 
         # Step 1: DTS discovery
         progress("Discovering DTS…", 1)
-        schema_paths, linkbase_paths, skipped_urls = discover_dts(
-            entry_point, self._settings, progress_callback=None
+        schema_paths, linkbase_paths, skipped_urls, include_ns_map = discover_dts(
+            entry_point, self._settings, progress_callback=None,
         )
         self._last_skipped_urls: list[str] = skipped_urls
 
-        # Step 2: Parse schemas → concepts
+        # Step 2: Parse schemas → concepts (with cross-schema transitive SG resolution)
         progress("Parsing schemas…", 2)
-        concepts: dict[QName, Concept] = {}
+        # Collect every xs:element-with-SG from every schema as raw candidates.
+        # We defer filtering to after all schemas are collected so that
+        # cross-schema transitive chains (A substitutes B substitutes xbrli:item,
+        # where A and B live in different files) are resolved correctly.
+        all_candidates: dict[QName, tuple[Concept, QName]] = {}
+        # schema_path_to_ns: local abs path → targetNamespace (used to build the
+        # namespace-qualified concept map for unambiguous locator resolution).
+        schema_path_to_ns: dict[str, str] = {}
         for schema_path in schema_paths:
+            ns_override = include_ns_map.get(schema_path)
             try:
-                parsed = parse_schema(schema_path)
-                concepts.update(parsed)
+                raw, target_ns = parse_schema_raw(schema_path, ns_override)
+                all_candidates.update(raw)
+                if target_ns:
+                    schema_path_to_ns[str(schema_path)] = target_ns
             except TaxonomyParseError:
                 raise
             except Exception as exc:  # noqa: BLE001
@@ -364,6 +399,25 @@ class TaxonomyLoader:
                     message=f"Unexpected error: {exc}",
                 ) from exc
 
+        # Transitive closure: start with concepts whose SG is a known XBRL root,
+        # then iteratively promote candidates whose SG is already resolved.
+        concepts: dict[QName, Concept] = {
+            qn: c for qn, (c, sg) in all_candidates.items() if sg in XBRL_SG_ROOTS
+        }
+        pending = [
+            (qn, c, sg) for qn, (c, sg) in all_candidates.items() if sg not in XBRL_SG_ROOTS
+        ]
+        prev = -1
+        while prev != len(concepts):
+            prev = len(concepts)
+            still_pending = []
+            for qn, c, sg in pending:
+                if sg in concepts:
+                    concepts[qn] = c
+                else:
+                    still_pending.append((qn, c, sg))
+            pending = still_pending
+
         if not concepts:
             raise UnsupportedTaxonomyFormatError(
                 entry_point=str(entry_point),
@@ -371,6 +425,29 @@ class TaxonomyLoader:
             )
 
         concept_id_map = _build_concept_id_map(concepts)
+
+        # Build namespace-qualified map: "{namespace}#{xml_id}" → QName
+        # Used by parse_definition_linkbase to resolve locator hrefs unambiguously
+        # when two concepts share the same xml_id in different namespaces.
+        ns_qualified_map: dict[str, QName] = {}
+        for qname, concept in concepts.items():
+            if concept.xml_id and qname.namespace:
+                ns_qualified_map[f"{qname.namespace}#{concept.xml_id}"] = qname
+
+        # Build a merged URL+path → namespace map for locator href resolution.
+        # Keys are both the absolute local path string and, when the local_catalog
+        # is configured, the corresponding HTTP URL string.
+        schema_ns_map: dict[str, str] = dict(schema_path_to_ns)
+        if self._settings.local_catalog:
+            for url_prefix, local_root in self._settings.local_catalog.items():
+                url_prefix_stripped = url_prefix.rstrip("/")
+                for path_str, ns in schema_path_to_ns.items():
+                    try:
+                        rel = Path(path_str).relative_to(local_root)
+                        url = f"{url_prefix_stripped}/{rel.as_posix()}"
+                        schema_ns_map[url] = ns
+                    except ValueError:
+                        pass
 
         # Step 3: Parse label linkbases
         progress("Parsing label linkbases…", 3)
@@ -424,7 +501,11 @@ class TaxonomyLoader:
                     for elr, arc_list in arcs.items():
                         calculation.setdefault(elr, []).extend(arc_list)
                 elif lb_type == "def":
-                    arcs_by_elr, hcs, dims = parse_definition_linkbase(lb_path, concept_id_map)
+                    arcs_by_elr, hcs, dims = parse_definition_linkbase(
+                        lb_path, concept_id_map,
+                        ns_qualified_map=ns_qualified_map,
+                        schema_ns_map=schema_ns_map,
+                    )
                     for elr, arc_list in arcs_by_elr.items():
                         definition_arcs.setdefault(elr, []).extend(arc_list)
                     hypercubes.extend(hcs)
@@ -482,6 +563,8 @@ class TaxonomyLoader:
             tables=tables,
             formula_linkbase_path=formula_linkbase_path,
             formula_assertion_set=formula_assertion_set,
+            schema_files=tuple(sorted(schema_paths)),
+            linkbase_files=tuple(sorted(linkbase_paths)),
         )
 
         progress("Taxonomy loaded successfully", _TOTAL_STEPS)

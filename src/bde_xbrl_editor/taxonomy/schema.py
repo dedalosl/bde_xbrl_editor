@@ -20,6 +20,14 @@ _COMPLEX_TYPE = f"{{{NS_XSD}}}complexType"
 _SG_ITEM = QName(NS_XBRLI, "item", prefix="xbrli")
 _SG_TUPLE = QName(NS_XBRLI, "tuple", prefix="xbrli")
 
+# Root SG QNames that definitively make an element an XBRL concept
+XBRL_SG_ROOTS: frozenset[QName] = frozenset({
+    QName(NS_XBRLI, "item"),
+    QName(NS_XBRLI, "tuple"),
+    QName(NS_XBRLDT, "hypercubeItem"),
+    QName(NS_XBRLDT, "dimensionItem"),
+})
+
 # Mapping from XSD built-in / XBRL type local names to canonical QNames
 _XBRLI_NS = NS_XBRLI
 _XBRLI_TYPES = {
@@ -53,15 +61,70 @@ def _resolve_qname(raw: str | None, ns_map: dict[str, str], file_path: str) -> Q
     return QName(namespace=NS_XSD, local_name=raw)
 
 
-def parse_schema(schema_path: Path) -> dict[QName, Concept]:
-    """Parse a single XSD file and return all XBRL item/tuple Concept objects.
+def _build_concept(
+    el: "etree._Element",
+    target_ns: str,
+    ns_map: dict[str, str],
+    schema_path_str: str,
+) -> tuple[QName, Concept, QName] | None:
+    """Build a (qname, concept, sg_qname) triple from an xs:element node.
 
-    Args:
-        schema_path: Absolute path to the .xsd file.
+    Returns None if the element has no name or no substitutionGroup.
+    """
+    name = el.get("name")
+    if not name:
+        return None
+    sg_raw = el.get("substitutionGroup")
+    sg = _resolve_qname(sg_raw, ns_map, schema_path_str)
+    if sg is None:
+        return None
+
+    qname = QName(namespace=target_ns, local_name=name)
+
+    type_raw = el.get("type")
+    if type_raw:
+        data_type = _resolve_qname(type_raw, ns_map, schema_path_str) or QName(NS_XSD, "anyType")
+    else:
+        data_type = QName(NS_XSD, "anyType")
+
+    period_raw = el.get(f"{{{NS_XBRLI}}}periodType", "duration")
+    period_type = "instant" if period_raw == "instant" else "duration"
+
+    balance_raw = el.get(f"{{{NS_XBRLI}}}balance")
+    balance = balance_raw if balance_raw in ("debit", "credit") else None
+
+    abstract = el.get("abstract", "false").lower() == "true"
+    nillable = el.get("nillable", "false").lower() == "true"
+    xml_id = el.get("id") or None
+
+    concept = Concept(
+        qname=qname,
+        data_type=data_type,
+        period_type=period_type,
+        balance=balance,
+        abstract=abstract,
+        nillable=nillable,
+        substitution_group=sg,
+        xml_id=xml_id,
+    )
+    return qname, concept, sg
+
+
+def parse_schema_raw(
+    schema_path: Path,
+    namespace_override: str | None = None,
+) -> tuple[dict[QName, tuple[Concept, QName]], str]:
+    """Parse a single XSD and return ALL xs:element declarations that have a
+    substitutionGroup, regardless of whether that SG is a known XBRL root.
 
     Returns:
-        Dict mapping QName → Concept for all declared elements that are
-        XBRL items or tuples (have xbrli:item/xbrli:tuple substitutionGroup).
+        Tuple of (candidates, target_ns) where:
+        - candidates: Dict mapping QName → (Concept, sg_qname).  The sg_qname is
+          the raw substitutionGroup value and may point to a concept in another schema.
+        - target_ns: The targetNamespace declared by this schema file.
+
+    Use this when you need the full candidate set for cross-schema transitive
+    closure (see TaxonomyLoader._do_load).
 
     Raises:
         TaxonomyParseError: If the file is not well-formed XML.
@@ -77,66 +140,63 @@ def parse_schema(schema_path: Path) -> dict[QName, Concept]:
         ) from exc
 
     root = tree.getroot()
-    target_ns = root.get("targetNamespace", "")
+    # namespace_override is supplied for xs:include'd schemas that lack their
+    # own targetNamespace but inherit it from the including schema.
+    target_ns = namespace_override if namespace_override is not None else root.get("targetNamespace", "")
     ns_map: dict[str, str] = {k or "": v for k, v in root.nsmap.items()}
 
-    concepts: dict[QName, Concept] = {}
-
+    candidates: dict[QName, tuple[Concept, QName]] = {}
     for el in root.iter(_ELEMENT):
-        name = el.get("name")
-        if not name:
-            continue
+        result = _build_concept(el, target_ns, ns_map, str(schema_path))
+        if result is not None:
+            qname, concept, sg = result
+            candidates[qname] = (concept, sg)
+    return candidates, target_ns
 
-        # Determine substitution group
-        sg_raw = el.get("substitutionGroup")
-        sg = _resolve_qname(sg_raw, ns_map, str(schema_path))
 
-        # Only collect XBRL items, tuples, and dimensional concepts.
-        # xbrldt:hypercubeItem and xbrldt:dimensionItem extend xbrli:item
-        # transitively, so taxonomies that declare only dimensional concepts
-        # (no regular items) are still valid XBRL taxonomies.
-        if sg is None:
-            continue
-        is_xbrli_direct = sg.namespace == NS_XBRLI and sg.local_name in ("item", "tuple")
-        is_dimensional = sg.namespace == NS_XBRLDT and sg.local_name in (
-            "hypercubeItem", "dimensionItem"
-        )
-        if not is_xbrli_direct and not is_dimensional:
-            continue
+def parse_schema(
+    schema_path: Path,
+    namespace_override: str | None = None,
+) -> dict[QName, Concept]:
+    """Parse a single XSD file and return all XBRL item/tuple Concept objects.
 
-        qname = QName(namespace=target_ns, local_name=name)
+    Performs within-file transitive substitution group resolution: a concept
+    whose substitutionGroup points to another concept in the same file (which
+    itself substitutes for xbrli:item etc.) is included correctly.
 
-        # Data type
-        type_raw = el.get("type")
-        if type_raw:
-            data_type = _resolve_qname(type_raw, ns_map, str(schema_path)) or QName(NS_XSD, "anyType")
-        else:
-            data_type = QName(NS_XSD, "anyType")
+    For cross-schema transitive chains use parse_schema_raw + the transitive
+    closure logic in TaxonomyLoader.
 
-        # Period type (xbrli:periodType attribute)
-        period_raw = el.get(f"{{{NS_XBRLI}}}periodType", "duration")
-        period_type = "instant" if period_raw == "instant" else "duration"
+    Args:
+        schema_path: Absolute path to the .xsd file.
+        namespace_override: If set, use this as targetNamespace instead of
+            the value in the file (needed for xs:include'd schemas that have
+            no targetNamespace of their own).
 
-        # Balance
-        balance_raw = el.get(f"{{{NS_XBRLI}}}balance")
-        balance = balance_raw if balance_raw in ("debit", "credit") else None
+    Returns:
+        Dict mapping QName → Concept for all XBRL items/tuples/dimensions.
 
-        # Abstract / nillable
-        abstract = el.get("abstract", "false").lower() == "true"
-        nillable = el.get("nillable", "false").lower() == "true"
+    Raises:
+        TaxonomyParseError: If the file is not well-formed XML.
+    """
+    raw, _target_ns = parse_schema_raw(schema_path, namespace_override)
 
-        # id attribute (used as XLink href fragment in linkbases)
-        xml_id = el.get("id") or None
+    # Phase 1: accept concepts whose SG is a known XBRL root
+    resolved: dict[QName, Concept] = {
+        qn: c for qn, (c, sg) in raw.items() if sg in XBRL_SG_ROOTS
+    }
 
-        concepts[qname] = Concept(
-            qname=qname,
-            data_type=data_type,
-            period_type=period_type,
-            balance=balance,
-            abstract=abstract,
-            nillable=nillable,
-            substitution_group=sg,
-            xml_id=xml_id,
-        )
+    # Phase 2: within-file transitive closure
+    pending = [(qn, c, sg) for qn, (c, sg) in raw.items() if sg not in XBRL_SG_ROOTS]
+    prev = -1
+    while prev != len(resolved):
+        prev = len(resolved)
+        still_pending = []
+        for qn, c, sg in pending:
+            if sg in resolved:
+                resolved[qn] = c
+            else:
+                still_pending.append((qn, c, sg))
+        pending = still_pending
 
-    return concepts
+    return resolved

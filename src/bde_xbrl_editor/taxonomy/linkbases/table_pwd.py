@@ -87,7 +87,7 @@ def _build_breakdown_node(
                 aspect_local = aspect_el.tag.split("}")[-1] if "}" in aspect_el.tag else aspect_el.tag
                 aspect_constraints[aspect_local] = aspect_el.text or aspect_el.get("value")
         elif local in ("concept", "period", "unit", "explicitDimension", "typedDimension"):
-            aspect_constraints[local] = aspect_el.text or aspect_el.get("value")
+            aspect_constraints[local] = child_el.text or child_el.get("value")
 
     # Build children recursively
     children: list[BreakdownNode] = []
