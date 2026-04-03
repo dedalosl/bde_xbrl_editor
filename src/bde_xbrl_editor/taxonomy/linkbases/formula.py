@@ -18,6 +18,7 @@ from bde_xbrl_editor.taxonomy.models import (
     QName,
     ValueAssertionDefinition,
 )
+
 # ---------------------------------------------------------------------------
 # Namespace constants
 # ---------------------------------------------------------------------------
@@ -203,7 +204,7 @@ def _build_arc_map(root: etree._Element, arc_tags: list[str]) -> dict[str, list[
     arc_map: dict[str, list[str]] = {}
     for tag in arc_tags:
         for arc in root.iter(tag):
-            arcrole = arc.get(_ATTR_XLINK_ARCROLE, "")
+            _arcrole = arc.get(_ATTR_XLINK_ARCROLE, "")
             frm = arc.get(_ATTR_XLINK_FROM, "")
             to = arc.get(_ATTR_XLINK_TO, "")
             if frm and to:

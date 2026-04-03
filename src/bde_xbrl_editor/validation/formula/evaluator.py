@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import itertools
 import threading
 from collections.abc import Callable
@@ -20,7 +21,6 @@ from bde_xbrl_editor.taxonomy.models import (
 from bde_xbrl_editor.validation.errors import ValidationEngineError
 from bde_xbrl_editor.validation.formula.filters import apply_filters
 from bde_xbrl_editor.validation.formula.xfi_functions import (
-    XFI_FUNCTION_REGISTRY,
     clear_evaluation_context,
     set_evaluation_context,
 )
@@ -68,10 +68,8 @@ class FormulaEvaluator:
             if self._cancel_event and self._cancel_event.is_set():
                 break
             if self._progress_callback:
-                try:
+                with contextlib.suppress(Exception):
                     self._progress_callback(idx, total, assertion.assertion_id)
-                except Exception:  # noqa: BLE001
-                    pass
 
             try:
                 bindings = self._bind_variables(assertion, instance)
@@ -103,10 +101,8 @@ class FormulaEvaluator:
                 ))
 
         if self._progress_callback:
-            try:
+            with contextlib.suppress(Exception):
                 self._progress_callback(total, total, "Formula evaluation complete")
-            except Exception:  # noqa: BLE001
-                pass
 
         return findings
 
@@ -148,7 +144,7 @@ class FormulaEvaluator:
         result: list[dict[str, list[Fact]]] = []
         for combo in itertools.product(*candidate_lists):
             binding: dict[str, list[Fact]] = {
-                name: facts for name, facts in zip(variable_names, combo)
+                name: facts for name, facts in zip(variable_names, combo, strict=False)
             }
             result.append(binding)
         return result
@@ -310,11 +306,7 @@ class FormulaEvaluator:
         # For formula XPath (pure arithmetic / fact-value expressions) we
         # use the first fact's value as the context item (or True as a
         # harmless sentinel when no facts are bound).
-        context_item = None
-        if first_fact is not None:
-            context_item = first_fact.value
-        else:
-            context_item = True  # any non-None value satisfies elementpath
+        context_item = first_fact.value if first_fact is not None else True  # any non-None value satisfies elementpath
 
         try:
             result = elementpath.select(

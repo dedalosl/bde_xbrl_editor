@@ -100,6 +100,4 @@ class ValidationFilterProxy(QSortFilterProxyModel):
 
         if self._severity_filter is not None and finding.severity != self._severity_filter:
             return False
-        if self._table_filter is not None and finding.table_id != self._table_filter:
-            return False
-        return True
+        return not (self._table_filter is not None and finding.table_id != self._table_filter)

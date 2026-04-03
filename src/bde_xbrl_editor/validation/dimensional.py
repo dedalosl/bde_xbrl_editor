@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from bde_xbrl_editor.instance.models import XbrlInstance
-from bde_xbrl_editor.taxonomy.models import TaxonomyStructure, HypercubeModel, QName
+from bde_xbrl_editor.taxonomy.models import HypercubeModel, QName, TaxonomyStructure
 from bde_xbrl_editor.validation.models import ValidationFinding, ValidationSeverity
 
 

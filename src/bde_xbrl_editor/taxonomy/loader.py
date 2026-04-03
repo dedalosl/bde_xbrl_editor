@@ -15,14 +15,14 @@ from lxml import etree
 
 from bde_xbrl_editor.taxonomy.cache import TaxonomyCache
 from bde_xbrl_editor.taxonomy.constants import (
+    ARCROLE_ALL,
+    ARCROLE_DIMENSION_DEFAULT,
+    ARCROLE_DIMENSION_DOMAIN,
+    ARCROLE_HYPERCUBE_DIMENSION,
+    ARCROLE_NOT_ALL,
     NS_FORMULA,
     NS_TABLE_PWD,
     NS_XBRLDT,
-    ARCROLE_ALL,
-    ARCROLE_NOT_ALL,
-    ARCROLE_HYPERCUBE_DIMENSION,
-    ARCROLE_DIMENSION_DOMAIN,
-    ARCROLE_DIMENSION_DEFAULT,
 )
 from bde_xbrl_editor.taxonomy.discovery import discover_dts
 from bde_xbrl_editor.taxonomy.label_resolver import LabelResolver
@@ -159,7 +159,7 @@ _SG_DIMENSION = QName(NS_XBRLDT, "dimensionItem")
 
 
 def _check_dimensional_constraints(
-    concepts: dict[QName, "Concept"],
+    concepts: dict[QName, Concept],
     definition_arcs: dict[str, list],
 ) -> None:
     """Check XBRL Dimensions 1.0 taxonomy structure constraints (xbrldte:* errors).
@@ -172,25 +172,23 @@ def _check_dimensional_constraints(
     # Check 1: hypercube items must be abstract (xbrldte:HypercubeElementIsNotAbstractError)
     for qname, concept in concepts.items():
         sg = concept.substitution_group
-        if sg and sg.namespace == NS_XBRLDT and sg.local_name == "hypercubeItem":
-            if not concept.abstract:
-                raise TaxonomyParseError(
-                    file_path="",
-                    message=(
-                        f"xbrldte:HypercubeElementIsNotAbstractError: "
-                        f"Hypercube element {qname} must be abstract"
-                    ),
-                )
+        if sg and sg.namespace == NS_XBRLDT and sg.local_name == "hypercubeItem" and not concept.abstract:
+            raise TaxonomyParseError(
+                file_path="",
+                message=(
+                    f"xbrldte:HypercubeElementIsNotAbstractError: "
+                    f"Hypercube element {qname} must be abstract"
+                ),
+            )
         # Check 2: dimension items must be abstract (xbrldte:DimensionElementIsNotAbstractError)
-        if sg and sg.namespace == NS_XBRLDT and sg.local_name == "dimensionItem":
-            if not concept.abstract:
-                raise TaxonomyParseError(
-                    file_path="",
-                    message=(
-                        f"xbrldte:DimensionElementIsNotAbstractError: "
-                        f"Dimension element {qname} must be abstract"
-                    ),
-                )
+        if sg and sg.namespace == NS_XBRLDT and sg.local_name == "dimensionItem" and not concept.abstract:
+            raise TaxonomyParseError(
+                file_path="",
+                message=(
+                    f"xbrldte:DimensionElementIsNotAbstractError: "
+                    f"Dimension element {qname} must be abstract"
+                ),
+            )
 
     # Build sets of hypercube/dimension QNames for arc checks
     hypercube_qnames = {
@@ -268,16 +266,15 @@ def _check_dimensional_constraints(
 
             # Check 7: source of dimension-domain arc must be a dimension item
             # (xbrldte:DimensionDomainSourceError)
-            if arcrole == ARCROLE_DIMENSION_DOMAIN:
-                if arc.source in concepts and arc.source not in dimension_qnames:
-                    raise TaxonomyParseError(
-                        file_path="",
-                        message=(
-                            f"xbrldte:DimensionDomainSourceError: "
-                            f"Source of dimension-domain arc must be a dimension item, "
-                            f"got {arc.source}"
-                        ),
-                    )
+            if arcrole == ARCROLE_DIMENSION_DOMAIN and arc.source in concepts and arc.source not in dimension_qnames:
+                raise TaxonomyParseError(
+                    file_path="",
+                    message=(
+                        f"xbrldte:DimensionDomainSourceError: "
+                        f"Source of dimension-domain arc must be a dimension item, "
+                        f"got {arc.source}"
+                    ),
+                )
 
             # Check 8: dimension-default arcs — track for too many defaults
             # (xbrldte:TooManyDefaultMembersError)

@@ -6,7 +6,7 @@ from pathlib import Path
 
 from lxml import etree
 
-from bde_xbrl_editor.taxonomy.constants import NS_XBRLI, NS_XSD, NS_XBRLDT
+from bde_xbrl_editor.taxonomy.constants import NS_XBRLDT, NS_XBRLI, NS_XSD
 from bde_xbrl_editor.taxonomy.models import (
     Concept,
     QName,
@@ -62,7 +62,7 @@ def _resolve_qname(raw: str | None, ns_map: dict[str, str], file_path: str) -> Q
 
 
 def _build_concept(
-    el: "etree._Element",
+    el: etree._Element,
     target_ns: str,
     ns_map: dict[str, str],
     schema_path_str: str,

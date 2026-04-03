@@ -22,12 +22,15 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from bde_xbrl_editor.validation.models import ValidationFinding, ValidationReport, ValidationSeverity
 from bde_xbrl_editor.ui.widgets.validation_results_model import (
     ValidationFilterProxy,
     ValidationResultsModel,
 )
-
+from bde_xbrl_editor.validation.models import (
+    ValidationFinding,
+    ValidationReport,
+    ValidationSeverity,
+)
 
 # ---------------------------------------------------------------------------
 # ValidationWorker

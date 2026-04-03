@@ -12,15 +12,12 @@ from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 
-import pytest
-
 from bde_xbrl_editor.instance.models import (
     Fact,
     ReportingEntity,
     ReportingPeriod,
     XbrlContext,
     XbrlInstance,
-    XbrlUnit,
 )
 from bde_xbrl_editor.taxonomy.models import (
     ConsistencyAssertionDefinition,

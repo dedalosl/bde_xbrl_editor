@@ -6,7 +6,6 @@ from datetime import datetime
 
 import pytest
 
-from bde_xbrl_editor.taxonomy.models import QName
 from bde_xbrl_editor.validation.models import (
     ValidationFinding,
     ValidationReport,
@@ -222,8 +221,9 @@ class TestValidationFilterProxy:
     @pytest.fixture(autouse=True)
     def _qt_app(self):
         """Ensure a QApplication instance exists for the test session."""
-        from PySide6.QtWidgets import QApplication
         import sys
+
+        from PySide6.QtWidgets import QApplication
 
         app = QApplication.instance() or QApplication(sys.argv)
         yield app
