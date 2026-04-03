@@ -71,15 +71,26 @@ def _sniff_linkbase_type(path: Path) -> str:
     if "formula" in name or "form" in name:
         return "formula"
 
-    # Try to detect by root element namespace
+    # BDE places all formula linkbases under a subdirectory named "formula/"
+    if path.parent.name.lower() == "formula":
+        return "formula"
+
+    # Fallback: scan child elements for formula/assertion namespaces
+    _FORMULA_NS = {
+        "http://xbrl.org/2008/formula",
+        "http://xbrl.org/2008/assertion/value",
+        "http://xbrl.org/2008/assertion/existence",
+        "http://xbrl.org/2008/assertion/consistency",
+    }
     try:
         ctx = etree.iterparse(str(path), events=("start",))
         for _, el in ctx:
-            if NS_TABLE_PWD in str(el.tag):
+            tag = str(el.tag)
+            if NS_TABLE_PWD in tag:
                 return "table"
-            if NS_FORMULA in str(el.tag):
+            ns = tag[1:tag.index("}")] if tag.startswith("{") else ""
+            if ns in _FORMULA_NS or NS_FORMULA in tag:
                 return "formula"
-            break
     except Exception:  # noqa: BLE001
         pass
     return "unknown"
@@ -451,10 +462,12 @@ class TaxonomyLoader:
         standard_labels: dict[QName, list] = {}
         generic_labels: dict[QName, list] = {}
         formula_linkbase_path: Path | None = None
+        formula_linkbase_paths: list[Path] = []
 
         for lb_path in linkbase_paths:
             lb_type = _sniff_linkbase_type(lb_path)
             if lb_type == "formula":
+                formula_linkbase_paths.append(lb_path)
                 if formula_linkbase_path is None:
                     formula_linkbase_path = lb_path
                 continue
@@ -537,11 +550,18 @@ class TaxonomyLoader:
 
         # Step 6: Parse formula linkbase (if present)
         progress("Assembling taxonomy structure…", 6)
-        from bde_xbrl_editor.taxonomy.models import FormulaAssertionSet  # noqa: PLC0415
+        from bde_xbrl_editor.taxonomy.models import (  # noqa: PLC0415
+            FormulaAssertion,
+            FormulaAssertionSet,
+        )
 
         formula_assertion_set: FormulaAssertionSet
-        if formula_linkbase_path is not None:
-            formula_assertion_set = parse_formula_linkbase(formula_linkbase_path)
+        if formula_linkbase_paths:
+            all_assertions: list[FormulaAssertion] = []
+            for flp in formula_linkbase_paths:
+                fas = parse_formula_linkbase(flp)
+                all_assertions.extend(fas.assertions)
+            formula_assertion_set = FormulaAssertionSet(assertions=tuple(all_assertions))
         else:
             formula_assertion_set = FormulaAssertionSet()
 
