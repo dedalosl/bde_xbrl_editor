@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:label="http://xbrl.org/2008/label" xmlns:gen="http://xbrl.org/2008/generic"
+               xmlns:xlink="http://www.w3.org/1999/xlink"
+               xmlns:reference="http://xbrl.org/2008/reference"
+               xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+               xmlns:link="http://www.xbrl.org/2003/linkbase"
+               xmlns:table="http://xbrl.org/2014/table"
+               xmlns:formula="http://xbrl.org/2008/formula"
+               xmlns:rend="http://www.xbrl.org/table-examples"
+               xsi:schemaLocation="
+               http://www.xbrl.org/2003/linkbase http://www.xbrl.org/2003/xbrl-linkbase-2003-12-31.xsd
+               http://xbrl.org/2008/generic http://www.xbrl.org/2008/generic-link.xsd
+               http://xbrl.org/2008/reference http://www.xbrl.org/2008/generic-reference.xsd
+               http://xbrl.org/2008/label http://www.xbrl.org/2008/generic-label.xsd
+               http://xbrl.org/2008/filter/dimension http://www.xbrl.org/2008/dimension-filter.xsd
+               http://xbrl.org/2014/table http://www.xbrl.org/2014/table.xsd
+               ">
+   <link:roleRef roleURI="http://www.xbrl.org/table-examples/table6"
+                 xlink:type="simple"
+                 xlink:href="table-examples-roles.xsd#table6"/>
+   <link:arcroleRef arcroleURI="http://xbrl.org/arcrole/2008/element-label" xlink:type="simple"
+                    xlink:href="http://www.xbrl.org/2008/generic-label.xsd#element-label"/>
+   <link:arcroleRef arcroleURI="http://xbrl.org/arcrole/2014/table-breakdown" xlink:type="simple"
+                    xlink:href="http://www.xbrl.org/2014/table.xsd#table-breakdown"/>
+   <link:arcroleRef arcroleURI="http://xbrl.org/arcrole/2014/breakdown-tree" xlink:type="simple"
+                    xlink:href="http://www.xbrl.org/2014/table.xsd#breakdown-tree"/>
+   <link:arcroleRef arcroleURI="http://xbrl.org/arcrole/2014/definition-node-subtree" xlink:type="simple"
+                    xlink:href="http://www.xbrl.org/2014/table.xsd#definition-node-subtree"/>
+   <link:roleRef roleURI="http://www.xbrl.org/table-examples/coordinate-code"
+                 xlink:type="simple"
+                 xlink:href="table-examples-roles.xsd#coordinate-code"/>
+   <link:roleRef roleURI="http://www.xbrl.org/2008/role/label" xlink:type="simple"
+                 xlink:href="http://www.xbrl.org/2008/generic-label.xsd#standard-label"/>
+                 
+   <gen:link xlink:type="extended"
+             xlink:role="http://www.xbrl.org/table-examples/table6">
+      <table:table xlink:type="resource" xlink:label="table6"
+                   id="table6"/>
+      <label:label xlink:type="resource" xlink:label="label_table61"
+                   xlink:role="http://www.xbrl.org/2008/role/label"
+                   xml:lang="en"
+                   id="label_table61">Example where a dimension D is removed in a child node of X axis</label:label>
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table6"
+               xlink:to="label_table61"/>
+
+      <table:breakdown parentChildOrder="parent-first" xlink:type="resource" xlink:label="table6-x" id="table6-x"/>
+      <table:tableBreakdownArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2014/table-breakdown"
+                          axis="x"
+                          xlink:from="table6"
+                          xlink:to="table6-x"
+                          order="4"/>
+      <table:ruleNode xlink:type="resource" xlink:label="table6-x.1" id="table6-x.1">
+         <formula:explicitDimension dimension="rend:D">
+            <formula:member>
+               <formula:qname>rend:d1</formula:qname>
+            </formula:member>
+         </formula:explicitDimension>
+      </table:ruleNode>
+      <table:breakdownTreeArc xlink:type="arc"
+               xlink:arcrole="http://xbrl.org/arcrole/2014/breakdown-tree"
+               xlink:from="table6-x"
+               xlink:to="table6-x.1"
+               order="2"/>
+<!-- Create appropriate label for first breakdown on X axis -->
+      <label:label xlink:type="resource" xlink:label="label_table6-x"
+                   xlink:role="http://www.xbrl.org/2008/role/label"
+                   xml:lang="en"
+                   id="label_table6-x">Two columns (dimension [D, E] = [d1, e1], [d0, e2])</label:label>
+<!-- Connect label to X axis content -->
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table6-x"
+               xlink:to="label_table6-x"/>
+      <label:label xlink:type="resource" xlink:label="label_table6-x.11"
+                   xlink:role="http://www.xbrl.org/2008/role/label"
+                   xml:lang="en"
+                   id="label_table6-x.11">Label: D = d1</label:label>
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table6-x.1"
+               xlink:to="label_table6-x.11"/>
+      <label:label xlink:type="resource" xlink:label="label_table6-x.12"
+                   xlink:role="http://www.xbrl.org/table-examples/coordinate-code"
+                   xml:lang="en"
+                   id="label_table6-x.12">1</label:label>
+      <gen:arc order="2" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table6-x.1"
+               xlink:to="label_table6-x.12"/>
+      <table:ruleNode xlink:type="resource" xlink:label="table6-x.1.1" id="table6-x.1.1">
+         <formula:explicitDimension dimension="rend:E">
+            <formula:member>
+               <formula:qname>rend:e1</formula:qname>
+            </formula:member>
+         </formula:explicitDimension>
+      </table:ruleNode>
+      <table:definitionNodeSubtreeArc xlink:type="arc"
+               xlink:arcrole="http://xbrl.org/arcrole/2014/definition-node-subtree"
+               xlink:from="table6-x.1"
+               xlink:to="table6-x.1.1"
+               order="8"/>
+      <label:label xlink:type="resource" xlink:label="label_table6-x.1.11"
+                   xlink:role="http://www.xbrl.org/2008/role/label"
+                   xml:lang="en"
+                   id="label_table6-x.1.11">Label: E = e1</label:label>
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table6-x.1.1"
+               xlink:to="label_table6-x.1.11"/>
+      <label:label xlink:type="resource" xlink:label="label_table6-x.1.12"
+                   xlink:role="http://www.xbrl.org/table-examples/coordinate-code"
+                   xml:lang="en"
+                   id="label_table6-x.1.12">2</label:label>
+      <gen:arc order="2" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table6-x.1.1"
+               xlink:to="label_table6-x.1.12"/>
+      <table:ruleNode xlink:type="resource" xlink:label="table6-x.1.2" id="table6-x.1.2">
+         <formula:explicitDimension dimension="rend:E">
+            <formula:member>
+               <formula:qname>rend:e2</formula:qname>
+            </formula:member>
+         </formula:explicitDimension>
+         <formula:explicitDimension dimension="rend:D">
+            <formula:omit/>
+         </formula:explicitDimension>
+      </table:ruleNode>
+      <table:definitionNodeSubtreeArc xlink:type="arc"
+               xlink:arcrole="http://xbrl.org/arcrole/2014/definition-node-subtree"
+               xlink:from="table6-x.1"
+               xlink:to="table6-x.1.2"
+               order="10"/>
+      <label:label xlink:type="resource" xlink:label="label_table6-x.1.21"
+                   xlink:role="http://www.xbrl.org/2008/role/label"
+                   xml:lang="en"
+                   id="label_table6-x.1.21">Label: E = e2, D removed</label:label>
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table6-x.1.2"
+               xlink:to="label_table6-x.1.21"/>
+      <label:label xlink:type="resource" xlink:label="label_table6-x.1.22"
+                   xlink:role="http://www.xbrl.org/table-examples/coordinate-code"
+                   xml:lang="en"
+                   id="label_table6-x.1.22">3</label:label>
+      <gen:arc order="2" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table6-x.1.2"
+               xlink:to="label_table6-x.1.22"/>
+      <table:breakdown parentChildOrder="parent-first" xlink:type="resource" xlink:label="table6-y" id="table6-y"/>
+      <table:tableBreakdownArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2014/table-breakdown"
+                          axis="y"
+                          xlink:from="table6"
+                          xlink:to="table6-y"
+                          order="6"/>
+<!-- Create appropriate label for first breakdown on Y axis -->
+      <label:label xlink:type="resource" xlink:label="label_table6-y"
+                   xlink:role="http://www.xbrl.org/2008/role/label"
+                   xml:lang="en"
+                   id="label_table6-y">Two rows (primary items m1, m2)</label:label>
+<!-- Connect label to Y axis content -->
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table6-y"
+               xlink:to="label_table6-y"/>
+      <table:ruleNode xlink:type="resource" xlink:label="table6-y.1" id="table6-y.1">
+         <formula:concept>
+            <formula:qname>rend:m1</formula:qname>
+         </formula:concept>
+      </table:ruleNode>
+      <table:breakdownTreeArc xlink:type="arc"
+               xlink:arcrole="http://xbrl.org/arcrole/2014/breakdown-tree"
+               xlink:from="table6-y"
+               xlink:to="table6-y.1"
+               order="2"/>
+      <label:label xlink:type="resource" xlink:label="label_table6-y.11"
+                   xlink:role="http://www.xbrl.org/2008/role/label"
+                   xml:lang="en"
+                   id="label_table6-y.11">Label: m1</label:label>
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table6-y.1"
+               xlink:to="label_table6-y.11"/>
+      <label:label xlink:type="resource" xlink:label="label_table6-y.12"
+                   xlink:role="http://www.xbrl.org/table-examples/coordinate-code"
+                   xml:lang="en"
+                   id="label_table6-y.12">1</label:label>
+      <gen:arc order="2" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table6-y.1"
+               xlink:to="label_table6-y.12"/>
+      <table:ruleNode xlink:type="resource" xlink:label="table6-y.2" id="table6-y.2">
+         <formula:concept>
+            <formula:qname>rend:m2</formula:qname>
+         </formula:concept>
+      </table:ruleNode>
+      <table:breakdownTreeArc xlink:type="arc"
+               xlink:arcrole="http://xbrl.org/arcrole/2014/breakdown-tree"
+               xlink:from="table6-y"
+               xlink:to="table6-y.2"
+               order="4"/>
+      <label:label xlink:type="resource" xlink:label="label_table6-y.21"
+                   xlink:role="http://www.xbrl.org/2008/role/label"
+                   xml:lang="en"
+                   id="label_table6-y.21">Label: m2</label:label>
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table6-y.2"
+               xlink:to="label_table6-y.21"/>
+      <label:label xlink:type="resource" xlink:label="label_table6-y.22"
+                   xlink:role="http://www.xbrl.org/table-examples/coordinate-code"
+                   xml:lang="en"
+                   id="label_table6-y.22">2</label:label>
+      <gen:arc order="2" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table6-y.2"
+               xlink:to="label_table6-y.22"/>
+   </gen:link>
+   
+</link:linkbase>

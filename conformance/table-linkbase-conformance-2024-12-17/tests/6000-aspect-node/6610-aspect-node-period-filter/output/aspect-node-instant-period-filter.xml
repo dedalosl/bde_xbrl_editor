@@ -1,0 +1,121 @@
+<?xml version='1.0' encoding='utf-8'?>
+<tableModel xmlns="http://xbrl.org/2014/table/model" xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:rend="http://www.xbrl.org/table-examples" xml:base="..">
+  <tableSet>
+    <label>Aspect node for a typed dimension with an instant-period filter</label>
+    <table>
+      <headers axis="y">
+        <group>
+          <label>Rows (typed dimension T)</label>
+          <header>
+            <cell>
+              <constraint>
+                <aspect>rend:T</aspect>
+                <value>
+                  <rend:stringDomain>abc</rend:stringDomain>
+                </value>
+              </constraint>
+            </cell>
+            <cell>
+              <constraint>
+                <aspect>rend:T</aspect>
+                <value>
+                  <rend:stringDomain>def</rend:stringDomain>
+                </value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+      </headers>
+      <headers axis="x">
+        <group>
+          <label>Two columns (periods 2001, 2002)</label>
+          <header>
+            <cell span="2">
+              <label>Label: Start of 2001</label>
+              <constraint>
+                <aspect>period</aspect>
+                <value>
+                  <xbrli:instant>2001-01-01T00:00:00Z</xbrli:instant>
+                </value>
+              </constraint>
+            </cell>
+            <cell span="2">
+              <label>Label: Start of 2002</label>
+              <constraint>
+                <aspect>period</aspect>
+                <value>
+                  <xbrli:instant>2002-01-01T00:00:00Z</xbrli:instant>
+                </value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+        <group>
+          <label>Two columns (primary items m1, m2)</label>
+          <header>
+            <cell>
+              <label>Label: m1</label>
+              <label>1</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:m1</value>
+              </constraint>
+            </cell>
+            <cell>
+              <label>Label: m2</label>
+              <label>2</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:m2</value>
+              </constraint>
+            </cell>
+            <cell>
+              <label>Label: m1</label>
+              <label>1</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:m1</value>
+              </constraint>
+            </cell>
+            <cell>
+              <label>Label: m2</label>
+              <label>2</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:m2</value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+      </headers>
+      <cells axis="z">
+        <cells axis="y">
+          <cells axis="x">
+            <cell>
+              <fact>aspect-node-instant-period-filter-instance.xml#m1_Y2001_T_abc</fact>
+            </cell>
+            <cell>
+              <fact>aspect-node-instant-period-filter-instance.xml#m2_Y2001_T_abc</fact>
+            </cell>
+            <cell/>
+            <cell/>
+          </cells>
+          <cells axis="x">
+            <cell>
+              <fact>aspect-node-instant-period-filter-instance.xml#m1_Y2001_T_def</fact>
+            </cell>
+            <cell>
+              <fact>aspect-node-instant-period-filter-instance.xml#m2_Y2001_T_def</fact>
+            </cell>
+            <cell>
+              <fact>aspect-node-instant-period-filter-instance.xml#m1_Y2002_T_def</fact>
+            </cell>
+            <cell>
+              <fact>aspect-node-instant-period-filter-instance.xml#m2_Y2002_T_def</fact>
+            </cell>
+          </cells>
+        </cells>
+      </cells>
+    </table>
+  </tableSet>
+</tableModel>

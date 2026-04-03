@@ -1,0 +1,48 @@
+<?xml version='1.0' encoding='utf-8'?>
+<tableModel xmlns="http://xbrl.org/2014/table/model" xmlns:rend="http://www.xbrl.org/table-examples" xml:base="..">
+  <!--Entry point file: instance-cols-2-typed-dims.xml-->
+  <tableSet>
+    <!--TableSet linkbase file: table-linkbase-cols-2-typed-dims.xml, line 49-->
+    <!--TableSet namespace: http://xbrl.org/2014/table-->
+    <!--TableSet linkrole: http://www.xbrl.org/table-examples/table2-->
+    <label>Aspect node for a typed dimension on the same axis as rule nodes for a second typed dimension</label>
+    <table>
+      <headers axis="y">
+        <group>
+          <label>Two rows (primary items m1, m2)</label>
+          <header>
+            <!--ruleNode: label table2-y.1, file table-linkbase-cols-2-typed-dims.xml, line 230-->
+            <!--   aspect concept: rend:m1-->
+            <cell>
+              <label>Label: m1</label>
+              <label>1</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:m1</value>
+              </constraint>
+            </cell>
+            <!--ruleNode: label table2-y.2, file table-linkbase-cols-2-typed-dims.xml, line 254-->
+            <!--   aspect concept: rend:m2-->
+            <cell>
+              <label>Label: m2</label>
+              <label>2</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:m2</value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+      </headers>
+      <headers axis="x">
+        <group>
+          <label>Columns (ranking dimension R = 1, 2, 3, 4, 5)</label>
+        </group>
+        <group>
+          <label>Columns (typed dimension T)</label>
+        </group>
+      </headers>
+      <cells axis="z"/>
+    </table>
+  </tableSet>
+</tableModel>

@@ -1,0 +1,284 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2011-09-16"
+  name="1300-rule-node-rule-sets-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Herm Fischer</name>
+        <email>fischer@markv.com</email>
+    </creator>
+    <number>1300</number>
+    <name>Rule Node Rule Sets Testcase</name>
+    <description>Table linkbase test case using rule nodes with tagged rule sets</description>
+
+    <variation id="v-01">
+        <name>Rule node with tagged rule sets for period line-up</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and a single column
+          (instant period 2001-12-31 / 2002-12-31). The periods are tagged with
+          'start' / 'end' tags. The tags are used to select the period for each
+          row.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">period-lineup-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/period-lineup-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-01i">
+        <name>Rule node with tagged rule sets for period line-up, with instance</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and a single column
+          (instant period 2001-12-31 / 2002-12-31). The periods are tagged with
+          'start' / 'end' tags. The tags are used to select the period for each
+          row.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">period-lineup-instance.xml</instance>
+            <linkbase>period-lineup-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/period-lineup.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-02">
+        <name>Rule sets with duplicate tags</name>
+        <description>
+          Invalid table that has a rule node with three rule sets, two of which
+          are tagged with 'end'.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">duplicate-tags-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:duplicateTag</error>
+        </result>
+    </variation>
+
+    <variation id="v-04">
+        <name>Rule set that lacks a constraint for an aspect</name>
+        <description>
+          Invalid table that has a rule node with two rule sets tagged with
+          'start' and 'end'.  The 'start' rule set constrains both the period
+          aspect and an explicit dimension, while the 'end' rule set only
+          constrains period.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">rule-set-missing-aspect-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:constraintSetAspectMismatch</error>
+        </result>
+    </variation>
+
+    <variation id="v-05">
+        <name>Simple table with rule node that has conflicting aspect rules in the same rule set</name>
+        <description>
+          Table with a rule node that specifies two different values for the
+          same aspect in the same rule set.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">multiple-values-for-aspect-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:multipleValuesForAspect</error>
+        </result>
+    </variation>
+    
+    <variation id="v-06">
+        <name>Rule node with tagged and untagged rule sets for period line-up</name>
+        <description>
+          Simple table with three rows (primary items m1, m2, m3) and a single column
+          (instant period 2001-12-31 / 2002-12-31 or duration period 2002-01-01 to
+          2002-12-31). The instant periods are tagged with 'start' / 'end' tags. The
+          tags are used to select the period for each row.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">period-lineup-with-untagged-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/period-lineup-with-untagged-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-06i">
+        <name>Rule node with tagged and untagged rule sets for period line-up, with instance</name>
+        <description>
+          Simple table with three rows (primary items m1, m2, m3) and a single column
+          (instant period 2001-12-31 / 2002-12-31 or duration period 2002-01-01 to
+          2002-12-31). The instant periods are tagged with 'start' / 'end' tags. The
+          tags are used to select the period for each row.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">period-lineup-with-untagged-instance.xml</instance>
+            <linkbase>period-lineup-with-untagged-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/period-lineup-with-untagged.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-07">
+        <name>Multiple rules nodes with tagged rule sets</name>
+        <description>
+          Simple table with three rows (primary items m1, m2, m3), two columns
+          (period line-up for 2002 and 2003) and a single slice (entity identifier
+          old scheme/new scheme). The instant periods are tagged with 'start' / 'end'
+          tags. The old scheme entity identifier is tagged with 'oldID'.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">multiple-rule-sets-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/multiple-rule-sets-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-07i">
+        <name>Multiple rules nodes with tagged rule sets, with instance</name>
+        <description>
+          Simple table with three rows (primary items m1, m2, m3), two columns
+          (period line-up for 2002 and 2003) and a single slice (entity identifier
+          old scheme/new scheme). The instant periods are tagged with 'start' / 'end'
+          tags. The old scheme entity identifier is tagged with 'oldID'.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">multiple-rule-sets-instance.xml</instance>
+            <linkbase>multiple-rule-sets-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/multiple-rule-sets.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-08">
+        <name>Constraint sets and tags on the same axis</name>
+        <description>
+          A table that has nodes with constraint sets and nodes with tag
+          selectors on the same axis.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">constraint-sets-and-tags-same-axis-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/constraint-sets-and-tags-same-axis-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-08i">
+        <name>Constraint sets and tags on the same axis, with instance</name>
+        <description>
+          A table that has nodes with constraint sets and nodes with tag
+          selectors on the same axis.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">constraint-sets-and-tags-same-axis-instance.xml</instance>
+            <linkbase>constraint-sets-and-tags-same-axis-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/constraint-sets-and-tags-same-axis.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-09">
+        <name>Table with nodes that have tag selectors that clash</name>
+        <description>
+          Table with two rule nodes that specify tag selectors that clash
+          ('start' and 'end').
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">tag-selector-clash-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:tagSelectorClash</error>
+        </result>
+    </variation>
+
+    <variation id="v-10">
+        <name>Table with tag selectors that do not match any of the constraint sets on another node</name>
+        <description>
+          Table with a tag selector ('unmatched') that does not match the tags
+          ('start', 'end') of the constraint sets on the other node in the
+          table.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">no-matching-constraint-set-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:noMatchingConstraintSet</error>
+        </result>
+    </variation>
+
+</testcase>

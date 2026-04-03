@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:label="http://xbrl.org/2008/label" 
+               xmlns:gen="http://xbrl.org/2008/generic"
+               xmlns:xlink="http://www.w3.org/1999/xlink"
+               xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+               xmlns:link="http://www.xbrl.org/2003/linkbase"
+               xmlns:table="http://xbrl.org/2014/table"
+               xmlns:formula="http://xbrl.org/2008/formula"
+               xmlns:rend="http://www.xbrl.org/table-examples"
+               xsi:schemaLocation="             
+                  http://www.xbrl.org/2003/linkbase http://www.xbrl.org/2003/xbrl-linkbase-2003-12-31.xsd
+                  http://xbrl.org/2008/generic http://www.xbrl.org/2008/generic-link.xsd
+                  http://xbrl.org/2008/label http://www.xbrl.org/2008/generic-label.xsd
+                  http://xbrl.org/2014/table http://www.xbrl.org/2014/table.xsd
+                  http://www.xbrl.org/table-examples table-examples.xsd
+               ">
+   <link:roleRef roleURI="http://www.xbrl.org/table-examples/table6"
+                 xlink:type="simple"
+                 xlink:href="table-examples-roles.xsd#table6"/>
+   <link:arcroleRef arcroleURI="http://xbrl.org/arcrole/2008/element-label" xlink:type="simple"
+                    xlink:href="http://www.xbrl.org/2008/generic-label.xsd#element-label"/>
+   <link:arcroleRef arcroleURI="http://xbrl.org/arcrole/2014/table-breakdown" xlink:type="simple"
+                    xlink:href="http://www.xbrl.org/2014/table.xsd#table-breakdown"/>
+   <link:arcroleRef arcroleURI="http://xbrl.org/arcrole/2014/breakdown-tree" xlink:type="simple"
+                    xlink:href="http://www.xbrl.org/2014/table.xsd#breakdown-tree"/>
+   <link:arcroleRef arcroleURI="http://xbrl.org/arcrole/2014/definition-node-subtree" xlink:type="simple"
+                    xlink:href="http://www.xbrl.org/2014/table.xsd#definition-node-subtree"/>
+   <link:roleRef roleURI="http://www.xbrl.org/table-examples/coordinate-code"
+                 xlink:type="simple"
+                 xlink:href="table-examples-roles.xsd#coordinate-code"/>
+   <link:roleRef roleURI="http://www.xbrl.org/2008/role/label" xlink:type="simple"
+                 xlink:href="http://www.xbrl.org/2008/generic-label.xsd#standard-label"/>
+
+<!-- Table 1, a simple example of 2 rows of primaries by 2 columns containing units -->
+   <gen:link xlink:type="extended" xlink:role="http://www.xbrl.org/table-examples/table6">
+
+<!-- Declare table as a resource -->
+      <table:table xlink:type="resource" xlink:label="table6" id="table6"/>
+<!-- Create appropriate label for the table -->
+      <label:label xlink:type="resource" xlink:label="label_table6" id="label_table6"
+                   xlink:role="http://www.xbrl.org/2008/role/label" xml:lang="en"
+                   >Rule nodes with occ empty scenario rule</label:label>
+<!-- Connect table resource to table label -->
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table6"
+               xlink:to="label_table6"/>
+
+<!-- Declare X axis -->
+      <table:breakdown parentChildOrder="parent-first" xlink:type="resource" xlink:label="table6-x" id="table6-x"/>
+<!-- Connect table to X axis -->
+      <table:tableBreakdownArc xlink:type="arc"
+                               xlink:arcrole="http://xbrl.org/arcrole/2014/table-breakdown"
+                               axis="x"
+                               xlink:from="table6"
+                               xlink:to="table6-x"
+                               order="4"/>
+<!-- Create appropriate label for first breakdown on X axis -->
+      <label:label xlink:type="resource" xlink:label="label_table6-x"
+                   xlink:role="http://www.xbrl.org/2008/role/label"
+                   xml:lang="en"
+                   id="label_table6-x">One column (occ empty scenario rule)</label:label>
+<!-- Connect label to X axis content -->
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table6-x"
+               xlink:to="label_table6-x"/>
+
+<!-- First column header on X axis is entity identifier 01 -->
+      <table:ruleNode xlink:type="resource" xlink:label="table6-x.1" id="table6-x.1">
+        <formula:occEmpty occ="scenario" />
+      </table:ruleNode>
+<!-- Connect first column header to X axis -->
+      <table:breakdownTreeArc xlink:type="arc"
+                              xlink:arcrole="http://xbrl.org/arcrole/2014/breakdown-tree"
+                              xlink:from="table6-x"
+                              xlink:to="table6-x.1"
+                              order="2"/>
+<!-- Create appropriate label for first column and first row header on X axis -->
+      <label:label xlink:type="resource" xlink:label="label_table6-x.11" id="label_table6-x.11"
+                   xlink:role="http://www.xbrl.org/2008/role/label" xml:lang="en"
+                   >empty scenario</label:label>
+<!-- Connect first row header label on X axis to X axis content -->
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table6-x.1"
+               xlink:to="label_table6-x.11"/>
+
+<!-- Declare Y axis -->
+      <table:breakdown parentChildOrder="parent-first" xlink:type="resource" xlink:label="table6-y" id="table6-y"/>
+<!-- Connect table to Y axis -->
+      <table:tableBreakdownArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2014/table-breakdown"
+                               axis="y"
+                               xlink:from="table6"
+                               xlink:to="table6-y"
+                               order="6"/>
+<!-- Create appropriate label for first breakdown on Y axis -->
+      <label:label xlink:type="resource" xlink:label="label_table6-y"
+                   xlink:role="http://www.xbrl.org/2008/role/label"
+                   xml:lang="en"
+                   id="label_table6-y">Two rows (primary items m1, m2)</label:label>
+<!-- Connect label to Y axis content -->
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table6-y"
+               xlink:to="label_table6-y"/>
+
+<!-- Find content for first column header on Y axis by stating the primary -->
+      <table:ruleNode xlink:type="resource" xlink:label="table6-y.1" id="table6-y.1">
+         <formula:concept>
+            <formula:qname>rend:m1</formula:qname>
+         </formula:concept>
+      </table:ruleNode>
+<!-- Connect first column header to Y axis -->
+      <table:breakdownTreeArc xlink:type="arc"
+                              xlink:arcrole="http://xbrl.org/arcrole/2014/breakdown-tree"
+                              xlink:from="table6-y"
+                              xlink:to="table6-y.1"
+                              order="2"/>
+<!-- Create appropriate label for first column and first row header on Y axis (Something to represent the primary) -->
+      <label:label xlink:type="resource" xlink:label="label_table6-y.11" id="label_table6-y.11"
+                   xlink:role="http://www.xbrl.org/2008/role/label" xml:lang="en"
+                   >Label: m1</label:label>
+<!-- Connect first column and first row header label on Y axis to Y axis content -->
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table6-y.1"
+               xlink:to="label_table6-y.11"/>
+<!-- Create appropriate label for first column and second row header on Y axis (Something to represent an Eurofiling pointer) -->
+      <label:label xlink:type="resource" xlink:label="label_table6-y.12" id="label_table6-y.12"
+                   xlink:role="http://www.xbrl.org/table-examples/coordinate-code" xml:lang="en"
+                   >1</label:label>
+<!-- Connect first column and second row header label on Y axis to Y axis content -->
+      <gen:arc order="2" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table6-y.1"
+               xlink:to="label_table6-y.12"/>
+
+<!-- Find content for second column header on Y axis by stating the primary -->
+      <table:ruleNode xlink:type="resource" xlink:label="table6-y.2" id="table6-y.2">
+         <formula:concept>
+            <formula:qname>rend:m2</formula:qname>
+         </formula:concept>
+      </table:ruleNode>
+<!-- Connect second column header to Y axis -->
+      <table:breakdownTreeArc xlink:type="arc"
+                              xlink:arcrole="http://xbrl.org/arcrole/2014/breakdown-tree"
+                              xlink:from="table6-y"
+                              xlink:to="table6-y.2"
+                              order="4"/>
+<!-- Create appropriate label for second column and first row header on Y axis (Something to represent the primary) -->
+      <label:label xlink:type="resource" xlink:label="label_table6-y.21" id="label_table6-y.21"
+                   xlink:role="http://www.xbrl.org/2008/role/label" xml:lang="en"
+                   >Label: m2</label:label>
+<!-- Connect second column and first row header label on Y axis to Y axis content -->
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table6-y.2"
+               xlink:to="label_table6-y.21"/>
+<!-- Create appropriate label for second column and second row header on Y axis (Something to represent an Eurofiling pointer) -->
+      <label:label xlink:type="resource" xlink:label="label_table6-y.22" id="label_table6-y.22"
+                   xlink:role="http://www.xbrl.org/table-examples/coordinate-code" xml:lang="en"
+                   >2</label:label>
+<!-- Connect second column and second row header label on Y axis to Y axis content -->
+      <gen:arc order="2" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table6-y.2"
+               xlink:to="label_table6-y.22"/>
+   </gen:link>
+
+</link:linkbase>

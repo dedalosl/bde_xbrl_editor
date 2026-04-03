@@ -9,7 +9,7 @@
 
 ### User Story 1 - Render a BDE Taxonomy Table as a Structured Grid (Priority: P1)
 
-A user selects a report table from a loaded BDE taxonomy and the application renders it as a structured, multi-dimensional grid. The rendered table faithfully reflects the table's structure as defined in the taxonomy's PWD Table Linkbase — with correct row headers, column headers, and the grid of data cells — exactly as BDE expects the report to look.
+A user see a tree with the report tables from a loaded BDE taxonomy, he select one of them and the application renders it as a structured, multi-dimensional grid. The rendered table faithfully reflects the table's structure as defined in the taxonomy's PWD Table Linkbase — with correct row headers, column headers, and the grid of data cells — exactly as BDE expects the report to look.
 
 **Why this priority**: Correct table rendering is the visual core of the application. Without it, users cannot see what data they need to enter, cannot understand the report structure, and cannot use any editing or data-entry features. Everything else is built on top of this.
 
@@ -17,7 +17,7 @@ A user selects a report table from a loaded BDE taxonomy and the application ren
 
 **Acceptance Scenarios**:
 
-1. **Given** a BDE taxonomy is loaded, **When** the user selects a report table, **Then** the application renders that table as a grid with column headers (X-axis), row headers (Y-axis), and a body of data cells correctly sized and positioned.
+1. **Given** a BDE taxonomy is loaded, a tree of the available report tables is showed **When** the user selects a report table, **Then** the application renders that table as a grid with column headers (X-axis), row headers (Y-axis), and a body of data cells correctly sized and positioned.
 2. **Given** a table with multi-level column headers (hierarchical breakdown nodes on the X-axis), **When** the table is rendered, **Then** the column headers are displayed as a spanning hierarchy — parent headers span across their child columns, and leaf headers align with individual data columns.
 3. **Given** a table with multi-level row headers (hierarchical breakdown nodes on the Y-axis), **When** the table is rendered, **Then** the row headers are displayed as a spanning hierarchy — parent row headers span across their child rows, and leaf headers align with individual data rows.
 4. **Given** a table whose structure is entirely driven by the taxonomy definition, **When** it is rendered, **Then** no table layout is hardcoded — the header structure, spanning, and cell positions are derived solely from the PWD Table Linkbase definition.
@@ -75,6 +75,23 @@ When a user has an XBRL instance open alongside the loaded taxonomy, the rendere
 
 ---
 
+### User Story 5 - Display Row and Column Codes on Leaf Headers (Priority: P5)
+
+At the deepest (leaf) level of the row headers (Y-axis) and column headers (X-axis), BDE taxonomy tables carry short alphanumeric codes — for example "0098" or "C0010" — that BDE uses to uniquely identify each row and column in its official reporting templates. These codes are stored in the taxonomy's label linkbase under the Eurofiling RC-code label role. The user sees these codes displayed alongside the header label in every leaf header cell, matching the look of the official BDE report layout.
+
+**Why this priority**: RC codes are the official identifiers BDE uses for rows and columns in its published report templates (e.g., "Row 0098" or "Column C0010"). Reporting staff cross-reference these codes constantly when filling in or reviewing submissions against BDE's published instructions. Displaying them in the leaf headers removes the need to consult external documents and prevents errors from referencing the wrong row or column.
+
+**Independent Test**: Can be fully tested by rendering a BDE taxonomy table and verifying that every leaf row header and every leaf column header displays the corresponding RC code from the taxonomy's label linkbase (Eurofiling RC-code role) alongside its standard label — independently of any instance data, editing, or Z-axis navigation.
+
+**Acceptance Scenarios**:
+
+1. **Given** a table is rendered and a leaf row or column header node has an RC-code label in the taxonomy (Eurofiling RC-code label role), **When** the header cell is displayed, **Then** the RC code value is shown visibly in that header cell, distinguishable from the standard descriptive label.
+2. **Given** a leaf header node has both a standard label and an RC code, **When** the header cell is displayed, **Then** the RC code and the standard label are both shown — the RC code does not replace the descriptive label.
+3. **Given** a leaf header node has no RC-code label in the taxonomy (the role is absent for that node), **When** the header cell is displayed, **Then** only the standard label is shown with no empty code placeholder — the absence of an RC code is handled gracefully.
+4. **Given** RC codes are displayed in leaf headers, **When** the user copies or exports the table structure, **Then** the RC codes are included in the output alongside the corresponding labels.
+
+---
+
 ### Edge Cases
 
 - What happens when a table definition in the taxonomy references a concept that does not exist in the taxonomy's concept declarations (broken linkbase)?
@@ -84,6 +101,8 @@ When a user has an XBRL instance open alongside the loaded taxonomy, the rendere
 - What happens when the same concept appears in multiple cells of the same table (due to multi-dimensional breakdowns)?
 - What happens if a table has nested breakdowns with different aspect cover rules — are header spans computed correctly in all cases?
 - How does the system handle a table that is structurally valid per the PWD specification but produces a grid with zero rows or zero columns?
+- What happens when two leaf header nodes at the same axis position have different RC codes — which one takes precedence?
+- How does the system behave when a taxonomy declares RC-code labels with multiple language variants for the same node — are RC codes language-neutral (they should be)?
 
 ## Requirements *(mandatory)*
 
@@ -102,6 +121,8 @@ When a user has an XBRL instance open alongside the loaded taxonomy, the rendere
 - **FR-011**: The system MUST handle tables with a very large number of rows or columns (over 200 rows) without freezing the interface — the table must remain scrollable and navigable.
 - **FR-012**: The system MUST display row and column headers as frozen (sticky) when the user scrolls the table body, so header context is always visible.
 - **FR-013**: The system MUST handle broken or incomplete table linkbase definitions (missing concepts, unresolvable references) gracefully, rendering as much of the table as possible and clearly indicating which parts could not be resolved.
+- **FR-013a**: When an instance is loaded alongside the taxonomy and multiple facts in the instance match the same cell coordinate (duplicate facts), the system MUST flag this as a validation error on that cell rather than silently displaying one of the values.
+- **FR-014**: The system MUST display the RC code (sourced from the Eurofiling RC-code label role in the taxonomy's label linkbase) alongside the standard label in every leaf-level row header and column header cell where such a code is declared; the RC code must be visually distinct from the descriptive label and must not replace it.
 
 ### Key Entities
 
@@ -112,6 +133,7 @@ When a user has an XBRL instance open alongside the loaded taxonomy, the rendere
 - **Cell Coordinate**: The complete set of dimensional aspect values (concept, entity, period, explicit dimensions) that uniquely identifies a grid cell's XBRL context.
 - **Fact Value**: A reported numeric or textual value from an open XBRL instance, displayed in its corresponding grid cell when a matching context exists.
 - **Z-Axis Slice**: One member of the filter axis (Z-axis), representing a specific dimensional context that applies uniformly to all cells in the X-Y grid for that slice.
+- **RC Code**: A short alphanumeric identifier (e.g., "0098", "C0010") assigned to a leaf row or column header node via the Eurofiling RC-code label role in the taxonomy's label linkbase; used by BDE to reference specific rows and columns in its official published report templates.
 
 ## Success Criteria *(mandatory)*
 
@@ -123,6 +145,7 @@ When a user has an XBRL instance open alongside the loaded taxonomy, the rendere
 - **SC-004**: Instance fact values are displayed in the correct cells for 100% of facts whose context exactly matches a cell coordinate in the rendered table.
 - **SC-005**: Tables with 200+ rows remain scrollable and responsive — the interface does not freeze or become unresponsive when navigating large tables.
 - **SC-006**: Z-axis slice switching completes and the grid updates in under 1 second for tables with up to 50 Z-axis members.
+- **SC-007**: 100% of leaf row and column header cells that have an RC code declared in the taxonomy display the correct code — no RC code is silently omitted or shown in the wrong header cell.
 
 ## Assumptions
 
@@ -133,6 +156,7 @@ When a user has an XBRL instance open alongside the loaded taxonomy, the rendere
 - The rendering target is a desktop UI; mobile/responsive rendering is out of scope.
 - The default display language for labels is Spanish; the language setting is configured at the application level, not per-table.
 - Aspect cover rules in the PWD specification (all, dimensions, concept, entity, period, etc.) are supported as defined; no BDE-specific override of cover rule semantics is expected.
+- RC codes (Eurofiling label role `http://www.eurofiling.info/xbrl/role/rc-code`) are treated as language-neutral identifiers; if multiple language variants exist for the same node's RC code, any variant may be used as they are expected to be identical across languages.
 
 ## Out of Scope
 

@@ -5,13 +5,28 @@ from __future__ import annotations
 from typing import Any
 
 from PySide6.QtCore import QRect, QSize, Qt
-from PySide6.QtGui import QFont, QPainter
+from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter
 from PySide6.QtWidgets import QHeaderView, QWidget
 
 from bde_xbrl_editor.table_renderer.models import HeaderGrid
 
-_LEVEL_HEIGHT = 28  # px per header level
-_RC_FONT_SCALE = 0.75  # scale factor for RC code font
+_LEVEL_HEIGHT_MIN = 28  # minimum px per header level
+_LEVEL_HEIGHT_MAX = 80  # cap: text beyond this height triggers font scaling
+_LEVEL_HEIGHT_PAD = 10  # total vertical padding (top + bottom) within a level
+_RC_FONT_SCALE = 0.72
+_LABEL_SPLIT = 0.58     # fraction of cell height allocated to label when rc_code present
+_MIN_LABEL_PT = 9       # minimum point size for label text
+_MIN_RC_PT = 8          # minimum point size for rc_code text
+
+# Color palette — navy/blue financial theme
+_BG_LEAF = QColor("#1E3A5F")       # deep navy for leaf (innermost) level
+_BG_SPAN = QColor("#2B5287")       # medium blue for span (group) levels
+_BG_SPAN_LIGHT = QColor("#3A6AA8") # lighter blue for outermost spans
+_TEXT_HEADER = QColor("#FFFFFF")
+_TEXT_RC = QColor("#A8C8EE")       # muted blue-white for RC codes
+_BORDER = QColor("#16304F")        # darker navy border
+
+_WRAP = int(Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap)
 
 
 class MultiLevelColumnHeader(QHeaderView):
@@ -20,89 +35,178 @@ class MultiLevelColumnHeader(QHeaderView):
     def __init__(self, header_grid: HeaderGrid | None = None, parent: QWidget | None = None) -> None:
         super().__init__(Qt.Orientation.Horizontal, parent)
         self._grid: HeaderGrid | None = header_grid
-        self.setDefaultSectionSize(80)
+        self._layout_cache: tuple[list[int], list[float]] | None = None
+        self.setDefaultSectionSize(100)
         self.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.sectionResized.connect(self._invalidate_layout)
+
+    def _invalidate_layout(self, *_: Any) -> None:
+        self._layout_cache = None
+        self.updateGeometry()
+        self.viewport().update()
 
     def set_header_grid(self, header_grid: HeaderGrid) -> None:
-        """Update the header grid and repaint."""
         self._grid = header_grid
+        self._layout_cache = None
+        self.updateGeometry()
         self.viewport().update()
+
+    # ------------------------------------------------------------------
+    # Layout computation — heights + uniform font per level
+    # ------------------------------------------------------------------
+
+    def _compute_layout(self) -> tuple[list[int], list[float]]:
+        """Return (height_per_level, font_pts_per_level).
+
+        For each level the font size is the smallest needed by any cell to fit
+        within _LEVEL_HEIGHT_MAX, so every cell in the level uses the same size.
+        """
+        if self._layout_cache is not None:
+            return self._layout_cache
+        if self._grid is None:
+            return [], []
+
+        fm = self.fontMetrics()
+        base_pts = self.font().pointSizeF()
+        if base_pts <= 0:
+            base_pts = 12.0
+        base_pts = max(base_pts, float(_MIN_LABEL_PT))
+        rc_line_h = max(int(fm.height() * _RC_FONT_SCALE), _MIN_RC_PT) + 2
+
+        heights: list[int] = []
+        font_pts_list: list[float] = []
+
+        for cells in self._grid.levels:
+            max_natural_h = _LEVEL_HEIGHT_MIN
+            min_scale = 1.0
+            leaf_cursor = 0
+
+            for cell in cells:
+                span = 1 if cell.is_leaf else cell.span
+                cell_w = (
+                    sum(
+                        self.sectionSize(leaf_cursor + k) or self.defaultSectionSize()
+                        for k in range(span)
+                        if leaf_cursor + k < self.count()
+                    )
+                    - 8  # horizontal padding
+                )
+                if cell_w > 0 and cell.label:
+                    text_h = fm.boundingRect(0, 0, cell_w, 10000, _WRAP, cell.label).height()
+                    if cell.rc_code:
+                        natural_h = max(int(text_h / _LABEL_SPLIT), text_h + rc_line_h) + _LEVEL_HEIGHT_PAD
+                        avail_for_label = int(_LEVEL_HEIGHT_MAX * _LABEL_SPLIT) - 2
+                    else:
+                        natural_h = text_h + _LEVEL_HEIGHT_PAD
+                        avail_for_label = _LEVEL_HEIGHT_MAX - _LEVEL_HEIGHT_PAD
+                    max_natural_h = max(max_natural_h, natural_h)
+                    if text_h > avail_for_label > 0:
+                        min_scale = min(min_scale, avail_for_label / text_h)
+                leaf_cursor += span
+
+            level_h = min(max_natural_h, _LEVEL_HEIGHT_MAX)
+            level_pts = max(base_pts * min_scale, float(_MIN_LABEL_PT))
+            heights.append(level_h)
+            font_pts_list.append(level_pts)
+
+        self._layout_cache = (heights, font_pts_list)
+        return self._layout_cache
+
+    # ------------------------------------------------------------------
+    # QHeaderView overrides
+    # ------------------------------------------------------------------
 
     def sizeHint(self) -> QSize:
         if self._grid is None:
             return super().sizeHint()
-        return QSize(super().sizeHint().width(), self._grid.depth * _LEVEL_HEIGHT)
+        heights, _ = self._compute_layout()
+        return QSize(super().sizeHint().width(), sum(heights))
 
     def paintSection(self, painter: QPainter, rect: QRect, logical_index: int) -> None:
-        """Paint a single column section — overridden to suppress default painting.
-
-        We handle all painting in paintEvent via the grid.
-        """
-        # Suppress the default single-row paint; all done in paintEvent
-        pass
-
-    def paintEvent(self, event: Any) -> None:
-        """Paint all header levels with correct spanning."""
         if self._grid is None:
-            super().paintEvent(event)
+            super().paintSection(painter, rect, logical_index)
             return
 
-        painter = QPainter(self.viewport())
-        try:
-            self._paint_all_levels(painter)
-        finally:
-            painter.end()
+        painter.save()
+        painter.setClipping(False)
 
-    def _paint_all_levels(self, painter: QPainter) -> None:
-        if self._grid is None:
-            return
+        heights, font_pts_per_level = self._compute_layout()
+        depth = self._grid.depth
+        y_offset = 0
 
-        # Build cumulative leaf widths map: leaf_index → x_offset
-        # We use the visible section widths
-        leaf_x_offsets: list[int] = []
-        x = 0
-        for i in range(self.count()):
-            leaf_x_offsets.append(x)
-            x += self.sectionSize(i)
-
-        # For each level, paint each HeaderCell
         for level_idx, cells in enumerate(self._grid.levels):
-            y = level_idx * _LEVEL_HEIGHT
+            level_h = heights[level_idx] if level_idx < len(heights) else _LEVEL_HEIGHT_MIN
+            level_pts = font_pts_per_level[level_idx] if level_idx < len(font_pts_per_level) else float(_MIN_LABEL_PT)
+            y = y_offset
             leaf_cursor = 0
+
             for cell in cells:
-                if leaf_cursor >= len(leaf_x_offsets):
+                span = 1 if cell.is_leaf else cell.span
+                if leaf_cursor <= logical_index < leaf_cursor + span:
+                    if logical_index == leaf_cursor:
+                        x_start = self.sectionViewportPosition(leaf_cursor)
+                        full_width = sum(
+                            self.sectionSize(leaf_cursor + k)
+                            for k in range(span)
+                            if leaf_cursor + k < self.count()
+                        )
+                        cell_rect = QRect(x_start, y, full_width, level_h)
+                        is_leaf_level = (level_idx == depth - 1)
+                        self._paint_cell(painter, cell_rect, cell, is_leaf_level, level_idx, depth, level_pts)
                     break
-                x_start = leaf_x_offsets[leaf_cursor]
-                # Width = sum of section sizes for span
-                width = sum(
-                    self.sectionSize(leaf_cursor + k)
-                    for k in range(cell.span)
-                    if leaf_cursor + k < self.count()
-                )
-                rect = QRect(x_start, y, width, _LEVEL_HEIGHT)
+                leaf_cursor += span
 
-                # Draw cell background + border
-                painter.fillRect(rect, self.palette().window())
-                painter.setPen(self.palette().mid().color())
-                painter.drawRect(rect.adjusted(0, 0, -1, -1))
+            y_offset += level_h
 
-                # Draw label
-                painter.setPen(self.palette().windowText().color())
-                if cell.rc_code:
-                    # Draw main label in upper portion, RC code below
-                    label_rect = QRect(x_start + 2, y + 2, width - 4, _LEVEL_HEIGHT // 2 - 2)
-                    rc_rect = QRect(x_start + 2, y + _LEVEL_HEIGHT // 2, width - 4, _LEVEL_HEIGHT // 2 - 2)
-                    painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter, cell.label)
-                    rc_font = QFont(painter.font())
-                    rc_font.setPointSizeF(rc_font.pointSizeF() * _RC_FONT_SCALE)
-                    painter.setFont(rc_font)
-                    painter.drawText(rc_rect, Qt.AlignmentFlag.AlignCenter, cell.rc_code)
-                    painter.setFont(QFont())  # reset
-                else:
-                    inner_rect = rect.adjusted(2, 2, -2, -2)
-                    painter.drawText(inner_rect, Qt.AlignmentFlag.AlignCenter, cell.label)
+        painter.restore()
 
-                if not cell.is_leaf:
-                    leaf_cursor += cell.span
-                else:
-                    leaf_cursor += 1
+    def _paint_cell(
+        self,
+        painter: QPainter,
+        rect: QRect,
+        cell: Any,
+        is_leaf: bool,
+        level_idx: int,
+        total_levels: int,
+        font_pts: float,
+    ) -> None:
+        # Background gradient
+        if is_leaf:
+            bg = _BG_LEAF
+        elif level_idx == 0 and total_levels > 2:
+            bg = _BG_SPAN_LIGHT
+        else:
+            bg = _BG_SPAN
+
+        grad = QLinearGradient(rect.topLeft(), rect.bottomLeft())
+        grad.setColorAt(0.0, bg.lighter(112))
+        grad.setColorAt(1.0, bg)
+        painter.fillRect(rect, grad)
+
+        # Border
+        painter.setPen(_BORDER)
+        painter.drawLine(rect.bottomLeft(), rect.bottomRight())
+        painter.drawLine(rect.topRight(), rect.bottomRight())
+
+        # Label font — uniform size for this level
+        painter.setPen(_TEXT_HEADER)
+        base_font = QFont(painter.font())
+        base_font.setBold(True)
+        base_font.setPointSizeF(font_pts)
+        painter.setFont(base_font)
+
+        _wrap_flag = Qt.TextFlag.TextWordWrap
+        if cell.rc_code:
+            label_h = int(rect.height() * _LABEL_SPLIT)
+            label_rect = QRect(rect.x() + 4, rect.y() + 2, rect.width() - 8, label_h)
+            rc_rect = QRect(rect.x() + 4, rect.y() + label_h, rect.width() - 8, rect.height() - label_h - 2)
+            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter | _wrap_flag, cell.label)
+            rc_font = QFont(base_font)
+            rc_font.setBold(False)
+            rc_font.setPointSizeF(max(font_pts * _RC_FONT_SCALE, float(_MIN_RC_PT)))
+            painter.setFont(rc_font)
+            painter.setPen(_TEXT_RC)
+            painter.drawText(rc_rect, Qt.AlignmentFlag.AlignCenter | _wrap_flag, cell.rc_code)
+        else:
+            inner_rect = rect.adjusted(4, 2, -4, -2)
+            painter.drawText(inner_rect, Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter | _wrap_flag, cell.label)

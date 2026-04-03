@@ -1,0 +1,131 @@
+<?xml version='1.0' encoding='utf-8'?>
+<tableModel xmlns="http://xbrl.org/2014/table/model" xmlns:rend="http://www.xbrl.org/table-examples" xml:base="..">
+  <!--Entry point file: instance-dual-y-axes.xml-->
+  <tableSet>
+    <!--TableSet linkbase file: table-linkbase-dual-y-axes.xml, line 38-->
+    <!--TableSet namespace: http://xbrl.org/2014/table-->
+    <!--TableSet linkrole: http://www.xbrl.org/table-examples/table3-->
+    <label>Table with dual breakdowns on the y-axis</label>
+    <table>
+      <headers axis="y">
+        <group>
+          <label>Two rows (primary items m1, m2)</label>
+          <header>
+            <!--ruleNode: label table13-y1.1, file table-linkbase-dual-y-axes.xml, line 114-->
+            <!--   aspect concept: rend:m1-->
+            <cell span="2">
+              <label>Label: m1</label>
+              <label>1</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:m1</value>
+              </constraint>
+            </cell>
+            <!--ruleNode: label table13-y1.2, file table-linkbase-dual-y-axes.xml, line 139-->
+            <!--   aspect concept: rend:m2-->
+            <cell span="2">
+              <label>Label: m2</label>
+              <label>2</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:m2</value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+        <group>
+          <label>Two rows (dimension F = f1, f2)</label>
+          <header>
+            <!--ruleNode: label table13-y2.1, file table-linkbase-dual-y-axes.xml, line 171-->
+            <!--   aspect rend:F: rend:f1-->
+            <cell>
+              <label>Label: F = f1</label>
+              <label>1</label>
+              <constraint>
+                <aspect>rend:F</aspect>
+                <value>rend:f1</value>
+              </constraint>
+            </cell>
+            <!--ruleNode: label table13-y2.2, file table-linkbase-dual-y-axes.xml, line 197-->
+            <!--   aspect rend:F: rend:f2-->
+            <cell>
+              <label>Label: F = f2</label>
+              <label>2</label>
+              <constraint>
+                <aspect>rend:F</aspect>
+                <value>rend:f2</value>
+              </constraint>
+            </cell>
+            <!--ruleNode: label table13-y2.1, file table-linkbase-dual-y-axes.xml, line 171-->
+            <!--   aspect rend:F: rend:f1-->
+            <cell>
+              <label>Label: F = f1</label>
+              <label>1</label>
+              <constraint>
+                <aspect>rend:F</aspect>
+                <value>rend:f1</value>
+              </constraint>
+            </cell>
+            <!--ruleNode: label table13-y2.2, file table-linkbase-dual-y-axes.xml, line 197-->
+            <!--   aspect rend:F: rend:f2-->
+            <cell>
+              <label>Label: F = f2</label>
+              <label>2</label>
+              <constraint>
+                <aspect>rend:F</aspect>
+                <value>rend:f2</value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+      </headers>
+      <headers axis="x">
+        <group>
+          <label>Two columns (dimension D = d1, d2)</label>
+          <header>
+            <!--ruleNode: label table13-x.1, file table-linkbase-dual-y-axes.xml, line 53-->
+            <!--   aspect rend:D: rend:d1-->
+            <cell>
+              <label>Label: D = d1</label>
+              <label>1</label>
+              <constraint>
+                <aspect>rend:D</aspect>
+                <value>rend:d1</value>
+              </constraint>
+            </cell>
+            <!--ruleNode: label table13-x.2, file table-linkbase-dual-y-axes.xml, line 79-->
+            <!--   aspect rend:D: rend:d2-->
+            <cell>
+              <label>Label: D = d2</label>
+              <label>2</label>
+              <constraint>
+                <aspect>rend:D</aspect>
+                <value>rend:d2</value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+      </headers>
+      <cells axis="z">
+        <cells axis="y">
+          <cells axis="x">
+            <cell/>
+            <cell/>
+          </cells>
+          <cells axis="x">
+            <cell/>
+            <cell/>
+          </cells>
+          <cells axis="x">
+            <cell/>
+            <cell/>
+          </cells>
+          <cells axis="x">
+            <cell/>
+            <cell/>
+          </cells>
+        </cells>
+      </cells>
+    </table>
+  </tableSet>
+</tableModel>

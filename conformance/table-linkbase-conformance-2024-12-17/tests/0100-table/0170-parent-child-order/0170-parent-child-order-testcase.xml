@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2014-07-03"
+  name="0170-parent-child-order-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Chris Boyle</name>
+        <email>cmb@corefiling.com</email>
+    </creator>
+    <number>0170</number>
+    <name>Parent Child Order Testcase</name>
+    <description>Table linkbase test case for parentChildOrder attribute</description>
+    
+    <variation id="v-01">
+        <name>Table with parentChildOrder set on table, breakdown and node</name>
+        <description>
+            Demonstrates parentChildOrder and its inheritance/overriding. Specifically,
+            that a breakdown or a ruleNode can override the table's order, and that the
+            order is not inherited from one breakdown to a subsequent one on the same
+            axis.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">table-linkbase-parent-child-order.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/table-parent-child-order.xml</table>
+        </result>
+    </variation>
+    
+</testcase>

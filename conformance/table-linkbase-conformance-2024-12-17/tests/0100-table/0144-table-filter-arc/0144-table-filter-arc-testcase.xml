@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2012-07-26"
+  name="0144-table-filter-arc-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Herm Fischer</name>
+        <email>fischer@markv.com</email>
+    </creator>
+    <number>0144</number>
+    <name>Table-filter Arc Testcase</name>
+    <description>Table linkbase test case for table-filter arc errors</description>
+    
+    <variation id="v-01">
+        <name>Table-filter arc with an invalid source element</name>
+        <description>
+          Invalid table that has a table-filter arc with a generic label as
+          the source element.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">table-linkbase-table-filter-source-error.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:tableFilterSourceError</error>
+        </result>
+    </variation>
+
+    <variation id="v-02">
+        <name>Table-filter arc with an invalid target element</name>
+        <description>
+          Invalid table that has a table-filter arc with a definition node as
+          the target element.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">table-linkbase-table-filter-target-error.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:tableFilterTargetError</error>
+        </result>
+    </variation>
+
+    <variation id="v-03">
+        <name>Table-filter used to restrict expansion of an open node for concept</name>
+        <description>
+          Concept name table filter is used.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">table-filter-instance.xml</instance>
+            <linkbase>table-linkbase-table-filter-concept.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/table-filter-concept.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-04">
+        <name>Complemented table-filter used to restrict expansion of an open node for concept</name>
+        <description>
+          Complemented concept name table filter is used.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">table-filter-instance-2.xml</instance>
+            <linkbase>table-linkbase-table-filter-concept-complemented.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/table-filter-concept-complemented.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-05">
+        <name>Multiple filters used to restrict expansion of an open node for concept</name>
+        <description>
+          Two filters: concept name = m1 and concept period type = duration. These combine to restrict the set of facts to empty, meaning an empty table.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">table-filter-instance-3.xml</instance>
+            <linkbase>table-linkbase-table-filter-multiple-filters.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/table-filter-multiple-filters.xml</table>
+        </result>
+    </variation>
+
+</testcase>

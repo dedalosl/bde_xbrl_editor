@@ -1,83 +1,142 @@
 # bde_xbrl_editor Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2026-03-25
+## Project Overview
 
-## Active Technologies
+BDE XBRL Editor — a Python + PySide6 desktop application for creating, editing, and validating XBRL financial reporting documents for Banco de España (BDE) taxonomies.
+
+## Tech Stack
 
 - **Language**: Python 3.11+
-- **UI**: PySide6 — `QMainWindow`, `QWizard`, `QTableView`, `QHeaderView`, `QAbstractTableModel`, `QFrame`, `QTabBar`, `QComboBox`, `QPainter`, `QColor`
-- **XML parsing**: lxml + xmlschema
-- **XPath 2.0**: elementpath
-- **Caching**: cachetools (`LRUCache`)
-- **Data model**: Python dataclasses (stdlib)
-- **Serialisation**: lxml etree (XBRL 2.1 XML output)
+- **UI**: PySide6 (LGPL) — NOT PyQt6
+- **XML/XSD**: lxml + xmlschema
+- **XPath 2.0**: elementpath (with custom xfi: function registration for formula evaluation)
+- **Build**: pyproject.toml (setuptools src-layout)
+- **Tests**: pytest + pytest-qt
+- **Linting**: ruff
 
 ## Project Structure
 
 ```text
 src/
 └── bde_xbrl_editor/
-    ├── taxonomy/          # Feature 001: DTS, schema, linkbases, table PWD, cache
-    ├── instance/          # Feature 002: XbrlInstance, InstanceFactory, InstanceSerializer
-    ├── table_renderer/    # Feature 003: TableLayoutEngine, FactFormatter, models
-    ├── validation/        # Feature 005 (planned)
+    ├── taxonomy/          # Feature 001: taxonomy loading, caching, all linkbases
+    │   ├── discovery.py
+    │   ├── schema.py
+    │   ├── models.py      # TaxonomyStructure, Concept, QName, HypercubeModel, etc.
+    │   ├── cache.py
+    │   ├── loader.py
+    │   ├── constants.py
+    │   └── linkbases/
+    │       ├── label.py, generic_label.py, presentation.py
+    │       ├── calculation.py, definition.py, table_pwd.py
+    │       └── formula.py  # Feature 005 addition
+    ├── instance/          # Features 002 + 004
+    │   ├── models.py      # XbrlInstance, Fact, XbrlContext, XbrlUnit, FilingIndicator
+    │   ├── factory.py, serializer.py, context_builder.py, constants.py
+    │   ├── parser.py      # Feature 004: InstanceParser
+    │   ├── editor.py      # Feature 004: InstanceEditor
+    │   └── validator.py   # Feature 004: XbrlTypeValidator
+    ├── table_renderer/    # Feature 003
+    │   ├── engine.py      # TableLayoutEngine
+    │   ├── models.py      # HeaderCell, BodyCell, ComputedTableLayout, etc.
+    │   └── widgets/       # XbrlTableView, MultiLevelColumnHeader, ZAxisSelector
+    ├── validation/        # Feature 005
+    │   ├── models.py      # ValidationFinding, ValidationReport, ValidationSeverity
+    │   ├── structural.py, dimensional.py, orchestrator.py, exporter.py
+    │   └── formula/
+    │       ├── evaluator.py, filters.py, xfi_functions.py
     └── ui/
-        └── widgets/       # PySide6 widgets (wizard, table view, headers, Z-selector)
-
+        ├── main_window.py
+        └── widgets/
+            ├── cell_edit_delegate.py
+            ├── instance_info_panel.py
+            ├── validation_panel.py
+            ├── validation_results_model.py
+            └── instance_creation_wizard/
 tests/
-├── unit/
-├── integration/
-└── conformance/           # Feature 006 (planned)
-
-test_data/
-└── taxonomies/            # Minimal BDE taxonomy samples
+└── unit/ + integration/
 ```
 
 ## Commands
 
 ```bash
-# Install in editable mode with dev dependencies
+# Install (editable)
 pip install -e ".[dev]"
 
-# Run all tests
+# Run tests
 pytest
 
-# Run only unit tests (no BDE taxonomy / display server needed)
-pytest tests/unit/
+# Run tests with coverage
+pytest --cov=bde_xbrl_editor
 
 # Lint
 ruff check .
 
-# Type check
-mypy src/
+# Format
+ruff format .
 ```
 
-## Code Style
+## Key Conventions
 
-- Follow PEP 8; use `ruff` for linting
-- All public module APIs documented in `specs/<feature>/contracts/`
-- **Business logic classes must have zero PySide6 imports** — testable without Qt
-- Use `QName` from `bde_xbrl_editor.taxonomy.models` as the canonical concept identifier
-- No network calls during taxonomy loading by default (`LoaderSettings.allow_network=False`)
-- `LabelResolver.resolve()` never raises — always returns a non-empty string
-- `FactFormatter.format()` never raises — falls back to raw value on error
+- **Fact values**: Always stored as raw `str`. Never `float`. Use `decimal.Decimal` only transiently at edit-time normalisation.
+- **QName**: Clark notation `{namespace}local_name` throughout.
+- **Immutability**: All domain models (`TaxonomyStructure`, `ValidationReport`, `ValidationFinding`, `HeaderCell`) are immutable after construction (`frozen=True` dataclasses).
+- **No PySide6 in core layers**: `taxonomy/`, `instance/`, `validation/` have zero PySide6 imports — fully testable without Qt.
+- **Never raise from validators**: All validator methods return results or empty lists; exceptions are caught and converted to error findings/messages.
+- **Eurofiling filing indicators**: namespace `http://www.eurofiling.info/xbrl/ext/filing-indicators`
+- **Table Linkbase**: BDE uses PWD version (not final 1.0)
 
-## Feature Dependencies
+## Feature Dependency Graph
 
 ```
-001-taxonomy-loading-cache   ← foundational; all other features depend on this
-002-xbrl-instance-creation   ← depends on 001 (TaxonomyStructure)
-003-table-rendering-pwd      ← depends on 001 (TableDefinitionPWD) + optionally 002 (XbrlInstance)
-004-instance-editing         ← depends on 001 + 002 + 003
-005-instance-validation      ← depends on 001 + 002/004
-006-conformance-suite-runner ← depends on 001 (same engine, CLI-only)
+001 (taxonomy) ← 002 (instance creation) ← 004 (instance editing)
+001 (taxonomy) ← 003 (table rendering)   ← 004 (instance editing)
+001 + 002/004  ← 005 (validation)
+001            ← 006 (conformance suite runner)
 ```
 
-## Recent Changes
+## Architecture Layers (strict — dependencies flow downward only)
 
-- 001: Established stack; `TaxonomyStructure` + `TaxonomyCache` API; `LabelResolver`; `TableDefinitionPWD` PWD parser
-- 002: `instance/` sub-package; `InstanceFactory` + `InstanceSerializer`; `QWizard` 4-step UI; filing indicators (Eurofiling ns); deterministic context IDs
-- 003: `table_renderer/` sub-package; `TableLayoutEngine` (pure Python PWD layout); custom `QHeaderView` spanning paint; two-`QTableView` frozen-pane; adaptive `ZAxisSelector`; `FactFormatter`
+1. **XBRL Processor Core**: taxonomy/, instance/ — no BDE specifics
+2. **BDE Abstraction Layer**: BDE taxonomy customisation (Eurofiling, PWD table linkbase, formula evaluation)
+3. **Application Services**: validation orchestration, instance editing services
+4. **UI / API Layer**: PySide6 widgets, main window
 
 <!-- MANUAL ADDITIONS START -->
+The actual conformance data lives at conformance/ (not the default tests/conformance/suite-data/), so you need to pass --suite-data-dir. The registry maps suite IDs to subdirectory names, so you need a directory that contains xbrl-2.1/, dimensions-1.0/, etc.                                             
+
+The integration test conftest creates those symlinks dynamically. For manual use, the easiest approach is to point directly at the existing data. However, the registry subdirectory names (xbrl-2.1, dimensions-1.0, etc.) don't match the actual directory names (XBRL-CONF-2025-07-16, etc.).
+
+The simplest way to run it:                
+  # Run a single suite (e.g. XBRL 2.1) using the pytest integration tests                              
+  python -m pytest tests/integration/conformance/test_xbrl21_suite.py -v -k "not slow"                 
+
+  # Or run all suites at once via pytest (parser-level, fast)                                          
+  python -m pytest tests/integration/conformance/ -v -k "not slow"                                     
+                
+  For the full CLI runner against the actual data, you first need to set up the suite-data directory   
+  with properly named subdirectories. Create symlinks once:
+    
+    mkdir -p tests/conformance/suite-data                      
+    ln -sfn "$(pwd)/conformance/XBRL-CONF-2025-07-16"              tests/conformance/suite-data/xbrl-2.1
+    ln -sfn "$(pwd)/conformance/XBRL-XDT-CONF-2025-09-09"
+    tests/conformance/suite-data/dimensions-1.0
+    ln -sfn "$(pwd)/conformance/table-linkbase-conformance-2024-12-17"
+    tests/conformance/suite-data/table-linkbase-1.0
+    ln -sfn "$(pwd)/conformance/formula-conformance-2022-07-21"
+    tests/conformance/suite-data/formula-1.0   
+
+  Then run:
+  # All suites
+  python -m bde_xbrl_editor.conformance
+
+  # Single suite
+  python -m bde_xbrl_editor.conformance --suite xbrl21
+                                                                                                       
+  # With verbose output and JSON report
+  python -m bde_xbrl_editor.conformance --suite xbrl21 --verbose --output-format json --output-file    
+  report.json                                                                                          
+   
+  The exit code will be 0 if all blocking suites (XBRL 2.1, Dimensions 1.0, Formula 1.0) pass, 1 if any
+   mandatory case fails
 <!-- MANUAL ADDITIONS END -->

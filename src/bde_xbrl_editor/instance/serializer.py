@@ -158,7 +158,7 @@ class InstanceSerializer:
                 )
                 fi_el.text = fi.template_id
 
-        # 5. Facts
+        # 5. Known facts
         for fact in instance.facts:
             concept_qname = fact.concept
             tag = (
@@ -175,6 +175,11 @@ class InstanceSerializer:
                 attrib["precision"] = fact.precision
             fact_el = etree.SubElement(root, tag, attrib=attrib)
             fact_el.text = fact.value
+
+        # 6. Orphaned facts — preserved verbatim in original document order
+        for orphan in instance.orphaned_facts:
+            orphan_el = etree.fromstring(orphan.raw_element_xml)  # noqa: S320
+            root.append(orphan_el)
 
         return etree.tostring(
             root,

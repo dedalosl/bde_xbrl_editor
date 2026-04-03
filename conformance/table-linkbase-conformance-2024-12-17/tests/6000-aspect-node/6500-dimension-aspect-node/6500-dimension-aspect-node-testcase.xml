@@ -1,0 +1,204 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2011-09-16"
+  name="6500-dimension-aspect-node-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:xfie="http://www.xbrl.org/2008/function/instance/error"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Herm Fischer</name>
+        <email>fischer@markv.com</email>
+    </creator>
+    <number>6500</number>
+    <name>Dimension Aspect Node Testcase</name>
+    <description>Table linkbase test case using an aspect node with a dimension aspect</description>
+    
+    <variation id="v-01">
+        <name>Aspect node for a typed dimension</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and unknown number
+          of columns (reported values of typed dimension T). In this variation
+          there is no instance, so there are no reported values of T.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">typed-dimension-aspect-node-table.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+        </data>
+        <result>
+            <table>output/typed-dimension-aspect-node-no-data.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-01i">
+        <name>Aspect node for a typed dimension, with instance</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and 3 columns
+          (reported values of typed dimension T).
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">typed-dimension-aspect-node-instance.xml</instance>
+            <linkbase>typed-dimension-aspect-node-table.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+        </data>
+        <result>
+            <table>output/typed-dimension-aspect-node.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-02">
+        <name>Aspect node for an explicit dimension</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and unknown number
+          of columns (reported values of explicit dimension F). In this
+          variation there is no instance, so there are no reported values of F.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">explicit-dimension-aspect-node-table.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+        </data>
+        <result>
+            <table>output/explicit-dimension-aspect-node-no-data.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-02i">
+        <name>Aspect node for an explicit dimension, with instance</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and 5 columns
+          (reported values of explicit dimension F).
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">explicit-dimension-aspect-node-instance.xml</instance>
+            <linkbase>explicit-dimension-aspect-node-table.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+        </data>
+        <result>
+            <table>output/explicit-dimension-aspect-node.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-03">
+        <name>Aspect node for a typed dimension on the same axis as rule nodes for a second typed dimension</name>
+        <description>
+          Table with two rows (primary items m1, m2), and two breakdowns on the
+          x axis: one consisting of rule nodes for 5 values of typed
+          dimension R and one aspect node for typed dimension T (where the
+          reported values differ according to the value of R). This one is based
+          on Bartosz' use case where top five countries are required. In this
+          variation there is no instance, so there are no reported values of D.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">typed-dimension-aspect-node-with-rule-nodes-table.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+        </data>
+        <result>
+            <table>output/typed-dimension-aspect-node-with-rule-nodes-no-data.xml</table>
+        </result>
+    </variation>
+
+    
+    <variation id="v-03i">
+        <name>Aspect node for a typed dimension on the same axis as rule nodes for a second typed dimension, with instance</name>
+        <description>
+          Table with two rows (primary items m1, m2), and two breakdowns on the
+          x axis: one consisting of rule nodes for 5 values of typed
+          dimension R and one aspect node for typed dimension T (where the
+          reported values differ according to the value of R). This one is based
+          on Bartosz' use case where top five countries are required.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">typed-dimension-aspect-node-with-rule-nodes-instance.xml</instance>
+            <linkbase>typed-dimension-aspect-node-with-rule-nodes-table.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+        </data>
+        <result>
+            <table>output/typed-dimension-aspect-node-with-rule-nodes.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-04">
+        <name>Aspect node for a dimension that does not exist in the DTS</name>
+        <description>
+          Table with an aspect node for a dimension that does not exist in the
+          DTS.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">dimension-nonexistent-table.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+        </data>
+        <result>
+            <error>xbrlte:invalidDimensionQNameOnAspectNode</error> 
+        </result>
+    </variation>
+    
+    <variation id="v-05">
+        <name>Aspect node for a typed dimension including 'unreported value', with instance</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and 3 columns
+          (reported values of typed dimension T, including 'unreported value').
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">typed-dimension-aspect-node-include-unreported-instance.xml</instance>
+            <linkbase>typed-dimension-aspect-node-include-unreported-table.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+        </data>
+        <result>
+            <table>output/typed-dimension-aspect-node-include-unreported.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-06">
+        <name>Aspect node for a dimension with no hypercubes</name>
+        <description>
+          Table uses a dimension with no hypercubes. This presents a potential problem for instance
+          serialization as the dimension could go in either the segment or the scenario, but this
+          should not prevent this table linkbase being considered valid.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">explicit-dimension-no-hypercubes-table.xml</linkbase>
+            <schema>table-examples-no-hypercubes-roles.xsd</schema>
+            <schema>table-examples-no-hypercubes.xsd</schema>
+            <linkbase>table-examples-no-hypercubes-label.xml</linkbase>
+        </data>
+        <result>
+            <table>output/explicit-dimension-aspect-node-no-data.xml</table>
+        </result>
+    </variation>
+
+</testcase>

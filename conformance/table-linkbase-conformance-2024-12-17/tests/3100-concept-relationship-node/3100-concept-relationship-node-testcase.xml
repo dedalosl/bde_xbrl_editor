@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../infrastructure/test.xsl"?>
+<testcase
+  date="2011-09-16"
+  name="3100-concept-relationship-node-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../infrastructure/test.xsd">
+    <creator>
+        <name>Herm Fischer</name>
+        <email>fischer@markv.com</email>
+    </creator>
+    <number>3100</number>
+    <name>Concept Relationship Node Testcase</name>
+    <description>table linkbase test cases using the conceptRelationship node</description>
+
+    <variation id="v-01">
+        <name>Concept relationship node with ambiguous network specification</name>
+        <description>
+          Table with a concept relationship node that fails to provide
+          sufficient information to uniquely identify a single network.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">ambiguous-network-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <linkbase>ambiguous-network-custom.xml</linkbase>
+            <schema>ambiguous-network-base.xsd</schema>
+            <schema>custom-presentation.xsd</schema>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:ambiguousConceptNetwork</error>
+        </result>
+    </variation>
+
+    <variation id="v-02">
+      <name>Concept relationship node with labels</name>
+      <description>
+      Concept relationship nodes may not have labels, so this
+      variation should result in an error.
+      </description>
+      <data>
+          <linkbase readMeFirst="true">concept-relationship-with-labels-table.xml</linkbase>
+          <linkbase>table-examples-definition.xml</linkbase>
+          <linkbase>table-examples-label.xml</linkbase>
+          <linkbase>ambiguous-network-custom.xml</linkbase>
+          <schema>ambiguous-network-base.xsd</schema>
+          <schema>custom-presentation.xsd</schema>
+          <schema>table-examples-roles.xsd</schema>
+          <schema>table-examples.xsd</schema>
+      </data>
+      <result>
+        <error>xbrlte:invalidUseOfLabel</error>
+      </result>
+    </variation>
+
+</testcase>

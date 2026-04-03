@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2014-01-07"
+  name="6660-aspect-node-aspect-cover-filter-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:xfie="http://www.xbrl.org/2008/function/instance/error"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>David North</name>
+        <email>dtn@corefiling.com</email>
+    </creator>
+    <number>6660</number>
+    <name>Aspect Node Aspect Cover Filter Testcase</name>
+    <description>Table linkbase test case demonstrating that aspect cover filters have no effect</description>
+    
+    <variation id="v-01">
+        <name>Aspect node for a typed dimension with an aspect cover filter, with instance</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and unknown number
+          of columns (reported values of typed dimension R, filtered to just
+          odd values). In this variation there is no instance, so there are no
+          reported values of R.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">aspect-node-aspect-cover-filter-instance.xml</instance>
+            <linkbase>aspect-node-aspect-cover-filter-table.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+        </data>
+        <result>
+            <table>output/aspect-node-aspect-cover-filter.xml</table>
+        </result>
+    </variation>
+
+</testcase>

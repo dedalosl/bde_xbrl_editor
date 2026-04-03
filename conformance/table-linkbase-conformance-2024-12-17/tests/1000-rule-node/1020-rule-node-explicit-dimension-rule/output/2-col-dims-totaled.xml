@@ -1,0 +1,121 @@
+<?xml version='1.0' encoding='utf-8'?>
+<tableModel xmlns="http://xbrl.org/2014/table/model" xmlns:rend="http://www.xbrl.org/table-examples" xml:base="..">
+  <!--Entry point file: instance-2-col-dims-totaled.xml-->
+  <tableSet>
+    <!--TableSet linkbase file: table-linkbase-2-col-dims-totaled.xml, line 38-->
+    <!--TableSet namespace: http://xbrl.org/2014/table-->
+    <!--TableSet linkrole: http://www.xbrl.org/table-examples/table2-->
+    <label>This example is similar to previous example, but the axis coordinate that gives a value to dimension D is not abstract; thus, the table has three columns: the first column established D = d0, but no value for dimension E (or its default if dimension E had a default member). Columns 2 and 3 are equal to columns 1 and 2 in the previous example.</label>
+    <table>
+      <headers axis="y">
+        <group>
+          <label>Two rows (primary items m1, m2)</label>
+          <header>
+            <!--ruleNode: label table2-y.1, file table-linkbase-2-col-dims-totaled.xml, 
+						line 138 -->
+            <!-- aspect concept: rend:m1 -->
+            <cell>
+              <label>Label: m1</label>
+              <label>1</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:m1</value>
+              </constraint>
+            </cell>
+            <!--ruleNode: label table2-y.2, file table-linkbase-2-col-dims-totaled.xml, 
+						line 162 -->
+            <!-- aspect concept: rend:m2 -->
+            <cell>
+              <label>Label: m2</label>
+              <label>2</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:m2</value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+      </headers>
+      <headers axis="x">
+        <group>
+          <label>Three columns (dimensions [D, E] = [d0, e0], [d0, e1], [d0, e2])</label>
+          <header>
+            <!--ruleNode: label table2-x.1, file table-linkbase-2-col-dims-totaled.xml, 
+						line 53 -->
+            <!-- aspect rend:D: rend:d0 -->
+            <cell span="3">
+              <label>Label: D = d0</label>
+              <label>1</label>
+              <constraint>
+                <aspect>rend:D</aspect>
+                <value/>
+              </constraint>
+            </cell>
+          </header>
+          <header>
+            <cell rollup="true">
+              <constraint>
+                <aspect>rend:E</aspect>
+                <value/>
+              </constraint>
+            </cell>
+            <!--ruleNode: label table2-x.1.1, file table-linkbase-2-col-dims-totaled.xml, 
+						line 79 -->
+            <!-- aspect rend:E: rend:e1 -->
+            <cell>
+              <label>Label: E = e1</label>
+              <label>2</label>
+              <constraint>
+                <aspect>rend:E</aspect>
+                <value>rend:e1</value>
+              </constraint>
+            </cell>
+            <!--ruleNode: label table2-x.1.2, file table-linkbase-2-col-dims-totaled.xml, 
+						line 105 -->
+            <!-- aspect rend:E: rend:e2 -->
+            <cell>
+              <label>Label: E = e2</label>
+              <label>3</label>
+              <constraint>
+                <aspect>rend:E</aspect>
+                <value>rend:e2</value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+      </headers>
+      <cells axis="z">
+        <cells axis="y">
+          <cells axis="x">
+            <!--rend:m1: context D_d0_E_e0, file instance-2-col-dims-totaled.xml, line 67-->
+            <cell>
+              <fact>instance-2-col-dims-totaled.xml#m1_D_d0_E_e0</fact>
+            </cell>
+            <!--rend:m1: context D_d0_E_e1, file instance-2-col-dims-totaled.xml, line 51-->
+            <cell>
+              <fact>instance-2-col-dims-totaled.xml#m1_D_d0_E_e1</fact>
+            </cell>
+            <!--rend:m1: context D_d0_E_e2, file instance-2-col-dims-totaled.xml, line 59-->
+            <cell>
+              <fact>instance-2-col-dims-totaled.xml#m1_D_d0_E_e2</fact>
+            </cell>
+          </cells>
+          <cells axis="x">
+            <!--rend:m2: context D_d0_E_e0, file instance-2-col-dims-totaled.xml, line 71-->
+            <cell>
+              <fact>instance-2-col-dims-totaled.xml#m2_D_d0_E_e0</fact>
+            </cell>
+            <!--rend:m2: context D_d0_E_e1, file instance-2-col-dims-totaled.xml, line 55-->
+            <cell>
+              <fact>instance-2-col-dims-totaled.xml#m2_D_d0_E_e1</fact>
+            </cell>
+            <!--rend:m2: context D_d0_E_e2, file instance-2-col-dims-totaled.xml, line 63-->
+            <cell>
+              <fact>instance-2-col-dims-totaled.xml#m2_D_d0_E_e2</fact>
+            </cell>
+          </cells>
+        </cells>
+      </cells>
+    </table>
+  </tableSet>
+</tableModel>

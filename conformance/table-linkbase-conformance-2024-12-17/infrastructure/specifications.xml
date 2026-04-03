@@ -1,0 +1,19 @@
+<specifications
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns="http://xbrl.org/conformance/2007/specifications"
+  xsi:schemaLocation="
+  http://xbrl.org/conformance/2007/specifications specifications.xsd"
+>
+  <specification id="XVS-Requirements" sid="XVS-Requirements"
+  href="../../../pub/REQ/versioning-requirements/PWD-2010-03-17/versioning-requirements-REQ-PWD-2010-03-17.html"/>
+  <specification id="XVS-Base" sid="XVS-Base"
+  href="../../../pub/Specification/versioning-base/CR-2010-03-17/versioning-base-PWD-2009-12-03.html"/>
+  <specification id="XVS-Concept-Base" sid="XVS-Concept-Base"
+  href="../../../pub/Specification/versioning-basic-concepts/PWD-2009-12-03/versioning-basic-concepts-PWD-2009-12-03"/>
+  <specification id="XVS-Concept-Extended" sid="XVS-Concept-Extended"
+  href="../../../pub/Specification/versioning-extended-concepts/PWD-2010-02-10/versioning-extended-concepts-PWD-2010-02-10.html"/>
+  <specification   id="XVS-Relationships" sid="XVS-Relationships"
+  href="../../../nopub/Specification/versioning-relationships/WGWD-2010-04-01/versioning-relationships-WGWD-2010-04-01.html"/>
+  <specification   id="XVS-Dimensions" sid="XVS-Dimensions"
+  href="../../../nopub/Specification/versioning-dimensions/WGWD-2010-01-15/versioning-dimensions-WGWD-2010-01-01.html"/>
+</specifications>

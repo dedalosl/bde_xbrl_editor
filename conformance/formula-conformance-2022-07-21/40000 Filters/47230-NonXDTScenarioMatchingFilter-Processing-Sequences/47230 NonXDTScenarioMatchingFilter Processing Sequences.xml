@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2007 XBRL International. All Rights Reserved. -->
+<?xml-stylesheet type="text/xsl" href="../../xsl/test.xsl"?>
+<testcase
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../xsd/test.xsd"
+  xmlns:xbrlfe="http://xbrl.org/2008/formula/error"
+  xmlns:binding="http://xbrl.org/2008/binding/errors"
+  xmlns:label="http://xbrl.org/2008/label/error"
+  xmlns:reference="http://xbrl.org/2008/reference/error"  
+  >
+  <creator>
+    <name>David Bell</name>
+    <email>david.x.bell@rrd.com</email>
+  </creator>
+  <number>47230</number>
+  <name>Non-XDT Scenario matching filter test</name>
+  <description>
+    Tests of non-XDT scenario matching filter against sequences where matchAny='true'.
+    Assumes that non-sequential matching works as these tests only check sequence behaviour.
+  </description>
+  <reference specification="MATCH-FILTER" id="sec-non-xdt-scenario-matching-filter"/>
+
+  <variation id="V-101">
+    <name>Non-XDT segement sequence match test</name>
+    <description>Match all individual facts against sequence of all facts - all items match</description>
+    <data>
+      <schema>47230-nonXdtScenMatch-concepts.xsd</schema>
+      <linkbase>47230-nonXdtScenMatch-definition.xml</linkbase>
+      <linkbase>47230-nonXdtScenMatch-formula-V101.xml</linkbase>
+      <instance readMeFirst="true">47230-nonXdtScenMatch-instance-V101.xml</instance>
+    </data>
+    <result>
+      <instance>47230-nonXdtScenMatch-result-V101.xml</instance>
+    </result>
+  </variation>  
+  
+  <variation id="V-102">
+    <name>Non-XDT segment sequence match test</name>
+    <description>Match t:Peak facts items against sequence of all but t:Peak - all but one facts match.
+      The everest, kanchenjunga and aurora-borealis have the same Non-XDT elements, and all but vinson have
+      no segment or no Non-XDT elements.
+    </description>
+    <data>
+      <schema>47230-nonXdtScenMatch-concepts.xsd</schema>
+      <linkbase>47230-nonXdtScenMatch-definition.xml</linkbase>
+      <linkbase>47230-nonXdtScenMatch-formula-V102.xml</linkbase>
+      <instance readMeFirst="true">47230-nonXdtScenMatch-instance-V102.xml</instance>
+    </data>
+    <result>
+      <instance>47230-nonXdtScenMatch-result-V102.xml</instance>
+    </result>
+  </variation>  
+  
+  <variation id="V-103">
+    <name>Non-XDT segment sequence match test</name>
+    <description>As above but result is complemented son non-matching items are output.
+      Single item for vinson should be output
+    </description>
+    <data>
+      <schema>47230-nonXdtScenMatch-concepts.xsd</schema>
+      <linkbase>47230-nonXdtScenMatch-definition.xml</linkbase>
+      <linkbase>47230-nonXdtScenMatch-formula-V103.xml</linkbase>
+      <instance readMeFirst="true">47230-nonXdtScenMatch-instance-V103.xml</instance>
+    </data>
+    <result>
+      <instance>47230-nonXdtScenMatch-result-V103.xml</instance>
+    </result>
+  </variation>  
+  
+</testcase>
+

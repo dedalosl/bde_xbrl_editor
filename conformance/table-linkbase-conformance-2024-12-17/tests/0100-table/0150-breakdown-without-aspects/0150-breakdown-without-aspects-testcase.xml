@@ -1,0 +1,176 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2013-09-30"
+  name="0150-breakdown-without-aspects-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Chris Rimes</name>
+        <email>cdr@corefiling.com</email>
+    </creator>
+    <number>0150</number>
+    <name>Breakdown Without Aspects Testcase</name>
+    <description>Table linkbase test case for tables where a breakdown has no participating aspect</description>
+    
+    <variation id="v-01">
+        <name>Single breakdown on an axis with no constraints</name>
+        <description>
+          Table with a single breakdown on the x-axis that defines no
+          constraints. This variation has no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">breakdown-defines-no-aspects-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/breakdown-defines-no-aspects-no-data.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-01i">
+        <name>Single breakdown on an axis with no constraints, with instance</name>
+        <description>
+          Table with a single breakdown on the x-axis that defines no
+          constraints.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">breakdown-defines-no-aspects-instance.xml</instance>
+            <linkbase>breakdown-defines-no-aspects-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/breakdown-defines-no-aspects.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-02">
+        <name>Breakdowns with and without constraints on an axis</name>
+        <description>
+          Table with two breakdowns on the x-axis.  The first defines
+          two columns (dimension D = d1, d2) while the second contributes no
+          additional constraints. This variation has no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">breakdown-defines-no-aspects-2-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/breakdown-defines-no-aspects-2-no-data.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-02i">
+        <name>Breakdowns with and without constraints on an axis, with instance</name>
+        <description>
+          Table with two breakdowns on the x-axis.  The first defines
+          two columns (dimension D = d1, d2) while the second contributes no
+          additional constraints.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">breakdown-defines-no-aspects-2-instance.xml</instance>
+            <linkbase>breakdown-defines-no-aspects-2-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/breakdown-defines-no-aspects-2.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-03">
+        <name>Single breakdown on an axis with no nodes (and therefore no constraints)</name>
+        <description>
+          Table with a single breakdown on the x-axis that has no nodes and so
+          defines no constraints. This variation has no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">breakdown-without-nodes-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/breakdown-without-nodes-no-data.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-03i">
+        <name>Single breakdown on an axis with no nodes (and therefore no constraints), with instance</name>
+        <description>
+          Table with a single breakdown on the x-axis that has no nodes and so
+          defines no constraints.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">breakdown-without-nodes-instance.xml</instance>
+            <linkbase>breakdown-without-nodes-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/breakdown-without-nodes.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-04">
+        <name>Combine a breakdown with no nodes (and therefore no constraints) with another breakdown</name>
+        <description>
+          Table with a breakdown that has no nodes and combines it with another
+          breakdown with nodes. This variation has no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">combine-breakdown-without-nodes-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/combine-breakdown-without-nodes-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-04i">
+        <name>Combine a breakdown with no nodes (and therefore no constraints) with another breakdown, with instance</name>
+        <description>
+          Table with a breakdown that has no nodes and combines it with another
+          breakdown with nodes.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">combine-breakdown-without-nodes-instance.xml</instance>
+            <linkbase>combine-breakdown-without-nodes-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/combine-breakdown-without-nodes.xml</table>
+        </result>
+    </variation>
+    
+</testcase>

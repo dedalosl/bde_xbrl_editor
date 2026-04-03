@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2007 XBRL International. All Rights Reserved. -->
+<link:linkbase xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:link="http://www.xbrl.org/2003/linkbase"
+    xmlns:generic="http://xbrl.org/2008/generic" xmlns:formula="http://xbrl.org/2008/formula"
+    xmlns:validation="http://xbrl.org/2008/validation" xmlns:va="http://xbrl.org/2008/assertion/value"
+    xmlns:variable="http://xbrl.org/2008/variable" xmlns:cf="http://xbrl.org/2008/filter/concept"
+    xmlns:label="http://xbrl.org/2008/label" xmlns:xfi="http://www.xbrl.org/2008/function/instance"
+    xmlns:eg="http://xbrl.org/formula/conformance/example"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:xs="http://www.w3.org/2001/XMLSchema"
+    
+    xsi:schemaLocation="http://www.xbrl.org/2003/linkbase http://www.xbrl.org/2003/xbrl-linkbase-2003-12-31.xsd
+    http://xbrl.org/2008/generic http://www.xbrl.org/2008/generic-link.xsd 
+    http://xbrl.org/2008/label http://www.xbrl.org/2008/generic-label.xsd 
+    http://xbrl.org/2008/assertion/value http://www.xbrl.org/2008/value-assertion.xsd 
+    http://xbrl.org/2008/filter/dimension http://www.xbrl.org/2008/dimension-filter.xsd 
+    http://xbrl.org/2008/variable http://www.xbrl.org/2008/variable.xsd 
+    http://xbrl.org/2010/filter/aspect-cover http://www.xbrl.org/2010/aspect-cover-filter.xsd 
+    http://xbrl.org/2008/filter/concept http://www.xbrl.org/2008/concept-filter.xsd">
+    
+    <link:arcroleRef arcroleURI="http://xbrl.org/arcrole/2008/variable-filter" xlink:type="simple"
+        xlink:href="http://www.xbrl.org/2008/variable.xsd#variable-filter"/>
+    <link:arcroleRef arcroleURI="http://xbrl.org/arcrole/2008/variable-set" xlink:type="simple"
+        xlink:href="http://www.xbrl.org/2008/variable.xsd#variable-set"/>
+    <link:arcroleRef arcroleURI="http://xbrl.org/arcrole/2008/variable-set-filter" xlink:type="simple"
+        xlink:href="http://www.xbrl.org/2008/variable.xsd#variable-set-filter"/>
+    
+    <link:roleRef roleURI="http://www.xbrl.org/2008/role/link"
+        xlink:href="http://www.xbrl.org/2008/generic-link.xsd#standard-link-role" xlink:type="simple"/>
+    
+    <generic:link xlink:type="extended" xlink:role="http://www.xbrl.org/2008/role/link">
+
+        <va:valueAssertion xlink:type="resource" xlink:label="assertion" id="assertion" aspectModel="dimensional"
+            implicitFiltering="true" test="$fact != xs:QName('eg:qname')"/>
+
+        <variable:factVariable xlink:type="resource" xlink:label="fact" bindAsSequence="false" fallbackValue="0"/>
+
+        <variable:variableArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/variable-set" name="fact"
+            xlink:from="assertion" xlink:to="fact" order="1.0"/>
+        
+    </generic:link>
+    
+</link:linkbase>

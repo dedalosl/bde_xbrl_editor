@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<link:linkbase xsi:schemaLocation="http://www.xbrl.org/2003/linkbase http://www.xbrl.org/2003/xbrl-linkbase-2003-12-31.xsd" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:xbrldt="http://xbrl.org/2005/xbrldt">
+	<link:roleRef roleURI="urn:role1" xlink:type="simple" xlink:href="test2.xsd#role1"/>
+	<link:roleRef roleURI="urn:role2" xlink:type="simple" xlink:href="test2.xsd#role2"/>
+	<link:arcroleRef arcroleURI="http://xbrl.org/int/dim/arcrole/domain-member" xlink:type="simple" xlink:href="http://www.xbrl.org/2005/xbrldt-2005.xsd#domain-member"/>
+	<link:arcroleRef arcroleURI="http://xbrl.org/int/dim/arcrole/dimension-domain" xlink:type="simple" xlink:href="http://www.xbrl.org/2005/xbrldt-2005.xsd#dimension-domain"/>
+	<link:arcroleRef arcroleURI="http://xbrl.org/int/dim/arcrole/hypercube-dimension" xlink:type="simple" xlink:href="http://www.xbrl.org/2005/xbrldt-2005.xsd#hypercube-dimension"/>
+	<link:arcroleRef arcroleURI="http://xbrl.org/int/dim/arcrole/all" xlink:type="simple" xlink:href="http://www.xbrl.org/2005/xbrldt-2005.xsd#all"/>
+	<link:definitionLink xlink:type="extended" xlink:role="urn:role1">
+		<link:loc xlink:type="locator" xlink:href="test2.xsd#fact1" xlink:label="fact1"/>
+		<link:loc xlink:type="locator" xlink:href="test2.xsd#hc1" xlink:label="hc1"/>
+		<link:loc xlink:type="locator" xlink:href="test2.xsd#dim1" xlink:label="dim1"/>
+		<link:loc xlink:type="locator" xlink:href="test2.xsd#member1" xlink:label="member1"/>
+		<link:definitionArc order="1.0" xlink:type="arc" xlink:arcrole="http://xbrl.org/int/dim/arcrole/all" xlink:from="fact1" xlink:to="hc1" xbrldt:contextElement="segment"/>
+		<link:definitionArc order="1.0" xlink:type="arc" xlink:arcrole="http://xbrl.org/int/dim/arcrole/hypercube-dimension" xlink:from="hc1" xlink:to="dim1"/>
+		<link:definitionArc order="1.0" xlink:type="arc" xlink:arcrole="http://xbrl.org/int/dim/arcrole/dimension-domain" xlink:from="dim1" xlink:to="member1" xbrldt:targetRole="urn:role2"/>
+	</link:definitionLink>
+	<link:definitionLink xlink:type="extended" xlink:role="urn:role2">
+		<link:loc xlink:type="locator" xlink:href="test2.xsd#member1" xlink:label="member1"/>
+		<link:loc xlink:type="locator" xlink:href="test2.xsd#member2" xlink:label="member2"/>
+		<link:loc xlink:type="locator" xlink:href="test2.xsd#member3" xlink:label="member3"/>
+		<link:definitionArc order="2.0" xlink:type="arc" xlink:arcrole="http://xbrl.org/int/dim/arcrole/domain-member" xlink:from="member1" xlink:to="member2"/>
+		<link:definitionArc order="2.0" xlink:type="arc" xlink:arcrole="http://xbrl.org/int/dim/arcrole/domain-member" xlink:from="member1" xlink:to="member3"/>
+	</link:definitionLink>
+</link:linkbase>

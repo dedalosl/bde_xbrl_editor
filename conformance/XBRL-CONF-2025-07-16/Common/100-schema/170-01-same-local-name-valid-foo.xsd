@@ -1,0 +1,12 @@
+<xsd:schema 
+    targetNamespace="http://xbrl.org/conformance/foo" 
+    xmlns:xsd="http://www.w3.org/2001/XMLSchema" 
+    xmlns:xbrli="http://www.xbrl.org/2003/instance" >
+
+	<xsd:import namespace="http://www.xbrl.org/2003/instance" schemaLocation="http://www.xbrl.org/2003/xbrl-instance-2003-12-31.xsd"/>
+
+	<!-- foo:Monetary -->
+	<xsd:element name="Monetary" type="xbrli:monetaryItemType"
+               substitutionGroup="xbrli:item"
+               xbrli:periodType="instant"/>
+</xsd:schema>

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QThread, Signal
+from PySide6.QtCore import QObject, QThread, Qt, Signal
 from PySide6.QtWidgets import (
     QFileDialog,
     QHBoxLayout,
@@ -21,7 +21,6 @@ from bde_xbrl_editor.taxonomy import (
     TaxonomyCache,
     TaxonomyLoader,
     TaxonomyLoadError,
-    TaxonomyStructure,
 )
 from bde_xbrl_editor.ui.widgets.progress_dialog import TaxonomyProgressDialog
 
@@ -44,7 +43,8 @@ class _LoadWorker(QObject):
 
         try:
             structure = self._loader.load(self._path, progress_callback=on_progress)
-            self.finished.emit(structure)
+            skipped = self._loader.last_skipped_urls
+            self.finished.emit((structure, skipped))
         except TaxonomyLoadError as exc:
             self.error.emit(str(exc))
         except Exception as exc:  # noqa: BLE001
@@ -130,15 +130,33 @@ class TaxonomyLoaderWidget(QWidget):
         self._thread = QThread(self)
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
-        self._worker.finished.connect(self._on_load_finished)
-        self._worker.error.connect(self._on_load_error)
-        self._worker.progress.connect(self._progress_dialog.as_callback().__call__)
+        self._worker.finished.connect(
+            self._on_load_finished, Qt.ConnectionType.QueuedConnection
+        )
+        self._worker.error.connect(
+            self._on_load_error, Qt.ConnectionType.QueuedConnection
+        )
+        self._worker.progress.connect(self._progress_dialog.update_progress)
         self._thread.start()
 
-    def _on_load_finished(self, structure: TaxonomyStructure) -> None:
+    def _on_load_finished(self, payload: object) -> None:
+        structure, skipped_urls = payload  # type: ignore[misc]
         self._cleanup_thread()
         self._progress_dialog.close()
         self._load_btn.setEnabled(True)
+
+        if skipped_urls:
+            url_list = "\n".join(f"  • {u}" for u in skipped_urls[:20])
+            suffix = f"\n  … and {len(skipped_urls) - 20} more" if len(skipped_urls) > 20 else ""
+            QMessageBox.warning(
+                self,
+                "Remote References Skipped",
+                "The following remote URL(s) could not be resolved locally and were skipped.\n"
+                "The taxonomy was loaded from local files only.\n\n"
+                "To resolve them, add URL-to-path mappings in Settings → URL Mappings.\n\n"
+                f"{url_list}{suffix}",
+            )
+
         self.taxonomy_loaded.emit(structure)
 
     def _on_load_error(self, message: str) -> None:

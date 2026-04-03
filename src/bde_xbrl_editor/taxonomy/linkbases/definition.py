@@ -40,9 +40,55 @@ _CONTEXT_ELEMENT = f"{{{NS_XBRLDT}}}contextElement"
 _USABLE = f"{{{NS_XBRLDT}}}usable"
 
 
+def _resolve_locator_href(
+    href: str,
+    linkbase_path: Path,
+    concept_map: dict[str, QName],
+    ns_qualified_map: dict[str, QName],
+    schema_ns_map: dict[str, str],
+) -> QName | None:
+    """Resolve a locator href to a QName using the most precise method available.
+
+    Priority:
+    1. Namespace-qualified lookup: derive targetNamespace from the href schema URL
+       (either via schema_ns_map for absolute URLs, or by resolving relative paths
+       against the linkbase directory), then look up "{namespace}#{fragment}".
+    2. Fall back to bare fragment lookup in concept_map (may collide when two
+       schemas declare elements with the same xml:id).
+    """
+    if "#" not in href:
+        return None
+    schema_url, fragment = href.rsplit("#", 1)
+    if not fragment:
+        return None
+
+    # Attempt 1: resolve schema URL to its targetNamespace and do a full lookup
+    ns: str | None = None
+    if schema_url.startswith("http://") or schema_url.startswith("https://"):
+        ns = schema_ns_map.get(schema_url)
+    else:
+        # Relative href — resolve against linkbase directory
+        try:
+            resolved = str((linkbase_path.parent / schema_url).resolve())
+            ns = schema_ns_map.get(resolved)
+        except Exception:  # noqa: BLE001
+            pass
+
+    if ns:
+        qname = ns_qualified_map.get(f"{ns}#{fragment}")
+        if qname:
+            return qname
+
+    # Attempt 2: bare fragment fallback (backward compat, may have collisions)
+    return concept_map.get(fragment)
+
+
 def parse_definition_linkbase(
     linkbase_path: Path,
     concept_map: dict[str, QName],
+    *,
+    ns_qualified_map: dict[str, QName] | None = None,
+    schema_ns_map: dict[str, str] | None = None,
 ) -> tuple[
     dict[str, list[DefinitionArc]],
     list[HypercubeModel],
@@ -70,6 +116,10 @@ def parse_definition_linkbase(
 
     arcs_by_elr: dict[str, list[DefinitionArc]] = {}
 
+    # Normalise optional maps so inner code can always call dict.get()
+    _ns_qmap: dict[str, QName] = ns_qualified_map or {}
+    _schema_ns: dict[str, str] = schema_ns_map or {}
+
     # Per-ELR accumulators for dimensional model construction
     # elr → set of (primary_item, hypercube, arcrole, closed, context_element)
     hc_primary: dict[str, list[tuple[QName, QName, str, bool, str]]] = {}
@@ -87,11 +137,11 @@ def parse_definition_linkbase(
         for loc in link_el.iter(_LOC):
             href = loc.get(_XLINK_HREF, "")
             xlink_label = loc.get(_XLINK_LABEL, "")
-            if "#" in href:
-                fragment = href.rsplit("#", 1)[1]
-                qname = concept_map.get(fragment)
-                if qname:
-                    loc_map[xlink_label] = qname
+            qname = _resolve_locator_href(
+                href, linkbase_path, concept_map, _ns_qmap, _schema_ns,
+            )
+            if qname:
+                loc_map[xlink_label] = qname
 
         for arc in link_el.iter(_DEF_ARC):
             arcrole = arc.get(_XLINK_ARCROLE, "")
@@ -159,8 +209,12 @@ def parse_definition_linkbase(
             primary_by_hc.setdefault(hc, []).append(primary)
 
         dims_by_hc: dict[QName, list[QName]] = {}
-        for hc, dim in hc_dims.get(elr, []):
-            dims_by_hc.setdefault(hc, []).append(dim)
+        # A hypercube's dimensions may be declared in a different ELR (via
+        # xbrldt:targetRole).  Collect dimensions from all ELRs so that
+        # cross-ELR targetRole relationships are resolved correctly.
+        for any_elr_dims in hc_dims.values():
+            for hc_q, dim_q in any_elr_dims:
+                dims_by_hc.setdefault(hc_q, []).append(dim_q)
 
         for hc, (arcrole, closed, ctx) in hc_map.items():
             arcrole_short: str = "all" if arcrole == ARCROLE_ALL else "notAll"

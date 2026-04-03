@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -45,6 +46,29 @@ class TaxonomyInfoPanel(QWidget):
         meta_form.addRow("Tables:", QLabel(str(len(self._taxonomy.tables))))
 
         layout.addWidget(meta_group)
+
+        # --- DTS Files group with tabs for schemas / linkbases ---
+        n_schemas = len(self._taxonomy.schema_files)
+        n_linkbases = len(self._taxonomy.linkbase_files)
+        dts_group = QGroupBox(f"DTS Files ({n_schemas} schemas, {n_linkbases} linkbases)")
+        dts_layout = QVBoxLayout(dts_group)
+
+        tabs = QTabWidget()
+
+        schemas_list = QListWidget()
+        for path in self._taxonomy.schema_files:
+            schemas_list.addItem(path.name)
+            schemas_list.item(schemas_list.count() - 1).setToolTip(str(path))
+        tabs.addTab(schemas_list, f"Schemas ({n_schemas})")
+
+        linkbases_list = QListWidget()
+        for path in self._taxonomy.linkbase_files:
+            linkbases_list.addItem(path.name)
+            linkbases_list.item(linkbases_list.count() - 1).setToolTip(str(path))
+        tabs.addTab(linkbases_list, f"Linkbases ({n_linkbases})")
+
+        dts_layout.addWidget(tabs)
+        layout.addWidget(dts_group)
 
         # --- Table list ---
         tables_group = QGroupBox(f"Available Tables ({len(self._taxonomy.tables)})")

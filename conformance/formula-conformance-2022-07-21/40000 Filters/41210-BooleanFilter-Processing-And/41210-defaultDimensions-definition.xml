@@ -1,0 +1,30 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<linkbase xmlns="http://www.xbrl.org/2003/linkbase" xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:xbrldt="http://xbrl.org/2005/xbrldt" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.xbrl.org/2003/linkbase http://www.xbrl.org/2003/xbrl-linkbase-2003-12-31.xsd http://xbrl.org/2005/xbrldt http://www.xbrl.org/2005/xbrldt-2005.xsd">
+   <link:arcroleRef arcroleURI="http://xbrl.org/int/dim/arcrole/dimension-default" xlink:href="http://www.xbrl.org/2005/xbrldt-2005.xsd#dimension-default" xlink:type="simple"/>
+   <link:arcroleRef arcroleURI="http://xbrl.org/int/dim/arcrole/dimension-domain" xlink:href="http://www.xbrl.org/2005/xbrldt-2005.xsd#dimension-domain" xlink:type="simple"/>
+   <link:arcroleRef arcroleURI="http://xbrl.org/int/dim/arcrole/hypercube-dimension" xlink:href="http://www.xbrl.org/2005/xbrldt-2005.xsd#hypercube-dimension" xlink:type="simple"/>
+   <link:arcroleRef arcroleURI="http://xbrl.org/int/dim/arcrole/all" xlink:href="http://www.xbrl.org/2005/xbrldt-2005.xsd#all" xlink:type="simple"/>
+   <link:roleRef roleURI="http://xbrl.org/formula/conformance/example/hypercubes/Hypercube1" xlink:href="41210-defaultDimensions-concepts.xsd#hypercube1_6037ab" xlink:type="simple"/>
+   <link:definitionLink xlink:role="http://xbrl.org/formula/conformance/example/hypercubes/Hypercube1" xlink:type="extended">
+      <link:loc xlink:href="41210-defaultDimensions-concepts.xsd#eg_Hypercube1" xlink:label="lbl_Hypercube1" xlink:type="locator"/>
+      <link:loc xlink:href="41210-defaultDimensions-concepts.xsd#eg_Fact1" xlink:label="lbl_Fact1" xlink:type="locator"/>
+      <link:definitionArc order="1.0" xbrldt:closed="true" xbrldt:contextElement="segment" xlink:arcrole="http://xbrl.org/int/dim/arcrole/all" xlink:from="lbl_Fact1" xlink:to="lbl_Hypercube1" xlink:type="arc"/>
+      <link:loc xlink:href="41210-defaultDimensions-concepts.xsd#eg_dim1" xlink:label="lbl_dim1" xlink:type="locator"/>
+      <link:definitionArc order="1.0" xlink:arcrole="http://xbrl.org/int/dim/arcrole/hypercube-dimension" xlink:from="lbl_Hypercube1" xlink:to="lbl_dim1" xlink:type="arc"/>
+      <link:loc xlink:href="41210-defaultDimensions-concepts.xsd#eg_dim2" xlink:label="lbl_dim2" xlink:type="locator"/>
+      <link:definitionArc order="2.0" xlink:arcrole="http://xbrl.org/int/dim/arcrole/hypercube-dimension" xlink:from="lbl_Hypercube1" xlink:to="lbl_dim2" xlink:type="arc"/>
+      <link:loc xlink:href="41210-defaultDimensions-concepts.xsd#eg_member1dim1" xlink:label="lbl_member1dim1" xlink:type="locator"/>
+      <link:definitionArc order="1.0" xlink:arcrole="http://xbrl.org/int/dim/arcrole/dimension-domain" xlink:from="lbl_dim1" xlink:to="lbl_member1dim1" xlink:type="arc"/>
+      <link:loc xlink:href="41210-defaultDimensions-concepts.xsd#eg_member2dim2" xlink:label="lbl_member2dim2" xlink:type="locator"/>
+      <link:definitionArc order="2.0" xlink:arcrole="http://xbrl.org/int/dim/arcrole/dimension-domain" xlink:from="lbl_dim2" xlink:to="lbl_member2dim2" xlink:type="arc"/>
+      <link:loc xlink:href="41210-defaultDimensions-concepts.xsd#eg_member2dim1" xlink:label="lbl_member2dim1" xlink:type="locator"/>
+      <link:definitionArc order="1.5" xlink:arcrole="http://xbrl.org/int/dim/arcrole/dimension-domain" xlink:from="lbl_dim1" xlink:to="lbl_member2dim1" xlink:type="arc"/>
+      <link:loc xlink:href="41210-defaultDimensions-concepts.xsd#eg_member1dim2" xlink:label="lbl_member1dim2" xlink:type="locator"/>
+      <link:definitionArc order="1.0" xlink:arcrole="http://xbrl.org/int/dim/arcrole/dimension-domain" xlink:from="lbl_dim2" xlink:to="lbl_member1dim2" xlink:type="arc"/>
+   </link:definitionLink>
+   <link:definitionLink xlink:role="http://www.xbrl.org/2003/role/link" xlink:type="extended">
+      <link:loc xlink:href="41210-defaultDimensions-concepts.xsd#eg_member1dim1" xlink:label="lbl_member1dim1" xlink:type="locator"/>
+      <link:loc xlink:href="41210-defaultDimensions-concepts.xsd#eg_dim1" xlink:label="lbl_dim1" xlink:type="locator"/>
+      <link:definitionArc order="1.0" xlink:arcrole="http://xbrl.org/int/dim/arcrole/dimension-default" xlink:from="lbl_dim1" xlink:to="lbl_member1dim1" xlink:type="arc"/>
+   </link:definitionLink>
+</linkbase>

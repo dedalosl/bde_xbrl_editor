@@ -1,0 +1,226 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2013-10-17"
+  name="3130-concept-relationship-node-arcrole-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Chris Rimes</name>
+        <email>cdr@corefiling.com</email>
+    </creator>
+    <number>3130</number>
+    <name>Concept Relationship Node Arcrole Testcase</name>
+    <description>Table linkbase test case using a concept relationship node with different arcroles</description>
+    
+    <variation id="v-01">
+        <name>Concept relationship node for parent-child network</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+          This variation has no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">parent-child-arcrole-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/parent-child-arcrole-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-01i">
+        <name>Concept relationship node for parent-child network, with instance</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">parent-child-arcrole-instance.xml</instance>
+            <linkbase>parent-child-arcrole-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/parent-child-arcrole.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-02">
+        <name>Concept relationship node for domain-member network</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          domain-member relationships in the taxonomy's definition linkbase.
+          This variation has no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">domain-member-arcrole-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/domain-member-arcrole-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-02i">
+        <name>Concept relationship node for domain-member network, with instance</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          domain-member relationships in the taxonomy's definition linkbase.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">domain-member-arcrole-instance.xml</instance>
+            <linkbase>domain-member-arcrole-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/domain-member-arcrole.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-03">
+        <name>Concept relationship node for which there are no relationships</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  There are no outgoing relationships from the
+          relationship source in the specified arcrole, so only the
+          relationship source itself is included.  This variation has no
+          instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">no-relationships-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/no-relationships-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-03i">
+        <name>Concept relationship node for which there are no relationships, with instance</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  There are no outgoing relationships from the
+          relationship source in the specified arcrole, so only the
+          relationship source itself is included.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">no-relationships-instance.xml</instance>
+            <linkbase>no-relationships-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/no-relationships.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-04">
+        <name>Concept relationship node with arcrole expression that evaluates to an invalid URI</name>
+        <description>
+          Invalid table with a concept relationship node that specifies the
+          arcrole using an XPath expression that evaluates to an invalid URI.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">invalid-arcrole-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:expressionNotCastableToRequiredType</error>
+        </result>
+    </variation>
+
+    <variation id="v-05">
+        <name>Concept relationship node with an empty arcrole expression</name>
+        <description>
+          Invalid table with a concept relationship node that specifies the
+          arcrole using an XPath expression that evaluates to an empty URI.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">empty-arcrole-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:expressionNotCastableToRequiredType</error>
+        </result>
+    </variation>
+  
+    <variation id="v-06">
+        <name>Concept relationship node with an arcrole expression that evaluates to a sequence</name>
+        <description>
+          Invalid table with a concept relationship node that specifies the
+          arcrole using an XPath expression that evaluates to a sequence of
+          more than one URI.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">sequence-arcrole-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:expressionNotCastableToRequiredType</error>
+        </result>
+    </variation>
+  
+    <variation id="v-07">
+        <name>Concept relationship node with an arcrole expression</name>
+        <description>
+          Simple table with two columns (periods 2001, 2002) and a tree of
+          concepts as rows.  The concepts are arranged according to the
+          parent-child relationships in the taxonomy's presentation linkbase.
+          The arcrole is specified using an XPath expression.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">arcrole-expression-instance.xml</instance>
+            <linkbase>arcrole-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/arcrole-expression.xml</table>
+        </result>
+    </variation>
+  
+</testcase>

@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2011-09-16"
+  name="1010-rule-node-concept-rule-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Herm Fischer</name>
+        <email>fischer@markv.com</email>
+    </creator>
+    <number>1010</number>
+    <name>Rule Node Concept Rule Testcase</name>
+    <description>Table linkbase test case using a rule node with a concept rule</description>
+
+    <variation id="v-01">
+        <name>Concept rule for a primary item that doesn't exist in the taxonomy</name>
+        <description>
+          Invalid table that specifies a primary item that doesn't exist in the taxonomy.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">invalid-concept-qname-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:invalidQNameAspectValue</error>
+        </result>
+    </variation>
+
+    <variation id="v-02">
+        <name>Concept rule for a primary item that is actually a dimension</name>
+        <description>
+          Invalid table that specifies a primary item that is actually a dimension.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">dimension-as-concept-qname-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:invalidQNameAspectValue</error>
+        </result>
+    </variation>
+
+    <variation id="v-03">
+        <name>Concept rule for a primary item that is actually a hypercube</name>
+        <description>
+          Invalid table that specifies a primary item that is actually a hypercube.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">hypercube-as-concept-qname-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:invalidQNameAspectValue</error>
+        </result>
+    </variation>
+
+    <variation id="v-04">
+        <name>Rule nodes with concept rules that use XPath expressions</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and two columns
+          (explicit dimension D = d1, d2). The primary items are specified by
+          XPath expressions that evaluate to QNames. In this variation there is
+          no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">concept-qname-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/concept-qname-expression-no-data.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-04i">
+        <name>Rule nodes with concept rules that use XPath expressions, with instance</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and two columns
+          (explicit dimension D = d1, d2). The primary items are specified by
+          XPath expressions that evaluate to QNames.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">concept-qname-expression-instance.xml</instance>
+            <linkbase>concept-qname-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/concept-qname-expression.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-05">
+        <name>Simple Table with an incomplete concept rule.</name>
+        <description>Simple table with one x axis node for an incomplete concept rule.</description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">incomplete-concept-rule-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+           <error>xbrlte:incompleteAspectRule</error>
+        </result>
+    </variation>
+    
+</testcase>

@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2010 XBRL International. All Rights Reserved. -->
+<?xml-stylesheet type="text/xsl" href="../../testcase.xsl"?>
+<testcase xmlns="http://xbrl.org/2005/conformance" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:xbrldie="http://xbrl.org/2005/xbrldi/errors" name="272-SharedDomain" description="Tests involving dimensions sharing domains"
+  outpath="out" owner="walter@hamscher.com" minimal="true" xsi:schemaLocation="http://xbrl.org/2005/conformance ../../lib/test.xsd">
+  <variation id="V-01" name="Example 01, all items, all cubes">
+    <description reference="#0"> 
+      An instance with a single fact; the fact is in a context with two non-default domain members.  
+      The dimensions(axes) share a common domain member.  Should be GOOD.
+    </description>
+    <data>
+      <xsd readMeFirst="false">272-01.xsd</xsd>
+      <linkbase readMeFirst="false">272-01_def.xml</linkbase>
+      <instance readMeFirst="true">272-01.xbrl</instance>
+    </data>
+    <result>
+      <file>272-01.xml</file>
+    </result>
+  </variation>
+
+</testcase>

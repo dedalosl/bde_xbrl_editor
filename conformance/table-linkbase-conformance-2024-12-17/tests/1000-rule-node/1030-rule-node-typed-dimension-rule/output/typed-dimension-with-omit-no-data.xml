@@ -1,0 +1,159 @@
+<?xml version='1.0' encoding='utf-8'?>
+<tableModel xmlns="http://xbrl.org/2014/table/model" xmlns:rend="http://www.xbrl.org/table-examples-typed" xml:base="..">
+  <tableSet>
+    <label>Rule node with typed dimension rule that has omit</label>
+    <table>
+      <headers axis="y">
+        <group>
+          <label>Two rows (primary items MaximumSalary, Bonus)</label>
+          <header>
+            <cell>
+              <label>Bonus (%)</label>
+              <label>1</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:Bonus</value>
+              </constraint>
+            </cell>
+            <cell>
+              <label>Maximum Salary</label>
+              <label>2</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:MaximumSalary</value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+      </headers>
+      <headers axis="x">
+        <group>
+          <label>Six columns (typed dimension Age = .. - 20, 21 - 40, 41 - .. and typed dimension Department = Sales, Admin)</label>
+          <header>
+            <cell span="2">
+              <label>.. - 20</label>
+              <constraint>
+                <aspect>rend:Age</aspect>
+                <value>
+                  <rend:Age.domain>.. - 20</rend:Age.domain>
+                </value>
+              </constraint>
+            </cell>
+            <cell span="2">
+              <label>21 - 40</label>
+              <constraint>
+                <aspect>rend:Age</aspect>
+                <value>
+                  <rend:Age.domain>21 - 40</rend:Age.domain>
+                </value>
+              </constraint>
+            </cell>
+            <cell span="2">
+              <label>41 - ..</label>
+              <constraint>
+                <aspect>rend:Age</aspect>
+                <value>
+                  <rend:Age.domain>41 - ..</rend:Age.domain>
+                </value>
+              </constraint>
+            </cell>
+          </header>
+          <header>
+            <cell>
+              <label>Sales</label>
+              <label>1</label>
+              <constraint>
+                <aspect>rend:Department</aspect>
+                <value>
+                  <rend:Department.domain>Sales</rend:Department.domain>
+                </value>
+              </constraint>
+              <constraint>
+                <aspect>rend:Age</aspect>
+                <value/>
+              </constraint>
+            </cell>
+            <cell>
+              <label>Admin</label>
+              <label>2</label>
+              <constraint>
+                <aspect>rend:Department</aspect>
+                <value>
+                  <rend:Department.domain>Admin</rend:Department.domain>
+                </value>
+              </constraint>
+            </cell>
+            <cell>
+              <label>Sales</label>
+              <label>3</label>
+              <constraint>
+                <aspect>rend:Department</aspect>
+                <value>
+                  <rend:Department.domain>Sales</rend:Department.domain>
+                </value>
+              </constraint>
+              <constraint>
+                <aspect>rend:Age</aspect>
+                <value/>
+              </constraint>
+            </cell>
+            <cell>
+              <label>Admin</label>
+              <label>4</label>
+              <constraint>
+                <aspect>rend:Department</aspect>
+                <value>
+                  <rend:Department.domain>Admin</rend:Department.domain>
+                </value>
+              </constraint>
+            </cell>
+            <cell>
+              <label>Sales</label>
+              <label>5</label>
+              <constraint>
+                <aspect>rend:Department</aspect>
+                <value>
+                  <rend:Department.domain>Sales</rend:Department.domain>
+                </value>
+              </constraint>
+              <constraint>
+                <aspect>rend:Age</aspect>
+                <value/>
+              </constraint>
+            </cell>
+            <cell>
+              <label>Admin</label>
+              <label>6</label>
+              <constraint>
+                <aspect>rend:Department</aspect>
+                <value>
+                  <rend:Department.domain>Admin</rend:Department.domain>
+                </value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+      </headers>
+      <cells axis="z">
+        <cells axis="y">
+          <cells axis="x">
+            <cell/>
+            <cell/>
+            <cell/>
+            <cell/>
+            <cell/>
+            <cell/>
+          </cells>
+          <cells axis="x">
+            <cell/>
+            <cell/>
+            <cell/>
+            <cell/>
+            <cell/>
+            <cell/>
+          </cells>
+        </cells>
+      </cells>
+    </table>
+  </tableSet>
+</tableModel>

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<linkbase xmlns="http://www.xbrl.org/2003/linkbase" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:xbrldt="http://xbrl.org/2005/xbrldt" xsi:schemaLocation=" http://www.xbrl.org/2003/linkbase http://www.xbrl.org/2003/xbrl-linkbase-2003-12-31.xsd http://xbrl.org/2005/xbrldt http://www.xbrl.org/2005/xbrldt-2005.xsd">
+  <roleRef xlink:type="simple" xlink:href="polymorphismError.xsd#Cube" roleURI="http://www.xbrl.org/2003/role/Cube" />
+  <roleRef xlink:type="simple" xlink:href="polymorphismError.xsd#Cube2" roleURI="http://www.xbrl.org/2003/role/Cube2" />
+
+  <arcroleRef xlink:type="simple" xlink:href="http://www.xbrl.org/2005/xbrldt-2005.xsd#hypercube-dimension" arcroleURI="http://xbrl.org/int/dim/arcrole/hypercube-dimension" />
+  <arcroleRef xlink:type="simple" xlink:href="http://www.xbrl.org/2005/xbrldt-2005.xsd#dimension-domain" arcroleURI="http://xbrl.org/int/dim/arcrole/dimension-domain" />
+  <arcroleRef xlink:type="simple" xlink:href="http://www.xbrl.org/2005/xbrldt-2005.xsd#domain-member" arcroleURI="http://xbrl.org/int/dim/arcrole/domain-member" />
+  <arcroleRef xlink:type="simple" xlink:href="http://www.xbrl.org/2005/xbrldt-2005.xsd#all" arcroleURI="http://xbrl.org/int/dim/arcrole/all" />
+  
+  <definitionLink xlink:type="extended" xlink:role="http://www.xbrl.org/2003/role/Cube">
+    <!-- this cube uses pr_IncomeStatement as a domain member for pm_BalanceDim -->
+    <loc xlink:type="locator" xlink:href="polymorphismError.xsd#pm_Cube" xlink:label="pm_Cube"  />
+    <loc xlink:type="locator" xlink:href="polymorphismError.xsd#pm_BalanceDim" xlink:label="pm_BalanceDim"  />
+    <loc xlink:type="locator" xlink:href="../../lib/base/primary.xsd#pr_IncomeStatement" xlink:label="pr_IncomeStatement"  />
+    <definitionArc xlink:type="arc" xlink:arcrole="http://xbrl.org/int/dim/arcrole/hypercube-dimension" xlink:from="pm_Cube" xlink:to="pm_BalanceDim" order="1" use="optional" />
+    <definitionArc xlink:type="arc" xlink:arcrole="http://xbrl.org/int/dim/arcrole/dimension-domain" xlink:from="pm_BalanceDim" xlink:to="pr_IncomeStatement" order="1" use="optional" />    
+  </definitionLink>
+
+  <definitionLink xlink:type="extended" xlink:role="http://www.xbrl.org/2003/role/Cube2">
+    <!-- this cube uses pr_GrossProfitPresentation as a domain member for pm_BalanceDim -->
+    <loc xlink:type="locator" xlink:href="polymorphismError.xsd#pm_Cube" xlink:label="pm_Cube"  />
+    <loc xlink:type="locator" xlink:href="polymorphismError.xsd#pm_BalanceDim" xlink:label="pm_BalanceDim" />
+    <loc xlink:type="locator" xlink:href="../../lib/base/primary.xsd#pr_GrossProfitPresentation" xlink:label="pr_GrossProfitPresentation" />
+
+    <definitionArc xlink:arcrole="http://xbrl.org/int/dim/arcrole/hypercube-dimension" xlink:from="pm_Cube" xlink:to="pm_BalanceDim" order="1" use="optional" xlink:type="arc" />
+    <definitionArc xlink:arcrole="http://xbrl.org/int/dim/arcrole/dimension-domain" xlink:from="pm_BalanceDim" xlink:to="pr_GrossProfitPresentation" order="1" use="optional" xlink:type="arc" />
+  </definitionLink>
+
+  <definitionLink xlink:type="extended" xlink:role="http://www.xbrl.org/2003/role/link">
+    <loc xlink:type="locator" xlink:href="polymorphismError.xsd#pm_Cube" xlink:label="pm_Cube"/>
+
+    <!-- pr_IncomeStatement is associated with http://www.xbrl.org/2003/role/Cube2 (where it isn't a domain member) -->
+    <loc xlink:type="locator" xlink:href="../../lib/base/primary.xsd#pr_IncomeStatement" xlink:label="pr_IncomeStatement" />
+    <definitionArc xbrldt:targetRole="http://www.xbrl.org/2003/role/Cube2" 
+                   xlink:arcrole="http://xbrl.org/int/dim/arcrole/all" 
+                   xlink:from="pr_IncomeStatement" 
+                   xlink:to="pm_Cube" 
+                   order="1" use="optional" xbrldt:contextElement="scenario" xlink:type="arc" />
+    
+    <!-- pr_GrossProfitPresentation is associated with http://www.xbrl.org/2003/role/Cube (where it isn't a domain member) -->
+    <loc xlink:type="locator" xlink:href="../../lib/base/primary.xsd#pr_GrossProfitPresentation" xlink:label="pr_GrossProfitPresentation" />
+    <definitionArc xbrldt:targetRole="http://www.xbrl.org/2003/role/Cube" 
+                   xlink:arcrole="http://xbrl.org/int/dim/arcrole/all" 
+                   xlink:from="pr_GrossProfitPresentation" 
+                   xlink:to="pm_Cube" 
+                   order="1" use="optional" xbrldt:contextElement="scenario" xlink:type="arc" />
+  </definitionLink>
+
+</linkbase>

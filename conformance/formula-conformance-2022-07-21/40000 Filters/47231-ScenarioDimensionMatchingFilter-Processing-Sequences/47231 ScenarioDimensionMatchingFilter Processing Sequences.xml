@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2007 XBRL International. All Rights Reserved. -->
+<?xml-stylesheet type="text/xsl" href="../../xsl/test.xsl"?>
+<testcase
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../xsd/test.xsd"
+  xmlns:xbrlfe="http://xbrl.org/2008/formula/error"
+  xmlns:binding="http://xbrl.org/2008/binding/errors"
+  xmlns:label="http://xbrl.org/2008/label/error"
+  xmlns:reference="http://xbrl.org/2008/reference/error"  
+  >
+  <creator>
+    <name>David Bell</name>
+    <email>david.x.bell@rrd.com</email>
+  </creator>
+  <number>47231</number>
+  <name>Scenario dimension matching filter test</name>
+  <description>
+    Tests of scenario dimension matching filter where matchAny='true'.
+    Assumes that non-sequential matching works as these tests only check sequence behaviour.
+  </description>
+  <reference specification="MATCH-FILTER" id="sec-scenario-dimension-matching-filter"/>
+
+  <variation id="V-101">
+    <name>Explicit dimensions are equal, they have same member</name>
+    <description>Test individual items against sequence of all items, all facts match</description>
+    <data>
+      <schema>47231-scenDimMatch-concepts.xsd</schema>
+      <linkbase>47231-scenDimMatch-definition.xml</linkbase>
+      <linkbase>47231-scenDimMatch-explDim1-formula-V101.xml</linkbase>
+      <instance readMeFirst="true">47231-scenDimMatch-instance-V101.xml</instance>
+    </data>
+    <result>
+      <instance>47231-scenDimMatch-result-V101.xml</instance>
+    </result>
+  </variation>  
+  
+  <variation id="V-102">
+    <name>Explicit dimensions are equal, they have same member</name>
+    <description>Test all items against sequence of items with explicit dimension member2</description>
+    <data>
+      <schema>47231-scenDimMatch-concepts.xsd</schema>
+      <linkbase>47231-scenDimMatch-definition.xml</linkbase>
+      <linkbase>47231-scenDimMatch-explDim1-formula-V102.xml</linkbase>
+      <instance readMeFirst="true">47231-scenDimMatch-instance-V102.xml</instance>
+    </data>
+    <result>
+      <instance>47231-scenDimMatch-result-V102.xml</instance>
+    </result>
+  </variation>  
+  
+  <variation id="V-103">
+    <name>Explicit dimensions are equal, they have same member</name>
+    <description>As above but complemented to produce inverse result</description>
+    <data>
+      <schema>47231-scenDimMatch-concepts.xsd</schema>
+      <linkbase>47231-scenDimMatch-definition.xml</linkbase>
+      <linkbase>47231-scenDimMatch-explDim1-formula-V103.xml</linkbase>
+      <instance readMeFirst="true">47231-scenDimMatch-instance-V103.xml</instance>
+    </data>
+    <result>
+      <instance>47231-scenDimMatch-result-V103.xml</instance>
+    </result>
+  </variation>  
+  
+  <variation id="V-104">
+    <name>Typed dimensions are equal, they have same member</name>
+    <description>Test individual items against sequence of all items, all facts match</description>
+    <data>
+      <schema>47231-scenDimMatch-concepts.xsd</schema>
+      <linkbase>47231-scenDimMatch-definition.xml</linkbase>
+      <linkbase>47231-scenDimMatch-typeDim1-formula-V104.xml</linkbase>
+      <instance readMeFirst="true">47231-scenDimMatch-instance-V104.xml</instance>
+    </data>
+    <result>
+      <instance>47231-scenDimMatch-result-V104.xml</instance>
+    </result>
+  </variation>  
+  
+  <variation id="V-105">
+    <name>Typed dimensions are equal, they have same member</name>
+    <description>Test all individual items against sequence of items with typed dimension 2</description>
+    <data>
+      <schema>47231-scenDimMatch-concepts.xsd</schema>
+      <linkbase>47231-scenDimMatch-definition.xml</linkbase>
+      <linkbase>47231-scenDimMatch-typeDim1-formula-V105.xml</linkbase>
+      <instance readMeFirst="true">47231-scenDimMatch-instance-V105.xml</instance>
+    </data>
+    <result>
+      <instance>47231-scenDimMatch-result-V105.xml</instance>
+    </result>
+  </variation>  
+  
+  <variation id="V-106">
+    <name>Explicit dimensions are equal, they have same member</name>
+    <description>As above but complemented to produce inverse result</description>
+    <data>
+      <schema>47231-scenDimMatch-concepts.xsd</schema>
+      <linkbase>47231-scenDimMatch-definition.xml</linkbase>
+      <linkbase>47231-scenDimMatch-typeDim1-formula-V106.xml</linkbase>
+      <instance readMeFirst="true">47231-scenDimMatch-instance-V106.xml</instance>
+    </data>
+    <result>
+      <instance>47231-scenDimMatch-result-V106.xml</instance>
+    </result>
+  </variation>  
+  
+</testcase>
+

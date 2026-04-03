@@ -1,0 +1,104 @@
+<?xml version='1.0' encoding='utf-8'?>
+<tableModel xmlns="http://xbrl.org/2014/table/model" xmlns:rend="http://www.xbrl.org/table-examples" xml:base="..">
+  <!--Entry point file: table-linkbase-2-col-dims-with-omit.xml-->
+  <tableSet>
+    <!--TableSet linkbase file: table-linkbase-2-col-dims-with-omit.xml, line 38-->
+    <!--TableSet namespace: http://xbrl.org/2014/table-->
+    <!--TableSet linkrole: http://www.xbrl.org/table-examples/table6-->
+    <label>Example where a dimension D is removed in a child node of X axis</label>
+    <table>
+      <headers axis="y">
+        <group>
+          <label>Two rows (primary items m1, m2)</label>
+          <header>
+            <!--ruleNode: label table6-y.1, file table-linkbase-2-col-dims-with-omit.xml, line 141-->
+            <!--   aspect concept: rend:m1-->
+            <cell>
+              <label>Label: m1</label>
+              <label>1</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:m1</value>
+              </constraint>
+            </cell>
+            <!--ruleNode: label table6-y.2, file table-linkbase-2-col-dims-with-omit.xml, line 165-->
+            <!--   aspect concept: rend:m2-->
+            <cell>
+              <label>Label: m2</label>
+              <label>2</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:m2</value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+      </headers>
+      <headers axis="x">
+        <group>
+          <label>Two columns (dimension [D, E] = [d1, e1], [d0, e2])</label>
+          <header>
+            <!--ruleNode: label table6-x.1, file table-linkbase-2-col-dims-with-omit.xml, line 53-->
+            <!--   aspect rend:D: rend:d1-->
+            <cell span="3">
+              <label>Label: D = d1</label>
+              <label>1</label>
+              <constraint>
+                <aspect>rend:D</aspect>
+                <value>rend:d1</value>
+              </constraint>
+            </cell>
+          </header>
+          <header>
+            <cell rollup="true">
+              <constraint>
+                <aspect>rend:E</aspect>
+                <value/>
+              </constraint>
+            </cell>
+            <!--ruleNode: label table6-x.1.1, file table-linkbase-2-col-dims-with-omit.xml, line 79-->
+            <!--   aspect rend:E: rend:e1-->
+            <cell>
+              <label>Label: E = e1</label>
+              <label>2</label>
+              <constraint>
+                <aspect>rend:E</aspect>
+                <value>rend:e1</value>
+              </constraint>
+            </cell>
+            <!--ruleNode: label table6-x.1.2, file table-linkbase-2-col-dims-with-omit.xml, line 105-->
+            <!--   aspect omit dimensions: [rend:D]-->
+            <!--   aspect rend:E: rend:e2-->
+            <cell>
+              <label>Label: E = e2, D removed</label>
+              <label>3</label>
+              <constraint>
+                <aspect>rend:E</aspect>
+                <value>rend:e2</value>
+              </constraint>
+              <constraint>
+                <aspect>rend:D</aspect>
+                <!-- empty value element => no value reported for the aspect -->
+                <value/>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+      </headers>
+      <cells axis="z">
+        <cells axis="y">
+          <cells axis="x">
+            <cell/>
+            <cell/>
+            <cell/>
+          </cells>
+          <cells axis="x">
+            <cell/>
+            <cell/>
+            <cell/>
+          </cells>
+        </cells>
+      </cells>
+    </table>
+  </tableSet>
+</tableModel>

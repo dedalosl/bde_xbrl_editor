@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<schema xmlns="http://www.w3.org/2001/XMLSchema" xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:xbrli="http://www.xbrl.org/2003/instance"
+    xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance' xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:custom="http://www.example.com/test/customLoc"
+    targetNamespace="http://mycompany.com/xbrl/taxonomy" xsi:schemaLocation="http://www.example.com/test/customLoc 202-14-CustomLocator.xsd">
+    <import namespace="http://www.xbrl.org/2003/instance" schemaLocation="http://www.xbrl.org/2003/xbrl-instance-2003-12-31.xsd" />
+
+    <annotation>
+        <appinfo>
+            <linkbase xmlns="http://www.xbrl.org/2003/linkbase">
+                <referenceLink xlink:role="http://www.xbrl.org/2003/role/link" xlink:type="extended">
+                    <!-- Invalid custom locator in referenceLink -->
+                    <custom:customLoc xlink:type="locator" xlink:href="202-14-CustomLocator.xsd#stringItem"
+                        xlink:label="stringItemLocator" />
+                </referenceLink>
+            </linkbase>
+        </appinfo>
+    </annotation>
+
+</schema>

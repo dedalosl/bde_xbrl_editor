@@ -1,0 +1,268 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2011-09-16"
+  name="3250-dimension-relationship-node-generations-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Herm Fischer</name>
+        <email>fischer@markv.com</email>
+    </creator>
+    <number>3250</number>
+    <name>Dimension Relationship Node Generations Testcase</name>
+    <description>Table linkbase test case using a dimension relationship node with different numbers of generations</description>
+    
+    <variation id="v-01">
+        <name>Dimension relationship node with a generations = 1</name>
+        <description>
+          Table with two columns (primary items m1, m2) and a tree of members
+          for explicit dimension F as rows.  A single generation of
+          descendants is specified, so only the relationship source and its
+          immediate children are included.  This variation has no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">single-generation-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/single-generation-no-data.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-01i">
+        <name>Dimension relationship node with a generations = 1, with instance</name>
+        <description>
+          Table with two columns (primary items m1, m2) and a tree of members
+          for explicit dimension F as rows.  A single generation of
+          descendants is specified, so only the relationship source and its
+          immediate children are included.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">single-generation-instance.xml</instance>
+            <linkbase>single-generation-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/single-generation.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-02">
+        <name>Dimension relationship node with generations > 1</name>
+        <description>
+          Table with two columns (primary items m1, m2) and a tree of members
+          for explicit dimension F as rows.  Two generations of descendants are
+          specified, so the relationship source, its immediate children and
+          grand-children are included.  This variation has no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">multiple-generations-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/multiple-generations-no-data.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-02i">
+        <name>Dimension relationship node with generations > 1, with instance</name>
+        <description>
+          Table with two columns (primary items m1, m2) and a tree of members
+          for explicit dimension F as rows.  Two generations of descendants are
+          specified, so the relationship source, its immediate children and
+          grand-children are included.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">multiple-generations-instance.xml</instance>
+            <linkbase>multiple-generations-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/multiple-generations.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-03">
+        <name>Dimension relationship node with generations = 0</name>
+        <description>
+          Table with two columns (primary items m1, m2) and a tree of members
+          for explicit dimension F as rows.  The number of generations of
+          descendants is specified as zero, so the full tree of members starting
+          from the relationship source is included.  This variation has no
+          instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">zero-generations-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/zero-generations-no-data.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-03i">
+        <name>Dimension relationship node with generations = 0, with instance</name>
+        <description>
+          Table with two columns (primary items m1, m2) and a tree of members
+          for explicit dimension F as rows.  The number of generations of
+          descendants is specified as zero, so the full tree of members starting
+          from the relationship source is included.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">zero-generations-instance.xml</instance>
+            <linkbase>zero-generations-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/zero-generations.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-04">
+        <name>Dimension relationship node with formulaAxis = child and generations > 1</name>
+        <description>
+          Invalid table that has a dimension-relationship node with 'child' as
+          its formulaAxis and generations = 2 (if generations is specified in
+          combination with 'child' it must be 1).
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">too-many-generations-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:relationshipNodeTooManyGenerations</error>
+        </result>
+    </variation>
+    
+    <variation id="v-05">
+        <name>Dimension relationship node with a generations expression</name>
+        <description>
+          Invalid table with a dimension relationship node that specifies the
+          number of generations of children using an XPath expression. This
+          variation has no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">generations-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/generations-expression-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-05i">
+        <name>Dimension relationship node with a generations expression, with instance</name>
+        <description>
+          Invalid table with a dimension relationship node that specifies the
+          number of generations of children using an XPath expression.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">generations-expression-instance.xml</instance>
+            <linkbase>generations-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/generations-expression.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-06">
+        <name>Dimension relationship node with an invalid generations expression</name>
+        <description>
+          Invalid table with a dimension relationship node that specifies the
+          number of generations of children using an XPath expression that does not evaluate to a
+          valid value from the enumeration.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">invalid-generations-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:expressionNotCastableToRequiredType</error>
+        </result>
+    </variation>
+
+    <variation id="v-07">
+        <name>Dimension relationship node with a negative generations expression</name>
+        <description>
+          Invalid table with a concept relationship node that specifies the
+          number of generations of dimension using an XPath expression that
+          evaluates to a negative number.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">negative-generations-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:expressionNotCastableToRequiredType</error>
+        </result>
+    </variation>
+  
+    <variation id="v-08">
+        <name>Dimension relationship node with a generations expression that evaluates to a sequence</name>
+        <description>
+          Invalid table with a dimension relationship node that specifies the
+          number of generations of children using an XPath expression that
+          evaluates to a sequence of values.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">sequence-generations-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:expressionNotCastableToRequiredType</error>
+        </result>
+    </variation>
+  
+</testcase>

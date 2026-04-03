@@ -1,0 +1,151 @@
+<?xml version='1.0' encoding='utf-8'?>
+<tableModel xmlns="http://xbrl.org/2014/table/model" xmlns:rend="http://www.xbrl.org/table-examples" xml:base="..">
+  <!--Entry point file: instance-dual-x-axes.xml-->
+  <tableSet>
+    <!--TableSet linkbase file: table-linkbase-dual-x-axes.xml, line 38-->
+    <!--TableSet namespace: http://xbrl.org/2014/table-->
+    <!--TableSet linkrole: http://www.xbrl.org/table-examples/table2-->
+    <label>Table with dual breakdowns on the x-axis</label>
+    <table>
+      <headers axis="y">
+        <group>
+          <label>Two rows (primary items m1, m2)</label>
+          <header>
+            <!--ruleNode: label table12-y.1, file table-linkbase-dual-x-axes.xml, line 173-->
+            <!--   aspect concept: rend:m1-->
+            <cell>
+              <label>Label: m1</label>
+              <label>1</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:m1</value>
+              </constraint>
+            </cell>
+            <!--ruleNode: label table12-y.2, file table-linkbase-dual-x-axes.xml, line 197-->
+            <!--   aspect concept: rend:m2-->
+            <cell>
+              <label>Label: m2</label>
+              <label>2</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:m2</value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+      </headers>
+      <headers axis="x">
+        <group>
+          <label>Two columns (dimension D = d1, d2)</label>
+          <header>
+            <!--ruleNode: label table12-x1.1, file table-linkbase-dual-x-axes.xml, line 54-->
+            <!--   aspect rend:D: rend:d1-->
+            <cell span="2">
+              <label>Label: D = d1</label>
+              <label>1</label>
+              <constraint>
+                <aspect>rend:D</aspect>
+                <value>rend:d1</value>
+              </constraint>
+            </cell>
+            <!--ruleNode: label table12-x1.2, file table-linkbase-dual-x-axes.xml, line 81-->
+            <!--   aspect rend:D: rend:d2-->
+            <cell span="2">
+              <label>Label: D = d2</label>
+              <label>2</label>
+              <constraint>
+                <aspect>rend:D</aspect>
+                <value>rend:d2</value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+        <group>
+          <label>Two columns (dimension E = e1, e2)</label>
+          <header>
+            <!--ruleNode: label table12-x2.1, file table-linkbase-dual-x-axes.xml, line 114-->
+            <!--   aspect rend:E: rend:e1-->
+            <cell>
+              <label>Label: E = e1</label>
+              <label>10</label>
+              <constraint>
+                <aspect>rend:E</aspect>
+                <value>rend:e1</value>
+              </constraint>
+            </cell>
+            <!--ruleNode: label table12-x2.2, file table-linkbase-dual-x-axes.xml, line 140-->
+            <!--   aspect rend:E: rend:e2-->
+            <cell>
+              <label>Label: E = e2</label>
+              <label>20</label>
+              <constraint>
+                <aspect>rend:E</aspect>
+                <value>rend:e2</value>
+              </constraint>
+            </cell>
+            <!--ruleNode: label table12-x2.1, file table-linkbase-dual-x-axes.xml, line 114-->
+            <!--   aspect rend:E: rend:e1-->
+            <cell>
+              <label>Label: E = e1</label>
+              <label>10</label>
+              <constraint>
+                <aspect>rend:E</aspect>
+                <value>rend:e1</value>
+              </constraint>
+            </cell>
+            <!--ruleNode: label table12-x2.2, file table-linkbase-dual-x-axes.xml, line 140-->
+            <!--   aspect rend:E: rend:e2-->
+            <cell>
+              <label>Label: E = e2</label>
+              <label>20</label>
+              <constraint>
+                <aspect>rend:E</aspect>
+                <value>rend:e2</value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+      </headers>
+      <cells axis="z">
+        <cells axis="y">
+          <cells axis="x">
+            <!--rend:m1: context D_d1_E_e1, file instance-dual-x-axes.xml, line 69-->
+            <cell>
+              <fact>instance-dual-x-axes.xml#m1_D_d1_E_e1</fact>
+            </cell>
+            <!--rend:m1: context D_d1_E_e2, file instance-dual-x-axes.xml, line 77-->
+            <cell>
+              <fact>instance-dual-x-axes.xml#m1_D_d1_E_e2</fact>
+            </cell>
+            <!--rend:m1: context D_d2_E_e1, file instance-dual-x-axes.xml, line 85-->
+            <cell>
+              <fact>instance-dual-x-axes.xml#m1_D_d2_E_e1</fact>
+            </cell>
+            <!--rend:m1: context D_d2_E_e2, file instance-dual-x-axes.xml, line 93-->
+            <cell>
+              <fact>instance-dual-x-axes.xml#m1_D_d2_E_e2</fact>
+            </cell>
+          </cells>
+          <cells axis="x">
+            <!--rend:m2: context D_d1_E_e1, file instance-dual-x-axes.xml, line 73-->
+            <cell>
+              <fact>instance-dual-x-axes.xml#m2_D_d1_E_e1</fact>
+            </cell>
+            <!--rend:m2: context D_d1_E_e2, file instance-dual-x-axes.xml, line 81-->
+            <cell>
+              <fact>instance-dual-x-axes.xml#m2_D_d1_E_e2</fact>
+            </cell>
+            <!--rend:m2: context D_d2_E_e1, file instance-dual-x-axes.xml, line 89-->
+            <cell>
+              <fact>instance-dual-x-axes.xml#m2_D_d2_E_e1</fact>
+            </cell>
+            <!--rend:m2: context D_d2_E_e2, file instance-dual-x-axes.xml, line 97-->
+            <cell>
+              <fact>instance-dual-x-axes.xml#m2_D_d2_E_e2</fact>
+            </cell>
+          </cells>
+        </cells>
+      </cells>
+    </table>
+  </tableSet>
+</tableModel>

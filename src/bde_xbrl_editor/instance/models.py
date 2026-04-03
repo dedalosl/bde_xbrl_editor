@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Literal
 
@@ -92,6 +92,53 @@ class InstanceSaveError(Exception):
         self.path = path
         self.reason = reason
         super().__init__(f"Failed to save instance to '{path}': {reason}")
+
+
+# Feature 004 error types
+
+class InstanceParseError(Exception):
+    """XML not well-formed, missing xbrli:xbrl root, or missing link:schemaRef."""
+
+    def __init__(self, path: str, reason: str) -> None:
+        self.path = path
+        self.reason = reason
+        super().__init__(f"Failed to parse instance '{path}': {reason}")
+
+
+class TaxonomyResolutionError(InstanceParseError):
+    """schemaRef could not be resolved to a local taxonomy path."""
+
+    def __init__(self, schema_ref_href: str, reason: str = "") -> None:
+        self.schema_ref_href = schema_ref_href
+        super().__init__(
+            schema_ref_href,
+            f"Could not resolve taxonomy schemaRef '{schema_ref_href}'"
+            + (f": {reason}" if reason else ""),
+        )
+
+
+class DuplicateFactError(Exception):
+    """add_fact() called for a concept+context that already has a fact."""
+
+    def __init__(self, concept: QName, context_ref: str) -> None:
+        self.concept = concept
+        self.context_ref = context_ref
+        super().__init__(
+            f"Duplicate fact: concept '{concept}' in context '{context_ref}' already exists"
+        )
+
+
+class InvalidFactValueError(Exception):
+    """update_fact() called with a value that fails XBRL type validation."""
+
+    def __init__(self, concept: QName, expected_type: str, provided_value: str) -> None:
+        self.concept = concept
+        self.expected_type = expected_type
+        self.provided_value = provided_value
+        super().__init__(
+            f"Invalid value '{provided_value}' for concept '{concept}' "
+            f"(expected type: {expected_type})"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -197,6 +244,31 @@ class Fact:
     precision: str | None = None
 
 
+@dataclass
+class OrphanedFact:
+    """A fact whose concept QName is not declared in the loaded taxonomy."""
+
+    concept_qname_str: str  # Clark notation {ns}local of the unknown concept
+    context_ref: str
+    unit_ref: str | None
+    value: str
+    decimals: str | None
+    raw_element_xml: bytes  # serialised XML element for lossless round-trip
+
+
+@dataclass
+class EditOperation:
+    """Audit trail entry for one edit operation (scaffolded in v1)."""
+
+    operation_type: Literal["add", "update", "remove"]
+    fact_index: int | None
+    previous_value: str | None
+    new_value: str | None
+    concept: QName
+    context_ref: ContextId
+    timestamp: datetime = field(default_factory=datetime.now)
+
+
 # ---------------------------------------------------------------------------
 # Root instance object
 # ---------------------------------------------------------------------------
@@ -216,6 +288,8 @@ class XbrlInstance:
     contexts: dict[ContextId, XbrlContext] = field(default_factory=dict)
     units: dict[UnitId, XbrlUnit] = field(default_factory=dict)
     facts: list[Fact] = field(default_factory=list)
+    orphaned_facts: list[OrphanedFact] = field(default_factory=list)
+    edit_history: list[EditOperation] = field(default_factory=list)
     source_path: Path | None = None
     _dirty: bool = field(default=True, repr=False)
 

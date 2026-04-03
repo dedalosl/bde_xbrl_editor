@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xbrli:xbrl
+  xmlns:rend="http://www.xbrl.org/table-examples"
+  xmlns:iso4217="http://www.xbrl.org/2003/iso4217"
+  xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:xbrldi="http://xbrl.org/2006/xbrldi"
+  xmlns:xbrli="http://www.xbrl.org/2003/instance"
+  xmlns:xl="http://www.xbrl.org/2003/XLink"
+  xmlns:xlink="http://www.w3.org/1999/xlink"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2006/xbrldi http://www.xbrl.org/2006/xbrldi-2006.xsd">
+    <link:schemaRef xlink:href="table-examples.xsd" xlink:type="simple"/>
+    <link:linkbaseRef  xlink:type="simple" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase" xlink:href="merge-tag-selectors-into-child-rule-node-table.xml"/>
+    <xbrli:context id="start2002_oldID">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme/old">abc</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:instant>2001-12-31</xbrli:instant>
+        </xbrli:period>
+    </xbrli:context>
+    <xbrli:context id="year2002_oldID">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme/old">abc</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:startDate>2002-01-01</xbrli:startDate>
+            <xbrli:endDate>2002-12-31</xbrli:endDate>
+        </xbrli:period>
+    </xbrli:context>
+    <xbrli:context id="end2002_oldID">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme/old">abc</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:instant>2002-12-31</xbrli:instant>
+        </xbrli:period>
+    </xbrli:context>
+    <xbrli:context id="start2002_newID">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme/new">12345678</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:instant>2001-12-31</xbrli:instant>
+        </xbrli:period>
+    </xbrli:context>
+    <xbrli:context id="year2002_newID">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme/new">12345678</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:startDate>2002-01-01</xbrli:startDate>
+            <xbrli:endDate>2002-12-31</xbrli:endDate>
+        </xbrli:period>
+    </xbrli:context>
+    <xbrli:context id="end2002_newID">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme/new">12345678</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:instant>2002-12-31</xbrli:instant>
+        </xbrli:period>
+    </xbrli:context>
+    <xbrli:unit id="EUR">
+        <xbrli:measure>iso4217:EUR</xbrli:measure>
+    </xbrli:unit>
+    
+    <rend:m1 id="m1_start2002_oldID" contextRef="start2002_oldID" decimals="0" unitRef="EUR">101</rend:m1>
+    <rend:m1 id="m1_end2002_oldID" contextRef="end2002_oldID" decimals="0" unitRef="EUR">102</rend:m1>
+    <rend:o1 id="o1_year2002_oldID" contextRef="year2002_oldID" decimals="0" unitRef="EUR">201</rend:o1>
+    <rend:m2 id="m2_start2002_oldID" contextRef="start2002_oldID" decimals="0" unitRef="EUR">301</rend:m2>
+    <rend:m2 id="m2_end2002_oldID" contextRef="end2002_oldID" decimals="0" unitRef="EUR">302</rend:m2>
+    
+    <rend:m1 id="m1_start2002_newID" contextRef="start2002_newID" decimals="0" unitRef="EUR">401</rend:m1>
+    <rend:m1 id="m1_end2002_newID" contextRef="end2002_newID" decimals="0" unitRef="EUR">402</rend:m1>
+    <rend:o1 id="o1_year2002_newID" contextRef="year2002_newID" decimals="0" unitRef="EUR">501</rend:o1>
+    <rend:m2 id="m2_start2002_newID" contextRef="start2002_newID" decimals="0" unitRef="EUR">601</rend:m2>
+    <rend:m2 id="m2_end2002_newID" contextRef="end2002_newID" decimals="0" unitRef="EUR">602</rend:m2>
+</xbrli:xbrl>

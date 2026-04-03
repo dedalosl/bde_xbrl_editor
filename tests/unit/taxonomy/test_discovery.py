@@ -9,7 +9,6 @@ import pytest
 
 from bde_xbrl_editor.taxonomy.discovery import discover_dts
 from bde_xbrl_editor.taxonomy.models import (
-    TaxonomyDiscoveryError,
     TaxonomyParseError,
     UnsupportedTaxonomyFormatError,
 )
@@ -86,14 +85,14 @@ LABEL_XML = """\
 class TestDiscoveryBasic:
     def test_minimal_entry_point(self, tmp_path):
         xsd = write_xsd(tmp_path, "entry.xsd", MINIMAL_XSD)
-        schemas, linkbases = discover_dts(xsd, LoaderSettings())
+        schemas, linkbases, _ = discover_dts(xsd, LoaderSettings())
         assert xsd.resolve() in schemas
         assert len(linkbases) == 0
 
     def test_discovers_imported_schema(self, tmp_path):
         write_xsd(tmp_path, "other.xsd", MINIMAL_XSD)
         entry = write_xsd(tmp_path, "entry.xsd", XSD_WITH_IMPORT)
-        schemas, _ = discover_dts(entry, LoaderSettings())
+        schemas, _, _ = discover_dts(entry, LoaderSettings())
         schema_names = {p.name for p in schemas}
         assert "entry.xsd" in schema_names
         assert "other.xsd" in schema_names
@@ -101,7 +100,7 @@ class TestDiscoveryBasic:
     def test_discovers_linkbase(self, tmp_path):
         (tmp_path / "labels.xml").write_text(LABEL_XML, encoding="utf-8")
         entry = write_xsd(tmp_path, "entry.xsd", XSD_WITH_LINKBASE)
-        _, linkbases = discover_dts(entry, LoaderSettings())
+        _, linkbases, _ = discover_dts(entry, LoaderSettings())
         lb_names = {p.name for p in linkbases}
         assert "labels.xml" in lb_names
 
@@ -118,26 +117,40 @@ class TestDiscoveryBasic:
 """
         entry = write_xsd(tmp_path, "entry.xsd", content)
         # Should not raise — standard XBRL namespace is skipped
-        schemas, _ = discover_dts(entry, LoaderSettings(allow_network=False))
+        schemas, _, _ = discover_dts(entry, LoaderSettings(allow_network=False))
         assert any(p.name == "entry.xsd" for p in schemas)
 
 
 class TestNetworkBlock:
-    def test_network_blocked_raises_discovery_error(self, tmp_path):
+    def test_network_blocked_skips_remote_url_gracefully(self, tmp_path):
+        # Remote URLs with no local catalog mapping are silently skipped so that
+        # taxonomies with external imports still load from their local files.
         entry = write_xsd(tmp_path, "entry.xsd", XSD_WITH_REMOTE)
-        with pytest.raises(TaxonomyDiscoveryError) as exc_info:
-            discover_dts(entry, LoaderSettings(allow_network=False))
-        err = exc_info.value
-        assert "allow_network" in str(err) or "Network" in str(err)
-        assert len(err.failing_uris) >= 1
-        assert "http://external.example/schema.xsd" in err.failing_uris[0][0]
+        schemas, _, skipped = discover_dts(entry, LoaderSettings(allow_network=False))
+        # Entry point itself is always included
+        assert any(p.name == "entry.xsd" for p in schemas)
+        # The remote URL is reported in skipped_remote_urls
+        assert any("external.example" in u for u in skipped)
 
-    def test_error_message_is_human_readable(self, tmp_path):
+    def test_local_catalog_resolves_remote_url(self, tmp_path):
+        # If a local_catalog mapping exists, the remote URL is resolved locally.
+        # XSD_WITH_REMOTE imports http://external.example/schema.xsd,
+        # so the catalog must map http://external.example/ → tmp_path,
+        # meaning the resolved local file is tmp_path/schema.xsd.
+        local_schema = tmp_path / "schema.xsd"
+        local_schema.write_text(
+            '<?xml version="1.0"?>'
+            '<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"'
+            ' targetNamespace="http://external.example"/>',
+            encoding="utf-8",
+        )
+        catalog = {"http://external.example/": tmp_path}
+        settings = LoaderSettings(allow_network=False, local_catalog=catalog)
         entry = write_xsd(tmp_path, "entry.xsd", XSD_WITH_REMOTE)
-        with pytest.raises(TaxonomyDiscoveryError) as exc_info:
-            discover_dts(entry, LoaderSettings(allow_network=False))
-        assert len(str(exc_info.value)) > 20
-        assert "http" in str(exc_info.value).lower() or "network" in str(exc_info.value).lower()
+        schemas, _, skipped = discover_dts(entry, settings)
+        assert any(p.name == "schema.xsd" for p in schemas)
+        # Resolved via catalog → not in skipped
+        assert not any("external.example" in u for u in skipped)
 
 
 class TestNegativePaths:
@@ -199,7 +212,7 @@ class TestCircularReferences:
         (tmp_path / "b.xsd").write_text(b_content, encoding="utf-8")
 
         # Must terminate without infinite loop
-        schemas, _ = discover_dts(tmp_path / "a.xsd", LoaderSettings())
+        schemas, _, _ = discover_dts(tmp_path / "a.xsd", LoaderSettings())
         schema_names = {p.name for p in schemas}
         assert "a.xsd" in schema_names
         assert "b.xsd" in schema_names

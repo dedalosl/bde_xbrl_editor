@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2007 XBRL International. All Rights Reserved. -->
+<?xml-stylesheet type="text/xsl" href="../../xsl/test.xsl"?>
+<testcase
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../xsd/test.xsd"
+  xmlns:xbrlfe="http://xbrl.org/2008/formula/error"
+  xmlns:binding="http://xbrl.org/2008/binding/errors"
+  xmlns:label="http://xbrl.org/2008/label/error"
+  xmlns:reference="http://xbrl.org/2008/reference/error"  
+  >
+  <creator>
+    <name>David Bell</name>
+    <email>david.x.bell@rrd.com</email>
+  </creator>
+  <number>47225</number>
+  <name>Period matching filter test</name>
+  <description>
+    Tests of period matching filter.
+    Assumes that non-sequential matching works as these tests only check sequence behaviour.
+  </description>
+  <reference specification="MATCH-FILTER" id="sec-period-matching-filter"/>
+
+  <variation id="V-101">
+  	<name>period matching filter</name>
+    <description>Two instant concepts, one duration concept. Each single item should match an item the sequence of all three items.</description>
+    <data>
+      <schema>47225-concepts.xsd</schema>
+      <linkbase>47225-periodMatching-formula-V101.xml</linkbase>
+      <instance readMeFirst="true">47225-periodMatching-instance-V101.xml</instance>
+    </data>
+    <result>
+      <instance>47225-periodMatching-result-V101.xml</instance>
+    </result>
+  </variation>  
+
+  <variation id="V-102">
+    <name>period matching filter</name>
+    <description>Two instant concepts, one duration concept. Two of the three single items should match an item in the sequence of two items/</description>
+    <data>
+      <schema>47225-concepts.xsd</schema>
+      <linkbase>47225-periodMatching-formula-V102.xml</linkbase>
+      <instance readMeFirst="true">47225-periodMatching-instance-V102.xml</instance>
+    </data>
+    <result>
+      <instance>47225-periodMatching-result-V102.xml</instance>
+    </result>
+  </variation>  
+  
+  <variation id="V-103">
+    <name>period matching filter</name>
+    <description>Two instant concepts, one duration concept. Same as above but complemented result should give the single non-matching item.</description>
+    <data>
+      <schema>47225-concepts.xsd</schema>
+      <linkbase>47225-periodMatching-formula-V103.xml</linkbase>
+      <instance readMeFirst="true">47225-periodMatching-instance-V103.xml</instance>
+    </data>
+    <result>
+      <instance>47225-periodMatching-result-V103.xml</instance>
+    </result>
+  </variation>  
+  
+</testcase>
+
