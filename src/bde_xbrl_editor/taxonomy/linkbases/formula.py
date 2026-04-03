@@ -23,7 +23,12 @@ from bde_xbrl_editor.taxonomy.models import (
 # Namespace constants
 # ---------------------------------------------------------------------------
 
+# The XBRL Formula 1.0 spec places assertion elements in namespace-per-type,
+# NOT in the generic formula namespace (http://xbrl.org/2008/formula).
 _NS_FORMULA = "http://xbrl.org/2008/formula"
+_NS_VA = "http://xbrl.org/2008/assertion/value"
+_NS_EA = "http://xbrl.org/2008/assertion/existence"
+_NS_CA = "http://xbrl.org/2008/assertion/consistency"
 _NS_VARIABLE = "http://xbrl.org/2008/variable"
 _NS_CF = "http://xbrl.org/2008/filter/concept"
 _NS_PF = "http://xbrl.org/2008/filter/period"
@@ -32,10 +37,10 @@ _NS_UF = "http://xbrl.org/2008/filter/unit"
 _NS_LINK = "http://www.xbrl.org/2003/linkbase"
 _NS_XLINK = "http://www.w3.org/1999/xlink"
 
-# Clark-notation element tags
-_TAG_VALUE_ASSERTION = f"{{{_NS_FORMULA}}}valueAssertion"
-_TAG_EXISTENCE_ASSERTION = f"{{{_NS_FORMULA}}}existenceAssertion"
-_TAG_CONSISTENCY_ASSERTION = f"{{{_NS_FORMULA}}}consistencyAssertion"
+# Clark-notation element tags — each assertion type lives in its own namespace
+_TAG_VALUE_ASSERTION = f"{{{_NS_VA}}}valueAssertion"
+_TAG_EXISTENCE_ASSERTION = f"{{{_NS_EA}}}existenceAssertion"
+_TAG_CONSISTENCY_ASSERTION = f"{{{_NS_CA}}}consistencyAssertion"
 _TAG_FACT_VARIABLE = f"{{{_NS_VARIABLE}}}factVariable"
 _TAG_VARIABLE_ARC = f"{{{_NS_VARIABLE}}}variableArc"
 _TAG_VARIABLE_FILTER_ARC = f"{{{_NS_VARIABLE}}}variableFilterArc"
