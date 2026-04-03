@@ -202,9 +202,7 @@ class XbrlTableView(QFrame):
         self._body_view.horizontalHeader().setMinimumHeight(
             layout.column_header.depth * 28
         )
-        self._body_view.verticalHeader().setMinimumWidth(
-            layout.row_header.depth * 120
-        )
+        self._body_view.verticalHeader().setMinimumWidth(280)
 
         # Wire cell selection
         self._body_view.clicked.connect(

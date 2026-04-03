@@ -13,8 +13,6 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QListWidget,
-    QListWidgetItem,
     QMainWindow,
     QMessageBox,
     QPushButton,
@@ -25,6 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from bde_xbrl_editor.taxonomy import TaxonomyCache, TaxonomyStructure
+from bde_xbrl_editor.ui.widgets.activity_sidebar import ActivitySidebar
 from bde_xbrl_editor.ui.widgets.loader_settings_dialog import load_saved_settings
 from bde_xbrl_editor.ui.widgets.taxonomy_loader_widget import TaxonomyLoaderWidget
 
@@ -44,7 +43,7 @@ class MainWindow(QMainWindow):
         self._current_instance = None  # XbrlInstance | None
         self._editor = None  # InstanceEditor | None
         self._table_view = None  # XbrlTableView | None
-        self._taxonomy_table_list: QListWidget | None = None
+        self._sidebar: ActivitySidebar | None = None
         self._context_bar: QFrame | None = None
 
         # Validation
@@ -233,16 +232,18 @@ class MainWindow(QMainWindow):
         self._setup_browser_layout()
 
     def _setup_browser_layout(self) -> None:
-        """Create the main split layout: context bar + table-list sidebar + XbrlTableView."""
+        """Create the main split layout: context bar + activity sidebar + XbrlTableView."""
         from bde_xbrl_editor.ui.widgets.xbrl_table_view import XbrlTableView  # noqa: PLC0415
 
-        sidebar = self._build_taxonomy_sidebar()
+        assert self._current_taxonomy is not None
+        self._sidebar = ActivitySidebar(self._current_taxonomy, parent=self)
+        self._sidebar.table_selected.connect(self._on_table_selected)
 
         if self._table_view is None:
             self._table_view = XbrlTableView(parent=self)
 
         splitter = QSplitter(self)
-        splitter.addWidget(sidebar)
+        splitter.addWidget(self._sidebar)
         splitter.addWidget(self._table_view)
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
@@ -260,98 +261,6 @@ class MainWindow(QMainWindow):
 
         # Defer first-table render so the splitter/headers are fully laid out first
         QTimer.singleShot(0, self._select_first_taxonomy_table)
-
-    def _build_taxonomy_sidebar(self) -> QWidget:
-        """Build the sidebar: taxonomy header + table list + taxonomy info panel."""
-        assert self._current_taxonomy is not None
-        meta = self._current_taxonomy.metadata
-
-        sidebar = QFrame(self)
-        sidebar.setFixedWidth(260)
-        sidebar.setStyleSheet("QFrame { background: #F5F7FA; }")
-
-        layout = QVBoxLayout(sidebar)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-
-        # Taxonomy name header
-        header = QLabel(f"{meta.name}  v{meta.version}")
-        header.setStyleSheet(
-            "background: #1E3A5F; color: #FFFFFF; font-weight: bold;"
-            " font-size: 13px; padding: 8px 12px;"
-        )
-        header.setWordWrap(True)
-        layout.addWidget(header)
-
-        # "TABLES" section label
-        section = QLabel(f"TABLES  ({len(self._current_taxonomy.tables)})")
-        section.setStyleSheet(
-            "background: #2B5287; color: #FFFFFF; font-weight: bold;"
-            " font-size: 11px; padding: 4px 8px;"
-        )
-        layout.addWidget(section)
-
-        # Table list — stretch to fill available space
-        self._taxonomy_table_list = QListWidget()
-        self._taxonomy_table_list.setStyleSheet("""
-            QListWidget {
-                border: none;
-                background: #FFFFFF;
-                font-size: 12px;
-                color: #1E3A5F;
-                outline: none;
-            }
-            QListWidget::item {
-                padding: 5px 8px;
-                border-bottom: 1px solid #E8EDF5;
-            }
-            QListWidget::item:selected {
-                background: #1E3A5F;
-                color: #FFFFFF;
-            }
-            QListWidget::item:hover:!selected {
-                background: #DCE8F5;
-            }
-        """)
-        for table in self._current_taxonomy.tables:
-            item = QListWidgetItem(f"{table.table_id}\n{table.label}")
-            item.setData(0x0100, table)
-            self._taxonomy_table_list.addItem(item)
-        self._taxonomy_table_list.itemClicked.connect(self._on_taxonomy_table_list_clicked)
-        layout.addWidget(self._taxonomy_table_list, stretch=1)
-
-        # ── Taxonomy info panel (collapsed under the list) ──────────────
-        info_section = QLabel("TAXONOMY INFO")
-        info_section.setStyleSheet(
-            "background: #2B5287; color: #FFFFFF; font-weight: bold;"
-            " font-size: 11px; padding: 4px 8px;"
-        )
-        layout.addWidget(info_section)
-
-        info_style = "color: #1E3A5F; font-size: 11px; padding: 2px 10px;"
-        key_style = "color: #5A7FA8; font-size: 10px; padding: 1px 10px; font-weight: bold;"
-
-        def _row(key: str, value: str) -> None:
-            layout.addWidget(QLabel(key, styleSheet=key_style))
-            lbl = QLabel(value)
-            lbl.setStyleSheet(info_style)
-            lbl.setWordWrap(True)
-            lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-            layout.addWidget(lbl)
-
-        _row("NAME", meta.name)
-        _row("VERSION", meta.version)
-        _row("PUBLISHER", meta.publisher)
-        _row("ENTRY POINT", str(meta.entry_point_path.name))
-        _row("LOADED AT", meta.loaded_at.strftime("%Y-%m-%d %H:%M"))
-        _row("LANGUAGES", ", ".join(meta.declared_languages) or "—")
-        _row("CONCEPTS", str(len(self._current_taxonomy.concepts)))
-        _row("TABLES", str(len(self._current_taxonomy.tables)))
-
-        # Spacer at the very bottom
-        layout.addSpacing(6)
-
-        return sidebar
 
     # ------------------------------------------------------------------
     # Context bar
@@ -456,7 +365,7 @@ class MainWindow(QMainWindow):
         self._current_instance = None
         self._editor = None
         self._table_view = None
-        self._taxonomy_table_list = None
+        self._sidebar = None
         self._context_bar = None
 
         self._reload_action.setEnabled(False)
@@ -503,16 +412,9 @@ class MainWindow(QMainWindow):
 
         self._setup_browser_layout()
 
-    def _on_taxonomy_table_list_clicked(self, item: QListWidgetItem) -> None:
-        table = item.data(0x0100)
-        if table is not None:
-            self._on_table_selected(table)
-
     def _select_first_taxonomy_table(self) -> None:
-        if self._taxonomy_table_list is not None and self._taxonomy_table_list.count() > 0:
-            first = self._taxonomy_table_list.item(0)
-            self._taxonomy_table_list.setCurrentItem(first)
-            self._on_taxonomy_table_list_clicked(first)
+        if self._sidebar is not None:
+            self._sidebar.select_first_table()
 
     def _on_reload(self) -> None:
         if self._current_taxonomy:

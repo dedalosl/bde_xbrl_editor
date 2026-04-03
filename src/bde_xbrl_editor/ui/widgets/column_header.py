@@ -10,13 +10,13 @@ from PySide6.QtWidgets import QHeaderView, QWidget
 
 from bde_xbrl_editor.table_renderer.models import HeaderGrid
 
-_LEVEL_HEIGHT_MIN = 28  # minimum px per header level
-_LEVEL_HEIGHT_MAX = 80  # cap: text beyond this height triggers font scaling
-_LEVEL_HEIGHT_PAD = 10  # total vertical padding (top + bottom) within a level
+_LEVEL_HEIGHT_MIN = 28   # minimum px per header level
+_LEVEL_HEIGHT_MAX = 300  # generous cap — long labels fit without font scaling
+_LEVEL_HEIGHT_PAD = 12   # total vertical padding (top + bottom) within a level
 _RC_FONT_SCALE = 0.72
-_LABEL_SPLIT = 0.58     # fraction of cell height allocated to label when rc_code present
-_MIN_LABEL_PT = 9       # minimum point size for label text
-_MIN_RC_PT = 8          # minimum point size for rc_code text
+_LABEL_SPLIT = 0.78      # fraction of cell height allocated to label when rc_code present
+_MIN_LABEL_PT = 9        # minimum point size for label text
+_MIN_RC_PT = 8           # minimum point size for rc_code text
 
 # Color palette — navy/blue financial theme
 _BG_LEAF = QColor("#1E3A5F")       # deep navy for leaf (innermost) level
@@ -58,8 +58,8 @@ class MultiLevelColumnHeader(QHeaderView):
     def _compute_layout(self) -> tuple[list[int], list[float]]:
         """Return (height_per_level, font_pts_per_level).
 
-        For each level the font size is the smallest needed by any cell to fit
-        within _LEVEL_HEIGHT_MAX, so every cell in the level uses the same size.
+        Height grows freely up to _LEVEL_HEIGHT_MAX to fit wrapped text.
+        All cells in a level share the same font size (the smallest needed).
         """
         if self._layout_cache is not None:
             return self._layout_cache
@@ -71,7 +71,7 @@ class MultiLevelColumnHeader(QHeaderView):
         if base_pts <= 0:
             base_pts = 12.0
         base_pts = max(base_pts, float(_MIN_LABEL_PT))
-        rc_line_h = max(int(fm.height() * _RC_FONT_SCALE), _MIN_RC_PT) + 2
+        rc_line_h = max(int(fm.height() * _RC_FONT_SCALE), _MIN_RC_PT) + 4
 
         heights: list[int] = []
         font_pts_list: list[float] = []
@@ -94,8 +94,8 @@ class MultiLevelColumnHeader(QHeaderView):
                 if cell_w > 0 and cell.label:
                     text_h = fm.boundingRect(0, 0, cell_w, 10000, _WRAP, cell.label).height()
                     if cell.rc_code:
-                        natural_h = max(int(text_h / _LABEL_SPLIT), text_h + rc_line_h) + _LEVEL_HEIGHT_PAD
-                        avail_for_label = int(_LEVEL_HEIGHT_MAX * _LABEL_SPLIT) - 2
+                        natural_h = text_h + rc_line_h + _LEVEL_HEIGHT_PAD
+                        avail_for_label = int(_LEVEL_HEIGHT_MAX * _LABEL_SPLIT) - 4
                     else:
                         natural_h = text_h + _LEVEL_HEIGHT_PAD
                         avail_for_label = _LEVEL_HEIGHT_MAX - _LEVEL_HEIGHT_PAD
@@ -104,7 +104,8 @@ class MultiLevelColumnHeader(QHeaderView):
                         min_scale = min(min_scale, avail_for_label / text_h)
                 leaf_cursor += span
 
-            level_h = min(max_natural_h, _LEVEL_HEIGHT_MAX)
+            # Let the height grow freely — only cap at the generous maximum
+            level_h = min(max(max_natural_h, _LEVEL_HEIGHT_MIN), _LEVEL_HEIGHT_MAX)
             level_pts = max(base_pts * min_scale, float(_MIN_LABEL_PT))
             heights.append(level_h)
             font_pts_list.append(level_pts)
@@ -120,7 +121,10 @@ class MultiLevelColumnHeader(QHeaderView):
         if self._grid is None:
             return super().sizeHint()
         heights, _ = self._compute_layout()
-        return QSize(super().sizeHint().width(), sum(heights))
+        total_h = sum(heights)
+        if total_h <= 0:
+            return super().sizeHint()
+        return QSize(super().sizeHint().width(), total_h)
 
     def paintSection(self, painter: QPainter, rect: QRect, logical_index: int) -> None:
         if self._grid is None:
@@ -196,16 +200,27 @@ class MultiLevelColumnHeader(QHeaderView):
 
         _wrap_flag = Qt.TextFlag.TextWordWrap
         if cell.rc_code:
-            label_h = int(rect.height() * _LABEL_SPLIT)
-            label_rect = QRect(rect.x() + 4, rect.y() + 2, rect.width() - 8, label_h)
-            rc_rect = QRect(rect.x() + 4, rect.y() + label_h, rect.width() - 8, rect.height() - label_h - 2)
-            painter.drawText(label_rect, Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter | _wrap_flag, cell.label)
+            # Bottom strip for rc_code; label fills the rest
+            rc_line_h = max(int(self.fontMetrics().height() * _RC_FONT_SCALE), _MIN_RC_PT) + 4
+            label_area_h = rect.height() - rc_line_h - 4
+            label_rect = QRect(rect.x() + 4, rect.y() + 2, rect.width() - 8, max(label_area_h, 0))
+            rc_y = rect.y() + label_area_h + 2
+            rc_rect = QRect(rect.x() + 4, rc_y, rect.width() - 8, rc_line_h)
+            painter.drawText(
+                label_rect,
+                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom | _wrap_flag,
+                cell.label,
+            )
             rc_font = QFont(base_font)
             rc_font.setBold(False)
             rc_font.setPointSizeF(max(font_pts * _RC_FONT_SCALE, float(_MIN_RC_PT)))
             painter.setFont(rc_font)
             painter.setPen(_TEXT_RC)
-            painter.drawText(rc_rect, Qt.AlignmentFlag.AlignCenter | _wrap_flag, cell.rc_code)
+            painter.drawText(rc_rect, Qt.AlignmentFlag.AlignCenter, cell.rc_code)
         else:
             inner_rect = rect.adjusted(4, 2, -4, -2)
-            painter.drawText(inner_rect, Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter | _wrap_flag, cell.label)
+            painter.drawText(
+                inner_rect,
+                Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter | _wrap_flag,
+                cell.label,
+            )
