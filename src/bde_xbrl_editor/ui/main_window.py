@@ -2,16 +2,26 @@
 
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
 
-from PySide6.QtCore import QThread, Qt
+from PySide6.QtCore import Qt, QThread, QTimer
 from PySide6.QtWidgets import (
     QDialog,
     QDockWidget,
     QFileDialog,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QListWidget,
+    QListWidgetItem,
     QMainWindow,
     QMessageBox,
+    QPushButton,
+    QSplitter,
     QStatusBar,
+    QVBoxLayout,
+    QWidget,
 )
 
 from bde_xbrl_editor.taxonomy import TaxonomyCache, TaxonomyStructure
@@ -27,12 +37,15 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("BDE XBRL Editor[*]")
         self.resize(1000, 700)
 
+        self._apply_stylesheet()
         self._cache = TaxonomyCache()
         self._settings = load_saved_settings()
         self._current_taxonomy: TaxonomyStructure | None = None
         self._current_instance = None  # XbrlInstance | None
         self._editor = None  # InstanceEditor | None
         self._table_view = None  # XbrlTableView | None
+        self._taxonomy_table_list: QListWidget | None = None
+        self._context_bar: QFrame | None = None
 
         # Validation
         self._validation_thread: QThread | None = None
@@ -42,6 +55,67 @@ class MainWindow(QMainWindow):
         self._setup_menu()
         self._setup_central()
         self._setup_statusbar()
+
+    def _apply_stylesheet(self) -> None:
+        self.setStyleSheet("""
+            QMainWindow, QWidget {
+                font-family: -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+                font-size: 12px;
+            }
+            QMenuBar {
+                background: #1E3A5F;
+                color: #FFFFFF;
+                padding: 2px 4px;
+            }
+            QMenuBar::item:selected {
+                background: #2B5287;
+            }
+            QMenu {
+                background: #FFFFFF;
+                border: 1px solid #C8D4E5;
+                color: #1E3A5F;
+            }
+            QMenu::item:selected {
+                background: #1E3A5F;
+                color: #FFFFFF;
+            }
+            QStatusBar {
+                background: #F0F4FA;
+                color: #1E3A5F;
+                border-top: 1px solid #C8D4E5;
+                font-size: 11px;
+                padding: 2px 6px;
+            }
+            QScrollBar:vertical {
+                width: 10px;
+                background: #F0F4FA;
+                border: none;
+            }
+            QScrollBar::handle:vertical {
+                background: #B0C4DE;
+                border-radius: 4px;
+                min-height: 20px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: #2B5287;
+            }
+            QScrollBar:horizontal {
+                height: 10px;
+                background: #F0F4FA;
+                border: none;
+            }
+            QScrollBar::handle:horizontal {
+                background: #B0C4DE;
+                border-radius: 4px;
+                min-width: 20px;
+            }
+            QScrollBar::handle:horizontal:hover {
+                background: #2B5287;
+            }
+            QSplitter::handle {
+                background: #C8D4E5;
+            }
+        """)
 
     def _setup_menu(self) -> None:
         menu_bar = self.menuBar()
@@ -82,6 +156,16 @@ class MainWindow(QMainWindow):
         self._save_as_action.triggered.connect(self._on_save_as)
 
         file_menu.addSeparator()
+
+        self._close_instance_action = file_menu.addAction("Close &Instance")
+        self._close_instance_action.setEnabled(False)
+        self._close_instance_action.triggered.connect(self._on_close_instance)
+
+        self._close_taxonomy_action = file_menu.addAction("Close &Taxonomy")
+        self._close_taxonomy_action.setEnabled(False)
+        self._close_taxonomy_action.triggered.connect(self._on_close_taxonomy)
+
+        file_menu.addSeparator()
         quit_action = file_menu.addAction("&Quit")
         quit_action.setShortcut("Ctrl+Q")
         quit_action.triggered.connect(self.close)
@@ -98,13 +182,25 @@ class MainWindow(QMainWindow):
         self._show_validation_panel_action.triggered.connect(self._show_validation_panel)
 
     def _setup_central(self) -> None:
-        self._loader_widget = TaxonomyLoaderWidget(
+        self._loader_widget: TaxonomyLoaderWidget | None = None
+        self._show_loader_widget()
+
+    def _show_loader_widget(self, path: str | None = None) -> None:
+        """Create a fresh TaxonomyLoaderWidget and set it as the central widget.
+
+        Qt takes ownership of (and deletes) the previous central widget, so we
+        must never reuse the old reference — always construct a new instance.
+        """
+        widget = TaxonomyLoaderWidget(
             cache=self._cache,
             settings=self._settings,
             parent=self,
         )
-        self._loader_widget.taxonomy_loaded.connect(self._on_taxonomy_loaded)
-        self.setCentralWidget(self._loader_widget)
+        widget.taxonomy_loaded.connect(self._on_taxonomy_loaded)
+        if path is not None:
+            widget._path_edit.setText(path)
+        self._loader_widget = widget
+        self.setCentralWidget(widget)
 
     def _setup_statusbar(self) -> None:
         self._status = QStatusBar()
@@ -118,7 +214,7 @@ class MainWindow(QMainWindow):
     def _show_loader(self) -> None:
         if not self._check_unsaved_changes():
             return
-        self.setCentralWidget(self._loader_widget)
+        self._show_loader_widget()
 
     def _on_taxonomy_loaded(self, structure: TaxonomyStructure) -> None:
         self._current_taxonomy = structure
@@ -132,17 +228,296 @@ class MainWindow(QMainWindow):
         self._reload_action.setEnabled(True)
         self._new_instance_action.setEnabled(True)
         self._open_instance_action.setEnabled(True)
+        self._close_taxonomy_action.setEnabled(True)
 
-        from bde_xbrl_editor.ui.widgets.taxonomy_info_panel import TaxonomyInfoPanel
+        self._setup_browser_layout()
 
-        panel = TaxonomyInfoPanel(structure, parent=self)
-        self.setCentralWidget(panel)
+    def _setup_browser_layout(self) -> None:
+        """Create the main split layout: context bar + table-list sidebar + XbrlTableView."""
+        from bde_xbrl_editor.ui.widgets.xbrl_table_view import XbrlTableView  # noqa: PLC0415
+
+        sidebar = self._build_taxonomy_sidebar()
+
+        if self._table_view is None:
+            self._table_view = XbrlTableView(parent=self)
+
+        splitter = QSplitter(self)
+        splitter.addWidget(sidebar)
+        splitter.addWidget(self._table_view)
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+
+        container = QWidget(self)
+        container_layout = QVBoxLayout(container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(0)
+
+        self._context_bar = self._build_context_bar(instance=None)
+        container_layout.addWidget(self._context_bar)
+        container_layout.addWidget(splitter, stretch=1)
+
+        self.setCentralWidget(container)
+
+        # Defer first-table render so the splitter/headers are fully laid out first
+        QTimer.singleShot(0, self._select_first_taxonomy_table)
+
+    def _build_taxonomy_sidebar(self) -> QWidget:
+        """Build the sidebar: taxonomy header + table list + taxonomy info panel."""
+        assert self._current_taxonomy is not None
+        meta = self._current_taxonomy.metadata
+
+        sidebar = QFrame(self)
+        sidebar.setFixedWidth(260)
+        sidebar.setStyleSheet("QFrame { background: #F5F7FA; }")
+
+        layout = QVBoxLayout(sidebar)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        # Taxonomy name header
+        header = QLabel(f"{meta.name}  v{meta.version}")
+        header.setStyleSheet(
+            "background: #1E3A5F; color: #FFFFFF; font-weight: bold;"
+            " font-size: 13px; padding: 8px 12px;"
+        )
+        header.setWordWrap(True)
+        layout.addWidget(header)
+
+        # "TABLES" section label
+        section = QLabel(f"TABLES  ({len(self._current_taxonomy.tables)})")
+        section.setStyleSheet(
+            "background: #2B5287; color: #FFFFFF; font-weight: bold;"
+            " font-size: 11px; padding: 4px 8px;"
+        )
+        layout.addWidget(section)
+
+        # Table list — stretch to fill available space
+        self._taxonomy_table_list = QListWidget()
+        self._taxonomy_table_list.setStyleSheet("""
+            QListWidget {
+                border: none;
+                background: #FFFFFF;
+                font-size: 12px;
+                color: #1E3A5F;
+                outline: none;
+            }
+            QListWidget::item {
+                padding: 5px 8px;
+                border-bottom: 1px solid #E8EDF5;
+            }
+            QListWidget::item:selected {
+                background: #1E3A5F;
+                color: #FFFFFF;
+            }
+            QListWidget::item:hover:!selected {
+                background: #DCE8F5;
+            }
+        """)
+        for table in self._current_taxonomy.tables:
+            item = QListWidgetItem(f"{table.table_id}\n{table.label}")
+            item.setData(0x0100, table)
+            self._taxonomy_table_list.addItem(item)
+        self._taxonomy_table_list.itemClicked.connect(self._on_taxonomy_table_list_clicked)
+        layout.addWidget(self._taxonomy_table_list, stretch=1)
+
+        # ── Taxonomy info panel (collapsed under the list) ──────────────
+        info_section = QLabel("TAXONOMY INFO")
+        info_section.setStyleSheet(
+            "background: #2B5287; color: #FFFFFF; font-weight: bold;"
+            " font-size: 11px; padding: 4px 8px;"
+        )
+        layout.addWidget(info_section)
+
+        info_style = "color: #1E3A5F; font-size: 11px; padding: 2px 10px;"
+        key_style = "color: #5A7FA8; font-size: 10px; padding: 1px 10px; font-weight: bold;"
+
+        def _row(key: str, value: str) -> None:
+            layout.addWidget(QLabel(key, styleSheet=key_style))
+            lbl = QLabel(value)
+            lbl.setStyleSheet(info_style)
+            lbl.setWordWrap(True)
+            lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            layout.addWidget(lbl)
+
+        _row("NAME", meta.name)
+        _row("VERSION", meta.version)
+        _row("PUBLISHER", meta.publisher)
+        _row("ENTRY POINT", str(meta.entry_point_path.name))
+        _row("LOADED AT", meta.loaded_at.strftime("%Y-%m-%d %H:%M"))
+        _row("LANGUAGES", ", ".join(meta.declared_languages) or "—")
+        _row("CONCEPTS", str(len(self._current_taxonomy.concepts)))
+        _row("TABLES", str(len(self._current_taxonomy.tables)))
+
+        # Spacer at the very bottom
+        layout.addSpacing(6)
+
+        return sidebar
+
+    # ------------------------------------------------------------------
+    # Context bar
+    # ------------------------------------------------------------------
+
+    def _build_context_bar(self, instance=None) -> QFrame:
+        """Return a slim bar showing taxonomy + instance breadcrumbs with × close buttons."""
+        bar = QFrame()
+        bar.setFixedHeight(36)
+        bar.setStyleSheet(
+            "QFrame { background: #2B5287; border-bottom: 1px solid #1E3A5F; }"
+        )
+
+        layout = QHBoxLayout(bar)
+        layout.setContentsMargins(10, 0, 10, 0)
+        layout.setSpacing(6)
+
+        chip_style = (
+            "QLabel { color: #FFFFFF; font-size: 11px; font-weight: 600;"
+            " background: rgba(255,255,255,0.12); border-radius: 3px; padding: 2px 7px; }"
+        )
+        close_style = (
+            "QPushButton { color: #A8C8EE; background: transparent; border: none;"
+            " font-size: 14px; padding: 0 3px; }"
+            "QPushButton:hover { color: #FFFFFF; background: rgba(255,255,255,0.2);"
+            " border-radius: 3px; }"
+        )
+        sep_style = "QLabel { color: #7BA4C8; font-size: 14px; background: transparent; }"
+
+        # ── Taxonomy chip ──────────────────────────────────────────────
+        if self._current_taxonomy:
+            meta = self._current_taxonomy.metadata
+            tax_chip = QLabel(f"◈  {meta.name}  v{meta.version}")
+            tax_chip.setStyleSheet(chip_style)
+            layout.addWidget(tax_chip)
+
+            tax_close = QPushButton("×")
+            tax_close.setFixedSize(20, 20)
+            tax_close.setStyleSheet(close_style)
+            tax_close.setToolTip("Close taxonomy")
+            tax_close.clicked.connect(self._on_close_taxonomy)
+            layout.addWidget(tax_close)
+
+        # ── Instance chip ──────────────────────────────────────────────
+        if instance is not None:
+            sep = QLabel("›")
+            sep.setStyleSheet(sep_style)
+            layout.addWidget(sep)
+
+            fname = Path(instance.source_path).name if instance.source_path else "instance"
+            inst_chip = QLabel(f"  {fname}")
+            inst_chip.setStyleSheet(chip_style)
+            layout.addWidget(inst_chip)
+
+            inst_close = QPushButton("×")
+            inst_close.setFixedSize(20, 20)
+            inst_close.setStyleSheet(close_style)
+            inst_close.setToolTip("Close instance")
+            inst_close.clicked.connect(self._on_close_instance)
+            layout.addWidget(inst_close)
+
+        layout.addStretch()
+
+        # ── Action buttons on the right ────────────────────────────────
+        btn_style = (
+            "QPushButton { color: #FFFFFF; background: rgba(255,255,255,0.15);"
+            " border: 1px solid rgba(255,255,255,0.3); border-radius: 3px;"
+            " font-size: 11px; padding: 3px 10px; }"
+            "QPushButton:hover { background: rgba(255,255,255,0.25); }"
+            "QPushButton:disabled { color: #7BA4C8; background: transparent;"
+            " border-color: rgba(255,255,255,0.1); }"
+        )
+
+        if instance is None and self._current_taxonomy is not None:
+            open_inst_btn = QPushButton("Open Instance…")
+            open_inst_btn.setStyleSheet(btn_style)
+            open_inst_btn.clicked.connect(self._on_open_instance)
+            layout.addWidget(open_inst_btn)
+
+            new_inst_btn = QPushButton("New Instance…")
+            new_inst_btn.setStyleSheet(btn_style)
+            new_inst_btn.clicked.connect(self._on_new_instance)
+            layout.addWidget(new_inst_btn)
+
+        return bar
+
+    # ------------------------------------------------------------------
+    # Close taxonomy / instance
+    # ------------------------------------------------------------------
+
+    def _on_close_taxonomy(self) -> None:
+        """Return to the loader screen, discarding the current taxonomy and instance."""
+        if not self._check_unsaved_changes():
+            return
+
+        # Disconnect editor signals
+        if self._editor is not None:
+            with contextlib.suppress(RuntimeError):
+                self._editor.changes_made.disconnect(self._on_changes_made)
+
+        self._current_taxonomy = None
+        self._current_instance = None
+        self._editor = None
+        self._table_view = None
+        self._taxonomy_table_list = None
+        self._context_bar = None
+
+        self._reload_action.setEnabled(False)
+        self._new_instance_action.setEnabled(False)
+        self._open_instance_action.setEnabled(False)
+        self._save_action.setEnabled(False)
+        self._save_as_action.setEnabled(False)
+        self._validate_action.setEnabled(False)
+        self._close_instance_action.setEnabled(False)
+        self._close_taxonomy_action.setEnabled(False)
+
+        self.setWindowTitle("BDE XBRL Editor[*]")
+        self.setWindowModified(False)
+        self._status.showMessage("No taxonomy loaded")
+        self._show_loader_widget()
+
+    def _on_close_instance(self) -> None:
+        """Close the current instance and return to the taxonomy browser."""
+        if not self._check_unsaved_changes():
+            return
+
+        if self._editor is not None:
+            with contextlib.suppress(RuntimeError):
+                self._editor.changes_made.disconnect(self._on_changes_made)
+
+        self._current_instance = None
+        self._editor = None
+
+        self._save_action.setEnabled(False)
+        self._save_as_action.setEnabled(False)
+        self._validate_action.setEnabled(False)
+        self._close_instance_action.setEnabled(False)
+
+        # Discard existing table view so _setup_browser_layout creates a fresh one
+        self._table_view = None
+
+        meta = self._current_taxonomy.metadata if self._current_taxonomy else None
+        title = f"BDE XBRL Editor — {meta.name}[*]" if meta else "BDE XBRL Editor[*]"
+        self.setWindowTitle(title)
+        self.setWindowModified(False)
+        self._status.showMessage(
+            f"Loaded: {meta.name} v{meta.version}" if meta else "No taxonomy loaded"
+        )
+
+        self._setup_browser_layout()
+
+    def _on_taxonomy_table_list_clicked(self, item: QListWidgetItem) -> None:
+        table = item.data(0x0100)
+        if table is not None:
+            self._on_table_selected(table)
+
+    def _select_first_taxonomy_table(self) -> None:
+        if self._taxonomy_table_list is not None and self._taxonomy_table_list.count() > 0:
+            first = self._taxonomy_table_list.item(0)
+            self._taxonomy_table_list.setCurrentItem(first)
+            self._on_taxonomy_table_list_clicked(first)
 
     def _on_reload(self) -> None:
         if self._current_taxonomy:
             entry_point = self._current_taxonomy.metadata.entry_point_path
-            self._loader_widget._path_edit.setText(str(entry_point))
-            self.setCentralWidget(self._loader_widget)
+            self._show_loader_widget(path=str(entry_point))
             self._loader_widget._on_load()
 
     def _on_new_instance(self) -> None:
@@ -205,9 +580,11 @@ class MainWindow(QMainWindow):
         self._load_instance(instance)
 
     def _load_instance(self, instance) -> None:
-        from bde_xbrl_editor.instance.editor import InstanceEditor
-        from bde_xbrl_editor.ui.widgets.instance_info_panel import InstanceInfoPanel
-        from bde_xbrl_editor.ui.widgets.xbrl_table_view import XbrlTableView
+        from bde_xbrl_editor.instance.editor import InstanceEditor  # noqa: PLC0415
+        from bde_xbrl_editor.ui.widgets.instance_info_panel import (
+            InstanceInfoPanel,  # noqa: PLC0415
+        )
+        from bde_xbrl_editor.ui.widgets.xbrl_table_view import XbrlTableView  # noqa: PLC0415
 
         # Disconnect old editor signals
         if self._editor is not None:
@@ -217,7 +594,9 @@ class MainWindow(QMainWindow):
         self._editor = InstanceEditor(instance, parent=self)
         self._editor.changes_made.connect(self._on_changes_made)
 
-        self._table_view = XbrlTableView(parent=self)
+        # Reuse existing table view if available, otherwise create one
+        if self._table_view is None:
+            self._table_view = XbrlTableView(parent=self)
 
         info_panel = InstanceInfoPanel(
             instance=instance,
@@ -226,18 +605,27 @@ class MainWindow(QMainWindow):
         )
         info_panel.table_selected.connect(self._on_table_selected)
 
-        from PySide6.QtWidgets import QSplitter  # noqa: PLC0415
-
         splitter = QSplitter(self)
         splitter.addWidget(info_panel)
         splitter.addWidget(self._table_view)
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
-        self.setCentralWidget(splitter)
+
+        container = QWidget(self)
+        container_layout = QVBoxLayout(container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(0)
+
+        self._context_bar = self._build_context_bar(instance=instance)
+        container_layout.addWidget(self._context_bar)
+        container_layout.addWidget(splitter, stretch=1)
+
+        self.setCentralWidget(container)
 
         self._save_action.setEnabled(True)
         self._save_as_action.setEnabled(True)
         self._validate_action.setEnabled(True)
+        self._close_instance_action.setEnabled(True)
 
         fname = Path(instance.source_path).name if instance.source_path else "instance"
         self.setWindowTitle(f"BDE XBRL Editor — {fname}[*]")
@@ -246,6 +634,9 @@ class MainWindow(QMainWindow):
             f"Opened: {instance.source_path} — "
             f"{len(instance.facts)} facts, {len(instance.contexts)} contexts"
         )
+
+        # Auto-render the first filed table immediately
+        info_panel.select_first_table()
 
     # ------------------------------------------------------------------
     # Table selection → XbrlTableView (T017)
