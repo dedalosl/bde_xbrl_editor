@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<schema
+ xmlns="http://www.w3.org/2001/XMLSchema"
+ xmlns:xbrli="http://www.xbrl.org/2003/instance"
+ xmlns:link="http://www.xbrl.org/2003/linkbase"
+ xmlns:xlink="http://www.w3.org/1999/xlink"
+ xmlns:gen="http://xbrl.org/2008/generic"
+ xmlns:eg2="http://xbrl.org/formula/conformance/example/empty-with-fallback-2"
+ targetNamespace="http://xbrl.org/formula/conformance/example/empty-with-fallback-2"
+ elementFormDefault="qualified"
+ attributeFormDefault="unqualified">
+  <import namespace="http://xbrl.org/formula/conformance/example" schemaLocation="22180-bindEmpty-tests.xsd" />
+  <import namespace="http://xbrl.org/2008/generic" schemaLocation="http://www.xbrl.org/2008/generic-link.xsd" />
+  <annotation>
+    <appinfo>
+      <link:roleType roleURI="http://xbrl.org/formula/conformance/example/role/empty-with-fallback-2" id="role-empty-with-fallback-2">
+        <link:usedOn>gen:link</link:usedOn>
+      </link:roleType>
+    </appinfo>
+  </annotation>
+</schema>

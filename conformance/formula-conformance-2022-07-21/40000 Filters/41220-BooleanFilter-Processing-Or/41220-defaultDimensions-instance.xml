@@ -1,0 +1,44 @@
+<xbrl xmlns="http://www.xbrl.org/2003/instance"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xmlns:link="http://www.xbrl.org/2003/linkbase"
+      xmlns:xlink="http://www.w3.org/1999/xlink"
+      xmlns:iso4217="http://www.xbrl.org/2003/iso4217"
+      xmlns:xbrldi="http://xbrl.org/2006/xbrldi"
+      xmlns:eg="http://www.example.com/ns"
+      >
+
+  <link:schemaRef xlink:type="simple" xlink:href="41220-defaultDimensions-concepts.xsd"/>
+  <link:linkbaseRef 
+    xlink:type="simple" 
+    xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase" xlink:href="41220-defaultDimensions-formula.xml"/>
+
+  <context id="c1">
+    <entity>
+      <identifier scheme="http://www.example.com">UmbrellaCorp</identifier>
+      <segment>
+       <xbrldi:explicitMember dimension="eg:dim2">eg:member2dim2</xbrldi:explicitMember>
+      </segment>
+    </entity>
+    <period><instant>2002-12-01</instant></period>
+  </context>
+  
+  <context id="c2">
+    <entity>
+      <identifier scheme="http://www.example.com">UmbrellaCorp</identifier>
+      <segment>
+       <xbrldi:explicitMember dimension="eg:dim1">eg:member2dim1</xbrldi:explicitMember>
+       <xbrldi:explicitMember dimension="eg:dim2">eg:member2dim2</xbrldi:explicitMember>
+      </segment>
+    </entity>
+    <period><instant>2002-12-01</instant></period>
+  </context>
+ 
+  
+  <unit id="USD">
+    <measure>iso4217:USD</measure>
+  </unit>
+  
+  <eg:Fact1 id="defaultFact" contextRef="c1" unitRef="USD" precision="INF">1</eg:Fact1>
+  <eg:Fact1 id="nonDefault" contextRef="c2" unitRef="USD" precision="INF">2</eg:Fact1>
+
+</xbrl>

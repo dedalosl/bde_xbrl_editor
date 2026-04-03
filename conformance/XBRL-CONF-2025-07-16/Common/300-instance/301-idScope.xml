@@ -1,0 +1,152 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- edited with XMLSPY v5 rel. 4 U (http://www.xmlspy.com) by Walter Hamscher (Standard Advantage) -->
+<!-- XBRL 2.1 Tests -->
+<!-- Copyright 2003 XBRL International Inc.  See www.xbrl.org/legal.  All Rights Reserved. -->
+<?xml-stylesheet type="text/xsl" href="../../testcase.xsl"?>
+<testcase xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" name="Identifier Scope" description="Section 4.3  The Item Element" outpath="out" owner="mg@fla.fujitsu.com" xsi:noNamespaceSchemaLocation="../lib/test.xsd" minimal="true">
+        <variation id="V-1" name="IdScopeValid">
+                <description>301.01 Valid example of id attribute.</description>
+                <data>
+                        <xsd readMeFirst="false">IdScope.xsd</xsd>
+                        <instance readMeFirst="true">301-01-IdScopeValid.xml</instance>
+                </data>
+                <result expected="valid"/>
+        </variation>
+        <variation id="V-3" name="IdScopePeriodDiff">
+                <description>301.03  Mismatch of periodType attribute and referenced context's period type.</description>
+                <data>
+                        <xsd readMeFirst="false">IdScope.xsd</xsd>
+                        <instance readMeFirst="true">301-03-IdScopePeriodDiff.xml</instance>
+                </data>
+                <result expected="invalid"/>
+        </variation>
+        <variation id="V-4" name="IdScopeContextRefToUnit">
+                <description>301.04  contextRef has IDREF to unit element.</description>
+                <data>
+                        <xsd readMeFirst="false">IdScope.xsd</xsd>
+                        <instance readMeFirst="true">301-04-IdScopeContextRefToUnit.xml</instance>
+                </data>
+                <result expected="invalid"/>
+        </variation>
+        <variation id="V-5" name="IdScopeUnitRefToContext">
+                <description>301.05 unitRef has IDREF to context element.</description>
+                <data>
+                        <xsd readMeFirst="false">IdScope.xsd</xsd>
+                        <instance readMeFirst="true">301-05-IdScopeUnitRefToContext.xml</instance>
+                </data>
+                <result expected="invalid"/>
+        </variation>
+        <variation id="V-6" name="FootnoteScopeValid">
+                <description>301.06  Valid example of footnote link href attribute.</description>
+                <data>
+                        <xsd readMeFirst="false">IdScope.xsd</xsd>
+                        <instance readMeFirst="true">301-06-FootnoteScopeValid.xml</instance>
+                </data>
+                <result expected="valid"/>
+        </variation>
+        <variation id="V-8" name="FootnoteToContext">
+                <description>301.08 href attribute is referencing to context element.</description>
+                <data>
+                        <xsd readMeFirst="false">IdScope.xsd</xsd>
+                        <instance readMeFirst="true">301-08-FootnoteToContext.xml</instance>
+                </data>
+                <result expected="invalid"/>
+        </variation>
+        <variation id="V-9" name="FootnoteToUnit">
+                <description>301.09 href attribute is referencing to unit element.</description>
+                <data>
+                        <xsd readMeFirst="false">IdScope.xsd</xsd>
+                        <instance readMeFirst="true">301-09-FootnoteToUnit.xml</instance>
+                </data>
+                <result expected="invalid"/>
+        </variation>
+        <variation  id="V-10" name="FootnoteFromOutOfScope">
+                <description>301.10 The instance contains two footnote links.  The second one contains an arc with a from value that does not have a corresponding loc in the same extended link.</description>
+                <data>
+                        <xsd readMeFirst="false">IdScope.xsd</xsd>
+                        <instance readMeFirst="true">301-10-FootnoteFromOutOfScope.xml</instance>
+                </data>
+                <result expected="invalid"/>
+        </variation>
+        <variation  id="V-11" name="FootnoteToOutOfScope">
+                <description>301.11 The instance contains two footnote links.  The second one contains an arc with a to value that does not have a corresponding footnote resource in the same extended link.</description>
+                <data>
+                        <xsd readMeFirst="false">IdScope.xsd</xsd>
+                        <instance readMeFirst="true">301-11-FootnoteToOutOfScope.xml</instance>
+                </data>
+                <result expected="invalid"/>
+        </variation>    
+        <variation  id="V-12" name="FootnoteLocOutOfScope">
+                <description>301.12 The instance contains a footnote link.  In the footnote link there is a loc element that has an href that points to a fact in another instance document.</description>
+                <data>
+                        <xsd readMeFirst="false">IdScope.xsd</xsd>
+                        <instance readMeFirst="true">301-12-FootnoteLocOutOfScope.xml</instance>
+                        <instance readMeFirst="false">301-12-FootnoteLocOutOfScope2.xml</instance>                      
+                </data>
+                <result expected="invalid"/>
+        </variation>    
+        <variation  id="V-13" name="FootnoteLocInScope">
+                <description>301.13 The instance contains a footnote link.  In the footnote link there is a loc element that has an href that points to a fact in the instance document using the instance document file name with a fragment identifier.</description>
+                <data>
+                        <xsd readMeFirst="false">IdScope.xsd</xsd>
+                        <instance readMeFirst="true">301-13-FootnoteLocInScope.xml</instance>                   
+                </data>
+                <result expected="valid"/>
+        </variation>
+        <variation  id="V-14" name="FootnoteFromResource">
+                <description>301.14 The instance contains a footnote link. The arc in the footnote link has a from value that matches a footnote resource. This is not valid for the fact-footnote arc role on the arc. The from must point to a loc which in turns points to a fact in the same instance document.</description>
+                <data>
+                        <xsd readMeFirst="false">IdScope.xsd</xsd>
+                        <instance readMeFirst="true">301-14-FootnoteFromResource.xml</instance>                 
+                </data>
+                <result expected="invalid"/>
+        </variation>
+        <variation  id="V-15" name="FootnoteToLoc">
+                <description>301.15 The instance contains a footnote link. The arc in the footnote link has a from value that matches a footnote resource. This is not valid for the fact-footnote arc role on the arc. The from must point to a loc which in turns points to a fact in the same instance document.</description>
+                <data>
+                        <xsd readMeFirst="false">IdScope.xsd</xsd>
+                        <instance readMeFirst="true">301-15-FootnoteToLoc.xml</instance>                        
+                </data>
+                <result expected="invalid"/>
+        </variation>            
+        <variation  id="V-16" name="FootnoteWithoutLang">
+                <description>301.16 The xml:lang attribute is missing on the footnote resource.</description>
+                <data>
+                        <xsd readMeFirst="false">IdScope.xsd</xsd>
+                        <instance readMeFirst="true">301-16-FootnoteWithoutLang.xml</instance>                  
+                </data>
+                <result expected="invalid"/>
+        </variation>            
+        <variation  id="V-17" name="FootnoteCustomArcRole">
+                <description>301.17 The footnote custom arc role can relate two footnotes to each other instead of just fact to footnote.  (Only the standard footnote arc role is restricted to being from item or tuple locators.) Maybe this might be used to indicate how some footnote is "footnoting" another footnote.</description>
+                <data>
+                        <xsd readMeFirst="false">301-17-FootnoteCustomArcRole.xsd</xsd>
+                        <instance readMeFirst="true">301-17-FootnoteCustomArcRole.xml</instance>                    
+                </data>
+                <result expected="valid"/>
+        </variation>
+        <variation  id="V-18" name="FootnoteCustomLocator">
+                <description>301.18 The footnote link contains a custom locator, which is invalid. See 4.11.1.1 in the XBRL 2.1 specification.</description>
+                <data>
+                        <xsd readMeFirst="false">IdScope.xsd</xsd>
+                        <instance readMeFirst="true">301-18-FootnoteCustomLocator.xml</instance>                    
+                </data>
+                <result expected="invalid"/>
+        </variation>
+        <variation  id="V-19" name="LocToFootnoteResource">
+                <description>The instance corresponds to an inline XBRL source document for which it is convenient to represent the footnote and the arc in separate extended link elements.  In such an inline document there could be a ix:footnote, id=footnote1, an ix:nonFraction, id=f1, and an ix:relationship for the default link role fromRef=f1, toRef=footnote1.  The 2.1 spec doesn't say this is not allowed although 4.11.1.1 says a loc must only point to items/tuples in the same instance, which can be interpreted to exclude pointing to items/tuples in other instances, but unclear that it excludes pointing to footnote resources in other extended link elements of the same instance.</description>
+                <data>
+                        <xsd readMeFirst="false">IdScope.xsd</xsd>
+                        <instance readMeFirst="true">301-19-LocToFootnoteResource.xml</instance>                   
+                </data>
+                <result expected="invalid"/>
+        </variation>
+        <variation  id="V-20" name="LinkRolesShareFootnote">
+                <description>The instance corresponds to an inline XBRL source document for which it is convenient to represent a common footnote that is shared by two arcs in different link roled extended link elements.  In such an inline document there could be a ix:footnote, id=footnote1, an ix:nonFraction, id=f1, and an ix:relationship for the  link role role1 fromRef=f1, toRef=footnote1, and a second ix:nonFraction, id=f2, and an ix:relationship for the link role role2, fromRef=f2, toRef=footnote1.  We assume it's a big hairy large footnote to emphasize the undesirability of repeating it in two link rolew, and that the id on the footnote has to be unique in the instance, so if repeated, we'd have to contrive the second occurence's id differently, which could be messy for auditors wanting strict traceability or if a large graph of footnotes, facts, and relationships.</description>
+                <data>
+                        <xsd readMeFirst="false">301-20-LinkRolesShareFootnote.xsd</xsd>
+                        <instance readMeFirst="true">301-20-LinkRolesShareFootnote.xml</instance>                   
+                </data>
+                <result expected="invalid"/>
+        </variation>
+</testcase>

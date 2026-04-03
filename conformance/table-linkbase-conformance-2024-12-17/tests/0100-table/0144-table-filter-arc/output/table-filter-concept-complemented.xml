@@ -1,0 +1,29 @@
+<tableModel xmlns="http://xbrl.org/2014/table/model">
+  <tableSet>
+    <label>Table-filter relationship to concept filter</label>
+    <table>
+      <headers axis="y">
+        <group>
+          <label>Concept (open)</label>
+          <header>
+            <cell>
+              <constraint>
+                <aspect>concept</aspect>
+                <value xmlns:rend="http://www.xbrl.org/table-examples">rend:m2</value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+      </headers>
+      <cells axis="z">
+        <cells axis="y">
+          <cells axis="x">
+            <cell>
+              <fact>../table-filter-instance-2.xml#m2_D_d1</fact>
+            </cell>
+          </cells>
+        </cells>
+      </cells>
+    </table>
+  </tableSet>
+</tableModel>

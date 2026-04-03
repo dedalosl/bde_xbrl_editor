@@ -1,0 +1,73 @@
+<?xml version='1.0' encoding='utf-8'?>
+<tableModel xmlns="http://xbrl.org/2014/table/model" xmlns:rend="http://www.xbrl.org/table-examples" xml:base="..">
+  <tableSet>
+    <label>Dimension relationship node with a generations = 1</label>
+    <table>
+      <headers axis="y">
+        <group>
+          <label>Domain-member tree for dimension F</label>
+          <header>
+            <cell span="3">
+              <constraint>
+                <aspect>rend:F</aspect>
+                <value/>
+              </constraint>
+            </cell>
+          </header>
+          <header>
+            <cell rollup="true"/>
+            <cell>
+              <constraint>
+                <aspect>rend:F</aspect>
+                <value>rend:f1</value>
+              </constraint>
+            </cell>
+            <cell>
+              <constraint>
+                <aspect>rend:F</aspect>
+                <value>rend:f4</value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+      </headers>
+      <headers axis="x">
+        <group>
+          <label>Two columns (primary items m1, m2)</label>
+          <header>
+            <cell>
+              <label>Label: m1</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:m1</value>
+              </constraint>
+            </cell>
+            <cell>
+              <label>Label: m2</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:m2</value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+      </headers>
+      <cells axis="z">
+        <cells axis="y">
+          <cells axis="x">
+            <cell/>
+            <cell/>
+          </cells>
+          <cells axis="x">
+            <cell/>
+            <cell/>
+          </cells>
+          <cells axis="x">
+            <cell/>
+            <cell/>
+          </cells>
+        </cells>
+      </cells>
+    </table>
+  </tableSet>
+</tableModel>

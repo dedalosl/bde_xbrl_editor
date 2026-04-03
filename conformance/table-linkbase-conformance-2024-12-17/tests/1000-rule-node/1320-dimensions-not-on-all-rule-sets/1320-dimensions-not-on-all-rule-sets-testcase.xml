@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2015-10-05"
+  name="1320-dimensions-not-on-all-rule-sets-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Revathy Ramanan</name>
+        <email>revathy.ramanan@irisbusiness.com</email>
+    </creator>
+    <number>1320</number>
+    <name>Dimensions not on all rule sets</name>
+    <description>
+	The example covered in the template is same as given in test case number '1310' in which Dimension "Country" only applies to the left hand column in the X axis breakdown. 
+	In this test case Tagged constraint sets are used on Y-axis to create same table. 
+	Table Linkbase 1.0 requires same aspects for all constraint sets within a rule node, hence this processing software would encounter  xbrlte:constraintSetAspectMismatch
+	
+	This test case is being written to examine the if there is a distinction to be made between dimensional and non- dimensional aspects for constrained sets
+	</description>
+
+    <variation id="v-01">
+        <name>Two Columns , Single Row, Constrain Sets on Y-axis</name>
+        <description>
+        As per testcase.
+        </description>
+        <data>
+            <instance readMeFirst="true">instance.xml</instance>
+            <linkbase>table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/output.xml</table>
+        </result>
+    </variation>
+
+</testcase>

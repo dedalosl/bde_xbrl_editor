@@ -1,0 +1,166 @@
+<?xml version='1.0' encoding='utf-8'?>
+<tableModel xmlns="http://xbrl.org/2014/table/model" xmlns:rend="http://www.xbrl.org/table-examples" xml:base="..">
+  <!--Entry point file: table-linkbase-simple-table-tandem-z-axis.xml-->
+  <tableSet>
+    <!--TableSet linkbase file: table-linkbase-simple-table-tandem-z-axis.xml, line 38-->
+    <!--TableSet namespace: http://xbrl.org/2014/table-->
+    <!--TableSet linkrole: http://www.xbrl.org/table-examples/table8-->
+    <label>Table with a single breakdown for two dimensions on the z-axis</label>
+    <table>
+      <headers axis="z">
+        <group>
+          <label>Four slices (dimension [F, G] = [f1, g1], [f1, g2], [f2, g1], [f2, g2])</label>
+          <header>
+            <cell>
+              <label>Label: F = f1, G = g1</label>
+              <label>1</label>
+              <constraint>
+                <aspect>rend:F</aspect>
+                <value>rend:f1</value>
+              </constraint>
+              <constraint>
+                <aspect>rend:G</aspect>
+                <value>rend:g1</value>
+              </constraint>
+            </cell>
+            <cell>
+              <label>Label: F = f1, G = g2</label>
+              <label>2</label>
+              <constraint>
+                <aspect>rend:F</aspect>
+                <value>rend:f1</value>
+              </constraint>
+              <constraint>
+                <aspect>rend:G</aspect>
+                <value>rend:g2</value>
+              </constraint>
+            </cell>
+            <cell>
+              <label>Label: F = f2, G = g1</label>
+              <label>3</label>
+              <constraint>
+                <aspect>rend:F</aspect>
+                <value>rend:f2</value>
+              </constraint>
+              <constraint>
+                <aspect>rend:G</aspect>
+                <value>rend:g1</value>
+              </constraint>
+            </cell>
+            <cell>
+              <label>Label: F = f2, G = g2</label>
+              <label>4</label>
+              <constraint>
+                <aspect>rend:F</aspect>
+                <value>rend:f2</value>
+              </constraint>
+              <constraint>
+                <aspect>rend:G</aspect>
+                <value>rend:g2</value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+        <!--ruleNode: label table10-z, file table-linkbase-simple-table-tandem-z-axis.xml, line 47-->
+        <!--   aspect rend:F: rend:f1-->
+        <!--   aspect rend:G: rend:g1-->
+      </headers>
+      <headers axis="y">
+        <group>
+          <label>Two rows (primary items m1, m2)</label>
+          <header>
+            <!--ruleNode: label table10-y.1, file table-linkbase-simple-table-tandem-z-axis.xml, line 243-->
+            <!--   aspect concept: rend:m1-->
+            <cell>
+              <label>Label: m1</label>
+              <label>1</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:m1</value>
+              </constraint>
+            </cell>
+            <!--ruleNode: label table10-y.2, file table-linkbase-simple-table-tandem-z-axis.xml, line 267-->
+            <!--   aspect concept: rend:m2-->
+            <cell>
+              <label>Label: m2</label>
+              <label>2</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:m2</value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+      </headers>
+      <headers axis="x">
+        <group>
+          <label>Two columns (dimension D = d1, d2)</label>
+          <header>
+            <!--ruleNode: label table10-x.1, file table-linkbase-simple-table-tandem-z-axis.xml, line 184-->
+            <!--   aspect rend:D: rend:d1-->
+            <cell>
+              <label>Label: D = d1</label>
+              <label>1</label>
+              <constraint>
+                <aspect>rend:D</aspect>
+                <value>rend:d1</value>
+              </constraint>
+            </cell>
+            <!--ruleNode: label table10-x.2, file table-linkbase-simple-table-tandem-z-axis.xml, line 210-->
+            <!--   aspect rend:D: rend:d2-->
+            <cell>
+              <label>Label: D = d2</label>
+              <label>2</label>
+              <constraint>
+                <aspect>rend:D</aspect>
+                <value>rend:d2</value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+      </headers>
+      <cells axis="z">
+        <cells axis="y">
+          <cells axis="x">
+            <cell/>
+            <cell/>
+          </cells>
+          <cells axis="x">
+            <cell/>
+            <cell/>
+          </cells>
+        </cells>
+        <cells axis="y">
+          <cells axis="x">
+            <cell/>
+            <cell/>
+          </cells>
+          <cells axis="x">
+            <cell/>
+            <cell/>
+          </cells>
+        </cells>
+        <cells axis="y">
+          <cells axis="x">
+            <cell/>
+            <cell/>
+          </cells>
+          <cells axis="x">
+            <cell/>
+            <cell/>
+          </cells>
+        </cells>
+        <cells axis="y">
+          <cells axis="x">
+            <cell/>
+            <cell/>
+          </cells>
+          <cells axis="x">
+            <cell/>
+            <cell/>
+          </cells>
+        </cells>
+      </cells>
+    </table>
+  </tableSet>
+</tableModel>

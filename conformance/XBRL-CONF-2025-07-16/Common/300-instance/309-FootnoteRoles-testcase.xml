@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- XBRL 2.1 Tests --><!-- Copyright 2009 XBRL International Inc.  See www.xbrl.org/legal.  All Rights Reserved. --><?xml-stylesheet type="text/xsl" href="../../testcase.xsl"?><testcase xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          name="Footnote and footnote link test of standard roles"
+          description="4.11.1.2 for footnote and 3.5.3 for footnoteLink"
+          outpath="out"
+          owner="fischer@markv.com"
+          minimal="true"
+          xsi:noNamespaceSchemaLocation="../lib/test.xsd">
+   <variation id="V-01" name="309-01 valid footnote roles">
+      <description>Valid use of standard roles in footnote</description>
+      <data>
+         <xsd readMeFirst="false">IdScope.xsd</xsd>
+         <instance readMeFirst="true">309-01-instance.xml</instance>
+      </data>
+      <result expected="valid"/>
+   </variation>
+   <variation id="V-02" name="309-03 invalid but standard footnote role">
+      <description>Invalid use of standard link role on footnote</description>
+      <data>
+         <xsd readMeFirst="false">IdScope.xsd</xsd>
+         <instance readMeFirst="true">309-02-instance.xml</instance>
+      </data>
+      <result expected="invalid"/>
+   </variation>
+   <variation id="V-03" name="309-03 invalid but standard footnoteLink role">
+      <description>Invalid use of standard footnote role on footnoteLink</description>
+      <data>
+         <xsd readMeFirst="false">IdScope.xsd</xsd>
+         <instance readMeFirst="true">309-03-instance.xml</instance>
+      </data>
+      <result expected="invalid"/>
+   </variation>
+   <variation id="V-04" name="309-04 use of standard label role on footnote">
+      <description>Invalid use of standard label role on footnote</description>
+      <data>
+         <xsd readMeFirst="false">IdScope.xsd</xsd>
+         <instance readMeFirst="true">309-04-instance.xml</instance>
+      </data>
+      <result expected="invalid"/>
+   </variation>
+
+   <!-- 
+   309-05 & 309=06 disabled pending spec clarification https://gitlab.xbrl.org/base-spec/base-spec/-/issues/303
+
+   <variation id="V-05" name="309-05 use of footnote role on footnote loc">
+      <description>Invalid use of standard role on a loc element</description>
+      <data>
+         <xsd readMeFirst="false">IdScope.xsd</xsd>
+         <instance readMeFirst="true">309-05-instance.xml</instance>
+      </data>
+      <result expected="invalid"/>
+   </variation>
+   <variation id="V-06" name="309-06 use of footnote role on unreferenced footnote loc">
+      <description>Invalid use of standard role on an unreferenced loc element</description>
+      <data>
+         <xsd readMeFirst="false">IdScope.xsd</xsd>
+         <instance readMeFirst="true">309-06-instance.xml</instance>
+      </data>
+      <result expected="invalid"/>
+   </variation>
+
+   -->
+
+
+   <variation id="V-07" name="309-07 use of link role on unreferenced footnote resource">
+      <description>Invalid use of standard link role on an unreferenced footnote element</description>
+      <data>
+         <xsd readMeFirst="false">IdScope.xsd</xsd>
+         <instance readMeFirst="true">309-07-instance.xml</instance>
+      </data>
+      <result expected="invalid"/>
+   </variation>
+</testcase>

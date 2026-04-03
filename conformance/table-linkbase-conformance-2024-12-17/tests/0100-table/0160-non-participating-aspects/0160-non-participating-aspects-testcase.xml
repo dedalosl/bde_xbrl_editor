@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2014-01-24"
+  name="0160-non-participating-aspects-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Chris Rimes</name>
+        <email>cdr@corefiling.com</email>
+    </creator>
+    <number>0160</number>
+    <name>Non-participating Aspects Testcase</name>
+    <description>Table linkbase test case for under-specified tables.</description>
+    
+    <variation id="v-01">
+        <name>Table with non-participating explicit dimension aspect</name>
+        <description>
+            Simple table with two columns (dimension D = d1, d2), and two rows
+            (primary items m1, m2). The instance contains facts reported
+            against different values of dimension E, but the table specifies
+            no values for E, so only facts with the default value (E = e0) are
+            included.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">non-participating-explicit-dimension-instance.xml</instance>
+            <linkbase>non-participating-explicit-dimension-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/non-participating-explicit-dimension.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-02">
+        <name>Table with non-participating typed dimension aspect</name>
+        <description>
+            Simple table with two columns (dimension D = d1, d2), and two rows
+            (primary items m1, m2). The instance contains facts reported
+            against different values of typed dimension T, but the table
+            specifies no values for T, so only facts that are not reported
+            against dimension T are included.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">non-participating-typed-dimension-instance.xml</instance>
+            <linkbase>non-participating-typed-dimension-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/non-participating-typed-dimension.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-03">
+        <name>Table with non-participating period aspect</name>
+        <description>
+            Simple table with two columns (dimension D = d1, d2), and two rows
+            (primary items m1, m2). The instance contains facts reported for
+            different periods, but the table specifies no periods, so each cell
+            contains several facts with different periods.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">non-participating-period-instance.xml</instance>
+            <linkbase>non-participating-period-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/non-participating-period.xml</table>
+        </result>
+    </variation>
+    
+</testcase>

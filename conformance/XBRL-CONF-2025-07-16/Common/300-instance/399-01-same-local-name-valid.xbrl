@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xbrli:xbrl xmlns:foo="http://xbrl.org/conformance/foo" xmlns:bar="http://xbrl.org/conformance/bar" xmlns:iso4217="http://www.xbrl.org/2003/iso4217" xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:xlink="http://www.w3.org/1999/xlink" xsi:schemaLocation="http://xbrl.org/conformance/foo 399-01-same-local-name-valid-foo.xsd http://xbrl.org/conformance/bar 399-01-same-local-name-valid-bar.xsd">
+  <link:schemaRef xlink:type="simple" xlink:href="399-01-same-local-name-valid.xsd"/>
+  <xbrli:context id="i1">
+    <xbrli:entity>
+      <xbrli:identifier scheme="123456">http://www.example.com</xbrli:identifier>
+    </xbrli:entity>
+    <xbrli:period>
+      <xbrli:instant>2010-01-01</xbrli:instant>
+    </xbrli:period>
+  </xbrli:context>
+  <xbrli:unit id="GBP">
+    <xbrli:measure>iso4217:GBP</xbrli:measure>
+  </xbrli:unit>
+  <foo:Monetary decimals="0" contextRef="i1" unitRef="GBP" >100</foo:Monetary>
+  <bar:Monetary decimals="0" contextRef="i1" unitRef="GBP" >200</bar:Monetary>
+</xbrli:xbrl>

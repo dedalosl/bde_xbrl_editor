@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2007 XBRL International. All Rights Reserved. -->
+<xbrl 
+xmlns="http://www.xbrl.org/2003/instance" 
+xmlns:eg="http://xbrl.org/formula/conformance/example" 
+xmlns:link="http://www.xbrl.org/2003/linkbase" 
+xmlns:xlink="http://www.w3.org/1999/xlink" 
+>
+  
+  <link:schemaRef 
+    xlink:type="simple" 
+    xlink:href="47223-concepts.xsd"/>
+
+  <link:linkbaseRef 
+    xlink:type="simple" 
+    xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase" 
+    xlink:href="47223-unitMatching-formula-V103.xml"/>
+  
+  <context id="context">
+    <entity>
+      <identifier scheme="http://xbrl.org/entity/identification/scheme">01</identifier>
+    </entity>
+    <period>
+      <instant>2007-12-31</instant>
+    </period>
+  </context>
+  
+  <unit id="unit-kilometres">
+    <measure>eg:kilometres</measure>
+  </unit>
+
+  <unit id="unit-hours">
+    <measure>eg:hours</measure>
+  </unit>
+    
+  <unit id="unit-speedKMH">
+    <divide>
+      <unitNumerator>
+        <measure>eg:kilometers</measure>
+      </unitNumerator>
+      <unitDenominator>
+        <measure>eg:hours</measure>
+      </unitDenominator>
+    </divide>
+  </unit>
+   
+  <eg:a contextRef="context" unitRef="unit-speedKMH" decimals="0">100</eg:a>
+  <eg:a contextRef="context" unitRef="unit-kilometres" decimals="0">200</eg:a>
+  <eg:a contextRef="context" unitRef="unit-hours" decimals="0">2</eg:a>
+  
+  <eg:b contextRef="context" unitRef="unit-kilometres" decimals="0">200</eg:b>
+  <eg:b contextRef="context" unitRef="unit-hours" decimals="0">2</eg:b>
+    
+</xbrl>

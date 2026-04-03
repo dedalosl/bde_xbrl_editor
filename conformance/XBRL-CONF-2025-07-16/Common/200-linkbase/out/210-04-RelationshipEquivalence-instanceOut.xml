@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xbrl xmlns="http://www.xbrl.org/2003/instance" xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:ptv="http://www.xbrl.org/2003/ptv" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:my="http://mycompany.com/xbrl/taxonomy" xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:example="http://example.com/xbrl/taxonomy/EssenceAlias" xmlns:iso4217="http://www.xbrl.org/2003/iso4217">
+  <link:schemaRef xlink:type="simple" xlink:href="../210-04-RelationshipEquivalence.xsd"/>
+   <context id="c1">
+      <entity>
+         <identifier scheme="www.dnb.com">121064880</identifier>
+      </entity>
+      <period>
+         <instant>2003-12-12</instant>
+      </period>
+   </context>
+   <unit id="u1">
+      <measure>iso4217:GBP</measure>
+   </unit>
+   <my:fixedAssets decimals="-1" ptv:periodType="instant" ptv:balance="debit" contextRef="c1" unitRef="u1">5000</my:fixedAssets>
+   <my:floatingAssets decimals="-1" ptv:periodType="instant" ptv:balance="debit" contextRef="c1" unitRef="u1">5000</my:floatingAssets>
+   <my:changeInRetainedEarnings decimals="-1" ptv:periodType="instant" ptv:balance="debit" contextRef="c1" unitRef="u1">1000</my:changeInRetainedEarnings>
+</xbrl>

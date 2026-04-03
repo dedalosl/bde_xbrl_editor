@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase
+  xmlns:xlink="http://www.w3.org/1999/xlink"
+  xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:generic="http://xbrl.org/2008/generic"
+  xmlns:variable="http://xbrl.org/2008/variable"
+  xmlns:va="http://xbrl.org/2008/assertion/value"
+  xmlns:df="http://xbrl.org/2008/filter/dimension"
+  xmlns:bf="http://xbrl.org/2008/filter/boolean"
+  xmlns:v="http://www.example.com/variable"
+  xmlns:eg="http://www.example.com/ns"  
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="
+  http://www.xbrl.org/2003/linkbase http://www.xbrl.org/2003/xbrl-linkbase-2003-12-31.xsd
+  http://xbrl.org/2008/generic http://www.xbrl.org/2008/generic-link.xsd
+  http://xbrl.org/2008/formula http://www.xbrl.org/2008/formula.xsd
+  http://xbrl.org/2008/variable http://www.xbrl.org/2008/variable.xsd
+  http://xbrl.org/2008/filter/boolean http://www.xbrl.org/2008/boolean-filter.xsd
+  http://xbrl.org/2008/label http://www.xbrl.org/2008/generic-label.xsd
+  http://xbrl.org/2008/filter/dimension http://www.xbrl.org/2008/dimension-filter.xsd
+  http://xbrl.org/2008/assertion/value http://www.xbrl.org/2008/value-assertion.xsd
+  ">
+
+  <link:arcroleRef arcroleURI="http://xbrl.org/arcrole/2008/variable-set" xlink:href="http://www.xbrl.org/2008/variable.xsd#variable-set" xlink:type="simple"/>
+  <link:arcroleRef arcroleURI="http://xbrl.org/arcrole/2008/variable-filter" xlink:href="http://www.xbrl.org/2008/variable.xsd#variable-filter" xlink:type="simple"/>
+  <link:arcroleRef arcroleURI="http://xbrl.org/arcrole/2008/boolean-filter" xlink:href="http://www.xbrl.org/2008/boolean-filter.xsd#boolean-filter" xlink:type="simple"/>
+  <link:roleRef roleURI="http://www.xbrl.org/2008/role/link" xlink:href="http://www.xbrl.org/2008/generic-link.xsd#standard-link-role" xlink:type="simple"/>
+
+
+  <generic:link xlink:type="extended"
+    xlink:role="http://www.xbrl.org/2008/role/link">
+
+	<va:valueAssertion xlink:type="resource" xlink:label="assertion" 
+        id="assertion"
+        aspectModel="dimensional" implicitFiltering="true"
+        test="$v:a gt 0"/>
+        
+    <!--  Fact variables.  Note that no general variables are used in this formula. -->
+    <variable:factVariable xlink:type="resource" xlink:label="factVarA"  bindAsSequence="false"/>
+    
+    <!-- or filter -->
+    <bf:andFilter xlink:type="resource" xlink:label="andFilter"/>
+
+    <!-- or filter subfilters -->
+    <!-- dimension filter for default of dim 1, matches only one fact -->
+    <df:explicitDimension xlink:type="resource" xlink:label="dimensionFilter1">
+      <df:dimension>
+        <df:qname>eg:dim1</df:qname>
+      </df:dimension>
+      <df:member>
+        <df:qname>eg:member1dim1</df:qname>
+      </df:member>
+    </df:explicitDimension>
+    <!-- dimension filter for member 2 in dim 1, matches both facts -->
+    <df:explicitDimension xlink:type="resource" xlink:label="dimensionFilter2">
+      <df:dimension>
+        <df:qname>eg:dim2</df:qname>
+      </df:dimension>
+      <df:member>
+        <df:qname>eg:member2dim2</df:qname>
+      </df:member>
+    </df:explicitDimension>
+    
+    <!--  Arc from the formula to the variables it depends on -->
+    <variable:variableArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/variable-set" 
+      name="v:a" xlink:from="assertion" xlink:to="factVarA" order="1.0"/>
+
+    <!--  Arcs from variable to or filter -->
+    <variable:variableFilterArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/variable-filter" 
+      complement="false" cover="true"
+      xlink:from="factVarA" xlink:to="andFilter" order="1.0"/>
+
+    <!-- Arcs from or filter to its sub filters -->
+    <variable:variableFilterArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/boolean-filter" 
+      complement="false" cover="true"
+      xlink:to="dimensionFilter1" xlink:from="andFilter" order="1" />
+    <variable:variableFilterArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/boolean-filter"
+      complement="false" cover="true"
+      xlink:to="dimensionFilter2" xlink:from="andFilter"  order="2" />
+
+  </generic:link>
+
+</link:linkbase>
+

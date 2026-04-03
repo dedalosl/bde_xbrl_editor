@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2012-07-26"
+  name="0142-definition-node-subtree-arc-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Herm Fischer</name>
+        <email>fischer@markv.com</email>
+    </creator>
+    <number>0142</number>
+    <name>Definition-node-subtree Arc Testcase</name>
+    <description>Table linkbase test case for definition-node-subtree arc errors</description>
+    
+    <variation id="v-01">
+        <name>Definition-node-subtree arc with an invalid source element</name>
+        <description>
+          Invalid table that has a definition-node-subtree arc with a table as
+          the source element.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">table-linkbase-definition-node-subtree-source-error.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:definitionNodeSubtreeSourceError</error>
+        </result>
+    </variation>
+
+    <variation id="v-02">
+        <name>Definition-node-subtree arc with an invalid target element</name>
+        <description>
+          Invalid table that has a definition-node-subtree arc with a table as
+          the target element.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">table-linkbase-definition-node-subtree-target-error.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:definitionNodeSubtreeTargetError</error>
+        </result>
+    </variation>
+    
+    <variation id="v-03">
+        <name>Definition-node-subtree arc with a prohibited source element</name>
+        <description>Invalid table that has a definition-node-subtree arc that has a prohibited source element (dimension relationship node)</description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">table-linkbase-prohibited-definition-node-subtree-source-error.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:prohibitedDefinitionNodeSubtreeSourceError</error>
+        </result>
+    </variation>
+
+    <variation id="v-04">
+        <name>Definition-node-subtree arc with a prohibited source element</name>
+        <description>Invalid table that has a definition-node-subtree arc that has a prohibited source element (concept relationship node)</description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">table-linkbase-prohibited-definition-node-subtree-source-error2.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:prohibitedDefinitionNodeSubtreeSourceError</error>
+        </result>
+    </variation>
+
+</testcase>

@@ -1,0 +1,30 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:xbrldt="http://xbrl.org/2005/xbrldt" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.xbrl.org/2003/linkbase http://www.xbrl.org/2003/xbrl-linkbase-2003-12-31.xsd">
+   <link:arcroleRef arcroleURI="http://xbrl.org/int/dim/arcrole/hypercube-dimension" xlink:href="http://www.xbrl.org/2005/xbrldt-2005.xsd#hypercube-dimension" xlink:type="simple"/>
+   <link:arcroleRef arcroleURI="http://xbrl.org/int/dim/arcrole/domain-member" xlink:href="http://www.xbrl.org/2005/xbrldt-2005.xsd#domain-member" xlink:type="simple"/>
+   <link:arcroleRef arcroleURI="http://xbrl.org/int/dim/arcrole/all" xlink:href="http://www.xbrl.org/2005/xbrldt-2005.xsd#all" xlink:type="simple"/>
+   <link:roleRef roleURI="http://www.xbrl.org/table-examples-typed/hypercubes/Employees" xlink:href="typed-dimension-example.xsd#employees" xlink:type="simple"/>
+   <link:roleRef roleURI="http://www.xbrl.org/table-examples-typed/hypercubes/Roles" xlink:href="typed-dimension-example.xsd#roles" xlink:type="simple"/>
+   <link:definitionLink xlink:role="http://www.xbrl.org/table-examples-typed/hypercubes/Employees" xlink:type="extended">
+      <link:loc xlink:href="typed-dimension-example.xsd#ex_Employees" xlink:label="lbl_Employees" xlink:type="locator"/>
+      <link:loc xlink:href="typed-dimension-example.xsd#ex_PrimaryItemsForEmployees" xlink:label="lbl_PrimaryItemsForEmployees" xlink:type="locator"/>
+      <link:definitionArc order="1.0" xbrldt:closed="false" xbrldt:contextElement="scenario" xlink:arcrole="http://xbrl.org/int/dim/arcrole/all" xlink:from="lbl_PrimaryItemsForEmployees" xlink:to="lbl_Employees" xlink:type="arc"/>
+      <link:loc xlink:href="typed-dimension-example.xsd#ex_NumberOfEmployees" xlink:label="lbl_NumberOfEmployees" xlink:type="locator"/>
+      <link:definitionArc order="1.0" xlink:arcrole="http://xbrl.org/int/dim/arcrole/domain-member" xlink:from="lbl_PrimaryItemsForEmployees" xlink:to="lbl_NumberOfEmployees" xlink:type="arc"/>
+      <link:loc xlink:href="typed-dimension-example.xsd#ex_Age" xlink:label="lbl_Age" xlink:type="locator"/>
+      <link:definitionArc order="1.0" xlink:arcrole="http://xbrl.org/int/dim/arcrole/hypercube-dimension" xlink:from="lbl_Employees" xlink:to="lbl_Age" xlink:type="arc"/>
+      <link:loc xlink:href="typed-dimension-example.xsd#ex_AverageSalary" xlink:label="lbl_AverageSalary" xlink:type="locator"/>
+      <link:definitionArc order="2.0" xlink:arcrole="http://xbrl.org/int/dim/arcrole/domain-member" xlink:from="lbl_PrimaryItemsForEmployees" xlink:to="lbl_AverageSalary" xlink:type="arc"/>
+   </link:definitionLink>
+   <link:definitionLink xlink:role="http://www.xbrl.org/table-examples-typed/hypercubes/Roles" xlink:type="extended">
+      <link:loc xlink:href="typed-dimension-example.xsd#ex_Roles" xlink:label="lbl_Roles" xlink:type="locator"/>
+      <link:loc xlink:href="typed-dimension-example.xsd#ex_PrimaryItemsForRoles" xlink:label="lbl_PrimaryItemsForRoles" xlink:type="locator"/>
+      <link:definitionArc order="1.0" xlink:arcrole="http://xbrl.org/int/dim/arcrole/hypercube-dimension" xlink:from="lbl_Roles" xlink:to="lbl_Department" xlink:type="arc"/>
+      <link:loc xlink:href="typed-dimension-example.xsd#ex_Bonus" xlink:label="lbl_Bonus" xlink:type="locator"/>
+      <link:definitionArc order="3.0" xlink:arcrole="http://xbrl.org/int/dim/arcrole/domain-member" xlink:from="lbl_PrimaryItemsForRoles" xlink:to="lbl_Bonus" xlink:type="arc"/>
+      <link:loc xlink:href="typed-dimension-example.xsd#ex_Department" xlink:label="lbl_Department" xlink:type="locator"/>
+      <link:definitionArc order="1.0" xbrldt:closed="false" xbrldt:contextElement="scenario" xlink:arcrole="http://xbrl.org/int/dim/arcrole/all" xlink:from="lbl_PrimaryItemsForRoles" xlink:to="lbl_Roles" xlink:type="arc"/>
+      <link:loc xlink:href="typed-dimension-example.xsd#ex_MaximumSalary" xlink:label="lbl_MaximumSalary" xlink:type="locator"/>
+      <link:definitionArc order="2.0" xlink:arcrole="http://xbrl.org/int/dim/arcrole/domain-member" xlink:from="lbl_PrimaryItemsForRoles" xlink:to="lbl_MaximumSalary" xlink:type="arc"/>
+   </link:definitionLink>
+</link:linkbase>

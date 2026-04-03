@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xbrl xmlns="http://www.xbrl.org/2003/instance" xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:xbrldi="http://xbrl.org/2006/xbrldi" xmlns:iso4217="http://www.xbrl.org/2003/iso4217" xmlns:test="http://www.test.com">
+	<link:schemaRef xlink:type="simple" xlink:arcrole="http://www.xbrl.org/2003/linkbase" xlink:href="test2.xsd"/>
+    <link:linkbaseRef xlink:type="simple" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase" xlink:href="test_tab_error.xml"/>
+	
+	<context id="c_member1">
+		<entity>
+			<identifier scheme="abc">123</identifier>
+			<segment>
+				<xbrldi:explicitMember dimension="test:dim1">test:member1</xbrldi:explicitMember>
+			</segment>
+		</entity>
+		<period>
+			<startDate>2016-01-01</startDate>
+			<endDate>2016-12-31</endDate>
+		</period>
+	</context>
+	<context id="c_member2">
+		<entity>
+			<identifier scheme="abc">123</identifier>
+			<segment>
+				<xbrldi:explicitMember dimension="test:dim1">test:member2</xbrldi:explicitMember>
+			</segment>
+		</entity>
+		<period>
+			<startDate>2016-01-01</startDate>
+			<endDate>2016-12-31</endDate>
+		</period>
+	</context>
+	<context id="c_member3">
+		<entity>
+			<identifier scheme="abc">123</identifier>
+			<segment>
+				<xbrldi:explicitMember dimension="test:dim1">test:member3</xbrldi:explicitMember>
+			</segment>
+		</entity>
+		<period>
+			<startDate>2016-01-01</startDate>
+			<endDate>2016-12-31</endDate>
+		</period>
+	</context>
+	
+	<test:fact1 contextRef="c_member1" id="fact1">member1</test:fact1>
+	<test:fact1 contextRef="c_member2" id="fact2">member2</test:fact1>
+	<test:fact1 contextRef="c_member3" id="fact3">member3</test:fact1>
+	
+</xbrl>

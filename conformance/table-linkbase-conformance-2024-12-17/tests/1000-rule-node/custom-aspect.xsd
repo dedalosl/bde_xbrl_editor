@@ -1,0 +1,24 @@
+<schema 
+  targetNamespace="http://example.com/custom-aspects"
+  elementFormDefault="qualified"
+  xmlns="http://www.w3.org/2001/XMLSchema" 
+  xmlns:formula="http://xbrl.org/2008/formula"
+  xmlns:variable="http://xbrl.org/2008/variable" 
+>
+  <import namespace="http://xbrl.org/2008/formula" 
+    schemaLocation="http://www.xbrl.org/2008/formula.xsd"/>
+  <import namespace="http://xbrl.org/2008/variable" 
+    schemaLocation="http://www.xbrl.org/2008/variable.xsd"/>
+
+ <element
+  name="myCustomAspect" 
+  substitutionGroup="formula:abstract.aspect">
+    <complexType>
+      <complexContent>
+        <extension base="formula:abstract.aspect.type">
+          <attribute name="testing" type="boolean" default="false" />
+        </extension>
+      </complexContent>
+    </complexType>
+  </element>
+</schema>

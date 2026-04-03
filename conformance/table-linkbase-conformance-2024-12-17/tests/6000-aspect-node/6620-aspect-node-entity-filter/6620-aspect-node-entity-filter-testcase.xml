@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2011-09-16"
+  name="6620-aspect-node-entity-filter-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:xfie="http://www.xbrl.org/2008/function/instance/error"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Herm Fischer</name>
+        <email>fischer@markv.com</email>
+    </creator>
+    <number>6620</number>
+    <name>Aspect Node Entity Filter Testcase</name>
+    <description>Table linkbase test case using an aspect node with an entity filter attached</description>
+    
+    <variation id="v-01">
+        <name>Aspect node for a typed dimension with an entity identifier filter, with instance</name>
+        <description>
+          Simple table with two columns (primary items m1, m2) and unknown
+          number of rows (reported values of typed dimension T, filtered to just
+          those used to report facts for entities with identifiers start
+          with the digit '1').
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">aspect-node-entity-identifier-filter-instance.xml</instance>
+            <linkbase>aspect-node-entity-identifier-filter-table.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+        </data>
+        <result>
+            <table>output/aspect-node-entity-identifier-filter.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-02">
+        <name>Aspect node for a typed dimension with a complemented entity identifier filter, with instance</name>
+        <description>
+          Simple table with two columns (primary items m1, m2) and unknown
+          number of rows (reported values of typed dimension T, filtered to just
+          those used to report facts for entities with identifiers start
+          with the any digit but '1').
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">aspect-node-complemented-entity-identifier-filter-instance.xml</instance>
+            <linkbase>aspect-node-complemented-entity-identifier-filter-table.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+        </data>
+        <result>
+            <table>output/aspect-node-complemented-entity-identifier-filter.xml</table>
+        </result>
+    </variation>
+
+</testcase>

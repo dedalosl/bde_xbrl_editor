@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xbrli:xbrl
+  xmlns:rend="http://www.xbrl.org/table-examples"
+  xmlns:iso4217="http://www.xbrl.org/2003/iso4217"
+  xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:xbrldi="http://xbrl.org/2006/xbrldi"
+  xmlns:xbrli="http://www.xbrl.org/2003/instance"
+  xmlns:xl="http://www.xbrl.org/2003/XLink"
+  xmlns:xlink="http://www.w3.org/1999/xlink"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2006/xbrldi http://www.xbrl.org/2006/xbrldi-2006.xsd">
+    <link:schemaRef xlink:href="table-examples.xsd" xlink:type="simple"/>
+    <link:linkbaseRef xlink:href="typed-dimension-child-rule-nodes-table.xml" xlink:type="simple" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase"/>  
+    <xbrli:context id="T_abc_D_d0">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme">abc</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:instant>2001-12-31</xbrli:instant>
+        </xbrli:period>
+        <xbrli:scenario>
+            <xbrldi:typedMember dimension="rend:T"><rend:stringDomain>abc</rend:stringDomain></xbrldi:typedMember>
+        </xbrli:scenario>
+    </xbrli:context>
+    <xbrli:context id="T_abc_D_d1">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme">abc</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:instant>2001-12-31</xbrli:instant>
+        </xbrli:period>
+        <xbrli:scenario>
+            <xbrldi:typedMember dimension="rend:T"><rend:stringDomain>abc</rend:stringDomain></xbrldi:typedMember>
+            <xbrldi:explicitMember dimension="rend:D">rend:d1</xbrldi:explicitMember>
+        </xbrli:scenario>
+    </xbrli:context>
+    <xbrli:context id="T_def_D_d1">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme">abc</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:instant>2001-12-31</xbrli:instant>
+        </xbrli:period>
+        <xbrli:scenario>
+            <xbrldi:typedMember dimension="rend:T"><rend:stringDomain>def</rend:stringDomain></xbrldi:typedMember>
+            <xbrldi:explicitMember dimension="rend:D">rend:d1</xbrldi:explicitMember>
+        </xbrli:scenario>
+    </xbrli:context>
+    <xbrli:context id="T_ghi_D_d1">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme">abc</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:instant>2001-12-31</xbrli:instant>
+        </xbrli:period>
+        <xbrli:scenario>
+            <xbrldi:typedMember dimension="rend:T"><rend:stringDomain>ghi</rend:stringDomain></xbrldi:typedMember>
+            <xbrldi:explicitMember dimension="rend:D">rend:d1</xbrldi:explicitMember>
+        </xbrli:scenario>
+    </xbrli:context>
+    <xbrli:context id="T_ghi_D_d2">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme">abc</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:instant>2001-12-31</xbrli:instant>
+        </xbrli:period>
+        <xbrli:scenario>
+            <xbrldi:typedMember dimension="rend:T"><rend:stringDomain>ghi</rend:stringDomain></xbrldi:typedMember>
+            <xbrldi:explicitMember dimension="rend:D">rend:d2</xbrldi:explicitMember>
+        </xbrli:scenario>
+    </xbrli:context>
+    <xbrli:unit id="EUR">
+        <xbrli:measure>iso4217:EUR</xbrli:measure>
+    </xbrli:unit>
+    <rend:m1 id="m1_T_abc_D_d0" contextRef="T_abc_D_d0" decimals="0" unitRef="EUR">101</rend:m1>
+    <rend:m2 id="m2_T_abc_D_d0" contextRef="T_abc_D_d0" decimals="0" unitRef="EUR">102</rend:m2>
+    <rend:m1 id="m1_T_abc_D_d1" contextRef="T_abc_D_d1" decimals="0" unitRef="EUR">201</rend:m1>
+    <rend:m2 id="m2_T_abc_D_d1" contextRef="T_abc_D_d1" decimals="0" unitRef="EUR">202</rend:m2>
+    <rend:m1 id="m1_T_def_D_d1" contextRef="T_def_D_d1" decimals="0" unitRef="EUR">301</rend:m1>
+    <rend:m2 id="m2_T_def_D_d1" contextRef="T_def_D_d1" decimals="0" unitRef="EUR">302</rend:m2>
+    <rend:m1 id="m1_T_ghi_D_d1" contextRef="T_ghi_D_d1" decimals="0" unitRef="EUR">401</rend:m1>
+    <rend:m2 id="m2_T_ghi_D_d1" contextRef="T_ghi_D_d1" decimals="0" unitRef="EUR">402</rend:m2>
+    <rend:m1 id="m1_T_ghi_D_d2" contextRef="T_ghi_D_d2" decimals="0" unitRef="EUR">501</rend:m1>
+    <rend:m2 id="m2_T_ghi_D_d2" contextRef="T_ghi_D_d2" decimals="0" unitRef="EUR">502</rend:m2>
+</xbrli:xbrl>

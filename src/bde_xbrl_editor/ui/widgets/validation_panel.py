@@ -1,0 +1,343 @@
+"""ValidationWorker and ValidationPanel — UI components for Feature 005."""
+
+from __future__ import annotations
+
+import threading
+from pathlib import Path
+
+from PySide6.QtCore import QObject, QThread, Signal, Slot
+from PySide6.QtWidgets import (
+    QComboBox,
+    QFileDialog,
+    QGroupBox,
+    QHBoxLayout,
+    QLabel,
+    QMessageBox,
+    QProgressBar,
+    QPushButton,
+    QSplitter,
+    QTextEdit,
+    QTreeView,
+    QVBoxLayout,
+    QWidget,
+)
+
+from bde_xbrl_editor.validation.models import ValidationFinding, ValidationReport, ValidationSeverity
+from bde_xbrl_editor.ui.widgets.validation_results_model import (
+    ValidationFilterProxy,
+    ValidationResultsModel,
+)
+
+
+# ---------------------------------------------------------------------------
+# ValidationWorker
+# ---------------------------------------------------------------------------
+
+class ValidationWorker(QObject):
+    """Runs InstanceValidator.validate_sync() on a background thread.
+
+    Signals
+    -------
+    progress_changed(current, total, message)
+    validation_completed(report)
+    validation_failed(error_message)
+    """
+
+    progress_changed = Signal(int, int, str)
+    validation_completed = Signal(object)  # ValidationReport
+    validation_failed = Signal(str)
+
+    def __init__(self, taxonomy, instance, parent=None) -> None:
+        super().__init__(parent)
+        self._taxonomy = taxonomy
+        self._instance = instance
+        self._cancel_event = threading.Event()
+
+    @Slot()
+    def run(self) -> None:
+        """Execute validation; emit result or error signal."""
+        from bde_xbrl_editor.validation.orchestrator import InstanceValidator
+
+        def _progress(current: int, total: int, message: str) -> None:
+            self.progress_changed.emit(current, total, message)
+
+        try:
+            validator = InstanceValidator(
+                taxonomy=self._taxonomy,
+                progress_callback=_progress,
+                cancel_event=self._cancel_event,
+            )
+            report = validator.validate_sync(self._instance)
+            self.validation_completed.emit(report)
+        except Exception as exc:  # noqa: BLE001
+            self.validation_failed.emit(str(exc))
+
+    @Slot()
+    def cancel(self) -> None:
+        self._cancel_event.set()
+
+
+# ---------------------------------------------------------------------------
+# ValidationPanel
+# ---------------------------------------------------------------------------
+
+class ValidationPanel(QWidget):
+    """Dockable panel showing validation results with filter toolbar.
+
+    Signals
+    -------
+    navigate_to_cell(context_ref: str, finding: ValidationFinding)
+    revalidate_requested()
+    """
+
+    navigate_to_cell = Signal(str, object)
+    revalidate_requested = Signal()
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+
+        self._model = ValidationResultsModel(self)
+        self._proxy = ValidationFilterProxy(self)
+        self._proxy.setSourceModel(self._model)
+
+        self._current_report: ValidationReport | None = None
+        self._worker: ValidationWorker | None = None
+        self._thread: QThread | None = None
+
+        self._setup_ui()
+
+    def _setup_ui(self) -> None:
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(4, 4, 4, 4)
+
+        # Toolbar row
+        toolbar = QHBoxLayout()
+        toolbar.setSpacing(6)
+
+        self._validate_btn = QPushButton("Validate")
+        self._validate_btn.setToolTip("Run full validation on the current instance")
+        self._validate_btn.clicked.connect(self.revalidate_requested)
+        toolbar.addWidget(self._validate_btn)
+
+        toolbar.addWidget(QLabel("Severity:"))
+        self._sev_combo = QComboBox()
+        self._sev_combo.addItem("All", None)
+        self._sev_combo.addItem("Error", ValidationSeverity.ERROR)
+        self._sev_combo.addItem("Warning", ValidationSeverity.WARNING)
+        self._sev_combo.currentIndexChanged.connect(self._on_severity_filter_changed)
+        toolbar.addWidget(self._sev_combo)
+
+        toolbar.addWidget(QLabel("Table:"))
+        self._table_combo = QComboBox()
+        self._table_combo.addItem("All", None)
+        self._table_combo.currentIndexChanged.connect(self._on_table_filter_changed)
+        toolbar.addWidget(self._table_combo)
+
+        self._clear_filters_btn = QPushButton("Clear Filters")
+        self._clear_filters_btn.clicked.connect(self._on_clear_filters)
+        toolbar.addWidget(self._clear_filters_btn)
+
+        self._summary_label = QLabel("No results")
+        toolbar.addWidget(self._summary_label)
+
+        toolbar.addStretch()
+
+        self._export_btn = QPushButton("Export…")
+        self._export_btn.setEnabled(False)
+        self._export_btn.clicked.connect(self.export_report)
+        toolbar.addWidget(self._export_btn)
+
+        layout.addLayout(toolbar)
+
+        # Progress bar (hidden when idle)
+        self._progress_bar = QProgressBar()
+        self._progress_bar.setRange(0, 100)
+        self._progress_bar.setVisible(False)
+        layout.addWidget(self._progress_bar)
+
+        # Splitter: results tree + detail text
+        splitter = QSplitter(self)
+        splitter.setOrientation(splitter.orientation())
+
+        self._tree = QTreeView()
+        self._tree.setModel(self._proxy)
+        self._tree.setRootIsDecorated(False)
+        self._tree.setAlternatingRowColors(True)
+        self._tree.setSelectionBehavior(QTreeView.SelectionBehavior.SelectRows)
+        self._tree.header().setStretchLastSection(True)
+        self._tree.selectionModel().currentRowChanged.connect(self._on_row_selected)
+        splitter.addWidget(self._tree)
+
+        detail_group = QGroupBox("Details")
+        detail_layout = QVBoxLayout(detail_group)
+        self._detail_text = QTextEdit()
+        self._detail_text.setReadOnly(True)
+        detail_layout.addWidget(self._detail_text)
+
+        self._goto_btn = QPushButton("Go to Cell")
+        self._goto_btn.setEnabled(False)
+        self._goto_btn.clicked.connect(self._on_goto_cell)
+        detail_layout.addWidget(self._goto_btn)
+        splitter.addWidget(detail_group)
+
+        splitter.setStretchFactor(0, 2)
+        splitter.setStretchFactor(1, 1)
+        layout.addWidget(splitter)
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def show_report(self, report: ValidationReport) -> None:
+        """Populate the panel with the findings from a completed validation run."""
+        self._current_report = report
+        self._model.populate(report.findings)
+        self._update_summary()
+        self._update_table_filter_options(report)
+        self._export_btn.setEnabled(True)
+        self._progress_bar.setVisible(False)
+        self._detail_text.clear()
+        self._goto_btn.setEnabled(False)
+
+    def show_progress(self, current: int, total: int, message: str) -> None:
+        """Update the progress bar without clearing the current results."""
+        self._progress_bar.setVisible(True)
+        if total > 0:
+            self._progress_bar.setValue(int(current / total * 100))
+        self._summary_label.setText(message)
+
+    def clear(self) -> None:
+        self._current_report = None
+        self._model.removeRows(0, self._model.rowCount())
+        self._summary_label.setText("No results")
+        self._detail_text.clear()
+        self._goto_btn.setEnabled(False)
+        self._export_btn.setEnabled(False)
+        self._progress_bar.setVisible(False)
+
+    def set_available_tables(self, tables: list[tuple[str, str]]) -> None:
+        """Populate the table filter combobox. tables = list of (table_id, label)."""
+        self._table_combo.blockSignals(True)
+        self._table_combo.clear()
+        self._table_combo.addItem("All", None)
+        for table_id, label in tables:
+            self._table_combo.addItem(label or table_id, table_id)
+        self._table_combo.blockSignals(False)
+        self._proxy.set_table_filter(None)
+
+    def export_report(self) -> None:
+        """Open a save-file dialog and export the current report."""
+        if self._current_report is None:
+            return
+
+        from bde_xbrl_editor.validation.errors import ExportPermissionError  # noqa: PLC0415
+        from bde_xbrl_editor.validation.exporter import ValidationReportExporter  # noqa: PLC0415
+
+        path_str, selected_filter = QFileDialog.getSaveFileName(
+            self,
+            "Export Validation Report",
+            "validation_report",
+            "Text Files (*.txt);;JSON Files (*.json)",
+        )
+        if not path_str:
+            return
+
+        export_path = Path(path_str)
+        exporter = ValidationReportExporter()
+        try:
+            if "json" in selected_filter.lower() or export_path.suffix.lower() == ".json":
+                exporter.export_json(self._current_report, export_path)
+            else:
+                exporter.export_text(self._current_report, export_path)
+        except ExportPermissionError as exc:
+            QMessageBox.critical(self, "Export Failed", str(exc))
+
+    # ------------------------------------------------------------------
+    # Slot helpers
+    # ------------------------------------------------------------------
+
+    @Slot()
+    def _on_severity_filter_changed(self) -> None:
+        sev = self._sev_combo.currentData()
+        self._proxy.set_severity_filter(sev)
+        self._update_summary()
+
+    @Slot()
+    def _on_table_filter_changed(self) -> None:
+        table_id = self._table_combo.currentData()
+        self._proxy.set_table_filter(table_id)
+        self._update_summary()
+
+    @Slot()
+    def _on_clear_filters(self) -> None:
+        self._sev_combo.setCurrentIndex(0)
+        self._table_combo.setCurrentIndex(0)
+        self._proxy.clear_filters()
+        self._update_summary()
+
+    def _on_row_selected(self, current, _previous) -> None:
+        if not current.isValid():
+            self._detail_text.clear()
+            self._goto_btn.setEnabled(False)
+            return
+
+        source_index = self._proxy.mapToSource(current)
+        sev_index = self._model.index(source_index.row(), 0)
+        finding: ValidationFinding | None = sev_index.data(
+            __import__("PySide6.QtCore", fromlist=["Qt"]).Qt.ItemDataRole.UserRole
+        )
+        if finding is None:
+            self._detail_text.clear()
+            self._goto_btn.setEnabled(False)
+            return
+
+        lines = [
+            f"Rule ID   : {finding.rule_id}",
+            f"Severity  : {finding.severity.value.upper()}",
+            f"Source    : {finding.source}",
+            f"Message   : {finding.message}",
+        ]
+        if finding.table_label or finding.table_id:
+            lines.append(f"Table     : {finding.table_label or finding.table_id}")
+        if finding.concept_qname:
+            lines.append(f"Concept   : {finding.concept_qname}")
+        if finding.context_ref:
+            lines.append(f"Context   : {finding.context_ref}")
+        if finding.constraint_type:
+            lines.append(f"Constraint: {finding.constraint_type}")
+
+        self._detail_text.setPlainText("\n".join(lines))
+        self._goto_btn.setEnabled(bool(finding.context_ref))
+        self._goto_btn.setProperty("_finding", finding)
+
+    @Slot()
+    def _on_goto_cell(self) -> None:
+        finding: ValidationFinding | None = self._goto_btn.property("_finding")
+        if finding and finding.context_ref:
+            self.navigate_to_cell.emit(finding.context_ref, finding)
+
+    def _update_summary(self) -> None:
+        if self._current_report is None:
+            self._summary_label.setText("No results")
+            return
+        visible = self._proxy.rowCount()
+        errors = self._current_report.error_count
+        warnings = self._current_report.warning_count
+        self._summary_label.setText(
+            f"{visible} shown | {errors} error(s), {warnings} warning(s)"
+        )
+
+    def _update_table_filter_options(self, report: ValidationReport) -> None:
+        table_ids: list[str] = sorted({
+            f.table_id for f in report.findings if f.table_id
+        })
+        self._table_combo.blockSignals(True)
+        self._table_combo.clear()
+        self._table_combo.addItem("All", None)
+        for tid in table_ids:
+            label = next(
+                (f.table_label for f in report.findings if f.table_id == tid and f.table_label),
+                tid,
+            )
+            self._table_combo.addItem(label, tid)
+        self._table_combo.blockSignals(False)

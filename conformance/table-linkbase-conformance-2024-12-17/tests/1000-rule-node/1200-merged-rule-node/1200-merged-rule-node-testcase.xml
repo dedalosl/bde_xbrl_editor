@@ -1,0 +1,419 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2011-09-16"
+  name="1200-merged-rule-node-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Herm Fischer</name>
+        <email>fischer@markv.com</email>
+    </creator>
+    <number>1200</number>
+    <name>Merged Rule Node Testcase</name>
+    <description>Table linkbase test case using merged rule nodes</description>
+
+    <variation id="v-01">
+        <name>Merge rule node with a child rule node</name>
+        <description>
+          Merge rule node with an entity identifier constraint that has it's
+          constraints merged into a child rule node.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">merge-constraints-into-child-rule-node-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/merge-constraints-into-child-rule-node-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-01i">
+        <name>Merge rule node with a child rule node, with instance</name>
+        <description>
+          Merge rule node with an entity identifier constraint that has it's
+          constraints merged into a child rule node, with instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">merge-constraints-into-child-rule-node-instance.xml</instance>
+            <linkbase>merge-constraints-into-child-rule-node-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/merge-constraints-into-child-rule-node.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-02">
+        <name>Merge rule node with a child dimension relationship node</name>
+        <description>
+          Merge rule node with an entity identifier constraint that has it's
+          constraints merged into a child dimension relationship node.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">merge-constraints-into-child-dimension-relationship-node-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/merge-constraints-into-child-dimension-relationship-node-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-02i">
+        <name>Merge rule node with a child dimension relationship node, with instance</name>
+        <description>
+          Merge rule node with an entity identifier constraint that has it's
+          constraints merged into a child dimension relationship node, with instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">merge-constraints-into-child-dimension-relationship-node-instance.xml</instance>
+            <linkbase>merge-constraints-into-child-dimension-relationship-node-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/merge-constraints-into-child-dimension-relationship-node.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-03">
+        <name>Merge rule node with a child aspect node</name>
+        <description>
+          Merge rule node with an entity identifier constraint that has it's
+          constraints merged into a child aspect node.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">merge-constraints-into-child-aspect-node-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/merge-constraints-into-child-aspect-node-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-03i">
+        <name>Merge rule node with a child aspect node, with instance</name>
+        <description>
+          Merge rule node with an entity identifier constraint that has it's
+          constraints merged into a child aspect, with instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">merge-constraints-into-child-aspect-node-instance.xml</instance>
+            <linkbase>merge-constraints-into-child-aspect-node-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/merge-constraints-into-child-aspect-node.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-04">
+        <name>Multiple levels of merge rule nodes to merge constraints through</name>
+        <description>
+          Multiple levels of merge rule nodes to merge constraints through.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">multi-generation-merge-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/multi-generation-merge-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-04i">
+        <name>Multiple levels of merge rule nodes to merge constraints through, with instance</name>
+        <description>
+          Multiple levels of merge rule nodes to merge constraints through, with instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">multi-generation-merge-instance.xml</instance>
+            <linkbase>multi-generation-merge-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/multi-generation-merge.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-05">
+        <name>Constraints in the child rule node should override any merged constraints</name>
+        <description>
+          Dimension D = d3 constraint should be override in the child rule nodes, the entity identifier constraint should still be merged.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">merged-constraints-overriden-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/merged-constraints-overriden-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-05i">
+        <name>Constraints in the child rule node should override any merged constraints, with instance</name>
+        <description>
+          Dimension D = d3 constraint should be override in the child rule nodes, the entity identifier constraint should still be merged, with instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">merged-constraints-overriden-instance.xml</instance>
+            <linkbase>merged-constraints-overriden-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/merged-constraints-overriden.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-06">
+        <name>Merge rule node with a tagged rule set</name>
+        <description>
+          Invalid table that has a merge rule node with a tagged rule set.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">merge-rule-node-with-tagged-rule-set-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:mergedRuleNodeWithTaggedRuleSet</error>
+        </result>
+    </variation>
+
+    <variation id="v-07">
+        <name>Merge rule node with a label</name>
+        <description>
+          Invalid table that has a merge rule node with a label.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">merge-rule-node-with-label-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:invalidUseOfLabel</error>
+        </result>
+    </variation>
+
+    <variation id="v-08">
+        <name>Non-abstract merge rule node</name>
+        <description>
+          Invalid table that has a non-abstract merge rule node.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">non-abstract-merge-rule-node-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:nonAbstractMergedRuleNode</error>
+        </result>
+    </variation>
+
+    <variation id="v-09">
+      <name>Merge rule node with a tag selector</name>
+      <description>
+        The table contains a merge rule node with a tag selector that should be
+        merged onto its child rule node.
+      </description>
+      <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">merge-tag-selectors-into-child-rule-node-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/merge-tag-selectors-into-child-rule-node-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-09i">
+      <name>Merge rule node with a tag selector, with instance</name>
+      <description>
+        The table contains a merge rule node with a tag selector that should be
+        merged onto its child rule node.
+      </description>
+      <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">merge-tag-selectors-into-child-rule-node-instance.xml</instance>
+            <linkbase>merge-tag-selectors-into-child-rule-node-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/merge-tag-selectors-into-child-rule-node.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-10">
+      <name>Merge rule node with a tag selector and child aspect node</name>
+      <description>
+        The table contains a merge rule node with a tag selector that should be
+        merged onto its child aspect node.
+      </description>
+      <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">merge-tag-selectors-into-child-aspect-node-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/merge-tag-selectors-into-child-aspect-node-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-10i">
+      <name>Merge rule node with a tag selector and child aspect node, with instance</name>
+      <description>
+        The table contains a merge rule node with a tag selector that should be
+        merged onto its child aspect node.
+      </description>
+      <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">merge-tag-selectors-into-child-aspect-node-instance.xml</instance>
+            <linkbase>merge-tag-selectors-into-child-aspect-node-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/merge-tag-selectors-into-child-aspect-node.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-11">
+      <name>Merge rule node with a tag selector and child dimension relationship node</name>
+      <description>
+        The table contains a merge rule node with a tag selector that should be
+        merged onto its child dimension relationship node.
+      </description>
+      <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">merge-tag-selectors-into-child-dimension-relationship-node-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/merge-tag-selectors-into-child-dimension-relationship-node-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-11i">
+      <name>Merge rule node with a tag selector and child dimension relationship node, with instance</name>
+      <description>
+        The table contains a merge rule node with a tag selector that should be
+        merged onto its child dimension relationship node.
+      </description>
+      <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">merge-tag-selectors-into-child-dimension-relationship-node-instance.xml</instance>
+            <linkbase>merge-tag-selectors-into-child-dimension-relationship-node-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/merge-tag-selectors-into-child-dimension-relationship-node.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-12">
+      <name>Merge rule node with a tag selector and child concept relationship node</name>
+      <description>
+        The table contains a merge rule node with a tag selector that should be
+        merged onto its child concept relationship node.
+      </description>
+      <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">merge-tag-selectors-into-child-concept-relationship-node-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/merge-tag-selectors-into-child-concept-relationship-node-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-12i">
+      <name>Merged rule node with a tag selector and child concept relationship node, with instance</name>
+      <description>
+        The table contains a merged rule node with a tag selector that should be
+        merged onto its child concept relationship node.
+      </description>
+      <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">merge-tag-selectors-into-child-concept-relationship-node-instance.xml</instance>
+            <linkbase>merge-tag-selectors-into-child-concept-relationship-node-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/merge-tag-selectors-into-child-concept-relationship-node.xml</table>
+        </result>
+    </variation>
+
+</testcase>

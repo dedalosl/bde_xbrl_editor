@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2011-09-16"
+  name="3230-dimension-relationship-node-dimension-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Herm Fischer</name>
+        <email>fischer@markv.com</email>
+    </creator>
+    <number>3230</number>
+    <name>Dimension Relationship Node Dimension Testcase</name>
+    <description>Table linkbase test case using a dimension relationship node with different dimensions</description>
+    
+    <variation id="v-01">
+        <name>Dimension relationship node with invalid (non-existent) dimension</name>
+        <description>
+          Invalid table with a dimension relationship node that specifies a
+          non-existent dimension.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">invalid-dimension-qname-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:invalidExplicitDimensionQName</error>
+        </result>
+    </variation>
+    
+    <variation id="v-02">
+        <name>Dimension relationship node with invalid (typed) dimension</name>
+        <description>
+          Invalid table with a dimension relationship node that specifies a
+          typed dimension.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">invalid-typed-dimension-qname-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:invalidExplicitDimensionQName</error>
+        </result>
+    </variation>
+    
+</testcase>

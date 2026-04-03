@@ -1,0 +1,106 @@
+<?xml version='1.0' encoding='utf-8'?>
+<tableModel xmlns="http://xbrl.org/2014/table/model" xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:rend="http://www.xbrl.org/table-examples" xml:base="..">
+  <tableSet>
+    <label>Aspect node for a typed dimension with a forever filter</label>
+    <table>
+      <headers axis="y">
+        <group>
+          <label>Rows (typed dimension T)</label>
+          <header>
+            <cell>
+              <constraint>
+                <aspect>rend:T</aspect>
+                <value>
+                  <rend:stringDomain>def</rend:stringDomain>
+                </value>
+              </constraint>
+            </cell>
+            <cell>
+              <constraint>
+                <aspect>rend:T</aspect>
+                <value>
+                  <rend:stringDomain>ghi</rend:stringDomain>
+                </value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+      </headers>
+      <headers axis="x">
+        <group>
+          <label>Three columns (primary items m1, m2, o1)</label>
+          <header>
+            <cell span="2">
+              <label>Label: Start of 2001</label>
+              <constraint>
+                <aspect>period</aspect>
+                <value>
+                  <xbrli:instant>2001-01-01T00:00:00Z</xbrli:instant>
+                </value>
+              </constraint>
+            </cell>
+            <cell>
+              <label>Label: o1</label>
+              <label>3</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:o1</value>
+              </constraint>
+              <constraint>
+                <aspect>period</aspect>
+                <value>
+                  <xbrli:forever/>
+                </value>
+              </constraint>
+            </cell>
+          </header>
+          <header>
+            <cell>
+              <label>Label: m1</label>
+              <label>1</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:m1</value>
+              </constraint>
+            </cell>
+            <cell>
+              <label>Label: m2</label>
+              <label>2</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:m2</value>
+              </constraint>
+            </cell>
+            <cell rollup="true"/>
+          </header>
+        </group>
+      </headers>
+      <cells axis="z">
+        <cells axis="y">
+          <cells axis="x">
+            <cell>
+              <fact>aspect-node-forever-filter-instance.xml#m1_Y2001_T_def</fact>
+            </cell>
+            <cell>
+              <fact>aspect-node-forever-filter-instance.xml#m2_Y2001_T_def</fact>
+            </cell>
+            <cell>
+              <fact>aspect-node-forever-filter-instance.xml#o1_forever_T_def</fact>
+            </cell>
+          </cells>
+          <cells axis="x">
+            <cell>
+              <fact>aspect-node-forever-filter-instance.xml#m1_Y2001_T_ghi</fact>
+            </cell>
+            <cell>
+              <fact>aspect-node-forever-filter-instance.xml#m2_Y2001_T_ghi</fact>
+            </cell>
+            <cell>
+              <fact>aspect-node-forever-filter-instance.xml#o1_forever_T_ghi</fact>
+            </cell>
+          </cells>
+        </cells>
+      </cells>
+    </table>
+  </tableSet>
+</tableModel>

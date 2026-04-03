@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2011-09-16"
+  name="6600-aspect-node-period-filter-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:xfie="http://www.xbrl.org/2008/function/instance/error"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Herm Fischer</name>
+        <email>fischer@markv.com</email>
+    </creator>
+    <number>6610</number>
+    <name>Aspect Node Period Filter Testcase</name>
+    <description>Table linkbase test case using an aspect node with a period filter attached</description>
+    
+    <variation id="v-01">
+        <name>Aspect node for a typed dimension with an instant-period filter, with instance</name>
+        <description>
+          Simple table with four columns (instants 2001, 2002; primary items m1,
+          m2) and unknown number of rows (reported values of typed dimension
+          T, filtered to just those reported for 2001).
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">aspect-node-instant-period-filter-instance.xml</instance>
+            <linkbase>aspect-node-instant-period-filter-table.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+        </data>
+        <result>
+            <table>output/aspect-node-instant-period-filter.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-02">
+        <name>Aspect node for a typed dimension with a period-start, with instance</name>
+        <description>
+          Simple table with four columns (durations 2001, 2002; primary items m1,
+          m2) and unknown number of rows (reported values of typed dimension
+          T, filtered to just those reported for durations starting at the start
+          of 2001).
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">aspect-node-period-start-filter-instance.xml</instance>
+            <linkbase>aspect-node-period-start-filter-table.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+        </data>
+        <result>
+            <table>output/aspect-node-period-start-filter.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-03">
+        <name>Aspect node for a typed dimension with a period-end filter, with instance</name>
+        <description>
+          Simple table with four columns (durations 2001, 2002; primary items m1,
+          m2) and unknown number of rows (reported values of typed dimension
+          T, filtered to just those reported for durations ending at the end
+          of 2002).
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">aspect-node-period-end-filter-instance.xml</instance>
+            <linkbase>aspect-node-period-end-filter-table.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+        </data>
+        <result>
+            <table>output/aspect-node-period-end-filter.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-04">
+        <name>Aspect node for a typed dimension with a period filter, with instance</name>
+        <description>
+          Simple table with four columns (durations 2001, 2002; primary items m1,
+          m2) and unknown number of rows (reported values of typed dimension
+          T, filtered to just those reported for 2002).
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">aspect-node-period-filter-instance.xml</instance>
+            <linkbase>aspect-node-period-filter-table.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+        </data>
+        <result>
+            <table>output/aspect-node-period-filter.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-05">
+        <name>Aspect node for a typed dimension with a forever filter, with instance</name>
+        <description>
+          Simple table with four columns (durations 2001, forever; primary
+          items m1, m2) and unknown number of rows (reported values of typed
+          dimension T, filtered to just those reported for a forever period).
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">aspect-node-forever-filter-instance.xml</instance>
+            <linkbase>aspect-node-forever-filter-table.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+        </data>
+        <result>
+            <table>output/aspect-node-forever-filter.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-06">
+        <name>Aspect node for a typed dimension with a complemented period filter, with instance</name>
+        <description>
+          Simple table with four columns (durations 2001, 2002; primary items m1,
+          m2) and unknown number of rows (reported values of typed dimension
+          T, filtered to just those reported for 2002).
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">aspect-node-complemented-period-filter-instance.xml</instance>
+            <linkbase>aspect-node-complemented-period-filter-table.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+        </data>
+        <result>
+            <table>output/aspect-node-complemented-period-filter.xml</table>
+        </result>
+    </variation>
+
+</testcase>

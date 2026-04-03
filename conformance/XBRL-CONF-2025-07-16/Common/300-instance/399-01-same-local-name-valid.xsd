@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xsd:schema targetNamespace="http://xbrl.org/conformance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" >
+	<xsd:import namespace="http://xbrl.org/conformance/foo" schemaLocation="399-01-same-local-name-valid-foo.xsd"/>
+    <xsd:import namespace="http://xbrl.org/conformance/bar" schemaLocation="399-01-same-local-name-valid-bar.xsd"/>
+</xsd:schema>

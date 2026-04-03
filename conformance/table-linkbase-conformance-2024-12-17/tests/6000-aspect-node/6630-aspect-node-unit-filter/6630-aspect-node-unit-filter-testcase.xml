@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2011-09-16"
+  name="6630-aspect-node-unit-filter-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:xfie="http://www.xbrl.org/2008/function/instance/error"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Herm Fischer</name>
+        <email>fischer@markv.com</email>
+    </creator>
+    <number>6630</number>
+    <name>Aspect Node Unit Filter Testcase</name>
+    <description>Table linkbase test case using an aspect node with a unit filter attached</description>
+    
+    <variation id="v-01">
+        <name>Aspect node for a typed dimension with a single-measure unit filter, with instance</name>
+        <description>
+          Simple table with two columns (primary items m1, m2) and unknown
+          number of rows (reported values of typed dimension T, filtered to just
+          those used to report monetary facts in Euros).
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">aspect-node-single-measure-unit-filter-instance.xml</instance>
+            <linkbase>aspect-node-single-measure-unit-filter-table.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+        </data>
+        <result>
+            <table>output/aspect-node-single-measure-unit-filter.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-02">
+        <name>Aspect node for a typed dimension with a unit filter, with instance</name>
+        <description>
+          Simple table with two columns (primary items m1, m2) and unknown
+          number of rows (reported values of typed dimension T, filtered to just
+          those used to report monetary facts in Euros or Dollars).
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">aspect-node-unit-filter-instance.xml</instance>
+            <linkbase>aspect-node-unit-filter-table.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+        </data>
+        <result>
+            <table>output/aspect-node-unit-filter.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-03">
+        <name>Aspect node for a typed dimension with a complemented unit filter, with instance</name>
+        <description>
+          Simple table with two columns (primary items m1, m2) and unknown
+          number of rows (reported values of typed dimension T, filtered to just
+          those used to report monetary facts in anything but Euros or Dollars).
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">aspect-node-complemented-unit-filter-instance.xml</instance>
+            <linkbase>aspect-node-complemented-unit-filter-table.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+        </data>
+        <result>
+            <table>output/aspect-node-complemented-unit-filter.xml</table>
+        </result>
+    </variation>
+    
+</testcase>

@@ -1,0 +1,368 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2011-09-16"
+  name="1020-rule-node-explicit-dimension-rule-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Herm Fischer</name>
+        <email>fischer@markv.com</email>
+    </creator>
+    <number>1020</number>
+    <name>Rule Node Explicit Dimension Rule Testcase</name>
+    <description>Table linkbase test case using a rule node with an explicit dimension rule</description>
+
+    <variation id="v-01">
+        <name>Columns hierarchy, two dimensions, rows: primary items</name>
+        <description>
+            This table shows a simple hierarchy in the x axis: a top header that establishes the value for 
+            dimension D = d0. This header has two children giving values e1 and e2 to dimension E. As a result, 
+            column 1 values are associated to dim D= d0 and E = e1 (coordinates are inherited); column 2 
+            values are associated to dimension D = d0 and E = e2.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">table-linkbase-2-col-dims.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/2-col-dims-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-01i">
+        <name>v-01 with instance data</name>
+        <description>Same as v-02 with instance data.</description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">instance-2-col-dims.xml</instance>
+            <linkbase>table-linkbase-2-col-dims.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/2-col-dims.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-02">
+        <name>Columns hierarchy with total, two dimensions, rows: primary items</name>
+        <description>
+            This example is similar to previous example, but the axis coordinate that gives a value to 
+            dimension D is not abstract; thus, the table has three columns: the first column established 
+            D = d0, but no value for dimension E (or its default if dimension E had a default member). 
+            Columns 2 and 3 are equal to columns 1 and 2 in the previous example.
+            
+            Note that the rendering of the first data column 'knows' that the E-row column header
+            is a 'total' of the D-dimension, and prevents a top border between the D-row and E-row headers.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">table-linkbase-2-col-dims-totaled.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/2-col-dims-totaled-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-02i">
+        <name>v-02 with instance data</name>
+        <description>Same as v-02 with instance data.</description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">instance-2-col-dims-totaled.xml</instance>
+            <linkbase>table-linkbase-2-col-dims-totaled.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/2-col-dims-totaled.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-03">
+        <name>Same as V-02 but 3rd column has coordinate inheritance</name>
+        <description>
+            This example shows how the first column of v-03 could be put after the columns with dimension E. 
+            The first axis coordinate is made abstract, but a new child axis coordinate is added with no 
+            coordinates (inherits those of its parent). This example could have been done with the 
+            parent-child-order attribute, but the idea is to show that it is possible to represent 
+            different parent-child orders in a single axis. Should we include a mechanism to 
+            establish the predefined order of parents regarding children or shall that 
+            feature be part of the set of "ribbons and laces" specification?
+            
+            Note that in the rendering, the column header of 3rd data column does not row-span
+            (prevent top border between the E-dimension and D-dimension column headers, even
+            though the E-row has no label or value and inherits the D-row).
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">table-linkbase-3-col-coord-inheritance.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/3-col-coord-inheritance.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-04">
+        <name>Same as V-01 but 2nd column has coordinate dimension override</name>
+        <description>
+            This example shows how coordinate values of an ancestor can be overridden by a descendant. 
+            It also shows an example of a coordinate that establishes the value for two different dimensions
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">table-linkbase-coord-override.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/coord-override-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-04i">
+        <name>v-04 with instance data</name>
+        <description>Same as v-04 with instance data.</description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">instance-coord-override.xml</instance>
+            <linkbase>table-linkbase-coord-override.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/coord-override.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-05">
+        <name>Same as V-01 but row 1 has same dimension aspect as col 2</name>
+        <description>
+            This table is has an error. It has a conflict of aspects in two different axis: both x and y axis has coordinates for dimension D
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">table-linkbase-same-aspect-both-x-y.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:aspectClashBetweenBreakdowns</error>
+        </result>
+    </variation>
+
+    <variation id="v-06">
+        <name>Same as V-02 but 3rd column has an omit of dimension D</name>
+        <description>
+            This example shows how the third column of v-02 could omit inherited
+            dimension D by using the omit element of the explicitDimension rule.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">table-linkbase-2-col-dims-with-omit.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/2-col-dims-with-omit-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-06i">
+        <name>V-06 with instance</name>
+        <description>
+            Same as V-06 with instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">instance-2-col-dims-with-omit.xml</instance>
+            <linkbase>table-linkbase-2-col-dims-with-omit.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/2-col-dims-with-omit.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-07">
+        <name>Simple table with 3 columns.  A default dimension value is inferred for the 3rd column.</name>
+        <description>
+            Similar as V-02, but the third column is defined by an explicit rule node that
+            does not constrain a dimension that participates in other nodes on the x-axis.
+            The default value for that dimension is inferred.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">table-linkbase-2-col-dims-defaulted.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/2-col-dims-defaulted-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-07i">
+        <name>Same as V-07 with instance</name>
+        <description>
+            Same as V-07 with instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">instance-2-col-dims-defaulted.xml</instance>
+            <linkbase>table-linkbase-2-col-dims-defaulted.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/2-col-dims-defaulted.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-08">
+        <name>Explicit dimension rule for a domain member that doesn't exist in the taxonomy</name>
+        <description>
+          Invalid table that specifies an explicit dimension member that doesn't exist in the taxonomy.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">invalid-member-qname-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:invalidQNameAspectValue</error>
+        </result>
+    </variation>
+
+    <variation id="v-09">
+        <name>Explicit dimension rule for a domain member that is actually a dimension</name>
+        <description>
+          Invalid table that specifies an explicit dimension member that is actually a dimension.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">dimension-as-member-qname-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:invalidQNameAspectValue</error>
+        </result>
+    </variation>
+
+    <variation id="v-10">
+        <name>Explicit dimension rule for a domain member that is actually a hypercube</name>
+        <description>
+          Invalid table that specifies an explicit dimension member that is actually a hypercube.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">hypercube-as-member-qname-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:invalidQNameAspectValue</error>
+        </result>
+    </variation>
+
+    <variation id="v-11">
+        <name>Rule nodes with explicit dimension rules that use XPath expressions</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and two columns
+          (explicit dimension D = d1, d2). The dimension members are specified
+          by XPath expressions that evaluate to QNames. In this variation there
+          is no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">explicit-dimension-qname-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/explicit-dimension-qname-expression-no-data.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-11i">
+        <name>Rule nodes with explicit dimension rules that use XPath expressions, with instance</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and two columns
+          (explicit dimension D = d1, d2). The dimension members are specified
+          by XPath expressions that evaluate to QNames.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">explicit-dimension-qname-expression-instance.xml</instance>
+            <linkbase>explicit-dimension-qname-expression-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/explicit-dimension-qname-expression.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-12">
+        <name>Simple Table with an incomplete explicit dimension rule.</name>
+        <description>Simple table with one x axis node for an incomplete explicit dimension rule.</description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">incomplete-explicit-dimension-rule-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+           <error>xbrlte:incompleteAspectRule</error>
+        </result>
+    </variation>
+
+</testcase>

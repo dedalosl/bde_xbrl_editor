@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../infrastructure/test.xsl"?>
+<testcase
+  date="2011-09-16"
+  name="0200-table-parameters-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../infrastructure/test.xsd">
+    <creator>
+        <name>Herm Fischer</name>
+        <email>fischer@markv.com</email>
+    </creator>
+    <number>0200</number>
+    <name>Table Parameters Testcase</name>
+    <description>Table linkbase test case using table parameters</description>
+
+    <variation id="v-01">
+        <name>Table referencing formula parameters</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and two columns
+          (explicit dimension D = d1, d2). The primary items are specified by
+          referencing formula parameters directly (i.e. not as table
+          parameters). In this variation there is no instance
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">global-parameters-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/global-parameters-no-data.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-01i">
+        <name>Table referencing formula parameters, with instance</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and two columns
+          (explicit dimension D = d1, d2). The primary items are specified by
+          referencing formula parameters directly (i.e. not as table
+          parameters).
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">global-parameters-instance.xml</instance>
+            <linkbase>global-parameters-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/global-parameters.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-02">
+        <name>Table referencing formula parameters that require an instance</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and two columns
+          (explicit dimension D = d1, d2). The dimension members are specified
+          by referencing formula parameters that extract QNames from the
+          instance. In this variation there is no instance, so the table cannot
+          be rendered.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">global-parameters-with-context-item-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <!--
+          This should be a failure as there is no instance to act as the context
+          item for the XPath expressions. The expected error code would be
+          XTDE1270 but according to the XSLT spec where this code is defined the
+          errors are non-normative and "there is no implication that an
+          implementation must signal errors using these error codes".
+        -->
+        <result expected="invalid"/>
+    </variation>
+    
+    <variation id="v-02i">
+        <name>Table referencing formula parameters that require an instance, with instance</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and two columns
+          (explicit dimension D = d1, d2). The dimension members are specified
+          by referencing formula parameters that extract QNames from the
+          instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">global-parameters-with-context-item-instance.xml</instance>
+            <linkbase>global-parameters-with-context-item-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/global-parameters-with-context-item.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-03">
+        <name>Table referencing formula parameters and using table-parameter relationships to form a table set</name>
+        <description>
+          Simple table with one row (primary items $pi) and one column
+          (explicit dimension D = $dm). Both $pi and $dm are derived from
+          formula parameters linked to the table definition by table-parameter
+          relationships, and {m1, m2} x {d1, d2} gives four tables from the one
+          definition.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">table-parameters-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/table-parameters.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-03i">
+        <name>Table referencing formula parameters and using table-parameter relationships to form a table set (with instance)</name>
+        <description>
+          Simple table with one row (primary items $pi) and one column
+          (explicit dimension D = $dm). Both $pi and $dm are derived from
+          formula parameters linked to the table definition by table-parameter
+          relationships, and {m1, m2} x {d1, d2} gives four tables from the one
+          definition.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">table-parameters-instance.xml</instance>
+            <linkbase>table-parameters-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/table-parameters-with-instance.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-04">
+        <name>Table referencing formula parameters, one of which evaluates to an empty sequence</name>
+        <description>
+        The empty sequence should mean that the Cartesian product of the parameters is empty and thus no tables are produced.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">table-parameters-empty-seq-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result expected="valid"/><!-- valid, but no output. -->
+    </variation>
+
+    <variation id="v-05">
+        <name>Table set where the table parameters' Cartesian product contains duplicate mappings</name>
+        <description>
+        Cartesian product produces (m1, d1) and (m1, d1). No de-duplication is specified, so two tables are expected.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">table-parameters-duplicate-seq-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/table-parameters-duplicate-seq.xml</table>
+        </result>
+    </variation>
+
+</testcase>

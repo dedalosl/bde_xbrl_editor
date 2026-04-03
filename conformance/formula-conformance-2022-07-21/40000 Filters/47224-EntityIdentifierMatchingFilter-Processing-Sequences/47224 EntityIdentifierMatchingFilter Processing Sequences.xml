@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2007 XBRL International. All Rights Reserved. -->
+<?xml-stylesheet type="text/xsl" href="../../xsl/test.xsl"?>
+<testcase
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../xsd/test.xsd"
+  xmlns:xbrlfe="http://xbrl.org/2008/formula/error"
+  xmlns:binding="http://xbrl.org/2008/binding/errors"
+  xmlns:label="http://xbrl.org/2008/label/error"
+  xmlns:reference="http://xbrl.org/2008/reference/error"   
+  xmlns:xhtml="http://www.w3.org/1999/xhtml"
+ >
+  
+  <creator>
+    <name>David Bell</name>
+    <email>david.x.bell@rrd.com</email>
+  </creator>
+  <number>47224</number>
+  <name>Entity identifier matching filter test</name>
+  <description>
+    Tests of entity identifier matching filter against sequences where matchAny='true'.
+    Assumes that non-sequential matching works as these tests only check sequence behaviour.
+  </description>
+  <reference specification="MATCH-FILTER" id="sec-entity-identifier-matching-filter"/>
+  <reference specification="http://www.w3.org/TR/REC-xml-names/" id="NSNameComparison"/>
+
+  <variation id="V-101">
+    <name>Entity identifier matching filter</name>
+    <description>
+      Three facts, 4 contexts, each other two share scheme/value, match of single fact to one or more items in sequence.
+      The two scheme namespace URI's have no escaped or capitalization differences.
+      Variables for concepts concpept:b and concept:c bind as sequences.
+    </description>
+    <data>
+      <schema>47224-concepts.xsd</schema>
+      <linkbase>47224-entityIdentifierMatching-formula-V101.xml</linkbase>
+      <instance readMeFirst="true">47224-entityIdentifierMatching-instance-V101.xml</instance>
+    </data>
+    <result>
+      <instance>47224-entityIdentifierMatching-result-V101.xml</instance>
+    </result>
+  </variation>  
+
+  <variation id="V-102">
+    <name>Entity identifier matching filter</name>
+    <description>
+      Variation of above but with 2 facts removed, 1 each for concept:b and concept:c, causing only 2 facts to be output.
+      The two scheme namespace URI's have no escaped or capitalization differences.
+    </description>
+    <data>
+      <schema>47224-concepts.xsd</schema>
+      <linkbase>47224-entityIdentifierMatching-formula-V101.xml</linkbase>
+      <instance readMeFirst="true">47224-entityIdentifierMatching-instance-V102.xml</instance>
+    </data>
+    <result>
+      <instance>47224-entityIdentifierMatching-result-V102.xml</instance>
+    </result>
+  </variation>  
+  
+  
+  <variation id="V-103">
+    <name>Same as V-101, but using w3c spec namespace URI example focusing on letter-case and escaping sensitivity.</name>
+    <description>
+       Same as V-101 but see W3C instructions on comparing namespace URIs (http://www.w3.org/TR/REC-xml-names/#NSNameComparison), examples, used here.
+       Tests this w3c requirement in comparing namespace URIs: &quot;the comparison is case-sensitive, and no %-escaping is done or undone&quot;. 
+    </description>
+    <data>
+      <schema>47224-concepts.xsd</schema>
+      <linkbase>47224-entityIdentifierMatching-formula-V101.xml</linkbase>
+      <instance readMeFirst="true">47224-entityIdentifierMatching-instance-V103.xml</instance>
+    </data>
+    <result>
+      <instance>47224-entityIdentifierMatching-result-V103.xml</instance>
+    </result>
+  </variation>  
+
+  <variation id="V-104">
+    <name>Same as V-102, but using w3c spec namespace URI example focusing on letter-case and escaping sensitivity.</name>
+    <description>
+      Same as V-101 but see W3C instructions on comparing namespace URIs (http://www.w3.org/TR/REC-xml-names/#NSNameComparison), examples, used here.
+      Tests this w3c requirement in comparing namespace URIs: &quot;the comparison is case-sensitive, and no %-escaping is done or undone&quot;. 
+    </description>
+    <data>
+      <schema>47224-concepts.xsd</schema>
+      <linkbase>47224-entityIdentifierMatching-formula-V101.xml</linkbase>
+      <instance readMeFirst="true">47224-entityIdentifierMatching-instance-V104.xml</instance>
+    </data>
+    <result>
+      <instance>47224-entityIdentifierMatching-result-V104.xml</instance>
+    </result>
+  </variation>  
+
+</testcase>
+

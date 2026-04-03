@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2011-09-16"
+  name="1100-abstract-rule-node-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Herm Fischer</name>
+        <email>fischer@markv.com</email>
+    </creator>
+    <number>1100</number>
+    <name>Abstract Rule Node Testcase</name>
+    <description>Table linkbase test case using abstract rule nodes</description>
+
+    <variation id="v-01">
+        <name>Table with an abstract rule node</name>
+        <description>
+          Simple table with two columns (dimension D = d1, d2), and two rows
+          (primary items m1, m2). The column headers are grouped together
+          under an abstract parent. This variation has no instance.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">abstract-rule-node-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/abstract-rule-node-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-01i">
+        <name>Table with an abstract rule node, with instance</name>
+        <description>
+          Simple table with two columns (dimension D = d1, d2), and two rows
+          (primary items m1, m2). The column headers are grouped together
+          under an abstract parent.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">abstract-rule-node-instance.xml</instance>
+            <linkbase>abstract-rule-node-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/abstract-rule-node.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-02">
+        <name>Abstract rule node with no children</name>
+        <description>
+          Invalid table the includes an abstract rule node with no children.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">abstract-rule-node-no-children-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:abstractRuleNodeNoChildren</error>
+        </result>
+    </variation>
+
+</testcase>

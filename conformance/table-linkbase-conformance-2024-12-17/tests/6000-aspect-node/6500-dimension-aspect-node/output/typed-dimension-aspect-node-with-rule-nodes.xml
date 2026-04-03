@@ -1,0 +1,323 @@
+<?xml version='1.0' encoding='utf-8'?>
+<tableModel xmlns="http://xbrl.org/2014/table/model" xmlns:rend="http://www.xbrl.org/table-examples" xml:base="..">
+  <!--Entry point file: typed-dimension-aspect-node-with-rule-nodes-instance.xml-->
+  <tableSet>
+    <!--TableSet linkbase file: table-linkbase-cols-2-typed-dims.xml, line 49-->
+    <!--TableSet namespace: http://xbrl.org/2014/table-->
+    <!--TableSet linkrole: http://www.xbrl.org/table-examples/table2-->
+    <label>Aspect node for a typed dimension on the same axis as rule nodes for a second typed dimension</label>
+    <table>
+      <headers axis="y">
+        <group>
+          <label>Two rows (primary items m1, m2)</label>
+          <header>
+            <!--ruleNode: label table2-y.1, file table-linkbase-cols-2-typed-dims.xml, line 230-->
+            <!--   aspect concept: rend:m1-->
+            <cell>
+              <label>Label: m1</label>
+              <label>1</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:m1</value>
+              </constraint>
+            </cell>
+            <!--ruleNode: label table2-y.2, file table-linkbase-cols-2-typed-dims.xml, line 254-->
+            <!--   aspect concept: rend:m2-->
+            <cell>
+              <label>Label: m2</label>
+              <label>2</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:m2</value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+      </headers>
+      <headers axis="x">
+        <group>
+          <label>Columns (ranking dimension R = 1, 2, 3, 4, 5)</label>
+          <header>
+            <!--ruleNode: label table2-x1.1, file table-linkbase-cols-2-typed-dims.xml, line 65-->
+            <!--   aspect rend:R: ModelObject[1636, table-linkbase-cols-2-typed-dims.xml line 68)-->
+            <cell span="3">
+              <label>Label: ranking 1</label>
+              <label>1</label>
+              <constraint>
+                <aspect>rend:R</aspect>
+                <value>
+                  <rend:integerDomain>1</rend:integerDomain>
+                </value>
+              </constraint>
+            </cell>
+            <!--ruleNode: label table2-x1.2, file table-linkbase-cols-2-typed-dims.xml, line 92-->
+            <!--   aspect rend:R: ModelObject[1645, table-linkbase-cols-2-typed-dims.xml line 95)-->
+            <cell span="3">
+              <label>Label: ranking 2</label>
+              <label>2</label>
+              <constraint>
+                <aspect>rend:R</aspect>
+                <value>
+                  <rend:integerDomain>2</rend:integerDomain>
+                </value>
+              </constraint>
+            </cell>
+            <!--ruleNode: label table2-x1.3, file table-linkbase-cols-2-typed-dims.xml, line 119-->
+            <!--   aspect rend:R: ModelObject[1654, table-linkbase-cols-2-typed-dims.xml line 122)-->
+            <cell span="3">
+              <label>Label: ranking 3</label>
+              <label>3</label>
+              <constraint>
+                <aspect>rend:R</aspect>
+                <value>
+                  <rend:integerDomain>3</rend:integerDomain>
+                </value>
+              </constraint>
+            </cell>
+            <!--ruleNode: label table2-x1.4, file table-linkbase-cols-2-typed-dims.xml, line 146-->
+            <!--   aspect rend:R: ModelObject[1663, table-linkbase-cols-2-typed-dims.xml line 149)-->
+            <cell span="3">
+              <label>Label: ranking 4</label>
+              <label>4</label>
+              <constraint>
+                <aspect>rend:R</aspect>
+                <value>
+                  <rend:integerDomain>4</rend:integerDomain>
+                </value>
+              </constraint>
+            </cell>
+            <!--ruleNode: label table2-x1.5, file table-linkbase-cols-2-typed-dims.xml, line 173-->
+            <!--   aspect rend:R: ModelObject[1672, table-linkbase-cols-2-typed-dims.xml line 176)-->
+            <cell span="3">
+              <label>Label: ranking 5</label>
+              <label>5</label>
+              <constraint>
+                <aspect>rend:R</aspect>
+                <value>
+                  <rend:integerDomain>5</rend:integerDomain>
+                </value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+        <group>
+          <label>Columns (typed dimension T)</label>
+          <header>
+            <!--aspectNode: label table2-x2, file table-linkbase-cols-2-typed-dims.xml, line 199-->
+            <!--   aspect rend:T: ModelDimensionValue[1732, typed-dimension-aspect-node-with-rule-nodes-instance.xml line 24)-->
+            <cell>
+              <constraint>
+                <aspect>rend:T</aspect>
+                <value>
+                  <rend:stringDomain>France</rend:stringDomain>
+                </value>
+              </constraint>
+            </cell>
+            <!--aspectNode: label table2-x2, file table-linkbase-cols-2-typed-dims.xml, line 199-->
+            <!--   aspect rend:T: ModelDimensionValue[1747, typed-dimension-aspect-node-with-rule-nodes-instance.xml line 84)-->
+            <cell>
+              <constraint>
+                <aspect>rend:T</aspect>
+                <value>
+                  <rend:stringDomain>Spain</rend:stringDomain>
+                </value>
+              </constraint>
+            </cell>
+            <!--aspectNode: label table2-x2, file table-linkbase-cols-2-typed-dims.xml, line 199-->
+            <!--   aspect rend:T: ModelDimensionValue[1735, typed-dimension-aspect-node-with-rule-nodes-instance.xml line 36)-->
+            <cell>
+              <constraint>
+                <aspect>rend:T</aspect>
+                <value>
+                  <rend:stringDomain>Vatican</rend:stringDomain>
+                </value>
+              </constraint>
+            </cell>
+            <cell>
+              <constraint>
+                <aspect>rend:T</aspect>
+                <value>
+                  <rend:stringDomain>France</rend:stringDomain>
+                </value>
+              </constraint>
+            </cell>
+            <!--aspectNode: label table2-x2, file table-linkbase-cols-2-typed-dims.xml, line 199-->
+            <!--   aspect rend:T: ModelDimensionValue[1753, typed-dimension-aspect-node-with-rule-nodes-instance.xml line 108)-->
+            <cell>
+              <constraint>
+                <aspect>rend:T</aspect>
+                <value>
+                  <rend:stringDomain>Spain</rend:stringDomain>
+                </value>
+              </constraint>
+            </cell>
+            <cell>
+              <constraint>
+                <aspect>rend:T</aspect>
+                <value>
+                  <rend:stringDomain>Vatican</rend:stringDomain>
+                </value>
+              </constraint>
+            </cell>
+            <!--aspectNode: label table2-x2, file table-linkbase-cols-2-typed-dims.xml, line 199-->
+            <!--   aspect rend:T: ModelDimensionValue[1738, typed-dimension-aspect-node-with-rule-nodes-instance.xml line 48)-->
+            <cell>
+              <constraint>
+                <aspect>rend:T</aspect>
+                <value>
+                  <rend:stringDomain>France</rend:stringDomain>
+                </value>
+              </constraint>
+            </cell>
+            <!--aspectNode: label table2-x2, file table-linkbase-cols-2-typed-dims.xml, line 199-->
+            <!--   aspect rend:T: ModelDimensionValue[1750, typed-dimension-aspect-node-with-rule-nodes-instance.xml line 96)-->
+            <cell>
+              <constraint>
+                <aspect>rend:T</aspect>
+                <value>
+                  <rend:stringDomain>Spain</rend:stringDomain>
+                </value>
+              </constraint>
+            </cell>
+            <!--aspectNode: label table2-x2, file table-linkbase-cols-2-typed-dims.xml, line 199-->
+            <!--   aspect rend:T: ModelDimensionValue[1756, typed-dimension-aspect-node-with-rule-nodes-instance.xml line 120)-->
+            <cell>
+              <constraint>
+                <aspect>rend:T</aspect>
+                <value>
+                  <rend:stringDomain>Vatican</rend:stringDomain>
+                </value>
+              </constraint>
+            </cell>
+            <!--aspectNode: label table2-x2, file table-linkbase-cols-2-typed-dims.xml, line 199-->
+            <!--   aspect rend:T: ModelDimensionValue[1741, typed-dimension-aspect-node-with-rule-nodes-instance.xml line 60)-->
+            <cell>
+              <constraint>
+                <aspect>rend:T</aspect>
+                <value>
+                  <rend:stringDomain>France</rend:stringDomain>
+                </value>
+              </constraint>
+            </cell>
+            <!--aspectNode: label table2-x2, file table-linkbase-cols-2-typed-dims.xml, line 199-->
+            <!--   aspect rend:T: ModelDimensionValue[1744, typed-dimension-aspect-node-with-rule-nodes-instance.xml line 72)-->
+            <cell>
+              <constraint>
+                <aspect>rend:T</aspect>
+                <value>
+                  <rend:stringDomain>Spain</rend:stringDomain>
+                </value>
+              </constraint>
+            </cell>
+            <cell>
+              <constraint>
+                <aspect>rend:T</aspect>
+                <value>
+                  <rend:stringDomain>Vatican</rend:stringDomain>
+                </value>
+              </constraint>
+            </cell>
+            <cell>
+              <constraint>
+                <aspect>rend:T</aspect>
+                <value>
+                  <rend:stringDomain>France</rend:stringDomain>
+                </value>
+              </constraint>
+            </cell>
+            <cell>
+              <constraint>
+                <aspect>rend:T</aspect>
+                <value>
+                  <rend:stringDomain>Spain</rend:stringDomain>
+                </value>
+              </constraint>
+            </cell>
+            <cell>
+              <constraint>
+                <aspect>rend:T</aspect>
+                <value>
+                  <rend:stringDomain>Vatican</rend:stringDomain>
+                </value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+      </headers>
+      <cells axis="z">
+        <cells axis="y">
+          <cells axis="x">
+            <cell>
+              <fact>typed-dimension-aspect-node-with-rule-nodes-instance.xml#m1_R_1_T_France</fact>
+            </cell>
+            <cell>
+              <fact>typed-dimension-aspect-node-with-rule-nodes-instance.xml#m1_R_1_T_Spain</fact>
+            </cell>
+            <cell/>
+            <cell>
+              <fact>typed-dimension-aspect-node-with-rule-nodes-instance.xml#m1_R_2_T_France</fact>
+            </cell>
+            <cell/>
+            <cell>
+              <fact>typed-dimension-aspect-node-with-rule-nodes-instance.xml#m1_R_2_T_Vatican</fact>
+            </cell>
+            <cell>
+              <fact>typed-dimension-aspect-node-with-rule-nodes-instance.xml#m1_R_3_T_France</fact>
+            </cell>
+            <cell>
+              <fact>typed-dimension-aspect-node-with-rule-nodes-instance.xml#m1_R_3_T_Spain</fact>
+            </cell>
+            <cell>
+              <fact>typed-dimension-aspect-node-with-rule-nodes-instance.xml#m1_R_3_T_Vatican</fact>
+            </cell>
+            <cell>
+              <fact>typed-dimension-aspect-node-with-rule-nodes-instance.xml#m1_R_4_T_France</fact>
+            </cell>
+            <cell/>
+            <cell/>
+            <cell>
+              <fact>typed-dimension-aspect-node-with-rule-nodes-instance.xml#m1_R_5_T_France</fact>
+            </cell>
+            <cell/>
+            <cell/>
+          </cells>
+          <cells axis="x">
+            <cell>
+              <fact>typed-dimension-aspect-node-with-rule-nodes-instance.xml#m2_R_1_T_France</fact>
+            </cell>
+            <cell>
+              <fact>typed-dimension-aspect-node-with-rule-nodes-instance.xml#m2_R_1_T_Spain</fact>
+            </cell>
+            <cell/>
+            <cell>
+              <fact>typed-dimension-aspect-node-with-rule-nodes-instance.xml#m2_R_2_T_France</fact>
+            </cell>
+            <cell/>
+            <cell>
+              <fact>typed-dimension-aspect-node-with-rule-nodes-instance.xml#m2_R_2_T_Vatican</fact>
+            </cell>
+            <cell>
+              <fact>typed-dimension-aspect-node-with-rule-nodes-instance.xml#m2_R_3_T_France</fact>
+            </cell>
+            <cell>
+              <fact>typed-dimension-aspect-node-with-rule-nodes-instance.xml#m2_R_3_T_Spain</fact>
+            </cell>
+            <cell>
+              <fact>typed-dimension-aspect-node-with-rule-nodes-instance.xml#m2_R_3_T_Vatican</fact>
+            </cell>
+            <cell>
+              <fact>typed-dimension-aspect-node-with-rule-nodes-instance.xml#m2_R_4_T_France</fact>
+            </cell>
+            <cell/>
+            <cell/>
+            <cell>
+              <fact>typed-dimension-aspect-node-with-rule-nodes-instance.xml#m2_R_5_T_France</fact>
+            </cell>
+            <cell/>
+            <cell/>
+          </cells>
+        </cells>
+      </cells>
+    </table>
+  </tableSet>
+</tableModel>

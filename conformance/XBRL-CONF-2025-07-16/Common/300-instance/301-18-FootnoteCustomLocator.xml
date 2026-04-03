@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xbrl 
+  xmlns="http://www.xbrl.org/2003/instance" 
+  xmlns:link="http://www.xbrl.org/2003/linkbase" 
+  xmlns:xlink="http://www.w3.org/1999/xlink" 
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:iso4217="http://www.xbrl.org/2003/iso4217" 
+  xmlns:example="http://example.com/xbrl/taxonomy" 
+  xmlns:custom="http://www.example.com/test/customLoc"
+>
+  <link:schemaRef xlink:href="IdScope.xsd" xlink:type="simple"/>
+  <link:schemaRef xlink:href="CustomLocator.xsd" xlink:type="simple"/>
+  <context id="ci1">
+    <entity>
+      <identifier scheme="http://abc.com">abc</identifier>
+    </entity>
+    <period>
+      <instant>2007-12-31</instant>
+    </period>
+  </context>
+  <unit id="u1">
+    <measure>iso4217:GBP</measure>
+  </unit>
+  
+  <link:footnoteLink xlink:type="extended" xlink:role="http://www.xbrl.org/2003/role/link">
+        <!--  Invalid custom locator in footnote link -->
+        <custom:customLoc xlink:type="locator" xlink:href="#f1" xlink:label="stringItemLocator" />
+  </link:footnoteLink>
+  
+  <example:fixedAssets id="f1" precision="4" contextRef="ci1" unitRef="u1">5000</example:fixedAssets>
+  
+</xbrl>

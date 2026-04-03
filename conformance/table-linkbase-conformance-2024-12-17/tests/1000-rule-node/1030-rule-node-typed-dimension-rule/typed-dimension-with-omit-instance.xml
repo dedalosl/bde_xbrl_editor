@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xbrli:xbrl
+  xmlns:rend="http://www.xbrl.org/table-examples-typed"
+  xmlns:iso4217="http://www.xbrl.org/2003/iso4217"
+  xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:xbrldi="http://xbrl.org/2006/xbrldi"
+  xmlns:xbrli="http://www.xbrl.org/2003/instance"
+  xmlns:xl="http://www.xbrl.org/2003/XLink"
+  xmlns:xlink="http://www.w3.org/1999/xlink"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2006/xbrldi http://www.xbrl.org/2006/xbrldi-2006.xsd">
+    <link:schemaRef xlink:href="typed-dimension-example.xsd" xlink:type="simple"/>
+    <link:linkbaseRef xlink:type="simple" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase" xlink:href="typed-dimension-with-omit-table.xml"/>  
+    <xbrli:context id="agesUpTo20Admin">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme">ABC Corp.</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:instant>2011-12-31</xbrli:instant>
+        </xbrli:period>
+        <xbrli:scenario>
+            <xbrldi:typedMember dimension="rend:Age">
+              <rend:Age.domain>.. - 20</rend:Age.domain>
+            </xbrldi:typedMember>
+            <xbrldi:typedMember dimension="rend:Department">
+              <rend:Department.domain>Admin</rend:Department.domain>
+            </xbrldi:typedMember>
+        </xbrli:scenario>
+    </xbrli:context>
+    <xbrli:context id="ages21to40Admin">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme">ABC Corp.</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:instant>2011-12-31</xbrli:instant>
+        </xbrli:period>
+        <xbrli:scenario>
+            <xbrldi:typedMember dimension="rend:Age">
+              <rend:Age.domain>21 - 40</rend:Age.domain>
+            </xbrldi:typedMember>
+            <xbrldi:typedMember dimension="rend:Department">
+              <rend:Department.domain>Admin</rend:Department.domain>
+            </xbrldi:typedMember>
+        </xbrli:scenario>
+    </xbrli:context>
+    <xbrli:context id="ages41plusAdmin">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme">ABC Corp.</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:instant>2011-12-31</xbrli:instant>
+        </xbrli:period>
+        <xbrli:scenario>
+            <xbrldi:typedMember dimension="rend:Age">
+              <rend:Age.domain>41 - ..</rend:Age.domain>
+            </xbrldi:typedMember>
+            <xbrldi:typedMember dimension="rend:Department">
+              <rend:Department.domain>Admin</rend:Department.domain>
+            </xbrldi:typedMember>
+        </xbrli:scenario>
+    </xbrli:context>
+    <xbrli:context id="allAgesSales">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme">ABC Corp.</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:instant>2011-12-31</xbrli:instant>
+        </xbrli:period>
+        <xbrli:scenario>
+            <xbrldi:typedMember dimension="rend:Department">
+              <rend:Department.domain>Sales</rend:Department.domain>
+            </xbrldi:typedMember>
+        </xbrli:scenario>
+    </xbrli:context>
+    <xbrli:unit id="pure">
+      <xbrli:measure>
+        xbrli:pure
+      </xbrli:measure>
+    </xbrli:unit>
+    <xbrli:unit id="EUR">
+        <xbrli:measure>iso4217:EUR</xbrli:measure>
+    </xbrli:unit>
+    <rend:Bonus id="Bonus_agesUpTo20Admin" decimals="0" contextRef="agesUpTo20Admin" unitRef="pure">1</rend:Bonus>
+    <rend:Bonus id="Bonus_ages21to40Admin" decimals="0" contextRef="ages21to40Admin" unitRef="pure">2</rend:Bonus>
+    <rend:Bonus id="Bonus_ages41plusAdmin" decimals="0" contextRef="ages41plusAdmin" unitRef="pure">3</rend:Bonus>
+    <rend:Bonus id="Bonus_allAgesSales" decimals="0" contextRef="allAgesSales" unitRef="pure">4</rend:Bonus>
+    <rend:MaximumSalary id="MaximumSalary_agesUpTo20Admin" decimals="0" contextRef="agesUpTo20Admin" unitRef="EUR">25000</rend:MaximumSalary>
+    <rend:MaximumSalary id="MaximumSalary_ages21to40Admin" decimals="0" contextRef="ages21to40Admin" unitRef="EUR">40000</rend:MaximumSalary>
+    <rend:MaximumSalary id="MaximumSalary_ages41plusAdmin" decimals="0" contextRef="ages41plusAdmin" unitRef="EUR">50000</rend:MaximumSalary>
+    <rend:MaximumSalary id="MaximumSalary_allAgesSales" decimals="0" contextRef="allAgesSales" unitRef="EUR">60000</rend:MaximumSalary>
+</xbrli:xbrl>

@@ -1,0 +1,21 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<schema xmlns="http://www.w3.org/2001/XMLSchema" xmlns:eg="http://www.example.com/ns" xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:xbrldt="http://xbrl.org/2005/xbrldt" xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:xlink="http://www.w3.org/1999/xlink" attributeFormDefault="unqualified" blockDefault="" elementFormDefault="qualified" finalDefault="" targetNamespace="http://www.example.com/ns">
+   <annotation>
+      <appinfo>
+			<link:linkbaseRef xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase" xlink:href="41210-defaultDimensions-definition.xml" xlink:role="http://www.xbrl.org/2003/role/definitionLinkbaseRef" xlink:title="Definition Links, all" xlink:type="simple"/>
+		<link:roleType id="hypercube1_6037ab" roleURI="http://xbrl.org/formula/conformance/example/hypercubes/Hypercube1">
+            <link:usedOn>link:definitionLink</link:usedOn>
+            <link:usedOn>link:presentationLink</link:usedOn>
+         </link:roleType></appinfo>
+   </annotation>
+   <import namespace="http://www.xbrl.org/2003/instance" schemaLocation="http://www.xbrl.org/2003/xbrl-instance-2003-12-31.xsd"/>
+   <import namespace="http://xbrl.org/2005/xbrldt" schemaLocation="http://www.xbrl.org/2005/xbrldt-2005.xsd"/>
+   <element abstract="false" id="eg_Fact1" name="Fact1" nillable="true" substitutionGroup="xbrli:item" type="xbrli:monetaryItemType" xbrli:periodType="instant"/>
+   <element abstract="true" id="eg_Hypercube1" name="Hypercube1" nillable="true" substitutionGroup="xbrldt:hypercubeItem" type="xbrli:stringItemType" xbrli:periodType="duration"/>
+   <element abstract="true" id="eg_dim1" name="dim1" nillable="true" substitutionGroup="xbrldt:dimensionItem" type="xbrli:stringItemType" xbrli:periodType="duration"/>
+   <element abstract="true" id="eg_dim2" name="dim2" nillable="true" substitutionGroup="xbrldt:dimensionItem" type="xbrli:stringItemType" xbrli:periodType="duration"/>
+   <element abstract="true" id="eg_member1dim1" name="member1dim1" nillable="true" substitutionGroup="xbrli:item" type="xbrli:stringItemType" xbrli:periodType="duration"/>
+   <element abstract="true" id="eg_member1dim2" name="member1dim2" nillable="true" substitutionGroup="xbrli:item" type="xbrli:stringItemType" xbrli:periodType="duration"/>
+   <element abstract="true" id="eg_member2dim1" name="member2dim1" nillable="true" substitutionGroup="xbrli:item" type="xbrli:stringItemType" xbrli:periodType="duration"/>
+   <element abstract="true" id="eg_member2dim2" name="member2dim2" nillable="true" substitutionGroup="xbrli:item" type="xbrli:stringItemType" xbrli:periodType="duration"/>
+</schema>

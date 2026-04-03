@@ -1,0 +1,102 @@
+<?xml version='1.0' encoding='utf-8'?>
+<tableModel xmlns="http://xbrl.org/2014/table/model" xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:rend="http://www.xbrl.org/table-examples" xml:base="..">
+  <tableSet>
+    <label>Aspect node for entity identifier</label>
+    <table>
+      <headers axis="y">
+        <group>
+          <label>Two rows (primary items m1, m2)</label>
+          <header>
+            <cell>
+              <label>Label: m1</label>
+              <label>1</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:m1</value>
+              </constraint>
+            </cell>
+            <cell>
+              <label>Label: m2</label>
+              <label>2</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:m2</value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+      </headers>
+      <headers axis="x">
+        <group>
+          <label>Columns (reported entities)</label>
+          <header>
+            <cell>
+              <constraint>
+                <aspect>entity-identifier</aspect>
+                <value>
+                  <xbrli:identifier scheme="http://scheme/A">abc</xbrli:identifier>
+                </value>
+              </constraint>
+            </cell>
+            <cell>
+              <constraint>
+                <aspect>entity-identifier</aspect>
+                <value>
+                  <xbrli:identifier scheme="http://scheme/A">def</xbrli:identifier>
+                </value>
+              </constraint>
+            </cell>
+            <cell>
+              <constraint>
+                <aspect>entity-identifier</aspect>
+                <value>
+                  <xbrli:identifier scheme="http://scheme/B">def</xbrli:identifier>
+                </value>
+              </constraint>
+            </cell>
+            <cell>
+              <constraint>
+                <aspect>entity-identifier</aspect>
+                <value>
+                  <xbrli:identifier scheme="http://scheme/B">ghi</xbrli:identifier>
+                </value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+      </headers>
+      <cells axis="z">
+        <cells axis="y">
+          <cells axis="x">
+            <cell>
+              <fact>entity-identifier-aspect-node-instance.xml#m1_A_abc</fact>
+            </cell>
+            <cell>
+              <fact>entity-identifier-aspect-node-instance.xml#m1_A_def</fact>
+            </cell>
+            <cell>
+              <fact>entity-identifier-aspect-node-instance.xml#m1_B_def</fact>
+            </cell>
+            <cell>
+              <fact>entity-identifier-aspect-node-instance.xml#m1_B_ghi</fact>
+            </cell>
+          </cells>
+          <cells axis="x">
+            <cell>
+              <fact>entity-identifier-aspect-node-instance.xml#m2_A_abc</fact>
+            </cell>
+            <cell>
+              <fact>entity-identifier-aspect-node-instance.xml#m2_A_def</fact>
+            </cell>
+            <cell>
+              <fact>entity-identifier-aspect-node-instance.xml#m2_B_def</fact>
+            </cell>
+            <cell>
+              <fact>entity-identifier-aspect-node-instance.xml#m2_B_ghi</fact>
+            </cell>
+          </cells>
+        </cells>
+      </cells>
+    </table>
+  </tableSet>
+</tableModel>

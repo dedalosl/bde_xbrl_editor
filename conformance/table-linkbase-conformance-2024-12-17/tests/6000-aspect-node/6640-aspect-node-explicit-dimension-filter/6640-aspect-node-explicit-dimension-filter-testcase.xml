@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2011-09-16"
+  name="6640-aspect-node-explicit-dimension-filter-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:xfie="http://www.xbrl.org/2008/function/instance/error"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Herm Fischer</name>
+        <email>fischer@markv.com</email>
+    </creator>
+    <number>6640</number>
+    <name>Aspect Node Explicit Dimension Filter Testcase</name>
+    <description>Table linkbase test case using an aspect node with a explicit-dimension filter attached</description>
+    
+    <variation id="v-01">
+        <name>Aspect node for a explicit dimension with a explicit-dimension filter, with instance</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and unknown number
+          of columns (reported values of typed dimension T, filtered to just
+          values reported for explicit dimension D = d1, d3).
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">aspect-node-explicit-dimension-filter-instance.xml</instance>
+            <linkbase>aspect-node-explicit-dimension-filter-table.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+        </data>
+        <result>
+            <table>output/aspect-node-explicit-dimension-filter.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-02">
+        <name>Aspect node for a explicit dimension with a complemented explicit-dimension filter, with instance</name>
+        <description>
+          Simple table with two rows (primary items m1, m2) and unknown number
+          of columns (reported values of typed dimension T, filtered to just
+          values not reported for explicit dimension D = d1, d3).
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">aspect-node-complemented-explicit-dimension-filter-instance.xml</instance>
+            <linkbase>aspect-node-complemented-explicit-dimension-filter-table.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+        </data>
+        <result>
+            <table>output/aspect-node-complemented-explicit-dimension-filter.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-03">
+        <name>Aspect node for a typed dimension with an invalid explicit dimension filter</name>
+          <description>
+          Table with an aspect node for a typed dimension with a filter that
+          attempts to filter an explicit dimension that does not exist in the
+          DTS. In this variation there is no instance, so there are no facts to
+          filter and thus no error is raised.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">aspect-node-invalid-explicit-dimension-filter-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/aspect-node-invalid-explicit-dimension-filter-no-data.xml</table> 
+        </result>
+    </variation>
+
+    <variation id="v-03i">
+        <name>Aspect node for a typed dimension with an invalid explicit dimension filter, with instance</name>
+          <description>
+          Table with an aspect node for a typed dimension with a filter that
+          attempts to filter an explicit dimension that does not exist in the
+          DTS.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">aspect-node-invalid-explicit-dimension-filter-instance.xml</instance>
+            <linkbase>aspect-node-invalid-explicit-dimension-filter-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xfie:invalidExplicitDimensionQName</error> 
+        </result>
+    </variation>
+
+</testcase>

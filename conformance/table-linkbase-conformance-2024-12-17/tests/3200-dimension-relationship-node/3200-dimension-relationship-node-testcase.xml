@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../infrastructure/test.xsl"?>
+<testcase
+  date="2011-09-16"
+  name="3200-dimension-relationship-node-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../infrastructure/test.xsd">
+    <creator>
+        <name>Herm Fischer</name>
+        <email>fischer@markv.com</email>
+    </creator>
+    <number>3200</number>
+    <name>Dimension Relationship Node Testcase</name>
+    <description>table linkbase test cases using the dimension relationship node</description>
+
+    <variation id="v-01">
+        <name>Simple table with a domain-member tree</name>
+        <description>
+            Simple table with a domain-member tree that has some nesting and an unusable member.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">dimension-domain-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/dimension-domain-no-data.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-01i">
+        <name>Simple table with a domain-member tree (with instance)</name>
+        <description>
+            Simple table with a domain-member tree that has some nesting and an unusable member (with instance).
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">dimension-domain-instance.xml</instance>
+            <linkbase >dimension-domain-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/dimension-domain.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-02">
+        <name>Dimension relationship node with a tag selector</name>
+        <description>
+          Simple table with a single column with two constraint sets: primary
+          items m1 (untagged) or m2 (tagged with 'two') and a tree of members
+          for explicit dimension F as rows. The dimension relationship node
+          selects tag 'two' so only facts for primary item m2 are included in
+          the table.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">dimension-relationship-node-tag-selector-instance.xml</instance>
+            <linkbase >dimension-relationship-node-tag-selector-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/dimension-relationship-node-tag-selector.xml</table>
+        </result>
+    </variation>
+  
+    <variation id="v-03">
+        <name>Dimension relationship node that results in a tree with an unusable leaf</name>
+        <description>
+            This example shows the result of a dimension relationship tree walk
+            with an unusable member at the leaf.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">dimension-relationship-node-unusable-leaf-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/dimension-relationship-node-unusable-leaf-no-data.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-03i">
+        <name>Dimension relationship node that results in a tree with an unusable leaf, with instance</name>
+        <description>
+            This example shows the result of a dimension relationship tree walk
+            with an unusable member at the leaf.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">dimension-relationship-node-unusable-leaf-instance.xml</instance>
+            <linkbase>dimension-relationship-node-unusable-leaf-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/dimension-relationship-node-unusable-leaf.xml</table>
+        </result>
+    </variation>
+
+    <variation id="v-04">
+        <name>Dimension relationship node with labels</name>
+        <description>
+        Dimension relationship nodes may not have labels, so this
+        variation should result in an error.
+        </description>
+        <data>
+            <linkbase readMeFirst="true">dimension-relationship-node-with-labels-table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:invalidUseOfLabel</error>
+        </result>
+    </variation>
+</testcase>

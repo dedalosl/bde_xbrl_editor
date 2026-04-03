@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2011-09-16"
+  name="6600-aspect-node-concept-filter-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:xfie="http://www.xbrl.org/2008/function/instance/error"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Herm Fischer</name>
+        <email>fischer@markv.com</email>
+    </creator>
+    <number>6600</number>
+    <name>Aspect Node Concept Filter Testcase</name>
+    <description>Table linkbase test case using an aspect node with a concept filter attached</description>
+    
+    <variation id="v-01">
+        <name>Aspect node for a typed dimension with a concept filter, with instance</name>
+        <description>
+          Simple table with two columns (primary items m1, m2) and unknown
+          number of rows (reported values of typed dimension T, filtered to just
+          those reported for primary item m1).
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">aspect-node-concept-filter-instance.xml</instance>
+            <linkbase>aspect-node-concept-filter-table.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+        </data>
+        <result>
+            <table>output/aspect-node-concept-filter.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-02">
+        <name>Aspect node for a typed dimension with a complemented concept filter, with instance</name>
+        <description>
+          Simple table with two columns (primary items m1, m2) and unknown
+          number of rows (reported values of typed dimension T, filtered to just
+          those not reported for primary item m1).
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">aspect-node-complemented-concept-filter-instance.xml</instance>
+            <linkbase>aspect-node-complemented-concept-filter-table.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+        </data>
+        <result>
+            <table>output/aspect-node-complemented-concept-filter.xml</table>
+        </result>
+    </variation>
+
+</testcase>

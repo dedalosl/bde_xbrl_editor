@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:label="http://xbrl.org/2008/label"
+               xmlns:gen="http://xbrl.org/2008/generic"
+               xmlns:xlink="http://www.w3.org/1999/xlink"
+               xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+               xmlns:link="http://www.xbrl.org/2003/linkbase"
+               xmlns:table="http://xbrl.org/2014/table"
+               xmlns:formula="http://xbrl.org/2008/formula"
+               xmlns:xs="http://www.w3.org/2001/XMLSchema"
+               xmlns:xfi="http://www.xbrl.org/2008/function/instance"
+               xmlns:rend="http://www.xbrl.org/table-examples"
+               xsi:schemaLocation="             
+                 http://www.xbrl.org/2003/linkbase http://www.xbrl.org/2003/xbrl-linkbase-2003-12-31.xsd
+                 http://xbrl.org/2008/generic http://www.xbrl.org/2008/generic-link.xsd
+                 http://xbrl.org/2008/label http://www.xbrl.org/2008/generic-label.xsd
+                 http://xbrl.org/2014/table http://www.xbrl.org/2014/table.xsd
+               ">
+    <link:roleRef roleURI="http://www.xbrl.org/table-examples/table10" xlink:type="simple" xlink:href="table-examples-roles.xsd#table10"/>
+    <link:arcroleRef arcroleURI="http://xbrl.org/arcrole/2008/element-label" xlink:type="simple" xlink:href="http://www.xbrl.org/2008/generic-label.xsd#element-label"/>
+    <link:arcroleRef arcroleURI="http://xbrl.org/arcrole/2014/table-breakdown" xlink:type="simple" xlink:href="http://www.xbrl.org/2014/table.xsd#table-breakdown"/>
+    <link:arcroleRef arcroleURI="http://xbrl.org/arcrole/2014/breakdown-tree" xlink:type="simple" xlink:href="http://www.xbrl.org/2014/table.xsd#breakdown-tree"/>
+    <link:arcroleRef arcroleURI="http://xbrl.org/arcrole/2014/definition-node-subtree" xlink:type="simple" xlink:href="http://www.xbrl.org/2014/table.xsd#definition-node-subtree"/>
+    <link:roleRef roleURI="http://www.xbrl.org/2008/role/label" xlink:type="simple" xlink:href="http://www.xbrl.org/2008/generic-label.xsd#standard-label"/>
+                 
+    <gen:link xlink:type="extended" xlink:role="http://www.xbrl.org/table-examples/table10">
+
+        <table:table xlink:type="resource" xlink:label="table10" id="table10"/>
+        <label:label xlink:type="resource" xlink:label="label_table10" xlink:role="http://www.xbrl.org/2008/role/label" id="label_table10" xml:lang="en">Dimension relationship node with a relationship source expression that evaluates to a sequence</label:label>
+        <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label" xlink:from="table10" xlink:to="label_table10"/>
+
+        <!-- Declare X axis -->
+        <table:breakdown parentChildOrder="parent-first" xlink:type="resource" xlink:label="table10-x" id="table10-x"/>
+        <table:tableBreakdownArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2014/table-breakdown" axis="x" xlink:from="table10" xlink:to="table10-x"/>
+        <label:label xlink:type="resource" xlink:label="label_table10-x" xlink:role="http://www.xbrl.org/2008/role/label" id="label_table10-x" xml:lang="en">Two columns (primary items m1, m2)</label:label>
+        <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label" xlink:from="table10-x" xlink:to="label_table10-x"/>
+
+        <!-- Find content for first column header on X axis by stating the concept -->
+        <table:ruleNode xlink:type="resource" xlink:label="table10-x.1" id="table10-x.1">
+           <formula:concept>
+                <formula:qname>rend:m1</formula:qname>
+            </formula:concept>
+        </table:ruleNode>
+        <table:breakdownTreeArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2014/breakdown-tree" xlink:from="table10-x" xlink:to="table10-x.1" order="1"/>
+        <label:label xlink:type="resource" xlink:label="label_table10-x.11" xlink:role="http://www.xbrl.org/2008/role/label" xml:lang="en" id="label_table10-x.11">Label: m1</label:label>
+        <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label" xlink:from="table10-x.1" xlink:to="label_table10-x.11"/>
+
+        <!-- Find content for second column header on X axis by stating the concept -->
+        <table:ruleNode xlink:type="resource" xlink:label="table10-x.2" id="table10-x.2">
+            <formula:concept>
+                <formula:qname>rend:m2</formula:qname>
+            </formula:concept>
+        </table:ruleNode>
+        <table:breakdownTreeArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2014/breakdown-tree" xlink:from="table10-x" xlink:to="table10-x.2" order="2"/>
+        <label:label xlink:type="resource" xlink:label="label_table10-x.21" xlink:role="http://www.xbrl.org/2008/role/label" xml:lang="en" id="label_table10-x.21">Label: m2</label:label>
+        <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label" xlink:from="table10-x.2" xlink:to="label_table10-x.21"/>
+
+        <!-- Declare Y axis -->
+        <table:breakdown parentChildOrder="parent-first" xlink:type="resource" xlink:label="table10-y" id="table10-y"/>
+        <table:tableBreakdownArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2014/table-breakdown" axis="y" xlink:from="table10" xlink:to="table10-y"/>
+        <label:label xlink:type="resource" xlink:label="label_table10-y" xlink:role="http://www.xbrl.org/2008/role/label" id="label_table10-y" xml:lang="en">Domain-member tree for dimension F</label:label>
+        <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label" xlink:from="table10-y" xlink:to="label_table10-y"/>
+
+        <!-- Find content for Y axis by following a DRS tree -->
+        <table:dimensionRelationshipNode xlink:type="resource" xlink:label="table10-y.1" id="table10-y.1">
+            <!-- show only the part of the domain rooted at member rend:f4 -->
+            <table:relationshipSourceExpression>xs:QName('rend:f1'), xs:QName('rend:f4')</table:relationshipSourceExpression>
+            <table:linkrole>http://www.xbrl.org/table-examples/dimension-domains</table:linkrole>
+            <table:dimension>rend:F</table:dimension>
+        </table:dimensionRelationshipNode>
+        <table:breakdownTreeArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2014/breakdown-tree" xlink:from="table10-y" xlink:to="table10-y.1" order="1"/>
+
+    </gen:link>
+
+</link:linkbase>             

@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2012-07-26"
+  name="0145-table-parameter-arc-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Herm Fischer</name>
+        <email>fischer@markv.com</email>
+    </creator>
+    <number>0145</number>
+    <name>Table-parameter Arc Testcase</name>
+    <description>Table linkbase test case for table-parameter arc errors</description>
+    
+    <variation id="v-01">
+        <name>Table-parameter arc with an invalid source element</name>
+        <description>
+          Invalid table that has a table-parameter arc with a generic label as
+          the source element.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">table-linkbase-table-parameter-source-error.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:tableParameterSourceError</error>
+        </result>
+    </variation>
+
+    <variation id="v-02">
+        <name>Table-parameter arc with an invalid target element</name>
+        <description>
+          Invalid table that has a table-parameter arc with a definition node as
+          the target element.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">table-linkbase-table-parameter-target-error.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:tableParameterTargetError</error>
+        </result>
+    </variation>
+
+    <variation id="v-03">
+        <name>Table-parameter arcs with clashing names</name>
+        <description>
+          Invalid table that has two table-parameter arcs with the same @name.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">table-linkbase-table-parameter-name-clash.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <error>xbrlte:tableParameterNameClash</error>
+        </result>
+    </variation>
+
+</testcase>

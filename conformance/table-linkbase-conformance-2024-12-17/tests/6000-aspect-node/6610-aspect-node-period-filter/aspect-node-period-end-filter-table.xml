@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:label="http://xbrl.org/2008/label" 
+               xmlns:gen="http://xbrl.org/2008/generic"
+               xmlns:pf="http://xbrl.org/2008/filter/period"
+               xmlns:xlink="http://www.w3.org/1999/xlink"
+               xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+               xmlns:link="http://www.xbrl.org/2003/linkbase"
+               xmlns:table="http://xbrl.org/2014/table"
+               xmlns:formula="http://xbrl.org/2008/formula"
+               xmlns:rend="http://www.xbrl.org/table-examples"
+               xmlns:xs="http://www.w3.org/2001/XMLSchema"
+               xmlns:xfi="http://www.xbrl.org/2008/function/instance"
+               xsi:schemaLocation="             
+			   http://www.xbrl.org/2003/linkbase http://www.xbrl.org/2003/xbrl-linkbase-2003-12-31.xsd
+			   http://xbrl.org/2008/generic http://www.xbrl.org/2008/generic-link.xsd
+			   http://xbrl.org/2008/reference http://www.xbrl.org/2008/generic-reference.xsd
+			   http://xbrl.org/2008/label http://www.xbrl.org/2008/generic-label.xsd
+			   http://xbrl.org/2008/filter/period http://www.xbrl.org/2008/period-filter.xsd
+			   http://xbrl.org/2014/table http://www.xbrl.org/2014/table.xsd
+               ">
+   <link:roleRef roleURI="http://www.xbrl.org/table-examples/table3" xlink:type="simple" xlink:href="table-examples-roles.xsd#table3"/>
+   <link:arcroleRef arcroleURI="http://xbrl.org/arcrole/2008/element-label" xlink:type="simple" xlink:href="http://www.xbrl.org/2008/generic-label.xsd#element-label"/>
+   <link:arcroleRef arcroleURI="http://xbrl.org/arcrole/2014/table-breakdown" xlink:type="simple" xlink:href="http://www.xbrl.org/2014/table.xsd#table-breakdown"/>
+   <link:arcroleRef arcroleURI="http://xbrl.org/arcrole/2014/breakdown-tree" xlink:type="simple" xlink:href="http://www.xbrl.org/2014/table.xsd#breakdown-tree"/>
+   <link:arcroleRef arcroleURI="http://xbrl.org/arcrole/2014/definition-node-subtree" xlink:type="simple" xlink:href="http://www.xbrl.org/2014/table.xsd#definition-node-subtree"/>
+   <link:arcroleRef arcroleURI="http://xbrl.org/arcrole/2014/aspect-node-filter" xlink:type="simple" xlink:href="http://www.xbrl.org/2014/table.xsd#aspect-node-filter"/>
+   <link:roleRef roleURI="http://www.xbrl.org/table-examples/coordinate-code" xlink:type="simple" xlink:href="table-examples-roles.xsd#coordinate-code"/>
+   <link:roleRef roleURI="http://www.xbrl.org/2008/role/label" xlink:type="simple" xlink:href="http://www.xbrl.org/2008/generic-label.xsd#standard-label"/>
+   <link:roleRef roleURI="http://www.xbrl.org/2010/role/message"  xlink:type="simple" xlink:href="http://www.xbrl.org/2010/generic-message.xsd#standard-message"/>
+
+   <gen:link xlink:type="extended"
+             xlink:role="http://www.xbrl.org/table-examples/table3">
+      <table:table xlink:type="resource" xlink:label="table3"
+                   id="table3"/>
+      <label:label xlink:type="resource" xlink:label="label_table31"
+                   xlink:role="http://www.xbrl.org/2008/role/label"
+                   xml:lang="en"
+                   id="label_table31">Aspect node for a typed dimension with an period-end filter</label:label>
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table3"
+               xlink:to="label_table31"/>
+
+      <table:breakdown parentChildOrder="parent-first" xlink:type="resource" xlink:label="table3-x1" id="table3-x1"/>
+      <table:tableBreakdownArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2014/table-breakdown"
+                          axis="x"
+                          xlink:from="table3"
+                          xlink:to="table3-x1"
+                          order="4"/>
+      <label:label xlink:type="resource" xlink:label="label_table3-x1"
+                   xlink:role="http://www.xbrl.org/2008/role/label"
+                   xml:lang="en"
+                   id="label_table3-x1">Three columns (periods 2001, 2001H1, 2001H2)</label:label>
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table3-x1"
+               xlink:to="label_table3-x1"/>
+      <table:ruleNode xlink:type="resource" xlink:label="table3-x1.1" id="table3-x1.1">
+         <formula:period>
+            <formula:duration start="xs:date('2001-01-01')" end="xs:date('2001-12-31')"/>
+         </formula:period>
+      </table:ruleNode>
+      <table:breakdownTreeArc xlink:type="arc"
+               xlink:arcrole="http://xbrl.org/arcrole/2014/breakdown-tree"
+               xlink:from="table3-x1"
+               xlink:to="table3-x1.1"
+               order="2"/>
+      <label:label xlink:type="resource" xlink:label="label_table3-x1.11"
+                   xlink:role="http://www.xbrl.org/2008/role/label"
+                   xml:lang="en"
+                   id="label_table3-x1.11">Label: 2001</label:label>
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table3-x1.1"
+               xlink:to="label_table3-x1.11"/>
+
+      <table:ruleNode xlink:type="resource" xlink:label="table3-x1.1.1" id="table3-x1.1.1">
+         <formula:period>
+            <formula:duration start="xs:date('2001-01-01')" end="xs:date('2001-06-30')"/>
+         </formula:period>
+      </table:ruleNode>
+      <table:definitionNodeSubtreeArc xlink:type="arc"
+               xlink:arcrole="http://xbrl.org/arcrole/2014/definition-node-subtree"
+               xlink:from="table3-x1.1"
+               xlink:to="table3-x1.1.1"
+               order="4"/>
+      <label:label xlink:type="resource" xlink:label="label_table3-x1.1.11"
+                   xlink:role="http://www.xbrl.org/2008/role/label"
+                   xml:lang="en"
+                   id="label_table3-x1.1.11">Label: First Half</label:label>
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table3-x1.1.1"
+               xlink:to="label_table3-x1.1.11"/>
+
+      <table:ruleNode xlink:type="resource" xlink:label="table3-x1.1.2" id="table3-x1.1.2">
+         <formula:period>
+            <formula:duration start="xs:date('2001-07-01')" end="xs:date('2001-12-31')"/>
+         </formula:period>
+      </table:ruleNode>
+      <table:definitionNodeSubtreeArc xlink:type="arc"
+               xlink:arcrole="http://xbrl.org/arcrole/2014/definition-node-subtree"
+               xlink:from="table3-x1.1"
+               xlink:to="table3-x1.1.2"
+               order="5"/>
+      <label:label xlink:type="resource" xlink:label="label_table3-x1.1.21"
+                   xlink:role="http://www.xbrl.org/2008/role/label"
+                   xml:lang="en"
+                   id="label_table3-x1.1.21">Label: Second Half</label:label>
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table3-x1.1.2"
+               xlink:to="label_table3-x1.1.21"/>
+
+      <table:breakdown parentChildOrder="parent-first" xlink:type="resource" xlink:label="table3-x2" id="table3-x2"/>
+      <table:tableBreakdownArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2014/table-breakdown"
+                          axis="x"
+                          xlink:from="table3"
+                          xlink:to="table3-x2"
+                          order="5"/>
+      <label:label xlink:type="resource" xlink:label="label_table3-x2"
+                   xlink:role="http://www.xbrl.org/2008/role/label"
+                   xml:lang="en"
+                   id="label_table3-x2">Two columns (primary items o1, o2)</label:label>
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table3-x2"
+               xlink:to="label_table3-x2"/>
+      <table:ruleNode xlink:type="resource" xlink:label="table3-x2.1" id="table3-x2.1">
+         <formula:concept>
+            <formula:qname>rend:o1</formula:qname>
+         </formula:concept>
+      </table:ruleNode>
+      <table:breakdownTreeArc xlink:type="arc"
+               xlink:arcrole="http://xbrl.org/arcrole/2014/breakdown-tree"
+               xlink:from="table3-x2"
+               xlink:to="table3-x2.1"
+               order="2"/>
+      <label:label xlink:type="resource" xlink:label="label_table3-x2.11"
+                   xlink:role="http://www.xbrl.org/2008/role/label"
+                   xml:lang="en"
+                   id="label_table3-x2.11">Label: o1</label:label>
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table3-x2.1"
+               xlink:to="label_table3-x2.11"/>
+      <label:label xlink:type="resource" xlink:label="label_table3-x2.12"
+                   xlink:role="http://www.xbrl.org/table-examples/coordinate-code"
+                   xml:lang="en"
+                   id="label_table3-x2.12">1</label:label>
+      <gen:arc order="2" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table3-x2.1"
+               xlink:to="label_table3-x2.12"/>
+      <table:ruleNode xlink:type="resource" xlink:label="table3-x2.2" id="table3-x2.2">
+         <formula:concept>
+            <formula:qname>rend:o2</formula:qname>
+         </formula:concept>
+      </table:ruleNode>
+      <table:breakdownTreeArc xlink:type="arc"
+               xlink:arcrole="http://xbrl.org/arcrole/2014/breakdown-tree"
+               xlink:from="table3-x2"
+               xlink:to="table3-x2.2"
+               order="4"/>
+      <label:label xlink:type="resource" xlink:label="label_table3-x2.21"
+                   xlink:role="http://www.xbrl.org/2008/role/label"
+                   xml:lang="en"
+                   id="label_table3-x2.21">Label: o2</label:label>
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table3-x2.2"
+               xlink:to="label_table3-x2.21"/>
+      <label:label xlink:type="resource" xlink:label="label_table3-x2.22"
+                   xlink:role="http://www.xbrl.org/table-examples/coordinate-code"
+                   xml:lang="en"
+                   id="label_table3-x2.22">2</label:label>
+      <gen:arc order="2" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table3-x2.2"
+               xlink:to="label_table3-x2.22"/>
+
+      <table:breakdown xlink:type="resource" xlink:label="table3-y" id="table3-y"/>
+      <table:tableBreakdownArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2014/table-breakdown"
+                          axis="y"
+                          xlink:from="table3"
+                          xlink:to="table3-y"
+                          order="6"/>
+      <label:label xlink:type="resource" xlink:label="label_table3-y"
+                   xlink:role="http://www.xbrl.org/2008/role/label"
+                   xml:lang="en"
+                   id="label_table3-y">Rows (typed dimension T)</label:label>
+      <gen:arc order="1" xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+               xlink:from="table3-y"
+               xlink:to="label_table3-y"/>
+      <table:aspectNode xlink:type="resource" xlink:label="table3-y.1" id="table3-y.1">
+        <table:dimensionAspect>rend:T</table:dimensionAspect>
+      </table:aspectNode>
+      <pf:periodEnd xlink:type="resource" xlink:label="filter_table3-y.1" id="filter_table3-y.1" date="xs:date('2001-12-31')" />
+      <table:breakdownTreeArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2014/breakdown-tree"
+                          xlink:from="table3-y"
+                          xlink:to="table3-y.1"/>
+      <table:aspectNodeFilterArc xlink:type="arc" xlink:arcrole="http://xbrl.org/arcrole/2014/aspect-node-filter"
+                          xlink:from="table3-y.1"
+                          xlink:to="filter_table3-y.1"/>
+   </gen:link>
+
+</link:linkbase>

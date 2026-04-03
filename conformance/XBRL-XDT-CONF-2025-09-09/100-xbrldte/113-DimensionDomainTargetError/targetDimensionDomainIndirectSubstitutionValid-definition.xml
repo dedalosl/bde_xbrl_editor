@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?><link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase" xmlns:xbrldt="http://xbrl.org/2005/xbrldt" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.xbrl.org/2003/linkbase http://www.xbrl.org/2003/xbrl-linkbase-2003-12-31.xsd">
+   <link:arcroleRef arcroleURI="http://xbrl.org/int/dim/arcrole/dimension-domain" xlink:href="http://www.xbrl.org/2005/xbrldt-2005.xsd#dimension-domain" xlink:type="simple"/>
+   <link:arcroleRef arcroleURI="http://xbrl.org/int/dim/arcrole/hypercube-dimension" xlink:href="http://www.xbrl.org/2005/xbrldt-2005.xsd#hypercube-dimension" xlink:type="simple"/>
+   <link:arcroleRef arcroleURI="http://xbrl.org/int/dim/arcrole/all" xlink:href="http://www.xbrl.org/2005/xbrldt-2005.xsd#all" xlink:type="simple"/>
+   <link:roleRef roleURI="http://xbrl.example.com/hypercubes/Hypercube" xlink:href="targetDimensionDomainIndirectSubstitutionValid.xsd#hypercube" xlink:type="simple"/>
+   <link:definitionLink xlink:role="http://xbrl.example.com/hypercubes/Hypercube" xlink:type="extended">
+      <link:loc xlink:href="targetDimensionDomainIndirectSubstitutionValid.xsd#foo_Hypercube" xlink:label="lbl_Hypercube" xlink:type="locator"/>
+      <link:loc xlink:href="targetDimensionDomainIndirectSubstitutionValid.xsd#foo_PrimaryItemsForHypercube" xlink:label="lbl_PrimaryItemsForHypercube" xlink:type="locator"/>
+      <link:definitionArc order="1.0" xbrldt:closed="true" xbrldt:contextElement="segment" xlink:arcrole="http://xbrl.org/int/dim/arcrole/all" xlink:from="lbl_PrimaryItemsForHypercube" xlink:to="lbl_Hypercube" xlink:type="arc"/>
+      <link:loc xlink:href="targetDimensionDomainIndirectSubstitutionValid.xsd#foo_Dimension" xlink:label="lbl_Dimension" xlink:type="locator"/>
+      <link:definitionArc order="1.0" xlink:arcrole="http://xbrl.org/int/dim/arcrole/hypercube-dimension" xlink:from="lbl_Hypercube" xlink:to="lbl_Dimension" xlink:type="arc"/>
+      <link:loc xlink:href="targetDimensionDomainIndirectSubstitutionValid.xsd#foo_Member" xlink:label="lbl_Member" xlink:type="locator"/>
+      <link:definitionArc order="1.0" xlink:arcrole="http://xbrl.org/int/dim/arcrole/dimension-domain" xlink:from="lbl_Dimension" xlink:to="lbl_Member" xlink:type="arc"/>
+   </link:definitionLink>
+</link:linkbase>

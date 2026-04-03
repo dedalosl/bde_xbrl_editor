@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xbrli:xbrl
+  xmlns:rend="http://www.xbrl.org/table-examples"
+  xmlns:iso4217="http://www.xbrl.org/2003/iso4217"
+  xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:xbrldi="http://xbrl.org/2006/xbrldi"
+  xmlns:xbrli="http://www.xbrl.org/2003/instance"
+  xmlns:xl="http://www.xbrl.org/2003/XLink"
+  xmlns:xlink="http://www.w3.org/1999/xlink"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2006/xbrldi http://www.xbrl.org/2006/xbrldi-2006.xsd">
+    <link:schemaRef xlink:href="table-examples.xsd" xlink:type="simple"/>
+    <link:linkbaseRef  xlink:type="simple" xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase" 
+      xlink:href="typed-dimension-aspect-node-with-rule-nodes-table.xml"/>  
+    <xbrli:context id="R_1_T_France">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme">abc</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:instant>2001-12-31</xbrli:instant>
+        </xbrli:period>
+        <xbrli:scenario>
+            <xbrldi:typedMember dimension="rend:R"><rend:integerDomain>1</rend:integerDomain></xbrldi:typedMember>
+            <xbrldi:typedMember dimension="rend:T"><rend:stringDomain>France</rend:stringDomain></xbrldi:typedMember>
+        </xbrli:scenario>
+    </xbrli:context>
+    <xbrli:context id="R_2_T_France">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme">abc</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:instant>2001-12-31</xbrli:instant>
+        </xbrli:period>
+        <xbrli:scenario>
+            <xbrldi:typedMember dimension="rend:R"><rend:integerDomain>2</rend:integerDomain></xbrldi:typedMember>
+            <xbrldi:typedMember dimension="rend:T"><rend:stringDomain>France</rend:stringDomain></xbrldi:typedMember>
+        </xbrli:scenario>
+    </xbrli:context>
+    <xbrli:context id="R_3_T_France">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme">abc</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:instant>2001-12-31</xbrli:instant>
+        </xbrli:period>
+        <xbrli:scenario>
+            <xbrldi:typedMember dimension="rend:R"><rend:integerDomain>3</rend:integerDomain></xbrldi:typedMember>
+            <xbrldi:typedMember dimension="rend:T"><rend:stringDomain>France</rend:stringDomain></xbrldi:typedMember>
+        </xbrli:scenario>
+    </xbrli:context>
+    <xbrli:context id="R_4_T_France">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme">abc</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:instant>2001-12-31</xbrli:instant>
+        </xbrli:period>
+        <xbrli:scenario>
+            <xbrldi:typedMember dimension="rend:R"><rend:integerDomain>4</rend:integerDomain></xbrldi:typedMember>
+            <xbrldi:typedMember dimension="rend:T"><rend:stringDomain>France</rend:stringDomain></xbrldi:typedMember>
+        </xbrli:scenario>
+    </xbrli:context>
+    <xbrli:context id="R_5_T_France">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme">abc</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:instant>2001-12-31</xbrli:instant>
+        </xbrli:period>
+        <xbrli:scenario>
+            <xbrldi:typedMember dimension="rend:R"><rend:integerDomain>5</rend:integerDomain></xbrldi:typedMember>
+            <xbrldi:typedMember dimension="rend:T"><rend:stringDomain>France</rend:stringDomain></xbrldi:typedMember>
+        </xbrli:scenario>
+    </xbrli:context>
+    <xbrli:context id="R_1_T_Spain">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme">abc</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:instant>2001-12-31</xbrli:instant>
+        </xbrli:period>
+        <xbrli:scenario>
+            <xbrldi:typedMember dimension="rend:R"><rend:integerDomain>1</rend:integerDomain></xbrldi:typedMember>
+            <xbrldi:typedMember dimension="rend:T"><rend:stringDomain>Spain</rend:stringDomain></xbrldi:typedMember>
+        </xbrli:scenario>
+    </xbrli:context>
+    <xbrli:context id="R_3_T_Spain">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme">abc</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:instant>2001-12-31</xbrli:instant>
+        </xbrli:period>
+        <xbrli:scenario>
+            <xbrldi:typedMember dimension="rend:R"><rend:integerDomain>3</rend:integerDomain></xbrldi:typedMember>
+            <xbrldi:typedMember dimension="rend:T"><rend:stringDomain>Spain</rend:stringDomain></xbrldi:typedMember>
+        </xbrli:scenario>
+    </xbrli:context>
+    <xbrli:context id="R_2_T_Vatican">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme">abc</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:instant>2001-12-31</xbrli:instant>
+        </xbrli:period>
+        <xbrli:scenario>
+            <xbrldi:typedMember dimension="rend:R"><rend:integerDomain>2</rend:integerDomain></xbrldi:typedMember>
+            <xbrldi:typedMember dimension="rend:T"><rend:stringDomain>Vatican</rend:stringDomain></xbrldi:typedMember>
+        </xbrli:scenario>
+    </xbrli:context>
+    <xbrli:context id="R_3_T_Vatican">
+        <xbrli:entity>
+            <xbrli:identifier scheme="http://scheme">abc</xbrli:identifier>
+        </xbrli:entity>
+        <xbrli:period>
+            <xbrli:instant>2001-12-31</xbrli:instant>
+        </xbrli:period>
+        <xbrli:scenario>
+            <xbrldi:typedMember dimension="rend:R"><rend:integerDomain>3</rend:integerDomain></xbrldi:typedMember>
+            <xbrldi:typedMember dimension="rend:T"><rend:stringDomain>Vatican</rend:stringDomain></xbrldi:typedMember>
+        </xbrli:scenario>
+    </xbrli:context>
+    <xbrli:unit id="EUR">
+        <xbrli:measure>iso4217:EUR</xbrli:measure>
+    </xbrli:unit>
+    <rend:m1 id="m1_R_1_T_France"
+      contextRef="R_1_T_France"
+      decimals="0"
+      unitRef="EUR">111</rend:m1>
+    <rend:m2 id="m2_R_1_T_France"
+      contextRef="R_1_T_France"
+      decimals="0"
+      unitRef="EUR">112</rend:m2>
+    <rend:m1 id="m1_R_2_T_France"
+      contextRef="R_2_T_France"
+      decimals="0"
+      unitRef="EUR">211</rend:m1>
+    <rend:m2 id="m2_R_2_T_France"
+      contextRef="R_2_T_France"
+      decimals="0"
+      unitRef="EUR">212</rend:m2>
+    <rend:m1 id="m1_R_3_T_France"
+      contextRef="R_3_T_France"
+      decimals="0"
+      unitRef="EUR">311</rend:m1>
+    <rend:m2 id="m2_R_3_T_France"
+      contextRef="R_3_T_France"
+      decimals="0"
+      unitRef="EUR">312</rend:m2>
+    <rend:m1 id="m1_R_4_T_France"
+      contextRef="R_4_T_France"
+      decimals="0"
+      unitRef="EUR">411</rend:m1>
+    <rend:m2 id="m2_R_4_T_France"
+      contextRef="R_4_T_France"
+      decimals="0"
+      unitRef="EUR">412</rend:m2>
+    <rend:m1 id="m1_R_5_T_France"
+      contextRef="R_5_T_France"
+      decimals="0"
+      unitRef="EUR">511</rend:m1>
+    <rend:m2 id="m2_R_5_T_France"
+      contextRef="R_5_T_France"
+      decimals="0"
+      unitRef="EUR">512</rend:m2>
+    <rend:m1 id="m1_R_1_T_Spain"
+      contextRef="R_1_T_Spain"
+      decimals="0"
+      unitRef="EUR">121</rend:m1>
+    <rend:m2 id="m2_R_1_T_Spain"
+      contextRef="R_1_T_Spain"
+      decimals="0"
+      unitRef="EUR">122</rend:m2>
+    <rend:m1 id="m1_R_3_T_Spain"
+      contextRef="R_3_T_Spain"
+      decimals="0"
+      unitRef="EUR">321</rend:m1>
+    <rend:m2 id="m2_R_3_T_Spain"
+      contextRef="R_3_T_Spain"
+      decimals="0"
+      unitRef="EUR">322</rend:m2>
+    <rend:m1 id="m1_R_2_T_Vatican"
+      contextRef="R_2_T_Vatican"
+      decimals="0"
+      unitRef="EUR">231</rend:m1>
+    <rend:m2 id="m2_R_2_T_Vatican"
+      contextRef="R_2_T_Vatican"
+      decimals="0"
+      unitRef="EUR">232</rend:m2>
+    <rend:m1 id="m1_R_3_T_Vatican"
+      contextRef="R_3_T_Vatican"
+      decimals="0"
+      unitRef="EUR">331</rend:m1>
+    <rend:m2 id="m2_R_3_T_Vatican"
+      contextRef="R_3_T_Vatican"
+      decimals="0"
+      unitRef="EUR">332</rend:m2>
+</xbrli:xbrl>

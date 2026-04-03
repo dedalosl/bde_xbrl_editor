@@ -1,0 +1,111 @@
+<?xml version='1.0' encoding='utf-8'?>
+<tableModel xmlns="http://xbrl.org/2014/table/model" xmlns:xbrli="http://www.xbrl.org/2003/instance" xmlns:rend="http://www.xbrl.org/table-examples" xml:base="..">
+  <tableSet>
+    <label>Aspect node for period</label>
+    <table>
+      <headers axis="y">
+        <group>
+          <label>Three rows (primary items m1, m2, p1)</label>
+          <header>
+            <cell>
+              <label>Label: m1</label>
+              <label>1</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:m1</value>
+              </constraint>
+            </cell>
+            <cell>
+              <label>Label: m2</label>
+              <label>2</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:m2</value>
+              </constraint>
+            </cell>
+            <cell>
+              <label>Label: p1</label>
+              <label>3</label>
+              <constraint>
+                <aspect>concept</aspect>
+                <value>rend:p1</value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+      </headers>
+      <headers axis="x">
+        <group>
+          <label>Columns (reported periods)</label>
+          <header>
+            <cell>
+              <constraint>
+                <aspect>period</aspect>
+                <value>
+                  <xbrli:instant>2001-01-01T00:00:00Z</xbrli:instant>
+                </value>
+              </constraint>
+            </cell>
+            <cell>
+              <constraint>
+                <aspect>period</aspect>
+                <value>
+                  <xbrli:instant>2002-01-01T00:00:00Z</xbrli:instant>
+                </value>
+              </constraint>
+            </cell>
+            <cell>
+              <constraint>
+                <aspect>period</aspect>
+                <value>
+                  <xbrli:startDate>2001-01-01T00:00:00Z</xbrli:startDate>
+                  <xbrli:endDate>2002-01-01T00:00:00Z</xbrli:endDate>
+                </value>
+              </constraint>
+            </cell>
+            <cell>
+              <constraint>
+                <aspect>period</aspect>
+                <value>
+                  <xbrli:forever/>
+                </value>
+              </constraint>
+            </cell>
+          </header>
+        </group>
+      </headers>
+      <cells axis="z">
+        <cells axis="y">
+          <cells axis="x">
+            <cell>
+              <fact>period-aspect-node-instance.xml#m1_start</fact>
+            </cell>
+            <cell>
+              <fact>period-aspect-node-instance.xml#m1_end</fact>
+            </cell>
+            <cell/>
+            <cell/>
+          </cells>
+          <cells axis="x">
+            <cell>
+              <fact>period-aspect-node-instance.xml#m2_start</fact>
+            </cell>
+            <cell>
+              <fact>period-aspect-node-instance.xml#m2_end</fact>
+            </cell>
+            <cell/>
+            <cell/>
+          </cells>
+          <cells axis="x">
+            <cell/>
+            <cell/>
+            <cell>
+              <fact>period-aspect-node-instance.xml#p1_year</fact>
+            </cell>
+            <cell/>
+          </cells>
+        </cells>
+      </cells>
+    </table>
+  </tableSet>
+</tableModel>

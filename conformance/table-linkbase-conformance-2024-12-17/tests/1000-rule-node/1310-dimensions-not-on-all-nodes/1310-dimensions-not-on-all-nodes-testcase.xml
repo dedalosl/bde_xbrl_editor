@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2015-09-29"
+  name="1310-dimensions-not-on-all-nodes-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>David North</name>
+        <email>dtn@corefiling.com</email>
+    </creator>
+    <number>1310</number>
+    <name>Dimensions not on all nodes</name>
+    <description>Dimension "Country" only applies to the left hand column in the X axis breakdown.
+    However, this is OK as facts in the right hand column are simply constrained to those not reporting Country.</description>
+
+    <variation id="v-01">
+        <name>2 x 1 example</name>
+        <description>
+        As per testcase.
+        </description>
+        <data>
+            <instance readMeFirst="true">instance.xml</instance>
+            <linkbase>table.xml</linkbase>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+        </data>
+        <result>
+            <table>output/output.xml</table>
+        </result>
+    </variation>
+
+</testcase>

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<facts xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:noNamespaceSchemaLocation="../../../lib/facts.xsd">
+   <item>
+      <qnElement xmlns:conf="http://www.xbrl.org/2010/conformance">conf:Primary</qnElement>
+      <sPointer>4</sPointer>
+      <member>
+         <qnDimension xmlns:conf="http://www.xbrl.org/2010/conformance">conf:Axis1</qnDimension>
+         <bDefaulted>false</bDefaulted>
+      </member>
+      <member>
+         <qnDimension xmlns:conf="http://www.xbrl.org/2010/conformance">conf:Axis2</qnDimension>
+         <bDefaulted>false</bDefaulted>
+      </member>
+   </item>
+</facts>

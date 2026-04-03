@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<?xml-stylesheet type="text/xsl" href="../../../infrastructure/test.xsl"?>
+<testcase
+  date="2013-09-09"
+  name="6100-concept-aspect-node-testcase"
+  xmlns="http://xbrl.org/2008/conformance"
+  xmlns:xbrlte="http://xbrl.org/2014/table/error"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:xfie="http://www.xbrl.org/2008/function/instance/error"
+  xsi:schemaLocation="http://xbrl.org/2008/conformance ../../../infrastructure/test.xsd">
+    <creator>
+        <name>Chris Rimes</name>
+        <email>cdr@corefiling.com</email>
+    </creator>
+    <number>6100</number>
+    <name>Concept Aspect Node Testcase</name>
+    <description>Table linkbase test case using an aspect node with a concept aspect</description>
+    
+    <variation id="v-01">
+        <name>Aspect node for concept</name>
+        <description>
+          Simple table with two columns (dimension D = d1, d2) and unknown
+          number of rows (reported primary items). In this variation there is
+          no instance, so there are no reported concepts.
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <linkbase readMeFirst="true">concept-aspect-node-table.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+        </data>
+        <result>
+            <table>output/concept-aspect-node-no-data.xml</table>
+        </result>
+    </variation>
+    
+    <variation id="v-01i">
+        <name>Aspect node for concept, with instance</name>
+        <description>
+          Simple table with two columns (dimension D = d1, d2) and unknown
+          number of rows (reported primary items).
+        </description>
+        <reference specification="rendering-requirements" useCase="????"/>
+        <data>
+            <instance readMeFirst="true">concept-aspect-node-instance.xml</instance>
+            <linkbase>concept-aspect-node-table.xml</linkbase>
+            <schema>table-examples-roles.xsd</schema>
+            <schema>table-examples.xsd</schema>
+            <linkbase>table-examples-definition.xml</linkbase>
+            <linkbase>table-examples-label.xml</linkbase>
+        </data>
+        <result>
+            <table>output/concept-aspect-node.xml</table>
+        </result>
+    </variation>
+
+</testcase>
