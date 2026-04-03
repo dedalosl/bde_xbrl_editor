@@ -147,16 +147,15 @@ class MultiLevelRowHeader(QHeaderView):
             for cell in cells:
                 span = 1 if cell.is_leaf else cell.span
                 if leaf_cursor <= logical_index < leaf_cursor + span:
-                    if logical_index == leaf_cursor:
-                        y_start = self.sectionViewportPosition(leaf_cursor)
-                        full_height = sum(
-                            self.sectionSize(leaf_cursor + k)
-                            for k in range(span)
-                            if leaf_cursor + k < self.count()
-                        )
-                        cell_rect = QRect(x, y_start, _LEVEL_WIDTH, full_height)
-                        is_leaf_level = (level_idx == depth - 1)
-                        self._paint_cell(painter, cell_rect, cell, is_leaf_level, level_idx, depth, font_pts)
+                    y_start = self.sectionViewportPosition(leaf_cursor)
+                    full_height = sum(
+                        self.sectionSize(leaf_cursor + k)
+                        for k in range(span)
+                        if leaf_cursor + k < self.count()
+                    )
+                    cell_rect = QRect(x, y_start, _LEVEL_WIDTH, full_height)
+                    is_leaf_level = (level_idx == depth - 1)
+                    self._paint_cell(painter, cell_rect, cell, is_leaf_level, level_idx, depth, font_pts)
                     break
                 leaf_cursor += span
 

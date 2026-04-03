@@ -28,14 +28,27 @@ from PySide6.QtWidgets import (
 from bde_xbrl_editor.taxonomy import LoaderSettings
 
 _SETTINGS_FILE = Path.home() / ".bde_xbrl_editor" / "settings.json"
+_MAX_RECENT = 5
+
+
+def _read_raw() -> dict:
+    if not _SETTINGS_FILE.exists():
+        return {}
+    try:
+        return json.loads(_SETTINGS_FILE.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _write_raw(data: dict) -> None:
+    _SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _SETTINGS_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
 
 def load_saved_settings() -> LoaderSettings:
     """Load persisted LoaderSettings from disk, or return defaults."""
-    if not _SETTINGS_FILE.exists():
-        return LoaderSettings()
+    data = _read_raw()
     try:
-        data = json.loads(_SETTINGS_FILE.read_text(encoding="utf-8"))
         catalog_raw = data.get("local_catalog")
         catalog = {k: Path(v) for k, v in catalog_raw.items()} if catalog_raw else None
         return LoaderSettings(
@@ -47,20 +60,36 @@ def load_saved_settings() -> LoaderSettings:
         return LoaderSettings()
 
 
+def load_recent_files() -> list[str]:
+    """Return up to _MAX_RECENT recently opened taxonomy paths."""
+    return list(_read_raw().get("recent_files", []))[:_MAX_RECENT]
+
+
+def add_recent_file(path: str) -> None:
+    """Prepend path to the recent-files list and persist (deduped, max _MAX_RECENT)."""
+    data = _read_raw()
+    recent: list[str] = data.get("recent_files", [])
+    # Remove duplicates, insert at front
+    recent = [p for p in recent if p != path]
+    recent.insert(0, path)
+    data["recent_files"] = recent[:_MAX_RECENT]
+    _write_raw(data)
+
+
 def save_settings(settings: LoaderSettings) -> None:
-    """Persist LoaderSettings to disk."""
-    _SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    """Persist LoaderSettings to disk (preserves other keys like recent_files)."""
+    data = _read_raw()
     catalog = (
         {k: str(v) for k, v in settings.local_catalog.items()}
         if settings.local_catalog
         else None
     )
-    data = {
+    data.update({
         "allow_network": settings.allow_network,
         "language_preference": list(settings.language_preference),
         "local_catalog": catalog,
-    }
-    _SETTINGS_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    })
+    _write_raw(data)
 
 
 class LoaderSettingsDialog(QDialog):

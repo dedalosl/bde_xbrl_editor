@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from bde_xbrl_editor.instance.models import Fact, XbrlInstance
-from bde_xbrl_editor.taxonomy.models import FactVariableDefinition, QName
+from bde_xbrl_editor.taxonomy.models import FactVariableDefinition
 
 
 def apply_filters(
@@ -59,14 +59,12 @@ def apply_filters(
 
             if dim_filter.exclude:
                 # Excluded: must NOT have any of the listed members
-                if dim_filter.member_qnames:
-                    if member in dim_filter.member_qnames:
+                if dim_filter.member_qnames and member in dim_filter.member_qnames:
                         continue  # excluded member found — skip fact
                 filtered.append(fact)
             else:
                 # Include: must have one of the listed members (or any member if list is empty)
-                if dim_filter.member_qnames:
-                    if member in dim_filter.member_qnames:
+                if dim_filter.member_qnames and member in dim_filter.member_qnames:
                         filtered.append(fact)
                 else:
                     # Any member of this dimension
