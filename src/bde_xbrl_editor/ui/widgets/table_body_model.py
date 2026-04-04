@@ -13,6 +13,9 @@ _COLOR_HAS_FACT = QColor("white")
 _COLOR_DUPLICATE = QColor("#FFD0D0")
 _COLOR_NOT_APPLICABLE = QColor("#F8F8F8")
 
+# Custom role for the cell code (row_fin_code + col_fin_code)
+CELL_CODE_ROLE = Qt.ItemDataRole.UserRole + 2
+
 
 class TableBodyModel(QAbstractTableModel):
     """Qt model backing the body QTableView."""
@@ -56,6 +59,9 @@ class TableBodyModel(QAbstractTableModel):
 
         if role == Qt.ItemDataRole.UserRole:
             return cell.fact_value
+
+        if role == CELL_CODE_ROLE:
+            return cell.cell_code
 
         if role == Qt.ItemDataRole.BackgroundRole:
             if not cell.is_applicable:

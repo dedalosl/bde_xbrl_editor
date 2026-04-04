@@ -21,6 +21,7 @@ class HeaderCell:
     is_leaf: bool
     is_abstract: bool
     source_node: BreakdownNode
+    fin_code: str | None = None  # http://www.bde.es/xbrl/role/fin-code label, for cell code
 
 
 @dataclass
@@ -53,6 +54,7 @@ class BodyCell:
     fact_decimals: str | None = None
     is_duplicate: bool = False
     is_applicable: bool = True
+    cell_code: str | None = None  # row_fin_code + col_fin_code
 
 
 @dataclass

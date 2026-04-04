@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 from bde_xbrl_editor.table_renderer.errors import TableLayoutError, ZIndexOutOfRangeError
 from bde_xbrl_editor.table_renderer.layout_engine import TableLayoutEngine
 from bde_xbrl_editor.table_renderer.models import ComputedTableLayout
+from bde_xbrl_editor.ui.widgets.cell_edit_delegate import CellEditDelegate
 from bde_xbrl_editor.ui.widgets.column_header import MultiLevelColumnHeader
 from bde_xbrl_editor.ui.widgets.row_header import MultiLevelRowHeader
 from bde_xbrl_editor.ui.widgets.table_body_model import TableBodyModel
@@ -193,6 +194,11 @@ class XbrlTableView(QFrame):
             formatter = FactFormatter(self._taxonomy)
             model.set_formatter(formatter, self._taxonomy)
         self._body_view.setModel(model)
+
+        # Always install a delegate so the cell-code badge is painted even without an editor.
+        # main_window.py will replace this with the full CellEditDelegate when editing is enabled.
+        if not isinstance(self._body_view.itemDelegate(), CellEditDelegate):
+            self._body_view.setItemDelegate(CellEditDelegate(table_view_widget=self._body_view))
 
         # Update headers
         self._col_header.set_header_grid(layout.column_header)

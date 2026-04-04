@@ -249,6 +249,7 @@ class BreakdownNode:
     node_type: Literal["rule", "aspect", "conceptRelationship", "dimensionRelationship"]
     label: str | None = None
     rc_code: str | None = None
+    fin_code: str | None = None  # http://www.bde.es/xbrl/role/fin-code label for cell-code computation
     is_abstract: bool = False
     merge: bool = False
     span: int | None = None

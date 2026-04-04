@@ -48,6 +48,18 @@ def _get_label(
     return ""
 
 
+def _get_fin_code(
+    node: BreakdownNode, taxonomy: TaxonomyStructure, language_preference: list[str]  # noqa: ARG001
+) -> str | None:
+    """Return the fin-code for a breakdown node.
+
+    Fin-codes are parsed directly from the table node label linkbase
+    (http://www.bde.es/xbrl/role/fin-code) into BreakdownNode.fin_code during
+    taxonomy loading, so we just return that field.
+    """
+    return node.fin_code
+
+
 def _get_rc_code(
     node: BreakdownNode, taxonomy: TaxonomyStructure, language_preference: list[str]
 ) -> str | None:
@@ -100,6 +112,7 @@ def _build_row_axis_grid(
         cell = HeaderCell(
             label=label,
             rc_code=_get_rc_code(node, taxonomy, language_preference),
+            fin_code=_get_fin_code(node, taxonomy, language_preference),
             span=1,
             level=depth,
             is_leaf=not node.is_abstract,
@@ -118,6 +131,7 @@ def _build_row_axis_grid(
             HeaderCell(
                 label=_get_label(root, taxonomy, language_preference),
                 rc_code=_get_rc_code(root, taxonomy, language_preference),
+                fin_code=_get_fin_code(root, taxonomy, language_preference),
                 span=1,
                 level=0,
                 is_leaf=not root.is_abstract,
@@ -163,6 +177,7 @@ def _build_axis_grid(
         cell = HeaderCell(
             label=label,
             rc_code=_get_rc_code(node, taxonomy, language_preference),
+            fin_code=_get_fin_code(node, taxonomy, language_preference),
             span=span,
             level=level,
             is_leaf=is_leaf,
@@ -184,6 +199,7 @@ def _build_axis_grid(
                 HeaderCell(
                     label=_get_label(root, taxonomy, language_preference),
                     rc_code=_get_rc_code(root, taxonomy, language_preference),
+                    fin_code=_get_fin_code(root, taxonomy, language_preference),
                     span=1,
                     level=0,
                     is_leaf=True,
@@ -257,6 +273,18 @@ def _get_leaf_constraints(header_grid: HeaderGrid) -> list[dict[str, str]]:
     return all_leaves if all_leaves else [{}]
 
 
+def _get_leaf_cells(header_grid: HeaderGrid) -> list[HeaderCell]:
+    """Return leaf HeaderCell objects for a column grid (level-based) in order."""
+    if not header_grid.levels:
+        return []
+    leaves = []
+    for level in header_grid.levels:
+        for cell in level:
+            if cell.is_leaf:
+                leaves.append(cell)
+    return leaves
+
+
 def _build_coordinate(
     row_constraints: dict[str, str],
     col_constraints: dict[str, str],
@@ -303,6 +331,22 @@ def _build_coordinate(
     return CellCoordinate(concept=concept, explicit_dimensions=explicit_dims)
 
 
+def _compute_cell_code(row_fin: str | None, col_fin: str | None) -> str | None:
+    """Compute cell code as zero-padded 4-digit sum of row and column fin-codes.
+
+    Per BDE convention: cell_code = int(row_fin) + int(col_fin), formatted as 4 digits.
+    Returns None if row_fin is absent or non-integer.
+    """
+    if not row_fin:
+        return None
+    try:
+        row_num = int(row_fin)
+        col_num = int(col_fin) if col_fin else 0
+        return f"{row_num + col_num:04d}"
+    except ValueError:
+        return None
+
+
 def _build_body(
     row_grid: HeaderGrid,
     col_grid: HeaderGrid,
@@ -313,14 +357,15 @@ def _build_body(
 
     ``row_grid`` must be a DFS-ordered row grid (levels[i] = [cell_i]).
     Abstract row cells get is_applicable=False and an empty coordinate.
+    cell_code = row fin_code + col fin_code (both from fin-code role labels).
     """
-    col_leaf_constraints = _get_leaf_constraints(col_grid)
+    col_leaf_cells = _get_leaf_cells(col_grid)
 
     body: list[list[BodyCell]] = []
     for row_idx, level_cells in enumerate(row_grid.levels):
         row_cell = level_cells[0]
         row_cells: list[BodyCell] = []
-        for col_idx, col_c in enumerate(col_leaf_constraints):
+        for col_idx, col_cell in enumerate(col_leaf_cells):
             if row_cell.is_abstract:
                 cell = BodyCell(
                     row_index=row_idx,
@@ -330,9 +375,18 @@ def _build_body(
                 )
             else:
                 coord = _build_coordinate(
-                    row_cell.source_node.aspect_constraints, col_c, z_constraints, taxonomy
+                    row_cell.source_node.aspect_constraints,
+                    col_cell.source_node.aspect_constraints,
+                    z_constraints,
+                    taxonomy,
                 )
-                cell = BodyCell(row_index=row_idx, col_index=col_idx, coordinate=coord)
+                cell_code = _compute_cell_code(row_cell.fin_code, col_cell.fin_code)
+                cell = BodyCell(
+                    row_index=row_idx,
+                    col_index=col_idx,
+                    coordinate=coord,
+                    cell_code=cell_code,
+                )
             row_cells.append(cell)
         body.append(row_cells)
 

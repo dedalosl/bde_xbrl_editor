@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QEvent, QModelIndex, Qt
+from PySide6.QtCore import QEvent, QModelIndex, QPoint, QRect, Qt
+from PySide6.QtGui import QColor, QFont, QPainter, QPolygon
 from PySide6.QtWidgets import (
     QComboBox,
     QDateEdit,
@@ -17,12 +18,17 @@ from PySide6.QtWidgets import (
 
 from bde_xbrl_editor.instance.models import DuplicateFactError
 from bde_xbrl_editor.instance.validator import XbrlTypeValidator
+from bde_xbrl_editor.ui.widgets.table_body_model import CELL_CODE_ROLE
 
 if TYPE_CHECKING:
     from bde_xbrl_editor.instance.editor import InstanceEditor
     from bde_xbrl_editor.instance.models import XbrlInstance
     from bde_xbrl_editor.table_renderer.models import CellCoordinate, ComputedTableLayout
     from bde_xbrl_editor.taxonomy.models import QName, TaxonomyStructure
+
+
+_CELL_CODE_FG = QColor("#1E3A5F")      # dark navy text for cell code
+_CELL_CODE_CORNER = QColor("#8B7355")  # dark triangle corner marker
 
 
 def _get_type_category(taxonomy: TaxonomyStructure, concept: QName) -> str:
@@ -73,22 +79,64 @@ class CellEditDelegate(QStyledItemDelegate):
 
     def __init__(
         self,
-        taxonomy: TaxonomyStructure,
-        editor: InstanceEditor,
-        table_layout: ComputedTableLayout | None,
-        table_view_widget: QWidget,
+        taxonomy: TaxonomyStructure | None = None,
+        editor: InstanceEditor | None = None,
+        table_layout: ComputedTableLayout | None = None,
+        table_view_widget: QWidget | None = None,
     ) -> None:
         super().__init__(table_view_widget)
         self._taxonomy = taxonomy
         self._editor = editor
         self._table_layout = table_layout
         self._table_view_widget = table_view_widget
-        self._validator = XbrlTypeValidator(taxonomy)
+        self._validator = XbrlTypeValidator(taxonomy) if taxonomy is not None else None
         self._invalid_editors: set[int] = set()  # id(editor) for invalid-state editors
 
     def set_table_layout(self, layout: ComputedTableLayout | None) -> None:
         """Update active layout reference after Z-axis change."""
         self._table_layout = layout
+
+    # ------------------------------------------------------------------
+    # paint — draws cell content + soft-blue cell-code badge
+    # ------------------------------------------------------------------
+
+    def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex) -> None:
+        super().paint(painter, option, index)
+
+        cell_code = index.data(CELL_CODE_ROLE)
+        if not cell_code:
+            return
+
+        rect = option.rect
+        _CORNER = 7  # triangle leg size in pixels
+
+        painter.save()
+        painter.setClipping(False)
+
+        # Small folded-corner triangle in top-right
+        tr = rect.topRight()
+        triangle = QPolygon([
+            QPoint(tr.x(), tr.y()),
+            QPoint(tr.x() - _CORNER, tr.y()),
+            QPoint(tr.x(), tr.y() + _CORNER),
+        ])
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(_CELL_CODE_CORNER)
+        painter.drawPolygon(triangle)
+
+        # Cell code text — top-left, small font
+        painter.setPen(_CELL_CODE_FG)
+        font = QFont(painter.font())
+        font.setPointSizeF(7.0)
+        painter.setFont(font)
+        text_rect = QRect(rect.x() + 2, rect.y() + 1, rect.width() - _CORNER - 4, rect.height() - 2)
+        painter.drawText(
+            text_rect,
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
+            cell_code,
+        )
+
+        painter.restore()
 
     # ------------------------------------------------------------------
     # Coordinate lookup
@@ -110,6 +158,8 @@ class CellEditDelegate(QStyledItemDelegate):
     def createEditor(
         self, parent: QWidget, option: QStyleOptionViewItem, index: QModelIndex
     ) -> QWidget | None:
+        if self._editor is None or self._taxonomy is None:
+            return None
         coordinate = self._get_coordinate(index)
         if coordinate is None or coordinate.concept is None:
             return None
@@ -165,6 +215,8 @@ class CellEditDelegate(QStyledItemDelegate):
     def setModelData(
         self, editor_widget: QWidget, model, index: QModelIndex
     ) -> None:
+        if self._editor is None or self._taxonomy is None or self._validator is None:
+            return
         coordinate = self._get_coordinate(index)
         if coordinate is None or coordinate.concept is None:
             return
