@@ -15,6 +15,7 @@ from bde_xbrl_editor.table_renderer.models import (
     HeaderGrid,
     ZMemberOption,
 )
+from bde_xbrl_editor.taxonomy.constants import RC_CODE_ROLE
 from bde_xbrl_editor.taxonomy.models import QName
 
 if TYPE_CHECKING:
@@ -30,7 +31,9 @@ _CONCEPT_KEY = "concept"
 _EXPLICIT_DIM_KEY = "explicitDimension"
 
 
-def _get_label(node: BreakdownNode, taxonomy: TaxonomyStructure, language_preference: list[str]) -> str:
+def _get_label(
+    node: BreakdownNode, taxonomy: TaxonomyStructure, language_preference: list[str]
+) -> str:
     """Resolve a display label for a breakdown node."""
     if node.label:
         return node.label
@@ -43,6 +46,88 @@ def _get_label(node: BreakdownNode, taxonomy: TaxonomyStructure, language_prefer
         except Exception:  # noqa: BLE001
             pass
     return ""
+
+
+def _get_rc_code(
+    node: BreakdownNode, taxonomy: TaxonomyStructure, language_preference: list[str]
+) -> str | None:
+    """Resolve the RC-code for a breakdown node.
+
+    Uses node.rc_code (from the table-level label linkbase) first.
+    Falls back to the ``http://www.eurofiling.info/xbrl/role/rc-code`` label
+    of the concept this node constrains, if available.
+    """
+    if node.rc_code:
+        return node.rc_code
+    concept_str = node.aspect_constraints.get(_CONCEPT_KEY)
+    if not concept_str:
+        return None
+    with contextlib.suppress(Exception):
+        qname = QName.from_clark(concept_str)
+        rc_labels = [
+            lb for lb in taxonomy.labels.get_all_labels(qname) if lb.role == RC_CODE_ROLE
+        ]
+        if not rc_labels:
+            return None
+        for lang in language_preference:
+            for lb in rc_labels:
+                if lb.language == lang:
+                    return lb.text
+        return rc_labels[0].text
+    return None
+
+
+def _build_row_axis_grid(
+    root: BreakdownNode,
+    taxonomy: TaxonomyStructure,
+    language_preference: list[str],
+) -> HeaderGrid:
+    """DFS traversal to build a flat HeaderGrid for the Y-axis (rows).
+
+    Every node — abstract and non-abstract — becomes exactly one row in DFS order.
+    ``HeaderCell.level`` records the tree depth for indentation.
+    Abstract rows get is_leaf=False; non-abstract rows get is_leaf=True (they carry data).
+    ``levels[i]`` is always a single-element list so ``levels[i][0]`` is the i-th row cell.
+    """
+    dfs_cells: list[HeaderCell] = []
+    max_depth = 0
+
+    def _dfs(node: BreakdownNode, depth: int) -> None:
+        nonlocal max_depth
+        if depth > max_depth:
+            max_depth = depth
+        label = _get_label(node, taxonomy, language_preference)
+        cell = HeaderCell(
+            label=label,
+            rc_code=_get_rc_code(node, taxonomy, language_preference),
+            span=1,
+            level=depth,
+            is_leaf=not node.is_abstract,
+            is_abstract=node.is_abstract,
+            source_node=node,
+        )
+        dfs_cells.append(cell)
+        for child in node.children:
+            _dfs(child, depth + 1)
+
+    for child in root.children:
+        _dfs(child, 0)
+
+    if not dfs_cells:
+        dfs_cells = [
+            HeaderCell(
+                label=_get_label(root, taxonomy, language_preference),
+                rc_code=_get_rc_code(root, taxonomy, language_preference),
+                span=1,
+                level=0,
+                is_leaf=not root.is_abstract,
+                is_abstract=root.is_abstract,
+                source_node=root,
+            )
+        ]
+
+    levels = [[cell] for cell in dfs_cells]
+    return HeaderGrid(levels=levels, leaf_count=len(dfs_cells), depth=max_depth + 1)
 
 
 def _build_axis_grid(
@@ -58,24 +143,26 @@ def _build_axis_grid(
     """
     levels: list[list[HeaderCell]] = []
 
-    def _count_leaves(node: BreakdownNode) -> int:
-        non_abstract_children = [c for c in node.children if not c.is_abstract or c.children]
-        if not non_abstract_children:
-            return 1
-        return sum(_count_leaves(c) for c in non_abstract_children)
+    def _collect_all_non_abstract(node: BreakdownNode) -> list[BreakdownNode]:
+        result = []
+        if not node.is_abstract:
+            result.append(node)
+        for child in node.children:
+            result.extend(_collect_all_non_abstract(child))
+        return result
 
     def _dfs(node: BreakdownNode, level: int) -> None:
         while len(levels) <= level:
             levels.append([])
 
-        non_abstract_children = [c for c in node.children if not c.is_abstract or c.children]
-        is_leaf = len(non_abstract_children) == 0
-        span = 1 if is_leaf else sum(_count_leaves(c) for c in non_abstract_children)
+        all_non_abstract = _collect_all_non_abstract(node)
+        is_leaf = not node.is_abstract
+        span = len(all_non_abstract)
 
         label = _get_label(node, taxonomy, language_preference)
         cell = HeaderCell(
             label=label,
-            rc_code=node.rc_code,
+            rc_code=_get_rc_code(node, taxonomy, language_preference),
             span=span,
             level=level,
             is_leaf=is_leaf,
@@ -84,7 +171,7 @@ def _build_axis_grid(
         )
         levels[level].append(cell)
 
-        for child in non_abstract_children:
+        for child in node.children:
             _dfs(child, level + 1)
 
     for child in root.children:
@@ -92,21 +179,21 @@ def _build_axis_grid(
 
     if not levels:
         # Degenerate case: root has no children — treat root itself as a leaf
-        levels = [[
-            HeaderCell(
-                label=_get_label(root, taxonomy, language_preference),
-                rc_code=root.rc_code,
-                span=1,
-                level=0,
-                is_leaf=True,
-                is_abstract=root.is_abstract,
-                source_node=root,
-            )
-        ]]
+        levels = [
+            [
+                HeaderCell(
+                    label=_get_label(root, taxonomy, language_preference),
+                    rc_code=_get_rc_code(root, taxonomy, language_preference),
+                    span=1,
+                    level=0,
+                    is_leaf=True,
+                    is_abstract=root.is_abstract,
+                    source_node=root,
+                )
+            ]
+        ]
 
-    leaf_count = sum(1 for cell in levels[-1] if cell.is_leaf)
-    if leaf_count == 0:
-        leaf_count = sum(cell.span for cell in levels[0])
+    leaf_count = sum(cell.span for cell in levels[0])
 
     return HeaderGrid(levels=levels, leaf_count=leaf_count, depth=len(levels))
 
@@ -137,7 +224,9 @@ def _extract_z_members(
                         dim_constraints[dim_q] = mem_q
                     except Exception:  # noqa: BLE001
                         pass
-            options.append(ZMemberOption(index=idx, label=label, dimension_constraints=dim_constraints))
+            options.append(
+                ZMemberOption(index=idx, label=label, dimension_constraints=dim_constraints)
+            )
             idx += 1
         else:
             for child in node.children:
@@ -160,8 +249,12 @@ def _get_leaf_constraints(header_grid: HeaderGrid) -> list[dict[str, str]]:
     """Return a list of aspect_constraints dicts for each leaf node (in order)."""
     if not header_grid.levels:
         return [{}]
-    leaf_level = header_grid.levels[-1]
-    return [cell.source_node.aspect_constraints for cell in leaf_level if cell.is_leaf]
+    all_leaves = []
+    for level in header_grid.levels:
+        for cell in level:
+            if cell.is_leaf:
+                all_leaves.append(cell.source_node.aspect_constraints)
+    return all_leaves if all_leaves else [{}]
 
 
 def _build_coordinate(
@@ -174,18 +267,35 @@ def _build_coordinate(
     concept: QName | None = None
     explicit_dims: dict[QName, QName] = {}
 
-    # Merge all constraints; last writer wins for conflicts
-    merged: dict[str, str] = {}
-    merged.update(row_constraints)
-    merged.update(col_constraints)
+    # Extract concept from row constraints (column wins for concept)
+    if _CONCEPT_KEY in col_constraints:
+        val = col_constraints[_CONCEPT_KEY]
+        with contextlib.suppress(Exception):
+            concept = QName.from_clark(str(val))
+    elif _CONCEPT_KEY in row_constraints:
+        val = row_constraints[_CONCEPT_KEY]
+        with contextlib.suppress(Exception):
+            concept = QName.from_clark(str(val))
 
-    for key, val in merged.items():
-        if key == _CONCEPT_KEY and val:
-            with contextlib.suppress(Exception):
-                concept = QName.from_clark(str(val))
-        elif key == _EXPLICIT_DIM_KEY and val:
-            # val could be "dim:member" or similar; treat as a single dimension for now
-            pass
+    # Extract explicit dimensions from row constraints
+    if _EXPLICIT_DIM_KEY in row_constraints:
+        val = row_constraints[_EXPLICIT_DIM_KEY]
+        if isinstance(val, dict):
+            for dim_clark, mem_clark in val.items():
+                with contextlib.suppress(Exception):
+                    explicit_dims[QName.from_clark(str(dim_clark))] = QName.from_clark(
+                        str(mem_clark)
+                    )
+
+    # Extract explicit dimensions from column constraints (column wins for conflicts)
+    if _EXPLICIT_DIM_KEY in col_constraints:
+        val = col_constraints[_EXPLICIT_DIM_KEY]
+        if isinstance(val, dict):
+            for dim_clark, mem_clark in val.items():
+                with contextlib.suppress(Exception):
+                    explicit_dims[QName.from_clark(str(dim_clark))] = QName.from_clark(
+                        str(mem_clark)
+                    )
 
     # Add Z-axis dimension constraints
     explicit_dims.update(z_constraints)
@@ -199,20 +309,30 @@ def _build_body(
     z_constraints: dict[QName, QName],
     taxonomy: TaxonomyStructure,
 ) -> list[list[BodyCell]]:
-    """Build the body cell grid from row/col leaf constraints + Z member constraints."""
-    row_leaf_constraints = _get_leaf_constraints(row_grid)
+    """Build the body cell grid from row/col constraints + Z member constraints.
+
+    ``row_grid`` must be a DFS-ordered row grid (levels[i] = [cell_i]).
+    Abstract row cells get is_applicable=False and an empty coordinate.
+    """
     col_leaf_constraints = _get_leaf_constraints(col_grid)
 
     body: list[list[BodyCell]] = []
-    for row_idx, row_c in enumerate(row_leaf_constraints):
+    for row_idx, level_cells in enumerate(row_grid.levels):
+        row_cell = level_cells[0]
         row_cells: list[BodyCell] = []
         for col_idx, col_c in enumerate(col_leaf_constraints):
-            coord = _build_coordinate(row_c, col_c, z_constraints, taxonomy)
-            cell = BodyCell(
-                row_index=row_idx,
-                col_index=col_idx,
-                coordinate=coord,
-            )
+            if row_cell.is_abstract:
+                cell = BodyCell(
+                    row_index=row_idx,
+                    col_index=col_idx,
+                    coordinate=CellCoordinate(),
+                    is_applicable=False,
+                )
+            else:
+                coord = _build_coordinate(
+                    row_cell.source_node.aspect_constraints, col_c, z_constraints, taxonomy
+                )
+                cell = BodyCell(row_index=row_idx, col_index=col_idx, coordinate=coord)
             row_cells.append(cell)
         body.append(row_cells)
 
@@ -256,10 +376,12 @@ class TableLayoutEngine:
 
             # Build X-axis (column) and Y-axis (row) header grids
             col_header = _build_axis_grid(table.x_breakdown, self._taxonomy, lang_pref)
-            row_header = _build_axis_grid(table.y_breakdown, self._taxonomy, lang_pref)
+            row_header = _build_row_axis_grid(table.y_breakdown, self._taxonomy, lang_pref)
 
             # Build body cell grid
-            body = _build_body(row_header, col_header, active_z.dimension_constraints, self._taxonomy)
+            body = _build_body(
+                row_header, col_header, active_z.dimension_constraints, self._taxonomy
+            )
 
             # Optionally wire fact values
             if instance is not None:

@@ -9,7 +9,6 @@ from PySide6.QtGui import QColor
 
 from bde_xbrl_editor.table_renderer.models import ComputedTableLayout
 
-_COLOR_NO_FACT = QColor("#F0F0F0")
 _COLOR_HAS_FACT = QColor("white")
 _COLOR_DUPLICATE = QColor("#FFD0D0")
 _COLOR_NOT_APPLICABLE = QColor("#F8F8F8")
@@ -63,9 +62,7 @@ class TableBodyModel(QAbstractTableModel):
                 return _COLOR_NOT_APPLICABLE
             if cell.is_duplicate:
                 return _COLOR_DUPLICATE
-            if cell.fact_value is not None:
-                return _COLOR_HAS_FACT
-            return _COLOR_NO_FACT
+            return _COLOR_HAS_FACT
 
         if role == Qt.ItemDataRole.ToolTipRole:
             coord = cell.coordinate

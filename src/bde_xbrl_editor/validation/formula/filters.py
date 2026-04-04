@@ -58,16 +58,14 @@ def apply_filters(
             member = ctx_dims.get(dim_filter.dimension_qname)
 
             if dim_filter.exclude:
-                # Excluded: must NOT have any of the listed members
                 if dim_filter.member_qnames and member in dim_filter.member_qnames:
-                        continue  # excluded member found — skip fact
+                    continue
                 filtered.append(fact)
             else:
-                # Include: must have one of the listed members (or any member if list is empty)
-                if dim_filter.member_qnames and member in dim_filter.member_qnames:
+                if dim_filter.member_qnames:
+                    if member in dim_filter.member_qnames:
                         filtered.append(fact)
                 else:
-                    # Any member of this dimension
                     if member is not None:
                         filtered.append(fact)
         result = filtered

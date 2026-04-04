@@ -50,11 +50,13 @@ class TestAxisDFS:
 
     def test_single_level_x_axis(self):
         """Three leaf nodes → leaf_count=3, depth=1, all span=1."""
-        x_root = _make_node(children=[
-            _make_node("A"),
-            _make_node("B"),
-            _make_node("C"),
-        ])
+        x_root = _make_node(
+            children=[
+                _make_node("A"),
+                _make_node("B"),
+                _make_node("C"),
+            ]
+        )
         y_root = _make_node(children=[_make_node("R1")])
         taxonomy = _make_taxonomy()
         engine = TableLayoutEngine(taxonomy)
@@ -68,35 +70,42 @@ class TestAxisDFS:
         assert all(c.is_leaf for c in cells)
 
     def test_two_level_x_axis_span(self):
-        """Parent with 2 children → parent span=2, children span=1."""
-        x_root = _make_node(children=[
-            _make_node("Parent", children=[
-                _make_node("Child1"),
-                _make_node("Child2"),
-            ])
-        ])
-        y_root = _make_node(children=[_make_node("R1")])
+        """Two-level X-axis: parent with 2 children, parent is non-abstract."""
+        x_root = _make_node(
+            children=[
+                _make_node(
+                    "P",
+                    children=[
+                        _make_node("A"),
+                        _make_node("B"),
+                    ],
+                )
+            ]
+        )
+        y_root = _make_node(children=[_make_node("R")])
         taxonomy = _make_taxonomy()
         engine = TableLayoutEngine(taxonomy)
         layout = engine.compute(_simple_table(x_root, y_root))
 
-        assert layout.column_header.leaf_count == 2
-        assert layout.column_header.depth == 2
-        # Level 0: one parent with span=2
-        assert layout.column_header.levels[0][0].span == 2
-        assert not layout.column_header.levels[0][0].is_leaf
+        # Non-abstract parent P has span=3 (1 for itself + 2 for its children)
+        assert layout.column_header.levels[0][0].span == 3
+        assert layout.column_header.levels[0][0].is_leaf
         # Level 1: two children with span=1
         assert len(layout.column_header.levels[1]) == 2
         assert all(c.span == 1 for c in layout.column_header.levels[1])
+        # Total leaf count: P + A + B = 3
+        assert layout.column_header.leaf_count == 3
 
     def test_y_axis_symmetric(self):
         """Y-axis DFS is symmetric to X-axis."""
         x_root = _make_node(children=[_make_node("C1")])
-        y_root = _make_node(children=[
-            _make_node("R1"),
-            _make_node("R2"),
-            _make_node("R3"),
-        ])
+        y_root = _make_node(
+            children=[
+                _make_node("R1"),
+                _make_node("R2"),
+                _make_node("R3"),
+            ]
+        )
         taxonomy = _make_taxonomy()
         engine = TableLayoutEngine(taxonomy)
         layout = engine.compute(_simple_table(x_root, y_root))
@@ -116,21 +125,130 @@ class TestAxisDFS:
         assert all(len(row) == 2 for row in layout.body)
 
     def test_nested_two_level_span(self):
-        """Parent with 3 children → parent span=3."""
-        x_root = _make_node(children=[
-            _make_node("G", children=[
-                _make_node("A"),
-                _make_node("B"),
-                _make_node("C"),
-            ])
-        ])
+        """Non-abstract parent with 3 children → parent span=4 (itself + 3 children)."""
+        x_root = _make_node(
+            children=[
+                _make_node(
+                    "G",
+                    children=[
+                        _make_node("A"),
+                        _make_node("B"),
+                        _make_node("C"),
+                    ],
+                )
+            ]
+        )
         y_root = _make_node(children=[_make_node("R")])
         taxonomy = _make_taxonomy()
         engine = TableLayoutEngine(taxonomy)
         layout = engine.compute(_simple_table(x_root, y_root))
 
-        assert layout.column_header.levels[0][0].span == 3
-        assert layout.column_header.leaf_count == 3
+        # Non-abstract G has span=4 (1 for itself + 3 for its children)
+        assert layout.column_header.levels[0][0].span == 4
+        # Total leaf count: G + A + B + C = 4
+        assert layout.column_header.leaf_count == 4
+
+
+class TestRowAxisDFS:
+    """Tests for Y-axis DFS row ordering with abstract and non-abstract parent nodes."""
+
+    def test_abstract_and_non_abstract_rows_in_dfs_order(self):
+        """Abstract nodes appear as rows in DFS order; they're not skipped."""
+        y_root = _make_node(
+            is_abstract=True,
+            children=[
+                _make_node("Total", is_abstract=False, rc_code="r0001"),
+                _make_node(
+                    "Group",
+                    is_abstract=True,
+                    children=[
+                        _make_node("Child A", is_abstract=False, rc_code="r0002"),
+                        _make_node("Child B", is_abstract=False, rc_code="r0003"),
+                    ],
+                ),
+            ],
+        )
+        x_root = _make_node(children=[_make_node("C")])
+        taxonomy = _make_taxonomy()
+        engine = TableLayoutEngine(taxonomy)
+        layout = engine.compute(_simple_table(x_root, y_root))
+
+        # DFS order: Total, Group, Child A, Child B → 4 rows
+        assert layout.row_header.leaf_count == 4
+        assert layout.row_header.depth == 2
+
+        rows = [layout.row_header.levels[i][0] for i in range(4)]
+        assert rows[0].label == "Total"
+        assert rows[0].is_abstract is False
+        assert rows[1].label == "Group"
+        assert rows[1].is_abstract is True
+        assert rows[2].label == "Child A"
+        assert rows[3].label == "Child B"
+
+        # Abstract Group row has is_applicable=False body cells
+        assert layout.body[1][0].is_applicable is False
+        # Non-abstract rows have applicable body cells
+        assert layout.body[0][0].is_applicable is True
+        assert layout.body[2][0].is_applicable is True
+
+    def test_non_abstract_parent_with_children_appears_before_children(self):
+        """Non-abstract parent (total row) appears before its children in DFS."""
+        y_root = _make_node(
+            children=[
+                _make_node(
+                    "TOTAL",
+                    is_abstract=False,
+                    rc_code="r0001",
+                    children=[
+                        _make_node("Sub A", is_abstract=False, rc_code="r0002"),
+                        _make_node("Sub B", is_abstract=False, rc_code="r0003"),
+                    ],
+                ),
+            ]
+        )
+        x_root = _make_node(children=[_make_node("C")])
+        taxonomy = _make_taxonomy()
+        engine = TableLayoutEngine(taxonomy)
+        layout = engine.compute(_simple_table(x_root, y_root))
+
+        # DFS order: TOTAL, Sub A, Sub B → 3 rows
+        assert layout.row_header.leaf_count == 3
+        rows = [layout.row_header.levels[i][0] for i in range(3)]
+        assert rows[0].label == "TOTAL"
+        assert rows[0].rc_code == "r0001"
+        assert rows[1].label == "Sub A"
+        assert rows[2].label == "Sub B"
+
+        # All 3 rows have applicable body cells
+        assert all(layout.body[i][0].is_applicable for i in range(3))
+
+    def test_row_depths_reflect_tree_depth(self):
+        """Each row's level attribute reflects its depth in the hierarchy."""
+        y_root = _make_node(
+            children=[
+                _make_node(
+                    "L0",
+                    is_abstract=True,
+                    children=[
+                        _make_node(
+                            "L1",
+                            is_abstract=False,
+                            children=[
+                                _make_node("L2", is_abstract=False),
+                            ],
+                        ),
+                    ],
+                ),
+            ]
+        )
+        x_root = _make_node(children=[_make_node("C")])
+        taxonomy = _make_taxonomy()
+        engine = TableLayoutEngine(taxonomy)
+        layout = engine.compute(_simple_table(x_root, y_root))
+
+        assert layout.row_header.levels[0][0].level == 0  # L0
+        assert layout.row_header.levels[1][0].level == 1  # L1
+        assert layout.row_header.levels[2][0].level == 2  # L2
 
 
 class TestZAxis:
@@ -179,9 +297,13 @@ class TestLabelFallback:
     def test_label_falls_back_to_label_resolver(self):
         """Node without label falls back to LabelResolver via concept QName."""
         qn = QName(namespace="http://example.com", local_name="Assets", prefix="ex")
-        x_root = _make_node(children=[
-            _make_node(label=None, aspect_constraints={"concept": f"{{{qn.namespace}}}{qn.local_name}"})
-        ])
+        x_root = _make_node(
+            children=[
+                _make_node(
+                    label=None, aspect_constraints={"concept": f"{{{qn.namespace}}}{qn.local_name}"}
+                )
+            ]
+        )
         y_root = _make_node(children=[_make_node("R")])
         taxonomy = _make_taxonomy()
         taxonomy.labels.resolve.side_effect = None
@@ -202,12 +324,18 @@ class TestLabelFallback:
 
     def test_rc_code_none_on_branch(self):
         """Branch nodes have rc_code=None."""
-        x_root = _make_node(children=[
-            _make_node("Parent", rc_code=None, children=[
-                _make_node("Child1", rc_code="c0010"),
-                _make_node("Child2", rc_code="c0020"),
-            ])
-        ])
+        x_root = _make_node(
+            children=[
+                _make_node(
+                    "Parent",
+                    rc_code=None,
+                    children=[
+                        _make_node("Child1", rc_code="c0010"),
+                        _make_node("Child2", rc_code="c0020"),
+                    ],
+                )
+            ]
+        )
         y_root = _make_node(children=[_make_node("R")])
         taxonomy = _make_taxonomy()
         engine = TableLayoutEngine(taxonomy)

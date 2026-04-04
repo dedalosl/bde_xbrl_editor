@@ -17,35 +17,35 @@ from PySide6.QtWidgets import QHeaderView, QWidget
 from bde_xbrl_editor.table_renderer.models import HeaderGrid
 
 # ── Geometry ──────────────────────────────────────────────────────────────
-_COL_W = 280          # total width of the single header column
-_INDENT_BASE = 10     # left padding for the outermost level
-_INDENT_STEP = 16     # additional indent per hierarchy level
-_ACCENT_W = 4         # width of the coloured left-edge strip
+_COL_W = 280  # total width of the single header column
+_INDENT_BASE = 10  # left padding for the outermost level
+_INDENT_STEP = 16  # additional indent per hierarchy level
+_ACCENT_W = 4  # width of the coloured left-edge strip
 _ROW_HEIGHT_MIN = 24  # minimum row height in px
-_ROW_HEIGHT_PAD = 8   # vertical padding inside a row
+_ROW_HEIGHT_PAD = 8  # vertical padding inside a row
 
 # ── Typography ────────────────────────────────────────────────────────────
 _MIN_LABEL_PT = 9
 _MIN_RC_PT = 8
-_RC_FONT_SCALE = 0.82   # rc_code drawn smaller than the main label
+_RC_FONT_SCALE = 0.82  # rc_code drawn smaller than the main label
 
 # ── Colours ───────────────────────────────────────────────────────────────
 # Background shades — outermost groups are slightly darker
 _BG = [
-    QColor("#C8D9EE"),   # depth 0  (top-level group)
-    QColor("#DCE8F5"),   # depth 1
-    QColor("#EEF3FA"),   # depth 2
-    QColor("#F5F8FD"),   # depth 3
-    QColor("#FAFCFF"),   # depth 4+  (leaf / deepest)
+    QColor("#C8D9EE"),  # depth 0  (top-level group)
+    QColor("#DCE8F5"),  # depth 1
+    QColor("#EEF3FA"),  # depth 2
+    QColor("#F5F8FD"),  # depth 3
+    QColor("#FAFCFF"),  # depth 4+  (leaf / deepest)
 ]
 
 # Left-accent strip colours — one shade per depth
 _ACCENT = [
-    QColor("#1E3A5F"),   # depth 0
-    QColor("#2B5287"),   # depth 1
-    QColor("#3A6AA8"),   # depth 2
-    QColor("#5A7FA8"),   # depth 3
-    QColor("#7BA4C8"),   # depth 4+
+    QColor("#1E3A5F"),  # depth 0
+    QColor("#2B5287"),  # depth 1
+    QColor("#3A6AA8"),  # depth 2
+    QColor("#5A7FA8"),  # depth 3
+    QColor("#7BA4C8"),  # depth 4+
 ]
 
 _TEXT_MAIN = QColor("#1E3A5F")
@@ -59,7 +59,9 @@ _WRAP = Qt.AlignmentFlag.AlignLeft | Qt.TextFlag.TextWordWrap
 class MultiLevelRowHeader(QHeaderView):
     """Single-column vertical header with indentation-based hierarchy."""
 
-    def __init__(self, header_grid: HeaderGrid | None = None, parent: QWidget | None = None) -> None:
+    def __init__(
+        self, header_grid: HeaderGrid | None = None, parent: QWidget | None = None
+    ) -> None:
         super().__init__(Qt.Orientation.Vertical, parent)
         self._grid: HeaderGrid | None = header_grid
         # Pre-computed per-section depth (0 = outermost group)
@@ -79,39 +81,26 @@ class MultiLevelRowHeader(QHeaderView):
         self.viewport().update()
 
     def _build_section_map(self) -> None:
-        """For each section index build (depth, cell) using the shallowest starting cell."""
+        """For each section index build (depth, cell).
+
+        The row grid is DFS-ordered: levels[i] = [cell_i].
+        Section i maps directly to levels[i][0]; depth comes from cell.level.
+        """
         if self._grid is None:
             self._section_depth = []
             self._section_cells = []
             return
 
-        n = self._grid.leaf_count
-        depths: list[int] = [-1] * n
-        cells: list[Any] = [None] * n
-
-        # Scan levels from shallowest (0) to deepest.
-        # The FIRST level that has a cell starting at a given section wins.
-        for level_idx, level_cells in enumerate(self._grid.levels):
-            leaf_cursor = 0
-            for cell in level_cells:
-                span = 1 if cell.is_leaf else cell.span
-                if leaf_cursor < n and depths[leaf_cursor] == -1:
-                    depths[leaf_cursor] = level_idx
-                    cells[leaf_cursor] = cell
-                leaf_cursor += span
-
-        # Fill any sections that got no cell start (shouldn't happen but guard)
-        depth = self._grid.depth
-        leaf_level_cells = self._grid.levels[-1] if self._grid.levels else []
-        leaf_cursor = 0
-        for _i, leaf_cell in enumerate(leaf_level_cells):
-            if leaf_cursor < n and depths[leaf_cursor] == -1:
-                depths[leaf_cursor] = max(0, depth - 1)
-                cells[leaf_cursor] = leaf_cell
-            leaf_cursor += 1
-
-        self._section_depth = depths
-        self._section_cells = cells
+        self._section_depth = []
+        self._section_cells = []
+        for i in range(self._grid.leaf_count):
+            if i < len(self._grid.levels) and self._grid.levels[i]:
+                cell = self._grid.levels[i][0]
+                self._section_depth.append(cell.level)
+                self._section_cells.append(cell)
+            else:
+                self._section_depth.append(0)
+                self._section_cells.append(None)
 
     # ------------------------------------------------------------------
     # Section height sizing
@@ -126,7 +115,9 @@ class MultiLevelRowHeader(QHeaderView):
         for section_idx, cell in enumerate(self._section_cells):
             if cell is None:
                 continue
-            level = self._section_depth[section_idx] if section_idx < len(self._section_depth) else 0
+            level = (
+                self._section_depth[section_idx] if section_idx < len(self._section_depth) else 0
+            )
             indent = _ACCENT_W + _INDENT_BASE + level * _INDENT_STEP
             text_w = max(_COL_W - indent - 6, 20)
             label = _display_label(cell)
@@ -156,7 +147,9 @@ class MultiLevelRowHeader(QHeaderView):
             return
 
         cell = self._section_cells[logical_index]
-        level = self._section_depth[logical_index] if logical_index < len(self._section_depth) else 0
+        level = (
+            self._section_depth[logical_index] if logical_index < len(self._section_depth) else 0
+        )
         depth = self._grid.depth
         is_leaf = (level == depth - 1) or (cell is not None and getattr(cell, "is_leaf", True))
 
@@ -223,6 +216,7 @@ class MultiLevelRowHeader(QHeaderView):
 # ---------------------------------------------------------------------------
 # Helper
 # ---------------------------------------------------------------------------
+
 
 def _display_label(cell: Any) -> str:
     """Return display text: 'Label (rc_code)' or just 'Label'."""
