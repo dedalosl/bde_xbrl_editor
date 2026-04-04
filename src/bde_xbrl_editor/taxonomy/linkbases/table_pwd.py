@@ -318,10 +318,11 @@ def _parse_linkbase_element(
     """Parse table elements from within a linkbase or linkbase container."""
     for table_el in container.iter(_TABLE):
         table_id = table_el.get("id", "")
-        elr = table_el.get(_XLINK_ROLE, "")
 
-        # The gen:link parent holds all sibling nodes/arcs for this table
+        # The gen:link parent holds all sibling nodes/arcs for this table.
+        # The xlink:role (ELR) is on the gen:link container, not on table:table itself.
         parent = table_el.getparent() if table_el.getparent() is not None else container
+        elr = table_el.get(_XLINK_ROLE, "") or parent.get(_XLINK_ROLE, "")
 
         # Index all elements with xlink:label in this scope
         all_nodes: dict[str, etree._Element] = {}

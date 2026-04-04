@@ -342,3 +342,140 @@ class TestLabelFallback:
         layout = engine.compute(_simple_table(x_root, y_root))
         assert layout.column_header.levels[0][0].rc_code is None
         assert layout.column_header.levels[1][0].rc_code == "c0010"
+
+
+class TestDimensionalExclusion:
+    """Tests for is_excluded flag based on closed hypercube constraints."""
+
+    def _make_hc_taxonomy(
+        self,
+        concept_qn: QName,
+        hc_qn: QName,
+        dim_qn: QName,
+        allowed_members: list[QName],
+    ):
+        """Build a mock taxonomy with one closed all-hypercube and targetRole member list."""
+        from unittest.mock import MagicMock
+        from bde_xbrl_editor.taxonomy.models import DefinitionArc, DimensionModel, HypercubeModel
+
+        taxonomy = MagicMock()
+        taxonomy.labels.resolve.side_effect = lambda qn, **kw: str(qn)
+        taxonomy.concepts = {}
+
+        domain_qn = QName(namespace="http://x.com", local_name="domain")
+        # Use sub-roles of the table ELR so the prefix filter works:
+        # table ELR = "http://example.com/role/T1" → hypercube ELR = ".../T1/1"
+        primary_elr = "http://example.com/role/T1/1"
+        target_elr = "http://example.com/role/T1/2"
+
+        # hypercube-dimension arc with targetRole
+        hc_dim_arc = DefinitionArc(
+            arcrole="http://xbrl.org/int/dim/arcrole/hypercube-dimension",
+            source=hc_qn,
+            target=dim_qn,
+            order=1.0,
+            extended_link_role=primary_elr,
+            target_role=target_elr,
+        )
+        # dimension-domain arc in target ELR
+        dim_domain_arc = DefinitionArc(
+            arcrole="http://xbrl.org/int/dim/arcrole/dimension-domain",
+            source=dim_qn,
+            target=domain_qn,
+            order=1.0,
+            extended_link_role=target_elr,
+        )
+        # domain-member arcs in target ELR
+        member_arcs = [
+            DefinitionArc(
+                arcrole="http://xbrl.org/int/dim/arcrole/domain-member",
+                source=domain_qn,
+                target=m,
+                order=float(i + 1),
+                extended_link_role=target_elr,
+            )
+            for i, m in enumerate(allowed_members)
+        ]
+
+        taxonomy.definition = {
+            primary_elr: [hc_dim_arc],
+            target_elr: [dim_domain_arc] + member_arcs,
+        }
+        taxonomy.hypercubes = [
+            HypercubeModel(
+                qname=hc_qn,
+                arcrole="all",
+                closed=True,
+                context_element="segment",
+                primary_items=(concept_qn,),
+                dimensions=(dim_qn,),
+                extended_link_role=primary_elr,
+            )
+        ]
+        return taxonomy
+
+    def test_cell_with_allowed_member_not_excluded(self):
+        concept = QName(namespace="http://x.com", local_name="C")
+        hc = QName(namespace="http://x.com", local_name="Hc")
+        dim = QName(namespace="http://x.com", local_name="Dim")
+        allowed = QName(namespace="http://x.com", local_name="m1")
+
+        taxonomy = self._make_hc_taxonomy(concept, hc, dim, [allowed])
+        engine = TableLayoutEngine(taxonomy)
+
+        col_node = _make_node(
+            aspect_constraints={"concept": f"{{{concept.namespace}}}{concept.local_name}"}
+        )
+        row_node = _make_node(
+            aspect_constraints={
+                "explicitDimension": {
+                    f"{{{dim.namespace}}}{dim.local_name}": f"{{{allowed.namespace}}}{allowed.local_name}"
+                }
+            }
+        )
+        x_root = _make_node(children=[col_node])
+        y_root = _make_node(children=[row_node])
+        layout = engine.compute(_simple_table(x_root, y_root))
+        assert layout.body[0][0].is_excluded is False
+
+    def test_cell_with_excluded_member_is_excluded(self):
+        concept = QName(namespace="http://x.com", local_name="C")
+        hc = QName(namespace="http://x.com", local_name="Hc")
+        dim = QName(namespace="http://x.com", local_name="Dim")
+        allowed = QName(namespace="http://x.com", local_name="m1")
+        forbidden = QName(namespace="http://x.com", local_name="m_bad")
+
+        taxonomy = self._make_hc_taxonomy(concept, hc, dim, [allowed])
+        engine = TableLayoutEngine(taxonomy)
+
+        col_node = _make_node(
+            aspect_constraints={"concept": f"{{{concept.namespace}}}{concept.local_name}"}
+        )
+        row_node = _make_node(
+            aspect_constraints={
+                "explicitDimension": {
+                    f"{{{dim.namespace}}}{dim.local_name}": f"{{{forbidden.namespace}}}{forbidden.local_name}"
+                }
+            }
+        )
+        x_root = _make_node(children=[col_node])
+        y_root = _make_node(children=[row_node])
+        layout = engine.compute(_simple_table(x_root, y_root))
+        assert layout.body[0][0].is_excluded is True
+
+    def test_cell_with_no_hypercubes_not_excluded(self):
+        """When no closed hypercubes exist for the concept, cell is never excluded."""
+        taxonomy = _make_taxonomy()
+        taxonomy.hypercubes = []
+        taxonomy.definition = {}
+        engine = TableLayoutEngine(taxonomy)
+
+        concept = QName(namespace="http://x.com", local_name="C")
+        col_node = _make_node(
+            aspect_constraints={"concept": f"{{{concept.namespace}}}{concept.local_name}"}
+        )
+        row_node = _make_node(label="R")
+        x_root = _make_node(children=[col_node])
+        y_root = _make_node(children=[row_node])
+        layout = engine.compute(_simple_table(x_root, y_root))
+        assert layout.body[0][0].is_excluded is False

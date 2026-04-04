@@ -54,6 +54,7 @@ class BodyCell:
     fact_decimals: str | None = None
     is_duplicate: bool = False
     is_applicable: bool = True
+    is_excluded: bool = False  # True when dimensional constraints forbid this cell
     cell_code: str | None = None  # row_fin_code + col_fin_code
 
 

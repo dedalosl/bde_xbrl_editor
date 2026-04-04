@@ -202,6 +202,7 @@ class DefinitionArc:
     closed: bool | None = None
     context_element: Literal["segment", "scenario"] | None = None
     usable: bool | None = None
+    target_role: str | None = None  # xbrldt:targetRole — points to ELR containing dim members
 
 
 @dataclass(frozen=True)

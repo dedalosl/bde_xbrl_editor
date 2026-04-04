@@ -15,7 +15,12 @@ from bde_xbrl_editor.table_renderer.models import (
     HeaderGrid,
     ZMemberOption,
 )
-from bde_xbrl_editor.taxonomy.constants import RC_CODE_ROLE
+from bde_xbrl_editor.taxonomy.constants import (
+    ARCROLE_DIMENSION_DOMAIN,
+    ARCROLE_DOMAIN_MEMBER,
+    ARCROLE_HYPERCUBE_DIMENSION,
+    RC_CODE_ROLE,
+)
 from bde_xbrl_editor.taxonomy.models import QName
 
 if TYPE_CHECKING:
@@ -331,6 +336,94 @@ def _build_coordinate(
     return CellCoordinate(concept=concept, explicit_dimensions=explicit_dims)
 
 
+def _get_dimension_members_in_elr(
+    dim_qname: QName,
+    elr: str,
+    definition: dict,
+) -> frozenset | None:
+    """Return the set of QNames allowed for dim_qname in the given ELR, or None if unconstrained."""
+    arcs = definition.get(elr, [])
+    domain: QName | None = None
+    for arc in arcs:
+        if arc.arcrole == ARCROLE_DIMENSION_DOMAIN and arc.source == dim_qname:
+            domain = arc.target
+            break
+    if domain is None:
+        return None
+    # Collect all members transitively from the domain
+    allowed: set = {domain}
+    changed = True
+    while changed:
+        changed = False
+        for arc in arcs:
+            if arc.arcrole == ARCROLE_DOMAIN_MEMBER and arc.source in allowed and arc.target not in allowed:
+                allowed.add(arc.target)
+                changed = True
+    return frozenset(allowed)
+
+
+def _is_cell_excluded(
+    coordinate: CellCoordinate,
+    taxonomy: TaxonomyStructure,
+    table_elr: str = "",
+) -> bool:
+    """Return True if no closed all-hypercube for the concept allows this cell's dimensions.
+
+    A cell is excluded when its concept belongs to at least one closed hypercube (scoped to
+    this table's ELR) but the cell's dimension values fall outside every such hypercube's
+    allowed member sets.
+
+    ``table_elr`` is the table's extended_link_role; hypercubes from other tables are ignored.
+    """
+    if coordinate.concept is None or not coordinate.explicit_dimensions:
+        return False
+
+    concept = coordinate.concept
+    cell_dims = coordinate.explicit_dimensions
+
+    # Relevant: closed "all" hypercubes where concept is a primary item,
+    # scoped to this table's ELR prefix to avoid cross-table contamination.
+    elr_prefix = (table_elr + "/") if table_elr else ""
+    relevant_hcs = [
+        hc for hc in taxonomy.hypercubes
+        if hc.arcrole == "all"
+        and hc.closed
+        and concept in hc.primary_items
+        and (not elr_prefix or hc.extended_link_role.startswith(elr_prefix))
+    ]
+
+    if not relevant_hcs:
+        return False  # No closed constraint → applicable
+
+    for hc in relevant_hcs:
+        fits = True
+        for dim_qname, member in cell_dims.items():
+            if dim_qname not in hc.dimensions:
+                continue  # Dimension not constrained in this hypercube
+
+            # Find targetRole for (hc.qname, dim) in this hypercube's ELR
+            target_elr = hc.extended_link_role
+            for arc in taxonomy.definition.get(hc.extended_link_role, []):
+                if (
+                    arc.arcrole == ARCROLE_HYPERCUBE_DIMENSION
+                    and arc.source == hc.qname
+                    and arc.target == dim_qname
+                    and arc.target_role
+                ):
+                    target_elr = arc.target_role
+                    break
+
+            allowed = _get_dimension_members_in_elr(dim_qname, target_elr, taxonomy.definition)
+            if allowed is not None and member not in allowed:
+                fits = False
+                break
+
+        if fits:
+            return False  # At least one hypercube accepts this cell
+
+    return True  # No hypercube accepts this cell — excluded
+
+
 def _compute_cell_code(row_fin: str | None, col_fin: str | None) -> str | None:
     """Compute cell code as zero-padded 4-digit sum of row and column fin-codes.
 
@@ -352,6 +445,7 @@ def _build_body(
     col_grid: HeaderGrid,
     z_constraints: dict[QName, QName],
     taxonomy: TaxonomyStructure,
+    table_elr: str = "",
 ) -> list[list[BodyCell]]:
     """Build the body cell grid from row/col constraints + Z member constraints.
 
@@ -380,12 +474,14 @@ def _build_body(
                     z_constraints,
                     taxonomy,
                 )
+                excluded = _is_cell_excluded(coord, taxonomy, table_elr)
                 cell_code = _compute_cell_code(row_cell.fin_code, col_cell.fin_code)
                 cell = BodyCell(
                     row_index=row_idx,
                     col_index=col_idx,
                     coordinate=coord,
                     cell_code=cell_code,
+                    is_excluded=excluded,
                 )
             row_cells.append(cell)
         body.append(row_cells)
@@ -434,7 +530,8 @@ class TableLayoutEngine:
 
             # Build body cell grid
             body = _build_body(
-                row_header, col_header, active_z.dimension_constraints, self._taxonomy
+                row_header, col_header, active_z.dimension_constraints, self._taxonomy,
+                table_elr=table.extended_link_role,
             )
 
             # Optionally wire fact values

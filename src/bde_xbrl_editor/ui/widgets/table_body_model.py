@@ -12,6 +12,7 @@ from bde_xbrl_editor.table_renderer.models import ComputedTableLayout
 _COLOR_HAS_FACT = QColor("white")
 _COLOR_DUPLICATE = QColor("#FFD0D0")
 _COLOR_NOT_APPLICABLE = QColor("#F8F8F8")
+_COLOR_EXCLUDED = QColor("#A8A8A8")  # dark grey for dimensionally-excluded cells
 
 # Custom role for the cell code (row_fin_code + col_fin_code)
 CELL_CODE_ROLE = Qt.ItemDataRole.UserRole + 2
@@ -66,6 +67,8 @@ class TableBodyModel(QAbstractTableModel):
         if role == Qt.ItemDataRole.BackgroundRole:
             if not cell.is_applicable:
                 return _COLOR_NOT_APPLICABLE
+            if cell.is_excluded:
+                return _COLOR_EXCLUDED
             if cell.is_duplicate:
                 return _COLOR_DUPLICATE
             return _COLOR_HAS_FACT
