@@ -195,9 +195,13 @@ class XbrlTableView(QFrame):
             model.set_formatter(formatter, self._taxonomy)
         self._body_view.setModel(model)
 
-        # Always install a delegate so the cell-code badge is painted even without an editor.
-        # main_window.py will replace this with the full CellEditDelegate when editing is enabled.
-        if not isinstance(self._body_view.itemDelegate(), CellEditDelegate):
+        # Keep delegate in sync with the new layout. If main_window has installed a full
+        # CellEditDelegate (with taxonomy + editor), update its layout reference so coordinate
+        # lookups stay correct after Z-axis changes. Otherwise install a minimal one for painting.
+        existing_delegate = self._body_view.itemDelegate()
+        if isinstance(existing_delegate, CellEditDelegate):
+            existing_delegate.set_table_layout(layout)
+        else:
             self._body_view.setItemDelegate(CellEditDelegate(table_view_widget=self._body_view))
 
         # Update headers

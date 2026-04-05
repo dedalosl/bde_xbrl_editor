@@ -334,7 +334,23 @@ class MainWindow(QMainWindow):
             " border-color: rgba(255,255,255,0.1); }"
         )
 
-        if instance is None and self._current_taxonomy is not None:
+        if instance is not None:
+            save_btn = QPushButton("Save")
+            save_btn.setStyleSheet(btn_style)
+            save_btn.clicked.connect(self._on_save)
+            layout.addWidget(save_btn)
+
+            open_inst_btn = QPushButton("Open Instance…")
+            open_inst_btn.setStyleSheet(btn_style)
+            open_inst_btn.clicked.connect(self._on_open_instance)
+            layout.addWidget(open_inst_btn)
+
+            new_inst_btn = QPushButton("New Instance…")
+            new_inst_btn.setStyleSheet(btn_style)
+            new_inst_btn.clicked.connect(self._on_new_instance)
+            layout.addWidget(new_inst_btn)
+
+        elif self._current_taxonomy is not None:
             open_inst_btn = QPushButton("Open Instance…")
             open_inst_btn.setStyleSheet(btn_style)
             open_inst_btn.clicked.connect(self._on_open_instance)
@@ -432,10 +448,8 @@ class MainWindow(QMainWindow):
         wizard = InstanceCreationWizard(taxonomy=self._current_taxonomy, parent=self)
         if wizard.exec() == QDialog.DialogCode.Accepted:
             instance = wizard.created_instance
-            if instance and instance.source_path:
-                self._status.showMessage(
-                    f"Instance created: {instance.source_path}"
-                )
+            if instance:
+                self._load_instance(instance)
 
     # ------------------------------------------------------------------
     # File → Open Instance (T015)
@@ -506,6 +520,8 @@ class MainWindow(QMainWindow):
             parent=self,
         )
         info_panel.table_selected.connect(self._on_table_selected)
+        info_panel.save_requested.connect(self._on_save)
+        info_panel.open_instance_requested.connect(self._on_open_instance)
 
         splitter = QSplitter(self)
         splitter.addWidget(info_panel)
@@ -572,6 +588,12 @@ class MainWindow(QMainWindow):
 
     def _on_changes_made(self) -> None:
         self.setWindowModified(True)
+        if self._table_view is not None:
+            # Defer refresh so the editor widget is fully closed before the model is replaced.
+            QTimer.singleShot(0, lambda: (
+                self._table_view.refresh_instance(self._current_instance)
+                if self._table_view is not None else None
+            ))
 
     # ------------------------------------------------------------------
     # File → Save / Save As (T029, T030)

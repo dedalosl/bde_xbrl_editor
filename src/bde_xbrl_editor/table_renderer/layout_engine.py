@@ -36,6 +36,28 @@ _CONCEPT_KEY = "concept"
 _EXPLICIT_DIM_KEY = "explicitDimension"
 
 
+def _accumulate_constraints(
+    parent: dict,
+    node: dict,
+) -> dict:
+    """Merge parent aspect_constraints into a child node's constraints.
+
+    Child wins on conflicts.  explicitDimension sub-dicts are merged so that
+    parent-declared dimensions survive unless the child overrides them.
+    """
+    result: dict = dict(parent)
+    if _CONCEPT_KEY in node:
+        result[_CONCEPT_KEY] = node[_CONCEPT_KEY]
+    parent_dims: dict = result.get(_EXPLICIT_DIM_KEY) or {}
+    child_dims: dict = node.get(_EXPLICIT_DIM_KEY) or {}
+    if parent_dims or child_dims:
+        result[_EXPLICIT_DIM_KEY] = {**parent_dims, **child_dims}
+    for k, v in node.items():
+        if k not in (_CONCEPT_KEY, _EXPLICIT_DIM_KEY):
+            result[k] = v
+    return result
+
+
 def _get_label(
     node: BreakdownNode, taxonomy: TaxonomyStructure, language_preference: list[str]
 ) -> str:
@@ -109,10 +131,11 @@ def _build_row_axis_grid(
     dfs_cells: list[HeaderCell] = []
     max_depth = 0
 
-    def _dfs(node: BreakdownNode, depth: int) -> None:
+    def _dfs(node: BreakdownNode, depth: int, parent_constraints: dict) -> None:
         nonlocal max_depth
         if depth > max_depth:
             max_depth = depth
+        accumulated = _accumulate_constraints(parent_constraints, node.aspect_constraints)
         label = _get_label(node, taxonomy, language_preference)
         cell = HeaderCell(
             label=label,
@@ -123,13 +146,14 @@ def _build_row_axis_grid(
             is_leaf=not node.is_abstract,
             is_abstract=node.is_abstract,
             source_node=node,
+            accumulated_aspect_constraints=accumulated,
         )
         dfs_cells.append(cell)
         for child in node.children:
-            _dfs(child, depth + 1)
+            _dfs(child, depth + 1, accumulated)
 
     for child in root.children:
-        _dfs(child, 0)
+        _dfs(child, 0, {})
 
     if not dfs_cells:
         dfs_cells = [
@@ -142,6 +166,7 @@ def _build_row_axis_grid(
                 is_leaf=not root.is_abstract,
                 is_abstract=root.is_abstract,
                 source_node=root,
+                accumulated_aspect_constraints=dict(root.aspect_constraints),
             )
         ]
 
@@ -170,10 +195,11 @@ def _build_axis_grid(
             result.extend(_collect_all_non_abstract(child))
         return result
 
-    def _dfs(node: BreakdownNode, level: int) -> None:
+    def _dfs(node: BreakdownNode, level: int, parent_constraints: dict) -> None:
         while len(levels) <= level:
             levels.append([])
 
+        accumulated = _accumulate_constraints(parent_constraints, node.aspect_constraints)
         all_non_abstract = _collect_all_non_abstract(node)
         is_leaf = not node.is_abstract
         span = len(all_non_abstract)
@@ -188,14 +214,15 @@ def _build_axis_grid(
             is_leaf=is_leaf,
             is_abstract=node.is_abstract,
             source_node=node,
+            accumulated_aspect_constraints=accumulated,
         )
         levels[level].append(cell)
 
         for child in node.children:
-            _dfs(child, level + 1)
+            _dfs(child, level + 1, accumulated)
 
     for child in root.children:
-        _dfs(child, 0)
+        _dfs(child, 0, {})
 
     if not levels:
         # Degenerate case: root has no children — treat root itself as a leaf
@@ -210,6 +237,7 @@ def _build_axis_grid(
                     is_leaf=True,
                     is_abstract=root.is_abstract,
                     source_node=root,
+                    accumulated_aspect_constraints=dict(root.aspect_constraints),
                 )
             ]
         ]
@@ -469,8 +497,8 @@ def _build_body(
                 )
             else:
                 coord = _build_coordinate(
-                    row_cell.source_node.aspect_constraints,
-                    col_cell.source_node.aspect_constraints,
+                    row_cell.accumulated_aspect_constraints,
+                    col_cell.accumulated_aspect_constraints,
                     z_constraints,
                     taxonomy,
                 )

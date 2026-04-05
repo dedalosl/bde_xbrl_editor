@@ -48,30 +48,37 @@ def _find_fact_index(
     """Find the index in instance.facts that matches coordinate, or None."""
     if coordinate.concept is None:
         return None
+    coord_dims = coordinate.explicit_dimensions or {}
     for i, fact in enumerate(instance.facts):
         if fact.concept != coordinate.concept:
             continue
-        if coordinate.explicit_dimensions:
-            context = instance.contexts.get(fact.context_ref)
-            if context is None:
-                continue
-            fact_dims = context.dimensions
-            if any(fact_dims.get(d) != m for d, m in coordinate.explicit_dimensions.items()):
-                continue
+        context = instance.contexts.get(fact.context_ref)
+        if context is None:
+            continue
+        fact_dims = context.dimensions
+        # All coordinate dims must match
+        if any(fact_dims.get(d) != m for d, m in coord_dims.items()):
+            continue
+        # Fact must not have extra dims the coordinate doesn't specify
+        if any(d not in coord_dims for d in fact_dims):
+            continue
         return i
     return None
 
 
-def _find_context_ref(instance: XbrlInstance, coordinate: CellCoordinate) -> str:
-    """Find or fall back to a context_ref that satisfies coordinate dimensions."""
+def _ensure_context_ref(instance: XbrlInstance, coordinate: CellCoordinate) -> str:
+    """Return the deterministic context_ref for this coordinate, creating the context if needed."""
+    from bde_xbrl_editor.instance.context_builder import (  # noqa: PLC0415
+        build_dimensional_context,
+        generate_context_id,
+    )
+
     dims = coordinate.explicit_dimensions or {}
-    for ctx_id, ctx in instance.contexts.items():
-        if all(ctx.dimensions.get(d) == m for d, m in dims.items()):
-            return ctx_id
-    # Fall back: first context
-    if instance.contexts:
-        return next(iter(instance.contexts))
-    return ""
+    ctx_id = generate_context_id(instance.entity, instance.period, dims)
+    if ctx_id not in instance.contexts:
+        ctx = build_dimensional_context(instance.entity, instance.period, dims)
+        instance.contexts[ctx_id] = ctx
+    return ctx_id
 
 
 class CellEditDelegate(QStyledItemDelegate):
@@ -178,7 +185,18 @@ class CellEditDelegate(QStyledItemDelegate):
             return ed
 
         # monetary, decimal, integer, string
-        return QLineEdit(parent)
+        line = QLineEdit(parent)
+        if category in ("monetary", "decimal"):
+            from PySide6.QtGui import QDoubleValidator  # noqa: PLC0415
+
+            v = QDoubleValidator(line)
+            v.setNotation(QDoubleValidator.Notation.StandardNotation)
+            line.setValidator(v)
+        elif category == "integer":
+            from PySide6.QtGui import QIntValidator  # noqa: PLC0415
+
+            line.setValidator(QIntValidator(line))
+        return line
 
     # ------------------------------------------------------------------
     # setEditorData
@@ -254,11 +272,16 @@ class CellEditDelegate(QStyledItemDelegate):
             if fact_index is not None:
                 self._editor.update_fact(fact_index, normalised)
             else:
-                context_ref = _find_context_ref(instance, coordinate)
+                context_ref = _ensure_context_ref(instance, coordinate)
+                category = _get_type_category(self._taxonomy, coordinate.concept)
+                unit_ref = None
+                if category in ("monetary", "decimal", "integer"):
+                    unit_ref = next(iter(instance.units), None)
                 self._editor.add_fact(
                     concept=coordinate.concept,
                     context_ref=context_ref,
                     value=normalised,
+                    unit_ref=unit_ref,
                 )
         except DuplicateFactError:
             # Race condition — re-read index and try update

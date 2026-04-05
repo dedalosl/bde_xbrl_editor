@@ -98,6 +98,17 @@ class TableBodyModel(QAbstractTableModel):
 
         return None
 
+    def flags(self, index: QModelIndex) -> Qt.ItemFlag:
+        if not index.isValid():
+            return Qt.ItemFlag.NoItemFlags
+        base = Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
+        row, col = index.row(), index.column()
+        if row < len(self._layout.body) and col < len(self._layout.body[row]):
+            cell = self._layout.body[row][col]
+            if cell.is_applicable and not cell.is_excluded:
+                base |= Qt.ItemFlag.ItemIsEditable
+        return base
+
     def headerData(self, section: int, orientation: Qt.Orientation, role: int = Qt.ItemDataRole.DisplayRole) -> Any:
         if role == Qt.ItemDataRole.DisplayRole:
             return str(section + 1)
