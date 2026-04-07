@@ -17,6 +17,7 @@ from bde_xbrl_editor.taxonomy.models import (
     FormulaAssertionSet,
     QName,
     ValueAssertionDefinition,
+    XPathFilterDefinition,
 )
 
 # ---------------------------------------------------------------------------
@@ -34,6 +35,7 @@ _NS_CF = "http://xbrl.org/2008/filter/concept"
 _NS_PF = "http://xbrl.org/2008/filter/period"
 _NS_DF = "http://xbrl.org/2008/filter/dimension"
 _NS_UF = "http://xbrl.org/2008/filter/unit"
+_NS_GF = "http://xbrl.org/2008/filter/general"
 _NS_LINK = "http://www.xbrl.org/2003/linkbase"
 _NS_XLINK = "http://www.w3.org/1999/xlink"
 
@@ -49,10 +51,12 @@ _TAG_CF_CONCEPT = f"{{{_NS_CF}}}concept"
 _TAG_CF_QNAME = f"{{{_NS_CF}}}qname"
 _TAG_PF_INSTANT = f"{{{_NS_PF}}}instant"
 _TAG_PF_DURATION = f"{{{_NS_PF}}}duration"
+_TAG_PF_PERIOD = f"{{{_NS_PF}}}period"          # pf:period test="..." — XPath period filter
 _TAG_DF_EXPLICIT_DIMENSION = f"{{{_NS_DF}}}explicitDimension"
 _TAG_DF_DIMENSION = f"{{{_NS_DF}}}dimension"
 _TAG_DF_MEMBER = f"{{{_NS_DF}}}member"
 _TAG_DF_QNAME = f"{{{_NS_DF}}}qname"
+_TAG_GF_GENERAL = f"{{{_NS_GF}}}general"        # gf:general test="..." — XPath general filter
 
 # XLink attribute names (Clark notation)
 _ATTR_XLINK_TYPE = f"{{{_NS_XLINK}}}type"
@@ -233,7 +237,9 @@ _FILTER_TAGS = [
     _TAG_CF_CONCEPT,
     _TAG_PF_INSTANT,
     _TAG_PF_DURATION,
+    _TAG_PF_PERIOD,
     _TAG_DF_EXPLICIT_DIMENSION,
+    _TAG_GF_GENERAL,
 ]
 
 
@@ -252,14 +258,22 @@ def _parse_fact_variable(
     var_el: etree._Element,
     filter_arc_map: dict[str, list[str]],
     filter_index: dict[str, etree._Element],
+    arc_name: str = "",
 ) -> FactVariableDefinition:
-    """Build a FactVariableDefinition from a variable:factVariable element."""
-    variable_name = var_el.get("name", "") or var_el.get(_ATTR_XLINK_LABEL, "")
+    """Build a FactVariableDefinition from a variable:factVariable element.
+
+    *arc_name* is the ``name`` attribute from the ``variable:variableArc`` that
+    connects the assertion to this variable — that is the XPath variable name
+    used in test/formula expressions (e.g. ``$a``).  If absent, fall back to
+    any element-level ``name`` attribute or the ``xlink:label``.
+    """
+    variable_name = arc_name or var_el.get("name", "") or var_el.get(_ATTR_XLINK_LABEL, "")
     var_label = var_el.get(_ATTR_XLINK_LABEL, variable_name)
 
     concept_filter: QName | None = None
     period_filter: Literal["instant", "duration"] | None = None
     dimension_filters: list[DimensionFilter] = []
+    xpath_filters: list[XPathFilterDefinition] = []
 
     for filter_label in filter_arc_map.get(var_label, []):
         filter_el = filter_index.get(filter_label)
@@ -272,11 +286,22 @@ def _parse_fact_variable(
             if qn is not None and concept_filter is None:
                 concept_filter = qn
 
-        # Period filter
+        # Period type filter (simple instant/duration)
         elif filter_el.tag in (_TAG_PF_INSTANT, _TAG_PF_DURATION):
             pf = _extract_period_filter(filter_el)
             if pf is not None and period_filter is None:
                 period_filter = pf
+
+        # Period filter with XPath test expression
+        elif filter_el.tag == _TAG_PF_PERIOD:
+            test_expr = (filter_el.get("test") or "").strip()
+            if test_expr:
+                xpath_filters.append(
+                    XPathFilterDefinition(
+                        xpath_expr=test_expr,
+                        namespaces=_element_nsmap(filter_el),
+                    )
+                )
 
         # Dimension filter
         elif filter_el.tag == _TAG_DF_EXPLICIT_DIMENSION:
@@ -284,11 +309,26 @@ def _parse_fact_variable(
             if df is not None:
                 dimension_filters.append(df)
 
+        # General XPath filter
+        elif filter_el.tag == _TAG_GF_GENERAL:
+            test_expr = (filter_el.get("test") or "").strip()
+            if test_expr:
+                xpath_filters.append(
+                    XPathFilterDefinition(
+                        xpath_expr=test_expr,
+                        namespaces=_element_nsmap(filter_el),
+                    )
+                )
+
+    fallback_value: str | None = var_el.get("fallbackValue")
+
     return FactVariableDefinition(
         variable_name=variable_name,
         concept_filter=concept_filter,
         period_filter=period_filter,
         dimension_filters=tuple(dimension_filters),
+        fallback_value=fallback_value,
+        xpath_filters=tuple(xpath_filters),
     )
 
 
@@ -305,7 +345,7 @@ _ASSERTION_TAGS = (
 
 def _parse_assertion(
     assertion_el: etree._Element,
-    variable_arc_map: dict[str, list[str]],
+    variable_arc_map: dict[str, list[tuple[str, str]]],
     fact_variable_index: dict[str, etree._Element],
     filter_arc_map: dict[str, list[str]],
     filter_index: dict[str, etree._Element],
@@ -321,22 +361,29 @@ def _parse_assertion(
     precondition_xpath: str | None = None  # preconditions not yet parsed
 
     # Collect bound fact variables via variable arcs (from=assertion_id or from=xlink:label)
+    # variable_arc_map values are (to_label, arc_name) tuples where arc_name is the XPath
+    # variable name (the ``name`` attribute on variable:variableArc).
     assertion_label = assertion_el.get(_ATTR_XLINK_LABEL, assertion_id)
-    variable_labels = variable_arc_map.get(assertion_id, []) + variable_arc_map.get(assertion_label, [])
+    variable_entries = (
+        variable_arc_map.get(assertion_id, [])
+        + variable_arc_map.get(assertion_label, [])
+    )
 
     variables: list[FactVariableDefinition] = []
     seen_var_labels: set[str] = set()
-    for var_label in variable_labels:
+    for var_label, arc_name in variable_entries:
         if var_label in seen_var_labels:
             continue
         seen_var_labels.add(var_label)
         var_el = fact_variable_index.get(var_label)
         if var_el is not None:
             variables.append(
-                _parse_fact_variable(var_el, filter_arc_map, filter_index)
+                _parse_fact_variable(var_el, filter_arc_map, filter_index, arc_name=arc_name)
             )
 
     tag = assertion_el.tag
+
+    namespaces = _element_nsmap(assertion_el)
 
     common: dict = dict(
         assertion_id=assertion_id,
@@ -345,6 +392,7 @@ def _parse_assertion(
         abstract=abstract,
         variables=tuple(variables),
         precondition_xpath=precondition_xpath,
+        namespaces=namespaces,
     )
 
     if tag == _TAG_VALUE_ASSERTION:
@@ -418,13 +466,15 @@ def _parse(path: Path) -> FormulaAssertionSet:
     filter_index = _build_filter_label_index(root)
     filter_arc_map = _build_filter_arc_map(root)
 
-    # Variable arcs connect assertion labels/ids → variable labels
-    variable_arc_map: dict[str, list[str]] = {}
+    # Variable arcs connect assertion labels/ids → [(variable_label, arc_name), ...]
+    # The arc ``name`` attribute IS the XPath variable name (e.g. name="a" → $a).
+    variable_arc_map: dict[str, list[tuple[str, str]]] = {}
     for arc in root.iter(_TAG_VARIABLE_ARC):
         frm = arc.get(_ATTR_XLINK_FROM, "")
         to = arc.get(_ATTR_XLINK_TO, "")
+        arc_name = arc.get("name", "")
         if frm and to:
-            variable_arc_map.setdefault(frm, []).append(to)
+            variable_arc_map.setdefault(frm, []).append((to, arc_name))
 
     assertions: list[FormulaAssertion] = []
     abstract_count = 0

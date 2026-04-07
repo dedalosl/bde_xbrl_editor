@@ -335,6 +335,12 @@ class MainWindow(QMainWindow):
         )
 
         if instance is not None:
+            validate_btn = QPushButton("⚡ Validate")
+            validate_btn.setStyleSheet(btn_style)
+            validate_btn.setToolTip("Run validation on the current instance (Ctrl+Shift+V)")
+            validate_btn.clicked.connect(self._on_validate_from_context_bar)
+            layout.addWidget(validate_btn)
+
             save_btn = QPushButton("Save")
             save_btn.setStyleSheet(btn_style)
             save_btn.clicked.connect(self._on_save)
@@ -556,6 +562,15 @@ class MainWindow(QMainWindow):
         # Auto-render the first filed table immediately
         info_panel.select_first_table()
 
+        # Show validation panel (cleared) so user sees it's ready
+        self._ensure_validation_panel()
+        dock = self._find_validation_dock()
+        if dock:
+            dock.setVisible(True)
+        if self._validation_panel:
+            self._validation_panel.clear()
+        self._show_validation_panel_action.setEnabled(True)
+
     # ------------------------------------------------------------------
     # Table selection → XbrlTableView (T017)
     # ------------------------------------------------------------------
@@ -702,6 +717,11 @@ class MainWindow(QMainWindow):
             if dock.objectName() == "ValidationDock":
                 return dock
         return None
+
+    def _on_validate_from_context_bar(self) -> None:
+        """Show the validation dock and start a validation run."""
+        self._show_validation_panel()
+        self._trigger_validation()
 
     def _trigger_validation(self) -> None:
         """Start a background validation run. Guard against double-trigger."""

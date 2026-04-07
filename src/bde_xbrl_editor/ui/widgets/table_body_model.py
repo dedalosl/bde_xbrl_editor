@@ -17,6 +17,30 @@ _COLOR_EXCLUDED = QColor("#A8A8A8")  # dark grey for dimensionally-excluded cell
 # Custom role for the cell code (row_fin_code + col_fin_code)
 CELL_CODE_ROLE = Qt.ItemDataRole.UserRole + 2
 
+# XBRL numeric type local names (used for right-alignment)
+_NUMERIC_TYPE_LOCALS = frozenset({
+    "monetaryItemType",
+    "decimalItemType",
+    "floatItemType",
+    "doubleItemType",
+    "integerItemType",
+    "nonNegativeIntegerItemType",
+    "positiveIntegerItemType",
+    "nonPositiveIntegerItemType",
+    "negativeIntegerItemType",
+    "longItemType",
+    "intItemType",
+    "shortItemType",
+    "byteItemType",
+    "unsignedLongItemType",
+    "unsignedIntItemType",
+    "unsignedShortItemType",
+    "unsignedByteItemType",
+    "pureItemType",
+    "sharesItemType",
+    "percentItemType",
+})
+
 
 class TableBodyModel(QAbstractTableModel):
     """Qt model backing the body QTableView."""
@@ -72,6 +96,16 @@ class TableBodyModel(QAbstractTableModel):
             if cell.is_duplicate:
                 return _COLOR_DUPLICATE
             return _COLOR_HAS_FACT
+
+        if role == Qt.ItemDataRole.TextAlignmentRole:
+            if self._taxonomy is not None and cell.coordinate.concept is not None:
+                concept_def = self._taxonomy.concepts.get(cell.coordinate.concept)
+                if concept_def is not None:
+                    type_qname = concept_def.data_type
+                    local = str(type_qname).split("}")[-1].split(":")[-1] if type_qname else ""
+                    if local in _NUMERIC_TYPE_LOCALS:
+                        return int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            return int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
         if role == Qt.ItemDataRole.ToolTipRole:
             coord = cell.coordinate

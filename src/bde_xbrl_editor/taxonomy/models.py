@@ -301,6 +301,14 @@ class DimensionFilter:
 
 
 @dataclass(frozen=True)
+class XPathFilterDefinition:
+    """An XPath-expression-based filter (gf:general, pf:period test=, etc.)."""
+
+    xpath_expr: str
+    namespaces: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class FactVariableDefinition:
     """A bound fact variable in a formula assertion."""
 
@@ -310,6 +318,7 @@ class FactVariableDefinition:
     dimension_filters: tuple[DimensionFilter, ...] = field(default_factory=tuple)
     unit_filter: QName | None = None
     fallback_value: str | None = None
+    xpath_filters: tuple[XPathFilterDefinition, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True)
@@ -322,6 +331,7 @@ class FormulaAssertion:
     abstract: bool
     variables: tuple[FactVariableDefinition, ...]
     precondition_xpath: str | None
+    namespaces: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

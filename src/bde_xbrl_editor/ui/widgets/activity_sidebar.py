@@ -145,6 +145,7 @@ class _CollapsibleSection(QWidget):
         layout.addWidget(body)
 
         if not expanded:
+            self._btn.setChecked(False)
             self._toggle(False)
 
     def _toggle(self, checked: bool) -> None:
@@ -301,6 +302,17 @@ class _TablesPanel(QWidget):
 # Panel: Validations
 # ---------------------------------------------------------------------------
 
+_DETAIL_STYLE = """
+    QWidget#DetailContainer {
+        background: #EEF3FA;
+        border-top: 1px solid #C8D4E5;
+    }
+"""
+
+_DETAIL_KEY_STYLE = "color: #5A7FA8; font-size: 10px; font-weight: bold; padding: 0;"
+_DETAIL_VAL_STYLE = "color: #1E3A5F; font-size: 11px; padding: 0 0 4px 0;"
+
+
 class _ValidationsPanel(QWidget):
     def __init__(self, taxonomy: TaxonomyStructure, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -320,17 +332,8 @@ class _ValidationsPanel(QWidget):
             lbl.setWordWrap(True)
             layout.addWidget(lbl)
             layout.addStretch(1)
+            self._detail_section = None
             return
-
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setStyleSheet("QScrollArea { border: none; }")
-
-        inner = QWidget()
-        inner_layout = QVBoxLayout(inner)
-        inner_layout.setContentsMargins(0, 0, 0, 0)
-        inner_layout.setSpacing(0)
 
         from bde_xbrl_editor.taxonomy.models import (  # noqa: PLC0415
             ConsistencyAssertionDefinition,
@@ -354,21 +357,106 @@ class _ValidationsPanel(QWidget):
             else:
                 groups["Other"].append(a)
 
+        # Scroll area with collapsible groups — fills all available height
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setStyleSheet("QScrollArea { border: none; }")
+
+        inner = QWidget()
+        inner_layout = QVBoxLayout(inner)
+        inner_layout.setContentsMargins(0, 0, 0, 0)
+        inner_layout.setSpacing(0)
+
+        self._assertion_lists: list[QListWidget] = []
+        first_non_empty = True
         for group_name, items in groups.items():
             if not items:
                 continue
             lst = QListWidget()
             lst.setStyleSheet(_LIST_STYLE)
-            lst.setMaximumHeight(min(len(items) * 30 + 4, 200))
             for a in items:
                 label = getattr(a, "label", None) or a.assertion_id
-                lst.addItem(QListWidgetItem(f"{a.assertion_id}  {label or ''}".strip()))
-            section = _CollapsibleSection(f"{group_name}  ({len(items)})", lst, expanded=False)
+                wi = QListWidgetItem(f"{a.assertion_id}  {label or ''}".strip())
+                wi.setData(Qt.ItemDataRole.UserRole, a)
+                lst.addItem(wi)
+            lst.currentItemChanged.connect(self._on_item_selected)
+            self._assertion_lists.append(lst)
+            section = _CollapsibleSection(
+                f"{group_name}  ({len(items)})", lst, expanded=first_non_empty
+            )
             inner_layout.addWidget(section)
+            first_non_empty = False
 
         inner_layout.addStretch(1)
         scroll.setWidget(inner)
         layout.addWidget(scroll, stretch=1)
+
+        # ── Collapsible detail panel ───────────────────────────────────
+        detail_body = QWidget()
+        detail_body.setObjectName("DetailContainer")
+        detail_body.setStyleSheet(_DETAIL_STYLE)
+        detail_body_layout = QVBoxLayout(detail_body)
+        detail_body_layout.setContentsMargins(8, 6, 8, 6)
+        detail_body_layout.setSpacing(1)
+
+        def _make_row(key: str) -> QLabel:
+            kl = QLabel(key)
+            kl.setStyleSheet(_DETAIL_KEY_STYLE)
+            detail_body_layout.addWidget(kl)
+            vl = QLabel("—")
+            vl.setStyleSheet(_DETAIL_VAL_STYLE)
+            vl.setWordWrap(True)
+            vl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            detail_body_layout.addWidget(vl)
+            return vl
+
+        self._det_id = _make_row("ID")
+        self._det_label = _make_row("LABEL")
+        self._det_severity = _make_row("SEVERITY")
+        self._det_test = _make_row("TEST / FORMULA")
+        self._det_vars = _make_row("VARIABLES")
+        self._det_precond = _make_row("PRECONDITION")
+
+        self._detail_section = _CollapsibleSection("Details", detail_body, expanded=False)
+        layout.addWidget(self._detail_section)
+
+    def _on_item_selected(self, current: QListWidgetItem | None, _previous) -> None:
+        if current is None or self._detail_section is None:
+            return
+        a = current.data(Qt.ItemDataRole.UserRole)
+        if a is None:
+            return
+
+        # Deselect other lists so only one item is active at a time
+        for lst in self._assertion_lists:
+            if lst is not self.sender():
+                lst.blockSignals(True)
+                lst.clearSelection()
+                lst.setCurrentItem(None)
+                lst.blockSignals(False)
+
+        self._det_id.setText(a.assertion_id)
+        self._det_label.setText(getattr(a, "label", None) or "—")
+        sev = getattr(a, "severity", None)
+        self._det_severity.setText(str(sev.value).upper() if sev else "—")
+
+        test = getattr(a, "test_xpath", None) or getattr(a, "formula_xpath", None)
+        self._det_test.setText(test or "—")
+
+        vars_ = getattr(a, "variables", ())
+        if vars_:
+            var_text = ", ".join(getattr(v, "name", str(v)) for v in vars_)
+        else:
+            var_text = "—"
+        self._det_vars.setText(var_text)
+
+        precond = getattr(a, "precondition_xpath", None)
+        self._det_precond.setText(precond or "—")
+
+        # Auto-expand detail section
+        if not self._detail_section._body.isVisible():
+            self._detail_section._btn.click()
 
 
 # ---------------------------------------------------------------------------

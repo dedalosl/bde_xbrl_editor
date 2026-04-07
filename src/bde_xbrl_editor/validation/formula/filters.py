@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
+from decimal import Decimal, InvalidOperation
+
 from bde_xbrl_editor.instance.models import Fact, XbrlInstance
 from bde_xbrl_editor.taxonomy.models import FactVariableDefinition
 
@@ -22,7 +25,7 @@ def apply_filters(
         cf = variable_def.concept_filter
         result = [f for f in result if f.concept == cf]
 
-    # Period type filter
+    # Period type filter (simple instant/duration)
     if variable_def.period_filter is not None:
         wanted_period = variable_def.period_filter
         filtered: list[Fact] = []
@@ -55,13 +58,13 @@ def apply_filters(
             if ctx is None:
                 continue
             ctx_dims = ctx.dimensions
-            member = ctx_dims.get(dim_filter.dimension_qname)
 
             if dim_filter.exclude:
-                if dim_filter.member_qnames and member in dim_filter.member_qnames:
+                if dim_filter.member_qnames and ctx_dims.get(dim_filter.dimension_qname) in dim_filter.member_qnames:
                     continue
                 filtered.append(fact)
             else:
+                member = ctx_dims.get(dim_filter.dimension_qname)
                 if dim_filter.member_qnames:
                     if member in dim_filter.member_qnames:
                         filtered.append(fact)
@@ -70,4 +73,84 @@ def apply_filters(
                         filtered.append(fact)
         result = filtered
 
+    # XPath filters (gf:general test=, pf:period test=)
+    if variable_def.xpath_filters:
+        result = _apply_xpath_filters(result, variable_def.xpath_filters, instance)
+
     return result
+
+
+def _apply_xpath_filters(
+    facts: list[Fact],
+    xpath_filters: tuple,
+    instance: XbrlInstance,
+) -> list[Fact]:
+    """Apply each XPath filter expression to every candidate fact.
+
+    The context item for filter evaluation is the fact's numeric value as
+    a Decimal (e.g. ``. le 0.1`` in gf:general filters).  For period-based
+    filters (pf:period test=) xfi: functions read the period via the global
+    evaluation context set here.
+
+    A fact passes if ALL XPath filter expressions evaluate to true.
+    Facts for which any filter raises an exception are excluded.
+    """
+    from bde_xbrl_editor.validation.formula.xfi_functions import (
+        build_formula_parser,
+        clear_evaluation_context,
+        set_evaluation_context,
+    )
+    import elementpath  # type: ignore[import-untyped]
+
+    passed: list[Fact] = []
+    for fact in facts:
+        ctx_obj = instance.contexts.get(fact.context_ref)
+        unit_obj = instance.units.get(fact.unit_ref or "") if fact.unit_ref else None
+
+        # Coerce fact value to Decimal for arithmetic filters; fallback to 0
+        try:
+            item_value: object = Decimal(fact.value)
+        except (InvalidOperation, TypeError):
+            item_value = fact.value or ""
+
+        set_evaluation_context({
+            "_all_facts": instance.facts,
+            "_current_fact": fact,
+            "_context": ctx_obj,
+            "_unit": unit_obj,
+            "_instance": instance,
+        })
+
+        try:
+            fact_passes = True
+            for xf in xpath_filters:
+                with contextlib.suppress(Exception):
+                    parser = build_formula_parser(xf.namespaces)
+                    token = parser.parse(xf.xpath_expr)
+                    xp_ctx = elementpath.XPathContext(root=None, item=item_value)
+                    result = list(token.select(xp_ctx))
+                    # Evaluate result as boolean
+                    if not _to_bool(result):
+                        fact_passes = False
+                        break
+            if fact_passes:
+                passed.append(fact)
+        finally:
+            clear_evaluation_context()
+
+    return passed
+
+
+def _to_bool(value: object) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, list):
+        if not value:
+            return False
+        first = value[0]
+        if isinstance(first, bool):
+            return first
+        return bool(first)
+    if isinstance(value, str):
+        return value.lower() not in ("", "false", "0")
+    return bool(value)

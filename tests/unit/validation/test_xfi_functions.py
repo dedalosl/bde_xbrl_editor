@@ -16,9 +16,15 @@ from bde_xbrl_editor.taxonomy.models import QName
 from bde_xbrl_editor.validation.formula.xfi_functions import (
     clear_evaluation_context,
     set_evaluation_context,
-    xfi_decimal,
+    xfi_decimal,          # backward-compat alias
+    xfi_decimals,
     xfi_entity,
+    xfi_is_instant_period,
+    xfi_is_duration_period,
     xfi_period,
+    xfi_period_instant,
+    xfi_period_start,
+    xfi_period_end,
     xfi_unit,
 )
 
@@ -95,42 +101,81 @@ def _clear_context():
 
 
 # ---------------------------------------------------------------------------
-# xfi_period
+# xfi_period / xfi_is_instant_period / xfi_period_instant
 # ---------------------------------------------------------------------------
 
 
 class TestXfiPeriod:
-    def test_instant_period_returns_date_string(self) -> None:
-        """xfi_period returns the instant date string for an instant context."""
+    def test_period_returns_reporting_period_for_instant_ctx(self) -> None:
+        """xfi_period returns a ReportingPeriod for an instant context."""
         ctx = _instant_ctx(instant=date(2024, 12, 31))
         _set_ctx({"_context": ctx})
-        result = xfi_period()
-        assert result == "2024-12-31"
+        result = xfi_period(None)
+        assert isinstance(result, ReportingPeriod)
+        assert result.period_type == "instant"
+        assert result.instant_date == date(2024, 12, 31)
 
-    def test_duration_period_returns_range_string(self) -> None:
-        """xfi_period returns 'start/end' for a duration context."""
+    def test_period_returns_reporting_period_for_duration_ctx(self) -> None:
+        """xfi_period returns a ReportingPeriod for a duration context."""
         ctx = _duration_ctx(start=date(2024, 1, 1), end=date(2024, 12, 31))
         _set_ctx({"_context": ctx})
-        result = xfi_period()
-        assert result == "2024-01-01/2024-12-31"
+        result = xfi_period(None)
+        assert isinstance(result, ReportingPeriod)
+        assert result.period_type == "duration"
 
     def test_no_context_returns_empty_string(self) -> None:
         """xfi_period returns '' when _context is not in the evaluation context."""
         _set_ctx({})
-        result = xfi_period()
+        result = xfi_period(None)
         assert result == ""
 
     def test_context_none_returns_empty_string(self) -> None:
         """xfi_period returns '' when _context is explicitly None."""
         _set_ctx({"_context": None})
-        result = xfi_period()
+        result = xfi_period(None)
         assert result == ""
 
-    def test_instant_period_with_specific_date(self) -> None:
-        """xfi_period returns the exact instant date set on the context."""
-        ctx = _instant_ctx(instant=date(2020, 6, 30))
+    def test_is_instant_period_true_for_instant(self) -> None:
+        """xfi_is_instant_period returns True for an instant period."""
+        ctx = _instant_ctx()
         _set_ctx({"_context": ctx})
-        assert xfi_period() == "2020-06-30"
+        assert xfi_is_instant_period(None) is True
+
+    def test_is_instant_period_false_for_duration(self) -> None:
+        """xfi_is_instant_period returns False for a duration period."""
+        ctx = _duration_ctx()
+        _set_ctx({"_context": ctx})
+        assert xfi_is_instant_period(None) is False
+
+    def test_is_duration_period_true_for_duration(self) -> None:
+        """xfi_is_duration_period returns True for a duration period."""
+        ctx = _duration_ctx()
+        _set_ctx({"_context": ctx})
+        assert xfi_is_duration_period(None) is True
+
+    def test_period_instant_returns_date_object(self) -> None:
+        """xfi_period_instant returns an elementpath Date10 for an instant period."""
+        ctx = _instant_ctx(instant=date(2024, 12, 31))
+        period = ctx.period
+        result = xfi_period_instant(period)
+        assert result is not None
+        assert str(result) == "2024-12-31"
+
+    def test_period_start_returns_date_object(self) -> None:
+        """xfi_period_start returns a Date10 for a duration period."""
+        ctx = _duration_ctx(start=date(2024, 1, 1), end=date(2024, 12, 31))
+        period = ctx.period
+        result = xfi_period_start(period)
+        assert result is not None
+        assert str(result) == "2024-01-01"
+
+    def test_period_end_returns_date_object(self) -> None:
+        """xfi_period_end returns a Date10 for a duration period."""
+        ctx = _duration_ctx(start=date(2024, 1, 1), end=date(2024, 12, 31))
+        period = ctx.period
+        result = xfi_period_end(period)
+        assert result is not None
+        assert str(result) == "2024-12-31"
 
 
 # ---------------------------------------------------------------------------
@@ -141,28 +186,34 @@ class TestXfiPeriod:
 class TestXfiEntity:
     def test_returns_entity_identifier(self) -> None:
         """xfi_entity returns the entity identifier from the context."""
-        ctx = _instant_ctx()
-        ctx.entity.identifier = "BANK001"
+        ctx = XbrlContext(
+            context_id="ctx1",
+            entity=_entity(identifier="BANK001"),
+            period=ReportingPeriod(period_type="instant", instant_date=date(2024, 12, 31)),
+        )
         _set_ctx({"_context": ctx})
-        result = xfi_entity()
+        result = xfi_entity(None)
         assert result == "BANK001"
 
     def test_no_context_returns_empty_string(self) -> None:
         """xfi_entity returns '' when _context is absent."""
         _set_ctx({})
-        assert xfi_entity() == ""
+        assert xfi_entity(None) == ""
 
     def test_context_none_returns_empty_string(self) -> None:
         """xfi_entity returns '' when _context is None."""
         _set_ctx({"_context": None})
-        assert xfi_entity() == ""
+        assert xfi_entity(None) == ""
 
     def test_entity_identifier_content_preserved(self) -> None:
         """xfi_entity returns the full identifier string including special chars."""
-        ctx = _instant_ctx()
-        ctx.entity.identifier = "LEI-12345-ABCDE"
+        ctx = XbrlContext(
+            context_id="ctx1",
+            entity=_entity(identifier="LEI-12345-ABCDE"),
+            period=ReportingPeriod(period_type="instant", instant_date=date(2024, 12, 31)),
+        )
         _set_ctx({"_context": ctx})
-        assert xfi_entity() == "LEI-12345-ABCDE"
+        assert xfi_entity(None) == "LEI-12345-ABCDE"
 
 
 # ---------------------------------------------------------------------------
@@ -175,71 +226,76 @@ class TestXfiUnit:
         """xfi_unit returns the measure_uri of the current unit."""
         unit = _unit("iso4217:EUR")
         _set_ctx({"_unit": unit})
-        assert xfi_unit() == "iso4217:EUR"
+        assert xfi_unit(None) == "iso4217:EUR"
 
     def test_no_unit_returns_empty_string(self) -> None:
         """xfi_unit returns '' when _unit is absent from context."""
         _set_ctx({})
-        assert xfi_unit() == ""
+        assert xfi_unit(None) == ""
 
     def test_unit_none_returns_empty_string(self) -> None:
         """xfi_unit returns '' when _unit is explicitly None."""
         _set_ctx({"_unit": None})
-        assert xfi_unit() == ""
+        assert xfi_unit(None) == ""
 
     def test_pure_unit_measure_uri(self) -> None:
         """xfi_unit correctly returns the measure_uri for a pure (dimensionless) unit."""
         unit = XbrlUnit(unit_id="pure", measure_uri="xbrli:pure")
         _set_ctx({"_unit": unit})
-        assert xfi_unit() == "xbrli:pure"
+        assert xfi_unit(None) == "xbrli:pure"
 
 
 # ---------------------------------------------------------------------------
-# xfi_decimal
+# xfi_decimals / xfi_decimal (alias)
 # ---------------------------------------------------------------------------
 
 
 class TestXfiDecimal:
     def test_returns_decimal_attribute_as_int(self) -> None:
-        """xfi_decimal returns the decimals attribute of the current fact as an int."""
+        """xfi_decimals returns the decimals attribute of the current fact as an int."""
         fact = _fact(decimals="2")
         _set_ctx({"_current_fact": fact})
-        assert xfi_decimal() == 2
+        assert xfi_decimals(None) == 2
+
+    def test_backward_compat_alias(self) -> None:
+        """xfi_decimal() (old alias) works without arguments."""
+        fact = _fact(decimals="3")
+        _set_ctx({"_current_fact": fact})
+        assert xfi_decimal() == 3
 
     def test_no_fact_returns_zero(self) -> None:
-        """xfi_decimal returns 0 when _current_fact is absent."""
+        """xfi_decimals returns 0 when _current_fact is absent."""
         _set_ctx({})
-        assert xfi_decimal() == 0
+        assert xfi_decimals(None) == 0
 
     def test_fact_none_returns_zero(self) -> None:
-        """xfi_decimal returns 0 when _current_fact is None."""
+        """xfi_decimals returns 0 when _current_fact is None."""
         _set_ctx({"_current_fact": None})
-        assert xfi_decimal() == 0
+        assert xfi_decimals(None) == 0
 
     def test_fact_decimals_none_returns_zero(self) -> None:
-        """xfi_decimal returns 0 when the fact's decimals attribute is None."""
+        """xfi_decimals returns 0 when the fact's decimals attribute is None."""
         fact = _fact(decimals=None)
         _set_ctx({"_current_fact": fact})
-        assert xfi_decimal() == 0
+        assert xfi_decimals(None) == 0
 
     def test_invalid_decimals_string_returns_zero(self) -> None:
-        """xfi_decimal returns 0 when the decimals attribute cannot be parsed as int."""
+        """xfi_decimals returns 0 when the decimals attribute cannot be parsed as int."""
         fact = _fact(decimals="INF")
-        # "INF" cannot be converted with int(), so should return 0
         _set_ctx({"_current_fact": fact})
-        assert xfi_decimal() == 0
+        assert xfi_decimals(None) == 0
 
     def test_negative_decimals_value(self) -> None:
-        """xfi_decimal handles negative decimals (e.g. -3 for thousands rounding)."""
+        """xfi_decimals handles negative decimals (e.g. -3 for thousands rounding)."""
         fact = _fact(decimals="-3")
         _set_ctx({"_current_fact": fact})
-        assert xfi_decimal() == -3
+        assert xfi_decimals(None) == -3
 
     def test_zero_decimals(self) -> None:
-        """xfi_decimal returns 0 when decimals is '0'."""
+        """xfi_decimals returns 0 when decimals is '0'."""
         fact = _fact(decimals="0")
         _set_ctx({"_current_fact": fact})
-        assert xfi_decimal() == 0
+        assert xfi_decimals(None) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -255,21 +311,23 @@ class TestContextManagement:
         fact = _fact(decimals="4")
         set_evaluation_context({"_context": ctx, "_unit": unit, "_current_fact": fact})
         # Confirm values are accessible
-        assert xfi_period() != ""
-        assert xfi_unit() != ""
-        assert xfi_decimal() == 4
+        assert xfi_period(None) != ""
+        assert xfi_unit(None) != ""
+        assert xfi_decimals(None) == 4
         # Clear and verify defaults restored
         clear_evaluation_context()
-        assert xfi_period() == ""
-        assert xfi_entity() == ""
-        assert xfi_unit() == ""
-        assert xfi_decimal() == 0
+        assert xfi_period(None) == ""
+        assert xfi_entity(None) == ""
+        assert xfi_unit(None) == ""
+        assert xfi_decimals(None) == 0
 
     def test_set_overwrites_previous_context(self) -> None:
         """set_evaluation_context replaces any previously set context."""
         ctx1 = _instant_ctx("ctx1", instant=date(2023, 12, 31))
         ctx2 = _instant_ctx("ctx2", instant=date(2024, 6, 30))
         set_evaluation_context({"_context": ctx1})
-        assert xfi_period() == "2023-12-31"
+        p1 = xfi_period(None)
+        assert isinstance(p1, ReportingPeriod) and p1.instant_date == date(2023, 12, 31)
         set_evaluation_context({"_context": ctx2})
-        assert xfi_period() == "2024-06-30"
+        p2 = xfi_period(None)
+        assert isinstance(p2, ReportingPeriod) and p2.instant_date == date(2024, 6, 30)
