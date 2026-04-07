@@ -33,6 +33,7 @@ from typing import Any
 # ---------------------------------------------------------------------------
 
 _XFI_NS = "http://www.xbrl.org/2008/function/instance"
+_EFN_NS = "http://www.eurofiling.info/xbrl/func/extra-functions"
 
 # ---------------------------------------------------------------------------
 # Thread-local evaluation context
@@ -1151,6 +1152,34 @@ _XFI_FUNCTIONS: list[tuple[str, Any]] = [
 ]
 
 
+# ---------------------------------------------------------------------------
+# Eurofiling extra functions (efn: namespace)
+# ---------------------------------------------------------------------------
+
+def efn_imp(*args: Any) -> bool:
+    """efn:imp(P, Q) — logical implication: if P then Q (i.e. not P or Q)."""
+    if len(args) < 2:
+        return True
+    p = bool(args[0])
+    q = bool(args[1])
+    return (not p) or q
+
+
+def efn_iff(*args: Any) -> bool:
+    """efn:iff(P, Q) — biconditional: P if and only if Q."""
+    if len(args) < 2:
+        return True
+    p = bool(args[0])
+    q = bool(args[1])
+    return p == q
+
+
+_EFN_FUNCTIONS: list[tuple[str, Any]] = [
+    ("imp", efn_imp),
+    ("iff", efn_iff),
+]
+
+
 def _build_xbrl_parser_class() -> type:
     """Create and return the XbrlFormulaParser class with all xfi: functions
     registered at class level (done once at module import time).
@@ -1164,13 +1193,18 @@ def _build_xbrl_parser_class() -> type:
         symbol_table = dict(elementpath.XPath2Parser.symbol_table)
         function_signatures = dict(elementpath.XPath2Parser.function_signatures)
 
-    # Register all xfi: functions on a temporary instance, then promote to class
-    _temp = XbrlFormulaParser(namespaces={"xfi": _XFI_NS})
+    # Register all xfi: and efn: functions on a temporary instance, then promote to class
+    _temp = XbrlFormulaParser(namespaces={"xfi": _XFI_NS, "efn": _EFN_NS})
     for local_name, callback in _XFI_FUNCTIONS:
         try:
             _temp.external_function(callback, name=local_name, prefix="xfi", sequence_types=())
         except Exception:  # noqa: BLE001
             pass  # skip if already registered or name collision
+    for local_name, callback in _EFN_FUNCTIONS:
+        try:
+            _temp.external_function(callback, name=local_name, prefix="efn", sequence_types=())
+        except Exception:  # noqa: BLE001
+            pass
 
     # Promote instance symbol table → class level so all future instances inherit it
     XbrlFormulaParser.symbol_table = _temp.symbol_table
@@ -1199,4 +1233,5 @@ def build_formula_parser(namespaces: dict[str, str] | None = None) -> Any:
     cls = _get_parser_class()
     ns = dict(namespaces or {})
     ns.setdefault("xfi", _XFI_NS)
+    ns.setdefault("efn", _EFN_NS)
     return cls(namespaces=ns)
