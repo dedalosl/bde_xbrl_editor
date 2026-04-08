@@ -309,6 +309,20 @@ class XPathFilterDefinition:
 
 
 @dataclass(frozen=True)
+class BooleanFilterDefinition:
+    """Recursive boolean combination of filters (bf:andFilter / bf:orFilter).
+
+    Children may be DimensionFilter, XPathFilterDefinition, or nested
+    BooleanFilterDefinition instances.  When *complement* is True the result
+    of the whole subtree is negated (i.e. the arc had complement="true").
+    """
+
+    filter_type: Literal["and", "or"]
+    children: tuple[Any, ...]  # DimensionFilter | XPathFilterDefinition | BooleanFilterDefinition
+    complement: bool = False
+
+
+@dataclass(frozen=True)
 class FactVariableDefinition:
     """A bound fact variable in a formula assertion."""
 
@@ -319,6 +333,7 @@ class FactVariableDefinition:
     unit_filter: QName | None = None
     fallback_value: str | None = None
     xpath_filters: tuple[XPathFilterDefinition, ...] = field(default_factory=tuple)
+    boolean_filters: tuple[BooleanFilterDefinition, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True)

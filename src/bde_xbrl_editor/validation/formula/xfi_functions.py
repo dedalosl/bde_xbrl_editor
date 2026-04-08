@@ -1153,6 +1153,100 @@ _XFI_FUNCTIONS: list[tuple[str, Any]] = [
 
 
 # ---------------------------------------------------------------------------
+# Eurofiling interval arithmetic functions (iaf: namespace)
+# ---------------------------------------------------------------------------
+
+_IAF_NS = "http://www.eurofiling.info/xbrl/func/interval-arithmetics"
+
+
+def _to_decimal(v: Any) -> Decimal:
+    """Coerce v to Decimal; return 0 on failure."""
+    if isinstance(v, Decimal):
+        return v
+    if isinstance(v, (int, float)):
+        return Decimal(str(v))
+    try:
+        return Decimal(str(v))
+    except (InvalidOperation, Exception):  # noqa: BLE001
+        return Decimal(0)
+
+
+def _flatten_decimal(*args: Any) -> list[Decimal]:
+    """Flatten potentially nested sequences of values into a flat list of Decimals."""
+    result: list[Decimal] = []
+    for arg in args:
+        if isinstance(arg, (list, tuple)):
+            for item in arg:
+                result.append(_to_decimal(item))
+        else:
+            result.append(_to_decimal(arg))
+    return result
+
+
+def iaf_sum(*args: Any) -> Decimal:
+    """iaf:sum — sum of a sequence of numeric values (handles single values and lists)."""
+    return sum(_flatten_decimal(*args), Decimal(0))
+
+
+def iaf_error_margin(*args: Any) -> Decimal:
+    """iaf:error-margin — rounding tolerance.
+
+    In full XBRL interval arithmetic this is 0.5 * 10^(-decimals).
+    Without decimals metadata in the current binding model, return 0
+    (exact comparison).  This is conservative: it may produce false negatives
+    but never false positives.
+    """
+    return Decimal(0)
+
+
+def iaf_numeric_equal(*args: Any) -> bool:
+    """iaf:numeric-equal(a, b[, margin]) — |a - b| <= margin."""
+    if len(args) < 2:
+        return True
+    vals = _flatten_decimal(*args[:2])
+    a, b = vals[0], vals[1]
+    margin = _to_decimal(args[2]) if len(args) > 2 else Decimal(0)
+    return abs(a - b) <= margin
+
+
+def iaf_numeric_less_equal_than(*args: Any) -> bool:
+    """iaf:numeric-less-equal-than(a, b[, margin]) — a <= b + margin."""
+    if len(args) < 2:
+        return True
+    vals = _flatten_decimal(*args[:2])
+    a, b = vals[0], vals[1]
+    margin = _to_decimal(args[2]) if len(args) > 2 else Decimal(0)
+    return a <= b + margin
+
+
+def iaf_numeric_greater_equal_than(*args: Any) -> bool:
+    """iaf:numeric-greater-equal-than(a, b[, margin]) — a >= b - margin."""
+    if len(args) < 2:
+        return True
+    vals = _flatten_decimal(*args[:2])
+    a, b = vals[0], vals[1]
+    margin = _to_decimal(args[2]) if len(args) > 2 else Decimal(0)
+    return a >= b - margin
+
+
+def iaf_numeric_unary_minus(*args: Any) -> Decimal:
+    """iaf:numeric-unary-minus(a) — negate a numeric value."""
+    if not args:
+        return Decimal(0)
+    return -_to_decimal(args[0])
+
+
+_IAF_FUNCTIONS: list[tuple[str, Any]] = [
+    ("sum",                      iaf_sum),
+    ("error-margin",             iaf_error_margin),
+    ("numeric-equal",            iaf_numeric_equal),
+    ("numeric-less-equal-than",  iaf_numeric_less_equal_than),
+    ("numeric-greater-equal-than", iaf_numeric_greater_equal_than),
+    ("numeric-unary-minus",      iaf_numeric_unary_minus),
+]
+
+
+# ---------------------------------------------------------------------------
 # Eurofiling extra functions (efn: namespace)
 # ---------------------------------------------------------------------------
 
@@ -1193,8 +1287,8 @@ def _build_xbrl_parser_class() -> type:
         symbol_table = dict(elementpath.XPath2Parser.symbol_table)
         function_signatures = dict(elementpath.XPath2Parser.function_signatures)
 
-    # Register all xfi: and efn: functions on a temporary instance, then promote to class
-    _temp = XbrlFormulaParser(namespaces={"xfi": _XFI_NS, "efn": _EFN_NS})
+    # Register all xfi:, efn:, and iaf: functions on a temporary instance, then promote to class
+    _temp = XbrlFormulaParser(namespaces={"xfi": _XFI_NS, "efn": _EFN_NS, "iaf": _IAF_NS})
     for local_name, callback in _XFI_FUNCTIONS:
         try:
             _temp.external_function(callback, name=local_name, prefix="xfi", sequence_types=())
@@ -1203,6 +1297,11 @@ def _build_xbrl_parser_class() -> type:
     for local_name, callback in _EFN_FUNCTIONS:
         try:
             _temp.external_function(callback, name=local_name, prefix="efn", sequence_types=())
+        except Exception:  # noqa: BLE001
+            pass
+    for local_name, callback in _IAF_FUNCTIONS:
+        try:
+            _temp.external_function(callback, name=local_name, prefix="iaf", sequence_types=())
         except Exception:  # noqa: BLE001
             pass
 
@@ -1234,4 +1333,5 @@ def build_formula_parser(namespaces: dict[str, str] | None = None) -> Any:
     ns = dict(namespaces or {})
     ns.setdefault("xfi", _XFI_NS)
     ns.setdefault("efn", _EFN_NS)
+    ns.setdefault("iaf", _IAF_NS)
     return cls(namespaces=ns)

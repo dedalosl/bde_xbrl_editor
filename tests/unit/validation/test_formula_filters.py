@@ -13,6 +13,7 @@ from bde_xbrl_editor.instance.models import (
     XbrlUnit,
 )
 from bde_xbrl_editor.taxonomy.models import (
+    BooleanFilterDefinition,
     DimensionFilter,
     FactVariableDefinition,
     QName,
@@ -291,3 +292,217 @@ class TestDimensionFilterExclude:
         var = _var_def(dimension_filters=(dim_filter,))
         result = apply_filters(facts, var, inst)
         assert len(result) == 1
+
+
+# ---------------------------------------------------------------------------
+# Boolean filters — bf:andFilter / bf:orFilter
+# ---------------------------------------------------------------------------
+
+DIM_A = _qn("DimA", _DIM_NS)
+DIM_B = _qn("DimB", _DIM_NS)
+MEM_1 = _qn("m1", _MEM_NS)
+MEM_2 = _qn("m2", _MEM_NS)
+MEM_3 = _qn("m3", _MEM_NS)
+
+
+def _bool_var(bf: BooleanFilterDefinition, concept: QName | None = None) -> FactVariableDefinition:
+    return FactVariableDefinition(
+        variable_name="v",
+        concept_filter=concept,
+        boolean_filters=(bf,),
+    )
+
+
+class TestAndFilter:
+    """bf:andFilter — fact must satisfy ALL child dimension conditions."""
+
+    def test_and_passes_when_all_dims_match(self) -> None:
+        ctx = _ctx("c1", dims={DIM_A: MEM_1, DIM_B: MEM_2})
+        fact = Fact(concept=CONCEPT_A, context_ref="c1", unit_ref=None, value="10")
+        inst = _instance([fact], {"c1": ctx})
+        bf = BooleanFilterDefinition(
+            filter_type="and",
+            children=(
+                DimensionFilter(dimension_qname=DIM_A, member_qnames=(MEM_1,)),
+                DimensionFilter(dimension_qname=DIM_B, member_qnames=(MEM_2,)),
+            ),
+        )
+        result = apply_filters([fact], _bool_var(bf), inst)
+        assert result == [fact]
+
+    def test_and_fails_when_one_dim_mismatches(self) -> None:
+        ctx = _ctx("c1", dims={DIM_A: MEM_1, DIM_B: MEM_3})  # DIM_B = MEM_3, not MEM_2
+        fact = Fact(concept=CONCEPT_A, context_ref="c1", unit_ref=None, value="10")
+        inst = _instance([fact], {"c1": ctx})
+        bf = BooleanFilterDefinition(
+            filter_type="and",
+            children=(
+                DimensionFilter(dimension_qname=DIM_A, member_qnames=(MEM_1,)),
+                DimensionFilter(dimension_qname=DIM_B, member_qnames=(MEM_2,)),
+            ),
+        )
+        result = apply_filters([fact], _bool_var(bf), inst)
+        assert result == []
+
+    def test_and_with_no_children_passes_all(self) -> None:
+        ctx = _ctx("c1", dims={})
+        fact = Fact(concept=CONCEPT_A, context_ref="c1", unit_ref=None, value="5")
+        inst = _instance([fact], {"c1": ctx})
+        bf = BooleanFilterDefinition(filter_type="and", children=())
+        result = apply_filters([fact], _bool_var(bf), inst)
+        assert result == [fact]
+
+    def test_and_complement_inverts_result(self) -> None:
+        """complement=True on andFilter inverts the whole result."""
+        ctx = _ctx("c1", dims={DIM_A: MEM_1})
+        fact = Fact(concept=CONCEPT_A, context_ref="c1", unit_ref=None, value="10")
+        inst = _instance([fact], {"c1": ctx})
+        bf = BooleanFilterDefinition(
+            filter_type="and",
+            children=(DimensionFilter(dimension_qname=DIM_A, member_qnames=(MEM_1,)),),
+            complement=True,
+        )
+        # Without complement this would pass; with complement it must fail
+        result = apply_filters([fact], _bool_var(bf), inst)
+        assert result == []
+
+
+class TestOrFilter:
+    """bf:orFilter — fact must satisfy AT LEAST ONE child dimension condition."""
+
+    def test_or_passes_when_first_branch_matches(self) -> None:
+        ctx = _ctx("c1", dims={DIM_A: MEM_1})
+        fact = Fact(concept=CONCEPT_A, context_ref="c1", unit_ref=None, value="10")
+        inst = _instance([fact], {"c1": ctx})
+        bf = BooleanFilterDefinition(
+            filter_type="or",
+            children=(
+                DimensionFilter(dimension_qname=DIM_A, member_qnames=(MEM_1,)),
+                DimensionFilter(dimension_qname=DIM_B, member_qnames=(MEM_2,)),
+            ),
+        )
+        result = apply_filters([fact], _bool_var(bf), inst)
+        assert result == [fact]
+
+    def test_or_passes_when_second_branch_matches(self) -> None:
+        ctx = _ctx("c1", dims={DIM_B: MEM_2})
+        fact = Fact(concept=CONCEPT_A, context_ref="c1", unit_ref=None, value="10")
+        inst = _instance([fact], {"c1": ctx})
+        bf = BooleanFilterDefinition(
+            filter_type="or",
+            children=(
+                DimensionFilter(dimension_qname=DIM_A, member_qnames=(MEM_1,)),
+                DimensionFilter(dimension_qname=DIM_B, member_qnames=(MEM_2,)),
+            ),
+        )
+        result = apply_filters([fact], _bool_var(bf), inst)
+        assert result == [fact]
+
+    def test_or_fails_when_no_branch_matches(self) -> None:
+        ctx = _ctx("c1", dims={DIM_A: MEM_3, DIM_B: MEM_3})
+        fact = Fact(concept=CONCEPT_A, context_ref="c1", unit_ref=None, value="10")
+        inst = _instance([fact], {"c1": ctx})
+        bf = BooleanFilterDefinition(
+            filter_type="or",
+            children=(
+                DimensionFilter(dimension_qname=DIM_A, member_qnames=(MEM_1,)),
+                DimensionFilter(dimension_qname=DIM_B, member_qnames=(MEM_2,)),
+            ),
+        )
+        result = apply_filters([fact], _bool_var(bf), inst)
+        assert result == []
+
+    def test_or_with_no_children_passes_all(self) -> None:
+        ctx = _ctx("c1", dims={})
+        fact = Fact(concept=CONCEPT_A, context_ref="c1", unit_ref=None, value="5")
+        inst = _instance([fact], {"c1": ctx})
+        bf = BooleanFilterDefinition(filter_type="or", children=())
+        result = apply_filters([fact], _bool_var(bf), inst)
+        assert result == [fact]
+
+
+class TestNestedBooleanFilter:
+    """orFilter containing andFilter children — mirrors the es_v9 structure."""
+
+    def _make_es_v9_filter(self) -> BooleanFilterDefinition:
+        """
+        Simplified version of es_v9's boolean filter:
+
+          orFilter:
+            andFilter:  PUR=x50 AND TCP ∈ {x1, x1017}
+            andFilter:  OSM=x0 AND TCP=x1017
+        """
+        DIM_PUR = _qn("PUR", _DIM_NS)
+        DIM_TCP = _qn("TCP", _DIM_NS)
+        DIM_OSM = _qn("OSM", _DIM_NS)
+        MEM_X50  = _qn("x50",   _MEM_NS)
+        MEM_X1   = _qn("x1",    _MEM_NS)
+        MEM_X17  = _qn("x1017", _MEM_NS)
+        MEM_X0   = _qn("x0",    _MEM_NS)
+
+        branch1 = BooleanFilterDefinition(
+            filter_type="and",
+            children=(
+                DimensionFilter(dimension_qname=DIM_PUR, member_qnames=(MEM_X50,)),
+                DimensionFilter(dimension_qname=DIM_TCP, member_qnames=(MEM_X1, MEM_X17)),
+            ),
+        )
+        branch2 = BooleanFilterDefinition(
+            filter_type="and",
+            children=(
+                DimensionFilter(dimension_qname=DIM_OSM, member_qnames=(MEM_X0,)),
+                DimensionFilter(dimension_qname=DIM_TCP, member_qnames=(MEM_X17,)),
+            ),
+        )
+        return BooleanFilterDefinition(filter_type="or", children=(branch1, branch2))
+
+    def test_fact_matches_first_and_branch(self) -> None:
+        DIM_PUR = _qn("PUR", _DIM_NS)
+        DIM_TCP = _qn("TCP", _DIM_NS)
+        MEM_X50 = _qn("x50",  _MEM_NS)
+        MEM_X1  = _qn("x1",   _MEM_NS)
+        ctx = _ctx("c1", dims={DIM_PUR: MEM_X50, DIM_TCP: MEM_X1})
+        fact = Fact(concept=CONCEPT_A, context_ref="c1", unit_ref=None, value="100")
+        inst = _instance([fact], {"c1": ctx})
+        result = apply_filters([fact], _bool_var(self._make_es_v9_filter()), inst)
+        assert result == [fact]
+
+    def test_fact_matches_second_and_branch(self) -> None:
+        DIM_OSM = _qn("OSM",  _DIM_NS)
+        DIM_TCP = _qn("TCP",  _DIM_NS)
+        MEM_X0  = _qn("x0",   _MEM_NS)
+        MEM_X17 = _qn("x1017", _MEM_NS)
+        ctx = _ctx("c1", dims={DIM_OSM: MEM_X0, DIM_TCP: MEM_X17})
+        fact = Fact(concept=CONCEPT_A, context_ref="c1", unit_ref=None, value="200")
+        inst = _instance([fact], {"c1": ctx})
+        result = apply_filters([fact], _bool_var(self._make_es_v9_filter()), inst)
+        assert result == [fact]
+
+    def test_fact_matches_neither_branch_is_excluded(self) -> None:
+        DIM_PUR = _qn("PUR", _DIM_NS)
+        DIM_TCP = _qn("TCP", _DIM_NS)
+        MEM_X1  = _qn("x1",  _MEM_NS)
+        MEM_X99 = _qn("x99", _MEM_NS)  # wrong PUR value
+        ctx = _ctx("c1", dims={DIM_PUR: MEM_X99, DIM_TCP: MEM_X1})
+        fact = Fact(concept=CONCEPT_A, context_ref="c1", unit_ref=None, value="50")
+        inst = _instance([fact], {"c1": ctx})
+        result = apply_filters([fact], _bool_var(self._make_es_v9_filter()), inst)
+        assert result == []
+
+    def test_multiple_facts_only_matching_ones_returned(self) -> None:
+        DIM_PUR = _qn("PUR", _DIM_NS)
+        DIM_TCP = _qn("TCP", _DIM_NS)
+        MEM_X50 = _qn("x50", _MEM_NS)
+        MEM_X1  = _qn("x1",  _MEM_NS)
+        MEM_X99 = _qn("x99", _MEM_NS)
+
+        ctx_match   = _ctx("c_ok",  dims={DIM_PUR: MEM_X50, DIM_TCP: MEM_X1})
+        ctx_nomatch = _ctx("c_bad", dims={DIM_PUR: MEM_X99, DIM_TCP: MEM_X1})
+        fact_ok  = Fact(concept=CONCEPT_A, context_ref="c_ok",  unit_ref=None, value="1")
+        fact_bad = Fact(concept=CONCEPT_A, context_ref="c_bad", unit_ref=None, value="2")
+        inst = _instance(
+            [fact_ok, fact_bad],
+            {"c_ok": ctx_match, "c_bad": ctx_nomatch},
+        )
+        result = apply_filters([fact_ok, fact_bad], _bool_var(self._make_es_v9_filter()), inst)
+        assert result == [fact_ok]
