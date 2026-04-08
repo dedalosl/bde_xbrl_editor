@@ -34,7 +34,7 @@ from typing import Any
 
 _XFI_NS = "http://www.xbrl.org/2008/function/instance"
 _EFN_NS = "http://www.eurofiling.info/xbrl/func/extra-functions"
-_IAF_NS = "http://www.eurofiling.info/xbrl/functions/interval-arithmetics"
+_IAF_NS = "http://www.eurofiling.info/xbrl/func/interval-arithmetics"
 
 # ---------------------------------------------------------------------------
 # Thread-local evaluation context
