@@ -1209,22 +1209,24 @@ def _to_numeric_value(arg: Any) -> tuple[Decimal, Decimal] | None:
         return None
 
 
-def iaf_sum(*args: Any) -> tuple[Decimal, Decimal] | None:
-    """iaf:sum(items+) — sum values with combined thresholds."""
-    if not args:
-        return (Decimal(0), Decimal(0))
+def iaf_sum(items: Any) -> Decimal:
+    """iaf:sum(items) — sum a sequence of numeric values.
 
-    total_value = Decimal(0)
-    total_threshold = Decimal(0)
-
-    for arg in args:
-        result = _to_numeric_value(arg)
-        if result is not None:
-            val, threshold = result
-            total_value += val
-            total_threshold += threshold
-
-    return (total_value, total_threshold)
+    Registered with sequence_types=('xs:anyAtomicType*', ...) so elementpath
+    passes the full sequence as a list when called as iaf:sum(($a, $b, ...)).
+    When called with a single variable iaf:sum($x), items is a plain Decimal.
+    """
+    if items is None:
+        return Decimal(0)
+    if isinstance(items, list):
+        total = Decimal(0)
+        for item in items:
+            r = _to_numeric_value(item)
+            if r is not None:
+                total += r[0]
+        return total
+    r = _to_numeric_value(items)
+    return r[0] if r is not None else Decimal(0)
 
 
 def iaf_numeric_equal(arg1: Any, arg2: Any) -> bool:
@@ -1401,76 +1403,54 @@ def iaf_numeric_unary_minus(arg: Any) -> tuple[Decimal, Decimal] | None:
     return (-val, threshold)
 
 
-def iaf_min(*args: Any) -> tuple[Decimal, Decimal] | None:
-    """iaf:min(items+) — find minimum value with corresponding threshold."""
-    if not args:
-        return None
-
-    min_val = None
-    min_threshold = None
-
-    for arg in args:
-        result = _to_numeric_value(arg)
-        if result is not None:
-            val, threshold = result
-            if min_val is None or val < min_val:
-                min_val = val
-                min_threshold = threshold
-
-    if min_val is None:
-        return None
-
-    return (min_val, min_threshold)
+def _iaf_iter(items: Any) -> list[Any]:
+    """Flatten a sequence arg (list) or wrap a scalar into a list for iteration."""
+    if items is None:
+        return []
+    if isinstance(items, list):
+        return items
+    return [items]
 
 
-def iaf_max(*args: Any) -> tuple[Decimal, Decimal] | None:
-    """iaf:max(items+) — find maximum value with corresponding threshold."""
-    if not args:
-        return None
-
-    max_val = None
-    max_threshold = None
-
-    for arg in args:
-        result = _to_numeric_value(arg)
-        if result is not None:
-            val, threshold = result
-            if max_val is None or val > max_val:
-                max_val = val
-                max_threshold = threshold
-
-    if max_val is None:
-        return None
-
-    return (max_val, max_threshold)
+def iaf_min(items: Any) -> Decimal | None:
+    """iaf:min(items) — find minimum value from a sequence."""
+    vals = [_to_numeric_value(x) for x in _iaf_iter(items)]
+    valid = [r[0] for r in vals if r is not None]
+    return min(valid) if valid else None
 
 
-def iaf_abs_sequence(*args: Any) -> list[tuple[Decimal, Decimal]]:
-    """iaf:abs-sequence(items*) — apply absolute value to sequence."""
-    result = []
-    for arg in args:
-        abs_result = iaf_abs(arg)
-        if abs_result is not None:
-            result.append(abs_result)
-    return result
+def iaf_max(items: Any) -> Decimal | None:
+    """iaf:max(items) — find maximum value from a sequence."""
+    vals = [_to_numeric_value(x) for x in _iaf_iter(items)]
+    valid = [r[0] for r in vals if r is not None]
+    return max(valid) if valid else None
 
 
-_IAF_FUNCTIONS: list[tuple[str, Any]] = [
-    ("sum", iaf_sum),
-    ("numeric-equal", iaf_numeric_equal),
-    ("numeric-less-than", iaf_numeric_less_than),
-    ("numeric-less-equal-than", iaf_numeric_less_equal_than),
-    ("numeric-greater-than", iaf_numeric_greater_than),
-    ("numeric-greater-equal-than", iaf_numeric_greater_equal_than),
-    ("numeric-add", iaf_numeric_add),
-    ("numeric-subtract", iaf_numeric_subtract),
-    ("numeric-multiply", iaf_numeric_multiply),
-    ("numeric-divide", iaf_numeric_divide),
-    ("abs", iaf_abs),
-    ("numeric-unary-minus", iaf_numeric_unary_minus),
-    ("min", iaf_min),
-    ("max", iaf_max),
-    ("abs-sequence", iaf_abs_sequence),
+def iaf_abs_sequence(items: Any) -> list[Decimal]:
+    """iaf:abs-sequence(items) — apply absolute value to a sequence."""
+    return [abs(r[0]) for x in _iaf_iter(items) if (r := _to_numeric_value(x)) is not None]
+
+
+# Each entry: (local_name, callback, sequence_types)
+# Functions that accept a sequence argument use ('xs:anyAtomicType*', 'xs:anyAtomicType?')
+# so elementpath passes the full sequence as a list and validates the Decimal return.
+# Single-arg / two-arg functions use () so no type validation is performed.
+_IAF_FUNCTIONS: list[tuple[str, Any, tuple[str, ...]]] = [
+    ("sum",                    iaf_sum,                    ("xs:anyAtomicType*", "xs:anyAtomicType?")),
+    ("min",                    iaf_min,                    ("xs:anyAtomicType*", "xs:anyAtomicType?")),
+    ("max",                    iaf_max,                    ("xs:anyAtomicType*", "xs:anyAtomicType?")),
+    ("abs-sequence",           iaf_abs_sequence,           ("xs:anyAtomicType*", "xs:anyAtomicType?")),
+    ("numeric-equal",          iaf_numeric_equal,          ()),
+    ("numeric-less-than",      iaf_numeric_less_than,      ()),
+    ("numeric-less-equal-than", iaf_numeric_less_equal_than, ()),
+    ("numeric-greater-than",   iaf_numeric_greater_than,   ()),
+    ("numeric-greater-equal-than", iaf_numeric_greater_equal_than, ()),
+    ("numeric-add",            iaf_numeric_add,            ()),
+    ("numeric-subtract",       iaf_numeric_subtract,       ()),
+    ("numeric-multiply",       iaf_numeric_multiply,       ()),
+    ("numeric-divide",         iaf_numeric_divide,         ()),
+    ("abs",                    iaf_abs,                    ()),
+    ("numeric-unary-minus",    iaf_numeric_unary_minus,    ()),
 ]
 
 
@@ -1499,9 +1479,9 @@ def _build_xbrl_parser_class() -> type:
             _temp.external_function(callback, name=local_name, prefix="efn", sequence_types=())
         except Exception:  # noqa: BLE001
             pass
-    for local_name, callback in _IAF_FUNCTIONS:
+    for local_name, callback, seq_types in _IAF_FUNCTIONS:
         try:
-            _temp.external_function(callback, name=local_name, prefix="iaf", sequence_types=())
+            _temp.external_function(callback, name=local_name, prefix="iaf", sequence_types=seq_types)
         except Exception:  # noqa: BLE001
             pass
 
