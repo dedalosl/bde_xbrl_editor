@@ -7,9 +7,11 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QFrame,
+    QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QPushButton,
     QVBoxLayout,
     QWidget,
 )
@@ -60,7 +62,9 @@ class InstanceInfoPanel(QFrame):
     Emits ``table_selected(TableDefinitionPWD)`` when the user clicks a table entry.
     """
 
-    table_selected: Signal = Signal(object)  # TableDefinitionPWD
+    table_selected: Signal = Signal(object)   # TableDefinitionPWD
+    save_requested: Signal = Signal()
+    open_instance_requested: Signal = Signal()
 
     def __init__(
         self,
@@ -85,6 +89,29 @@ class InstanceInfoPanel(QFrame):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
+
+        # ── Action buttons ─────────────────────────────────────────────
+        btn_bar = QWidget()
+        btn_bar.setStyleSheet("background: #1E3A5F;")
+        btn_layout = QHBoxLayout(btn_bar)
+        btn_layout.setContentsMargins(6, 4, 6, 4)
+        btn_layout.setSpacing(4)
+        btn_style = (
+            "QPushButton { color: #FFFFFF; background: rgba(255,255,255,0.15);"
+            " border: 1px solid rgba(255,255,255,0.3); border-radius: 3px;"
+            " font-size: 11px; padding: 3px 8px; }"
+            "QPushButton:hover { background: rgba(255,255,255,0.3); }"
+        )
+        save_btn = QPushButton("Save")
+        save_btn.setStyleSheet(btn_style)
+        save_btn.clicked.connect(self.save_requested)
+        btn_layout.addWidget(save_btn)
+
+        open_btn = QPushButton("Open Instance…")
+        open_btn.setStyleSheet(btn_style)
+        open_btn.clicked.connect(self.open_instance_requested)
+        btn_layout.addWidget(open_btn)
+        layout.addWidget(btn_bar)
 
         layout.addWidget(_section_label("INSTANCE"))
 

@@ -9,10 +9,37 @@ from PySide6.QtGui import QColor
 
 from bde_xbrl_editor.table_renderer.models import ComputedTableLayout
 
-_COLOR_NO_FACT = QColor("#F0F0F0")
 _COLOR_HAS_FACT = QColor("white")
 _COLOR_DUPLICATE = QColor("#FFD0D0")
 _COLOR_NOT_APPLICABLE = QColor("#F8F8F8")
+_COLOR_EXCLUDED = QColor("#A8A8A8")  # dark grey for dimensionally-excluded cells
+
+# Custom role for the cell code (row_fin_code + col_fin_code)
+CELL_CODE_ROLE = Qt.ItemDataRole.UserRole + 2
+
+# XBRL numeric type local names (used for right-alignment)
+_NUMERIC_TYPE_LOCALS = frozenset({
+    "monetaryItemType",
+    "decimalItemType",
+    "floatItemType",
+    "doubleItemType",
+    "integerItemType",
+    "nonNegativeIntegerItemType",
+    "positiveIntegerItemType",
+    "nonPositiveIntegerItemType",
+    "negativeIntegerItemType",
+    "longItemType",
+    "intItemType",
+    "shortItemType",
+    "byteItemType",
+    "unsignedLongItemType",
+    "unsignedIntItemType",
+    "unsignedShortItemType",
+    "unsignedByteItemType",
+    "pureItemType",
+    "sharesItemType",
+    "percentItemType",
+})
 
 
 class TableBodyModel(QAbstractTableModel):
@@ -58,14 +85,27 @@ class TableBodyModel(QAbstractTableModel):
         if role == Qt.ItemDataRole.UserRole:
             return cell.fact_value
 
+        if role == CELL_CODE_ROLE:
+            return cell.cell_code
+
         if role == Qt.ItemDataRole.BackgroundRole:
             if not cell.is_applicable:
                 return _COLOR_NOT_APPLICABLE
+            if cell.is_excluded:
+                return _COLOR_EXCLUDED
             if cell.is_duplicate:
                 return _COLOR_DUPLICATE
-            if cell.fact_value is not None:
-                return _COLOR_HAS_FACT
-            return _COLOR_NO_FACT
+            return _COLOR_HAS_FACT
+
+        if role == Qt.ItemDataRole.TextAlignmentRole:
+            if self._taxonomy is not None and cell.coordinate.concept is not None:
+                concept_def = self._taxonomy.concepts.get(cell.coordinate.concept)
+                if concept_def is not None:
+                    type_qname = concept_def.data_type
+                    local = str(type_qname).split("}")[-1].split(":")[-1] if type_qname else ""
+                    if local in _NUMERIC_TYPE_LOCALS:
+                        return int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            return int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
 
         if role == Qt.ItemDataRole.ToolTipRole:
             coord = cell.coordinate
@@ -91,6 +131,17 @@ class TableBodyModel(QAbstractTableModel):
             return "\n".join(parts) if parts else None
 
         return None
+
+    def flags(self, index: QModelIndex) -> Qt.ItemFlag:
+        if not index.isValid():
+            return Qt.ItemFlag.NoItemFlags
+        base = Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
+        row, col = index.row(), index.column()
+        if row < len(self._layout.body) and col < len(self._layout.body[row]):
+            cell = self._layout.body[row][col]
+            if cell.is_applicable and not cell.is_excluded:
+                base |= Qt.ItemFlag.ItemIsEditable
+        return base
 
     def headerData(self, section: int, orientation: Qt.Orientation, role: int = Qt.ItemDataRole.DisplayRole) -> Any:
         if role == Qt.ItemDataRole.DisplayRole:

@@ -202,6 +202,7 @@ class DefinitionArc:
     closed: bool | None = None
     context_element: Literal["segment", "scenario"] | None = None
     usable: bool | None = None
+    target_role: str | None = None  # xbrldt:targetRole — points to ELR containing dim members
 
 
 @dataclass(frozen=True)
@@ -249,6 +250,7 @@ class BreakdownNode:
     node_type: Literal["rule", "aspect", "conceptRelationship", "dimensionRelationship"]
     label: str | None = None
     rc_code: str | None = None
+    fin_code: str | None = None  # http://www.bde.es/xbrl/role/fin-code label for cell-code computation
     is_abstract: bool = False
     merge: bool = False
     span: int | None = None
@@ -299,6 +301,28 @@ class DimensionFilter:
 
 
 @dataclass(frozen=True)
+class XPathFilterDefinition:
+    """An XPath-expression-based filter (gf:general, pf:period test=, etc.)."""
+
+    xpath_expr: str
+    namespaces: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class BooleanFilterDefinition:
+    """Recursive boolean combination of filters (bf:andFilter / bf:orFilter).
+
+    Children may be DimensionFilter, XPathFilterDefinition, or nested
+    BooleanFilterDefinition instances.  When *complement* is True the result
+    of the whole subtree is negated (i.e. the arc had complement="true").
+    """
+
+    filter_type: Literal["and", "or"]
+    children: tuple[Any, ...]  # DimensionFilter | XPathFilterDefinition | BooleanFilterDefinition
+    complement: bool = False
+
+
+@dataclass(frozen=True)
 class FactVariableDefinition:
     """A bound fact variable in a formula assertion."""
 
@@ -308,6 +332,8 @@ class FactVariableDefinition:
     dimension_filters: tuple[DimensionFilter, ...] = field(default_factory=tuple)
     unit_filter: QName | None = None
     fallback_value: str | None = None
+    xpath_filters: tuple[XPathFilterDefinition, ...] = field(default_factory=tuple)
+    boolean_filters: tuple[BooleanFilterDefinition, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True)
@@ -320,6 +346,7 @@ class FormulaAssertion:
     abstract: bool
     variables: tuple[FactVariableDefinition, ...]
     precondition_xpath: str | None
+    namespaces: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

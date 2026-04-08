@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from bde_xbrl_editor.instance.models import ReportingEntity, ReportingPeriod
@@ -21,6 +21,10 @@ class HeaderCell:
     is_leaf: bool
     is_abstract: bool
     source_node: BreakdownNode
+    fin_code: str | None = None  # http://www.bde.es/xbrl/role/fin-code label, for cell code
+    # Accumulated constraints from root → this node (parent dims + own dims).
+    # Used by layout engine to build fully-qualified CellCoordinates.
+    accumulated_aspect_constraints: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -53,6 +57,8 @@ class BodyCell:
     fact_decimals: str | None = None
     is_duplicate: bool = False
     is_applicable: bool = True
+    is_excluded: bool = False  # True when dimensional constraints forbid this cell
+    cell_code: str | None = None  # row_fin_code + col_fin_code
 
 
 @dataclass

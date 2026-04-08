@@ -5,18 +5,18 @@ from __future__ import annotations
 import threading
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QThread, Signal, Slot
+from PySide6.QtCore import QObject, QThread, Qt, Signal, Slot
 from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QMessageBox,
     QProgressBar,
     QPushButton,
-    QSplitter,
+    QSizePolicy,
     QTextEdit,
+    QToolButton,
     QTreeView,
     QVBoxLayout,
     QWidget,
@@ -158,10 +158,7 @@ class ValidationPanel(QWidget):
         self._progress_bar.setVisible(False)
         layout.addWidget(self._progress_bar)
 
-        # Splitter: results tree + detail text
-        splitter = QSplitter(self)
-        splitter.setOrientation(splitter.orientation())
-
+        # Results tree — expands to fill all available vertical space
         self._tree = QTreeView()
         self._tree.setModel(self._proxy)
         self._tree.setRootIsDecorated(False)
@@ -169,23 +166,45 @@ class ValidationPanel(QWidget):
         self._tree.setSelectionBehavior(QTreeView.SelectionBehavior.SelectRows)
         self._tree.header().setStretchLastSection(True)
         self._tree.selectionModel().currentRowChanged.connect(self._on_row_selected)
-        splitter.addWidget(self._tree)
+        layout.addWidget(self._tree, stretch=1)
 
-        detail_group = QGroupBox("Details")
-        detail_layout = QVBoxLayout(detail_group)
+        # Collapsible detail panel — toggle button acts as section header
+        self._detail_toggle_btn = QToolButton()
+        self._detail_toggle_btn.setCheckable(True)
+        self._detail_toggle_btn.setChecked(False)
+        self._detail_toggle_btn.setText(" Details")
+        self._detail_toggle_btn.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
+        self._detail_toggle_btn.setArrowType(Qt.ArrowType.RightArrow)
+        self._detail_toggle_btn.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
+        self._detail_toggle_btn.toggled.connect(self._on_detail_toggled)
+        layout.addWidget(self._detail_toggle_btn)
+
+        self._detail_container = QWidget()
+        detail_inner = QVBoxLayout(self._detail_container)
+        detail_inner.setContentsMargins(0, 2, 0, 0)
+        detail_inner.setSpacing(4)
+
         self._detail_text = QTextEdit()
         self._detail_text.setReadOnly(True)
-        detail_layout.addWidget(self._detail_text)
+        self._detail_text.setFixedHeight(130)
+        detail_inner.addWidget(self._detail_text)
 
         self._goto_btn = QPushButton("Go to Cell")
         self._goto_btn.setEnabled(False)
         self._goto_btn.clicked.connect(self._on_goto_cell)
-        detail_layout.addWidget(self._goto_btn)
-        splitter.addWidget(detail_group)
+        detail_inner.addWidget(self._goto_btn)
 
-        splitter.setStretchFactor(0, 2)
-        splitter.setStretchFactor(1, 1)
-        layout.addWidget(splitter)
+        self._detail_container.setVisible(False)
+        layout.addWidget(self._detail_container)
+
+    @Slot(bool)
+    def _on_detail_toggled(self, checked: bool) -> None:
+        self._detail_container.setVisible(checked)
+        self._detail_toggle_btn.setArrowType(
+            Qt.ArrowType.DownArrow if checked else Qt.ArrowType.RightArrow
+        )
 
     # ------------------------------------------------------------------
     # Public API
@@ -312,6 +331,10 @@ class ValidationPanel(QWidget):
         self._detail_text.setPlainText("\n".join(lines))
         self._goto_btn.setEnabled(bool(finding.context_ref))
         self._goto_btn.setProperty("_finding", finding)
+
+        # Auto-expand detail panel on first selection
+        if not self._detail_toggle_btn.isChecked():
+            self._detail_toggle_btn.setChecked(True)
 
     @Slot()
     def _on_goto_cell(self) -> None:

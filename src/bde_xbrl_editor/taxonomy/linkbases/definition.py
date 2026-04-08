@@ -162,6 +162,7 @@ def parse_definition_linkbase(
             context_element = arc.get(_CONTEXT_ELEMENT)
             usable_raw = arc.get(_USABLE)
             usable = (usable_raw.lower() != "false") if usable_raw else None
+            target_role = arc.get(f"{{{NS_XBRLDT}}}targetRole") or None
 
             def_arc = DefinitionArc(
                 arcrole=arcrole,
@@ -172,6 +173,7 @@ def parse_definition_linkbase(
                 closed=closed,
                 context_element=context_element,
                 usable=usable,
+                target_role=target_role,
             )
             arcs_by_elr.setdefault(elr, []).append(def_arc)
 

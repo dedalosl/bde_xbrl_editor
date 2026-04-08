@@ -34,6 +34,8 @@ NEGATED_LABEL_ROLE = "http://www.xbrl.org/2003/role/negatedLabel"
 
 # Eurofiling RC-code role
 RC_CODE_ROLE = "http://www.eurofiling.info/xbrl/role/rc-code"
+# BDE fin-code role (used to compute cell codes: row_fin_code + col_fin_code)
+FIN_CODE_ROLE = "http://www.bde.es/xbrl/role/fin-code"
 
 # ---------------------------------------------------------------------------
 # Standard arcrole URIs
