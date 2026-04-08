@@ -70,7 +70,15 @@ class DimensionalConstraintValidator:
         primary_to_hcs: dict[QName, list[HypercubeModel]],
         findings: list[ValidationFinding],
     ) -> None:
-        """Validate one fact against all covering hypercubes."""
+        """Validate one fact against covering hypercubes, scoped by ELR.
+
+        Per XBRL Dimensions 1.0 §2.3.2 a fact is dimensionally valid when it
+        satisfies the constraints in **at least one** Extended Link Role (ELR)
+        where its concept participates as a primary item.  The BDE/EBA taxonomy
+        reuses the single Eurofiling ``hyp`` hypercube across every table ELR,
+        each with its own specific set of dimensions; a fact must only satisfy
+        *its own* table's ELR, not every ELR in the taxonomy.
+        """
         covering_hcs = primary_to_hcs.get(fact.concept)
         if not covering_hcs:
             # Concept is not part of any hypercube — not dimensional, skip.
@@ -79,25 +87,48 @@ class DimensionalConstraintValidator:
         context = instance.contexts.get(fact.context_ref)
         context_dims: dict[QName, QName] = context.dimensions if context is not None else {}
 
+        # Group covering hypercubes by ELR so we can check validity per-ELR.
+        hcs_by_elr: dict[str, list[HypercubeModel]] = {}
         for hc in covering_hcs:
-            try:
-                self._check_hypercube(fact, context_dims, hc, findings)
-            except Exception as exc:  # noqa: BLE001
-                findings.append(
-                    ValidationFinding(
-                        rule_id="dimensional.unexpected_error",
-                        severity=ValidationSeverity.ERROR,
-                        message=(
-                            f"Unexpected error checking hypercube '{hc.qname}' for fact "
-                            f"'{fact.concept}' in context '{fact.context_ref}': {exc}"
-                        ),
-                        source="dimensional",
-                        concept_qname=fact.concept,
-                        context_ref=fact.context_ref,
-                        hypercube_qname=hc.qname,
-                        constraint_type="UNEXPECTED_ERROR",
+            hcs_by_elr.setdefault(hc.extended_link_role, []).append(hc)
+
+        # Collect per-ELR findings; keep the set with the fewest violations
+        # in case we need to report (all ELRs fail).
+        best_elr_violations: list[ValidationFinding] | None = None
+
+        for elr_hcs in hcs_by_elr.values():
+            elr_violations: list[ValidationFinding] = []
+            for hc in elr_hcs:
+                try:
+                    self._check_hypercube(fact, context_dims, hc, elr_violations)
+                except Exception as exc:  # noqa: BLE001
+                    elr_violations.append(
+                        ValidationFinding(
+                            rule_id="dimensional.unexpected_error",
+                            severity=ValidationSeverity.ERROR,
+                            message=(
+                                f"Unexpected error checking hypercube '{hc.qname}' for fact "
+                                f"'{fact.concept}' in context '{fact.context_ref}': {exc}"
+                            ),
+                            source="dimensional",
+                            concept_qname=fact.concept,
+                            context_ref=fact.context_ref,
+                            hypercube_qname=hc.qname,
+                            constraint_type="UNEXPECTED_ERROR",
+                        )
                     )
-                )
+
+            if not elr_violations:
+                # Fact is valid in this ELR → dimensionally valid; stop checking.
+                return
+
+            # Keep the ELR with the smallest number of violations for reporting.
+            if best_elr_violations is None or len(elr_violations) < len(best_elr_violations):
+                best_elr_violations = elr_violations
+
+        # No ELR produced a clean result — report the least-noisy violation set.
+        if best_elr_violations:
+            findings.extend(best_elr_violations)
 
     def _check_hypercube(
         self,
