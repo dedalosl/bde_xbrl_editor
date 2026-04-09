@@ -203,6 +203,28 @@ def parse_definition_linkbase(
     # Build HypercubeModel objects
     hypercubes: list[HypercubeModel] = []
     for elr, prim_list in hc_primary.items():
+        # Expand primary items through domain-member arcs within this ELR.
+        #
+        # In EBA/BDE taxonomy a "concept group" pattern is used: one concept
+        # is the explicit source of the all-arc, and the remaining primary
+        # items of that table are declared as domain-members of that source
+        # concept within the SAME ELR.  We BFS-expand so every such concept
+        # is also recorded as a primary item of the same hypercube.
+        dm_children_in_elr: dict[QName, list[QName]] = {}
+        for arc in arcs_by_elr.get(elr, []):
+            if arc.arcrole == ARCROLE_DOMAIN_MEMBER:
+                dm_children_in_elr.setdefault(arc.source, []).append(arc.target)
+
+        expanded_primaries: set[QName] = {p for p, *_ in prim_list}
+        bfs_queue: list[tuple[QName, QName, str, bool, str]] = list(prim_list)
+        for primary, hc, arcrole, closed, ctx in bfs_queue:
+            for child in dm_children_in_elr.get(primary, []):
+                if child not in expanded_primaries:
+                    expanded_primaries.add(child)
+                    new_entry = (child, hc, arcrole, closed, ctx)
+                    prim_list.append(new_entry)
+                    bfs_queue.append(new_entry)
+
         # Group by hypercube
         hc_map: dict[QName, tuple[str, bool, str]] = {}  # hc → (arcrole, closed, ctx)
         primary_by_hc: dict[QName, list[QName]] = {}
@@ -210,13 +232,13 @@ def parse_definition_linkbase(
             hc_map[hc] = (arcrole, closed, ctx)
             primary_by_hc.setdefault(hc, []).append(primary)
 
+        # Only use hypercube-dimension arcs from THIS ELR.
+        # xbrldt:targetRole on those arcs controls where members are looked up,
+        # not which dimensions belong to the hypercube — scoping to the current
+        # ELR prevents dimensions from other tables' ELRs leaking into this one.
         dims_by_hc: dict[QName, list[QName]] = {}
-        # A hypercube's dimensions may be declared in a different ELR (via
-        # xbrldt:targetRole).  Collect dimensions from all ELRs so that
-        # cross-ELR targetRole relationships are resolved correctly.
-        for any_elr_dims in hc_dims.values():
-            for hc_q, dim_q in any_elr_dims:
-                dims_by_hc.setdefault(hc_q, []).append(dim_q)
+        for hc_q, dim_q in hc_dims.get(elr, []):
+            dims_by_hc.setdefault(hc_q, []).append(dim_q)
 
         for hc, (arcrole, closed, ctx) in hc_map.items():
             arcrole_short: str = "all" if arcrole == ARCROLE_ALL else "notAll"

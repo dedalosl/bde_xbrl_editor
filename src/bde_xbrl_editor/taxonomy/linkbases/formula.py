@@ -9,6 +9,7 @@ from typing import Literal
 from lxml import etree
 
 from bde_xbrl_editor.taxonomy.models import (
+    BooleanFilterDefinition,
     ConsistencyAssertionDefinition,
     DimensionFilter,
     ExistenceAssertionDefinition,
@@ -36,6 +37,7 @@ _NS_PF = "http://xbrl.org/2008/filter/period"
 _NS_DF = "http://xbrl.org/2008/filter/dimension"
 _NS_UF = "http://xbrl.org/2008/filter/unit"
 _NS_GF = "http://xbrl.org/2008/filter/general"
+_NS_BF = "http://xbrl.org/2008/filter/boolean"
 _NS_LINK = "http://www.xbrl.org/2003/linkbase"
 _NS_XLINK = "http://www.w3.org/1999/xlink"
 
@@ -57,6 +59,9 @@ _TAG_DF_DIMENSION = f"{{{_NS_DF}}}dimension"
 _TAG_DF_MEMBER = f"{{{_NS_DF}}}member"
 _TAG_DF_QNAME = f"{{{_NS_DF}}}qname"
 _TAG_GF_GENERAL = f"{{{_NS_GF}}}general"        # gf:general test="..." — XPath general filter
+_TAG_BF_AND_FILTER = f"{{{_NS_BF}}}andFilter"
+_TAG_BF_OR_FILTER = f"{{{_NS_BF}}}orFilter"
+_BOOLEAN_FILTER_TAGS = (_TAG_BF_AND_FILTER, _TAG_BF_OR_FILTER)
 
 # XLink attribute names (Clark notation)
 _ATTR_XLINK_TYPE = f"{{{_NS_XLINK}}}type"
@@ -69,6 +74,9 @@ _ATTR_XLINK_ARCROLE = f"{{{_NS_XLINK}}}arcrole"
 _ARCROLE_VARIABLE_SET = "http://xbrl.org/arcrole/2008/variable-set"
 _ARCROLE_VARIABLE_FILTER = "http://xbrl.org/arcrole/2008/variable-filter"
 _ARCROLE_VARIABLE_SET_FILTER = "http://xbrl.org/arcrole/2008/variable-set-filter"
+_ARCROLE_BOOLEAN_FILTER = "http://xbrl.org/arcrole/2008/boolean-filter"
+
+_TAG_VARIABLE_SET_FILTER_ARC = f"{{{_NS_VARIABLE}}}variableSetFilterArc"
 
 
 # ---------------------------------------------------------------------------
@@ -138,10 +146,16 @@ def _extract_concept_filter(filter_el: etree._Element) -> QName | None:
         name_attr = filter_el.get("name", "")
         if name_attr:
             return _clark_to_qname(name_attr, nsmap)
-        # Some implementations use a nested cf:concept/cf:qname structure
+        # Direct cf:qname child
         qname_el = filter_el.find(_TAG_CF_QNAME)
         if qname_el is not None:
             return _clark_to_qname((qname_el.text or "").strip(), nsmap)
+        # Nested cf:concept/cf:qname — pattern used by BDE/EBA formulas
+        concept_el = filter_el.find(_TAG_CF_CONCEPT)
+        if concept_el is not None:
+            qname_el = concept_el.find(_TAG_CF_QNAME)
+            if qname_el is not None:
+                return _clark_to_qname((qname_el.text or "").strip(), _element_nsmap(concept_el))
 
     if tag == _TAG_CF_CONCEPT:
         qname_el = filter_el.find(_TAG_CF_QNAME)
@@ -232,6 +246,117 @@ def _build_filter_arc_map(root: etree._Element) -> dict[str, list[str]]:
     return arc_map
 
 
+def _build_variable_set_filter_arc_map(root: etree._Element) -> dict[str, list[str]]:
+    """Build an assertion-label→[filter-label, …] mapping from variableSetFilterArc elements.
+
+    These filters apply at the assertion level (to all variables in the set).
+    """
+    arc_map: dict[str, list[str]] = {}
+    for arc in root.iter(_TAG_VARIABLE_SET_FILTER_ARC):
+        frm = arc.get(_ATTR_XLINK_FROM, "")
+        to = arc.get(_ATTR_XLINK_TO, "")
+        if frm and to:
+            arc_map.setdefault(frm, []).append(to)
+    return arc_map
+
+
+def _build_boolean_filter_arc_map(root: etree._Element) -> dict[str, list[tuple[str, bool]]]:
+    """Build a parent-label → [(child-label, complement), …] map from boolean-filter arcs.
+
+    Both variableFilterArc and variableSetFilterArc elements can carry arcrole
+    ``boolean-filter`` when they connect boolean filter nodes to their children.
+    Each entry carries the complement flag from the arc.
+    """
+    arc_map: dict[str, list[tuple[str, bool]]] = {}
+    for arc_tag in (_TAG_VARIABLE_FILTER_ARC, _TAG_VARIABLE_SET_FILTER_ARC):
+        for arc in root.iter(arc_tag):
+            if arc.get(_ATTR_XLINK_ARCROLE, "") != _ARCROLE_BOOLEAN_FILTER:
+                continue
+            frm = arc.get(_ATTR_XLINK_FROM, "")
+            to = arc.get(_ATTR_XLINK_TO, "")
+            complement = arc.get("complement", "false").lower() == "true"
+            if frm and to:
+                arc_map.setdefault(frm, []).append((to, complement))
+    return arc_map
+
+
+def _build_boolean_filter(
+    label: str,
+    filter_index: dict[str, etree._Element],
+    bool_arc_map: dict[str, list[tuple[str, bool]]],
+    complement: bool = False,
+    _seen: frozenset[str] | None = None,
+) -> BooleanFilterDefinition | None:
+    """Recursively build a BooleanFilterDefinition from the arc/filter indexes.
+
+    *_seen* prevents infinite loops from cyclic arc graphs (should not occur in
+    valid linkbases, but guarded defensively).
+    """
+    seen = _seen or frozenset()
+    if label in seen:
+        return None
+    seen = seen | {label}
+
+    filter_el = filter_index.get(label)
+    if filter_el is None:
+        return None
+    if filter_el.tag not in _BOOLEAN_FILTER_TAGS:
+        return None
+
+    filter_type: str = "and" if filter_el.tag == _TAG_BF_AND_FILTER else "or"
+    children: list[object] = []
+
+    for child_label, child_complement in bool_arc_map.get(label, []):
+        child_el = filter_index.get(child_label)
+        if child_el is None:
+            continue
+
+        if child_el.tag in _BOOLEAN_FILTER_TAGS:
+            # Nested boolean filter — recurse
+            nested = _build_boolean_filter(
+                child_label, filter_index, bool_arc_map,
+                complement=child_complement, _seen=seen,
+            )
+            if nested is not None:
+                children.append(nested)
+
+        elif child_el.tag == _TAG_DF_EXPLICIT_DIMENSION:
+            df = _extract_dimension_filter(child_el)
+            if df is not None:
+                if child_complement:
+                    # Wrap as an exclude filter
+                    df = DimensionFilter(
+                        dimension_qname=df.dimension_qname,
+                        member_qnames=df.member_qnames,
+                        exclude=True,
+                    )
+                children.append(df)
+
+        elif child_el.tag == _TAG_GF_GENERAL:
+            test_expr = (child_el.get("test") or "").strip()
+            if test_expr:
+                children.append(XPathFilterDefinition(
+                    xpath_expr=test_expr,
+                    namespaces=_element_nsmap(child_el),
+                ))
+
+        elif child_el.tag in (_TAG_CF_CONCEPT_NAME, _TAG_CF_CONCEPT):
+            # Concept filter inside a boolean filter is unusual but possible
+            qn = _extract_concept_filter(child_el)
+            if qn is not None:
+                # Store as a 1-element XPathFilterDefinition wrapping the concept check
+                # (simpler than adding a concept-filter type to the children union)
+                # We represent it as a dimension-less DimensionFilter sentinel — not ideal,
+                # so skip for now; concept-inside-boolean is very rare in BDE taxonomies.
+                pass
+
+    return BooleanFilterDefinition(
+        filter_type=filter_type,  # type: ignore[arg-type]
+        children=tuple(children),
+        complement=complement,
+    )
+
+
 _FILTER_TAGS = [
     _TAG_CF_CONCEPT_NAME,
     _TAG_CF_CONCEPT,
@@ -240,6 +365,8 @@ _FILTER_TAGS = [
     _TAG_PF_PERIOD,
     _TAG_DF_EXPLICIT_DIMENSION,
     _TAG_GF_GENERAL,
+    _TAG_BF_AND_FILTER,
+    _TAG_BF_OR_FILTER,
 ]
 
 
@@ -258,7 +385,10 @@ def _parse_fact_variable(
     var_el: etree._Element,
     filter_arc_map: dict[str, list[str]],
     filter_index: dict[str, etree._Element],
+    bool_arc_map: dict[str, list[tuple[str, bool]]],
     arc_name: str = "",
+    global_dimension_filters: list[DimensionFilter] | None = None,
+    global_boolean_filters: list[BooleanFilterDefinition] | None = None,
 ) -> FactVariableDefinition:
     """Build a FactVariableDefinition from a variable:factVariable element.
 
@@ -274,6 +404,7 @@ def _parse_fact_variable(
     period_filter: Literal["instant", "duration"] | None = None
     dimension_filters: list[DimensionFilter] = []
     xpath_filters: list[XPathFilterDefinition] = []
+    boolean_filters: list[BooleanFilterDefinition] = []
 
     for filter_label in filter_arc_map.get(var_label, []):
         filter_el = filter_index.get(filter_label)
@@ -309,6 +440,12 @@ def _parse_fact_variable(
             if df is not None:
                 dimension_filters.append(df)
 
+        # Boolean filter (bf:andFilter / bf:orFilter)
+        elif filter_el.tag in _BOOLEAN_FILTER_TAGS:
+            bf = _build_boolean_filter(filter_label, filter_index, bool_arc_map)
+            if bf is not None:
+                boolean_filters.append(bf)
+
         # General XPath filter
         elif filter_el.tag == _TAG_GF_GENERAL:
             test_expr = (filter_el.get("test") or "").strip()
@@ -320,6 +457,17 @@ def _parse_fact_variable(
                     )
                 )
 
+    # Append assertion-level dimension filters (from variableSetFilterArc)
+    if global_dimension_filters:
+        for gdf in global_dimension_filters:
+            # Only add if not already covered by a variable-specific filter for the same dimension
+            if not any(df.dimension_qname == gdf.dimension_qname for df in dimension_filters):
+                dimension_filters.append(gdf)
+
+    # Append assertion-level boolean filters
+    if global_boolean_filters:
+        boolean_filters.extend(global_boolean_filters)
+
     fallback_value: str | None = var_el.get("fallbackValue")
 
     return FactVariableDefinition(
@@ -329,6 +477,7 @@ def _parse_fact_variable(
         dimension_filters=tuple(dimension_filters),
         fallback_value=fallback_value,
         xpath_filters=tuple(xpath_filters),
+        boolean_filters=tuple(boolean_filters),
     )
 
 
@@ -349,6 +498,8 @@ def _parse_assertion(
     fact_variable_index: dict[str, etree._Element],
     filter_arc_map: dict[str, list[str]],
     filter_index: dict[str, etree._Element],
+    variable_set_filter_arc_map: dict[str, list[str]] | None = None,
+    bool_arc_map: dict[str, list[tuple[str, bool]]] | None = None,
 ) -> FormulaAssertion | None:
     """Build a typed assertion definition from an assertion element."""
     assertion_id = assertion_el.get("id", "")
@@ -366,8 +517,35 @@ def _parse_assertion(
     assertion_label = assertion_el.get(_ATTR_XLINK_LABEL, assertion_id)
     variable_entries = (
         variable_arc_map.get(assertion_id, [])
-        + variable_arc_map.get(assertion_label, [])
+        + (variable_arc_map.get(assertion_label, []) if assertion_label != assertion_id else [])
     )
+
+    # Collect assertion-level filters from variableSetFilterArc
+    global_dimension_filters: list[DimensionFilter] = []
+    global_boolean_filters: list[BooleanFilterDefinition] = []
+    if variable_set_filter_arc_map is not None:
+        _bool_arc = bool_arc_map or {}
+        # Deduplicate when assertion_id == assertion_label (both map to the same list)
+        _seen_set_labels: set[str] = set()
+        _set_filter_labels = (
+            variable_set_filter_arc_map.get(assertion_id, [])
+            + (variable_set_filter_arc_map.get(assertion_label, []) if assertion_label != assertion_id else [])
+        )
+        for set_filter_label in _set_filter_labels:
+            if set_filter_label in _seen_set_labels:
+                continue
+            _seen_set_labels.add(set_filter_label)
+            filter_el = filter_index.get(set_filter_label)
+            if filter_el is None:
+                continue
+            if filter_el.tag == _TAG_DF_EXPLICIT_DIMENSION:
+                df = _extract_dimension_filter(filter_el)
+                if df is not None:
+                    global_dimension_filters.append(df)
+            elif filter_el.tag in _BOOLEAN_FILTER_TAGS:
+                bf = _build_boolean_filter(set_filter_label, filter_index, _bool_arc)
+                if bf is not None:
+                    global_boolean_filters.append(bf)
 
     variables: list[FactVariableDefinition] = []
     seen_var_labels: set[str] = set()
@@ -378,7 +556,13 @@ def _parse_assertion(
         var_el = fact_variable_index.get(var_label)
         if var_el is not None:
             variables.append(
-                _parse_fact_variable(var_el, filter_arc_map, filter_index, arc_name=arc_name)
+                _parse_fact_variable(
+                    var_el, filter_arc_map, filter_index,
+                    bool_arc_map=bool_arc_map or {},
+                    arc_name=arc_name,
+                    global_dimension_filters=global_dimension_filters or None,
+                    global_boolean_filters=global_boolean_filters or None,
+                )
             )
 
     tag = assertion_el.tag
@@ -465,6 +649,8 @@ def _parse(path: Path) -> FormulaAssertionSet:
     fact_variable_index = _build_label_to_element(root, _TAG_FACT_VARIABLE)
     filter_index = _build_filter_label_index(root)
     filter_arc_map = _build_filter_arc_map(root)
+    variable_set_filter_arc_map = _build_variable_set_filter_arc_map(root)
+    bool_arc_map = _build_boolean_filter_arc_map(root)
 
     # Variable arcs connect assertion labels/ids → [(variable_label, arc_name), ...]
     # The arc ``name`` attribute IS the XPath variable name (e.g. name="a" → $a).
@@ -487,6 +673,8 @@ def _parse(path: Path) -> FormulaAssertionSet:
                 fact_variable_index,
                 filter_arc_map,
                 filter_index,
+                variable_set_filter_arc_map=variable_set_filter_arc_map,
+                bool_arc_map=bool_arc_map,
             )
             if result is not None:
                 assertions.append(result)

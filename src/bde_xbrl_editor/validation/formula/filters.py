@@ -6,7 +6,12 @@ import contextlib
 from decimal import Decimal, InvalidOperation
 
 from bde_xbrl_editor.instance.models import Fact, XbrlInstance
-from bde_xbrl_editor.taxonomy.models import FactVariableDefinition
+from bde_xbrl_editor.taxonomy.models import (
+    BooleanFilterDefinition,
+    DimensionFilter,
+    FactVariableDefinition,
+    XPathFilterDefinition,
+)
 
 
 def apply_filters(
@@ -73,11 +78,57 @@ def apply_filters(
                         filtered.append(fact)
         result = filtered
 
+    # Boolean filters (bf:andFilter / bf:orFilter)
+    for bf in variable_def.boolean_filters:
+        result = [f for f in result if _passes_boolean_filter(f, bf, instance)]
+
     # XPath filters (gf:general test=, pf:period test=)
     if variable_def.xpath_filters:
         result = _apply_xpath_filters(result, variable_def.xpath_filters, instance)
 
     return result
+
+
+def _passes_dim_filter(fact: Fact, dim_filter: DimensionFilter, instance: XbrlInstance) -> bool:
+    """Return True if *fact* satisfies a single DimensionFilter."""
+    ctx = instance.contexts.get(fact.context_ref)
+    if ctx is None:
+        return False
+    member = ctx.dimensions.get(dim_filter.dimension_qname)
+    if dim_filter.exclude:
+        if dim_filter.member_qnames:
+            return member not in dim_filter.member_qnames
+        return member is None
+    else:
+        if dim_filter.member_qnames:
+            return member in dim_filter.member_qnames
+        return member is not None
+
+
+def _passes_boolean_filter(
+    fact: Fact,
+    bf: BooleanFilterDefinition,
+    instance: XbrlInstance,
+) -> bool:
+    """Return True if *fact* satisfies the boolean filter tree rooted at *bf*."""
+    child_results: list[bool] = []
+    for child in bf.children:
+        if isinstance(child, DimensionFilter):
+            child_results.append(_passes_dim_filter(fact, child, instance))
+        elif isinstance(child, BooleanFilterDefinition):
+            child_results.append(_passes_boolean_filter(fact, child, instance))
+        elif isinstance(child, XPathFilterDefinition):
+            passed_list = _apply_xpath_filters([fact], (child,), instance)  # type: ignore[arg-type]
+            child_results.append(bool(passed_list))
+
+    if not child_results:
+        passes = True  # vacuously true
+    elif bf.filter_type == "and":
+        passes = all(child_results)
+    else:  # "or"
+        passes = any(child_results)
+
+    return (not passes) if bf.complement else passes
 
 
 def _apply_xpath_filters(
