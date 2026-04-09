@@ -18,6 +18,7 @@ from bde_xbrl_editor.taxonomy.constants import (
     ARCROLE_ALL,
     ARCROLE_DIMENSION_DEFAULT,
     ARCROLE_DIMENSION_DOMAIN,
+    ARCROLE_DOMAIN_MEMBER,
     ARCROLE_HYPERCUBE_DIMENSION,
     ARCROLE_NOT_ALL,
     NS_FORMULA,
@@ -35,6 +36,8 @@ from bde_xbrl_editor.taxonomy.linkbases.presentation import parse_presentation_l
 from bde_xbrl_editor.taxonomy.linkbases.table_pwd import parse_table_linkbase
 from bde_xbrl_editor.taxonomy.models import (
     Concept,
+    DimensionModel,
+    DomainMember,
     QName,
     TaxonomyMetadata,
     TaxonomyParseError,
@@ -305,6 +308,64 @@ def _check_dimensional_constraints(
 
 
 
+def _rebuild_dimensions(definition_arcs: dict[str, list]) -> dict[QName, DimensionModel]:
+    """Build DimensionModel objects by BFS-walking the complete merged definition arc set.
+
+    The per-file approach in parse_definition_linkbase cannot associate domain-member
+    arcs from extension linkbases (where dim_domain is not yet known) with their
+    parent dimensions.  By using the globally merged definition_arcs we see all arcs
+    across all files and correctly populate every dimension's member set.
+    """
+    dim_domain: dict[QName, QName] = {}  # dimension → root domain concept
+    dim_defaults: dict[QName, QName] = {}
+    # Children in the domain-member arc graph, indexed by parent concept
+    dm_children: dict[QName, list[tuple[QName, float, bool]]] = {}
+
+    for _elr, arcs in definition_arcs.items():
+        for arc in arcs:
+            if arc.arcrole == ARCROLE_DIMENSION_DOMAIN:
+                if arc.source not in dim_domain:
+                    dim_domain[arc.source] = arc.target
+            elif arc.arcrole == ARCROLE_DOMAIN_MEMBER:
+                usable = arc.usable if arc.usable is not None else True
+                dm_children.setdefault(arc.source, []).append(
+                    (arc.target, arc.order, usable)
+                )
+            elif arc.arcrole == ARCROLE_DIMENSION_DEFAULT:
+                dim_defaults[arc.source] = arc.target
+
+    dimensions: dict[QName, DimensionModel] = {}
+    for dim_q, domain_q in dim_domain.items():
+        # BFS from the root domain concept to collect all members transitively
+        all_members: list[DomainMember] = []
+        visited: set[QName] = set()
+        # queue entries: (concept, parent, order, usable)
+        queue: list[tuple[QName, QName | None, float, bool]] = [
+            (domain_q, None, 1.0, True)
+        ]
+        while queue:
+            current_q, parent_q, order, usable = queue.pop(0)
+            if current_q in visited:
+                continue
+            visited.add(current_q)
+            all_members.append(
+                DomainMember(qname=current_q, parent=parent_q, order=order, usable=usable)
+            )
+            for child_q, child_order, child_usable in dm_children.get(current_q, []):
+                if child_q not in visited:
+                    queue.append((child_q, current_q, child_order, child_usable))
+
+        dimensions[dim_q] = DimensionModel(
+            qname=dim_q,
+            dimension_type="explicit",
+            default_member=dim_defaults.get(dim_q),
+            domain=domain_q,
+            members=tuple(all_members),
+        )
+
+    return dimensions
+
+
 class TaxonomyLoader:
     """Orchestrates taxonomy loading from a local filesystem path.
 
@@ -498,7 +559,6 @@ class TaxonomyLoader:
         calculation: dict[str, Any] = {}
         definition_arcs: dict[str, Any] = {}
         hypercubes: list[Any] = []
-        dimensions: dict[Any, Any] = {}
 
         for lb_path in linkbase_paths:
             lb_type = _sniff_linkbase_type(lb_path)
@@ -511,7 +571,7 @@ class TaxonomyLoader:
                     for elr, arc_list in arcs.items():
                         calculation.setdefault(elr, []).extend(arc_list)
                 elif lb_type == "def":
-                    arcs_by_elr, hcs, dims = parse_definition_linkbase(
+                    arcs_by_elr, hcs, _dims = parse_definition_linkbase(
                         lb_path, concept_id_map,
                         ns_qualified_map=ns_qualified_map,
                         schema_ns_map=schema_ns_map,
@@ -519,7 +579,6 @@ class TaxonomyLoader:
                     for elr, arc_list in arcs_by_elr.items():
                         definition_arcs.setdefault(elr, []).extend(arc_list)
                     hypercubes.extend(hcs)
-                    dimensions.update(dims)
             except TaxonomyParseError:
                 raise
             except Exception as exc:  # noqa: BLE001
@@ -527,6 +586,11 @@ class TaxonomyLoader:
                     file_path=str(lb_path),
                     message=f"Unexpected error: {exc}",
                 ) from exc
+
+        # Build dimensions once from the complete merged arc set so that
+        # domain-member arcs in extension linkbases are correctly associated
+        # with their parent dimensions (which may be declared in a different file).
+        dimensions = _rebuild_dimensions(definition_arcs)
 
         # Step 4b: XBRL Dimensions 1.0 taxonomy constraint checks (xbrldte:* errors)
         _check_dimensional_constraints(concepts, definition_arcs)
