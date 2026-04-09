@@ -109,21 +109,28 @@ class DimensionalConstraintValidator:
                     )
                 )
 
-        # all: group by ELR — within each ELR the fact must satisfy at least one HC.
-        elr_to_hcs: dict[str, list[HypercubeModel]] = {}
-        for hc in all_hcs:
-            elr_to_hcs.setdefault(hc.extended_link_role, []).append(hc)
-
-        for elr, hcs in elr_to_hcs.items():
+        # all: the fact must satisfy at least one HC globally.
+        #
+        # In EBA/BDE taxonomies the same concept appears as a primary item in
+        # every table of a module (e.g. all CMR-1 tables share concepts), each
+        # with a different closed hypercube.  Applying per-ELR OR semantics
+        # still generates hundreds of cross-table UNDECLARED_DIMENSION errors
+        # because a fact for table 5.b (with OSM) cannot satisfy any other
+        # table's closed HC that omits OSM.  The practical intent — and the
+        # behaviour of reference EBA validators — is that a fact is valid when
+        # it satisfies the ONE HC whose dimension set matches the fact's
+        # context.  We therefore use global OR semantics: if any HC accepts
+        # the fact, the fact is dimensionally valid.
+        if all_hcs:
             try:
-                self._check_all_hypercubes_for_elr(fact, context_dims, hcs, findings)
+                self._check_all_hypercubes_globally(fact, context_dims, all_hcs, findings)
             except Exception as exc:  # noqa: BLE001
                 findings.append(
                     ValidationFinding(
                         rule_id="dimensional.unexpected_error",
                         severity=ValidationSeverity.ERROR,
                         message=(
-                            f"Unexpected error checking ELR '{elr}' hypercubes for fact "
+                            f"Unexpected error checking hypercubes for fact "
                             f"'{fact.concept}' in context '{fact.context_ref}': {exc}"
                         ),
                         source="dimensional",
@@ -133,29 +140,27 @@ class DimensionalConstraintValidator:
                     )
                 )
 
-    def _check_all_hypercubes_for_elr(
+    def _check_all_hypercubes_globally(
         self,
         fact,
         context_dims: dict[QName, QName],
         hcs: list[HypercubeModel],
         findings: list[ValidationFinding],
     ) -> None:
-        """Within one ELR, a fact is valid if it passes at least one 'all' hypercube.
+        """Fact is valid if it passes at least one 'all' hypercube across all ELRs.
 
-        Collects per-HC findings for every HC; only promotes them to real findings
-        if no HC in this ELR accepts the fact (OR semantics across HCs in an ELR).
+        If no HC accepts the fact, reports findings from the HC with fewest errors
+        (most likely the intended table's hypercube) to keep noise low.
         """
         per_hc: list[tuple[HypercubeModel, list[ValidationFinding]]] = []
         for hc in hcs:
             hc_findings: list[ValidationFinding] = []
             self._check_all_hypercube(fact, context_dims, hc, hc_findings)
             if not hc_findings:
-                # Fact is valid for this hypercube — the whole ELR passes.
-                return
+                return  # Satisfied at least one HC — globally valid.
             per_hc.append((hc, hc_findings))
 
-        # No HC accepted the fact — report findings from the HC with fewest errors
-        # (most likely the "intended" one) to keep noise low.
+        # No HC accepted the fact — report from the HC with fewest errors.
         if per_hc:
             _, best_findings = min(per_hc, key=lambda t: len(t[1]))
             findings.extend(best_findings)
