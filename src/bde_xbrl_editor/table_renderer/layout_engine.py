@@ -259,34 +259,35 @@ def _extract_z_members(
     options: list[ZMemberOption] = []
     idx = 0
 
-    def _collect(node: BreakdownNode) -> None:
+    def _collect(node: BreakdownNode, parent_constraints: dict) -> None:
         nonlocal idx
+        accumulated = _accumulate_constraints(parent_constraints, node.aspect_constraints)
         if not node.children:
             label = _get_label(node, taxonomy, language_preference) or f"Z-member {idx}"
             dim_constraints: dict[QName, QName] = {}
-            # Extract dimension constraints from aspect_constraints
-            for key, val in node.aspect_constraints.items():
-                if key == _EXPLICIT_DIM_KEY and val:
-                    try:
-                        dim_q = QName.from_clark(str(key))
-                        mem_q = QName.from_clark(str(val))
-                        dim_constraints[dim_q] = mem_q
-                    except Exception:  # noqa: BLE001
-                        pass
+            # Extract dimension constraints from accumulated aspect_constraints
+            dims = accumulated.get(_EXPLICIT_DIM_KEY)
+            if dims and isinstance(dims, dict):
+                for dim_clark, mem_clark in dims.items():
+                    with contextlib.suppress(Exception):
+                        dim_constraints[QName.from_clark(str(dim_clark))] = QName.from_clark(
+                            str(mem_clark)
+                        )
             options.append(
                 ZMemberOption(index=idx, label=label, dimension_constraints=dim_constraints)
             )
             idx += 1
         else:
             for child in node.children:
-                _collect(child)
+                _collect(child, accumulated)
 
     for z_root in z_breakdowns:
+        root_accumulated = dict(z_root.aspect_constraints)
         if z_root.children:
             for child in z_root.children:
-                _collect(child)
+                _collect(child, root_accumulated)
         else:
-            _collect(z_root)
+            _collect(z_root, {})
 
     if not options:
         options = [ZMemberOption(index=0, label="Default", dimension_constraints={})]

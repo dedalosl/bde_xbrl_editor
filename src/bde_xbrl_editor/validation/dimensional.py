@@ -70,7 +70,12 @@ class DimensionalConstraintValidator:
         primary_to_hcs: dict[QName, list[HypercubeModel]],
         findings: list[ValidationFinding],
     ) -> None:
-        """Validate one fact against all covering hypercubes."""
+        """Validate one fact against all covering hypercubes.
+
+        Per XBRL Dimensions §2.3.1: within each ELR, a fact is valid if it
+        satisfies **at least one** positive ("all") hypercube in that ELR.
+        Negative ("notAll") hypercubes are each an independent prohibition.
+        """
         covering_hcs = primary_to_hcs.get(fact.concept)
         if not covering_hcs:
             # Concept is not part of any hypercube — not dimensional, skip.
@@ -79,9 +84,14 @@ class DimensionalConstraintValidator:
         context = instance.contexts.get(fact.context_ref)
         context_dims: dict[QName, QName] = context.dimensions if context is not None else {}
 
-        for hc in covering_hcs:
+        # Separate positive and negative hypercubes.
+        all_hcs = [hc for hc in covering_hcs if hc.arcrole == "all"]
+        not_all_hcs = [hc for hc in covering_hcs if hc.arcrole == "notAll"]
+
+        # notAll: each prohibited combination is checked independently.
+        for hc in not_all_hcs:
             try:
-                self._check_hypercube(fact, context_dims, hc, findings)
+                self._check_notall_hypercube(fact, context_dims, hc, findings)
             except Exception as exc:  # noqa: BLE001
                 findings.append(
                     ValidationFinding(
@@ -99,18 +109,73 @@ class DimensionalConstraintValidator:
                     )
                 )
 
-    def _check_hypercube(
+        # all: the fact must satisfy at least one HC globally.
+        #
+        # In EBA/BDE taxonomies the same concept appears as a primary item in
+        # every table of a module (e.g. all CMR-1 tables share concepts), each
+        # with a different closed hypercube.  Applying per-ELR OR semantics
+        # still generates hundreds of cross-table UNDECLARED_DIMENSION errors
+        # because a fact for table 5.b (with OSM) cannot satisfy any other
+        # table's closed HC that omits OSM.  The practical intent — and the
+        # behaviour of reference EBA validators — is that a fact is valid when
+        # it satisfies the ONE HC whose dimension set matches the fact's
+        # context.  We therefore use global OR semantics: if any HC accepts
+        # the fact, the fact is dimensionally valid.
+        if all_hcs:
+            try:
+                self._check_all_hypercubes_globally(fact, context_dims, all_hcs, findings)
+            except Exception as exc:  # noqa: BLE001
+                findings.append(
+                    ValidationFinding(
+                        rule_id="dimensional.unexpected_error",
+                        severity=ValidationSeverity.ERROR,
+                        message=(
+                            f"Unexpected error checking hypercubes for fact "
+                            f"'{fact.concept}' in context '{fact.context_ref}': {exc}"
+                        ),
+                        source="dimensional",
+                        concept_qname=fact.concept,
+                        context_ref=fact.context_ref,
+                        constraint_type="UNEXPECTED_ERROR",
+                    )
+                )
+
+    def _check_all_hypercubes_globally(
+        self,
+        fact,
+        context_dims: dict[QName, QName],
+        hcs: list[HypercubeModel],
+        findings: list[ValidationFinding],
+    ) -> None:
+        """Fact is valid if it passes at least one 'all' hypercube across all ELRs.
+
+        If no HC accepts the fact, reports findings from the HC with fewest errors
+        (most likely the intended table's hypercube) to keep noise low.
+        """
+        per_hc: list[tuple[HypercubeModel, list[ValidationFinding]]] = []
+        for hc in hcs:
+            hc_findings: list[ValidationFinding] = []
+            self._check_all_hypercube(fact, context_dims, hc, hc_findings)
+            if not hc_findings:
+                return  # Satisfied at least one HC — globally valid.
+            per_hc.append((hc, hc_findings))
+
+        # No HC accepted the fact — report from the HC with fewest errors.
+        if per_hc:
+            _, best_findings = min(per_hc, key=lambda t: len(t[1]))
+            findings.extend(best_findings)
+
+    def _check_all_hypercube(
         self,
         fact,
         context_dims: dict[QName, QName],
         hc: HypercubeModel,
         findings: list[ValidationFinding],
     ) -> None:
-        """Apply all four constraint types for one (fact, hypercube) pair."""
+        """Check one positive ('all') hypercube for a fact. Appends findings on failure."""
         hc_dim_set: set[QName] = set(hc.dimensions)
 
         # --- 1. UNDECLARED_DIMENSION -----------------------------------------
-        # A dimension present in the context is not declared in this hypercube.
         # Only closed hypercubes disallow extra (undeclared) dimensions.
         if hc.closed:
             for dim_qname in context_dims:
@@ -134,20 +199,15 @@ class DimensionalConstraintValidator:
                     )
 
         # --- 2. INVALID_MEMBER -----------------------------------------------
-        # A member assigned to a dimension is not in the dimension's declared member list.
         for dim_qname, member_qname in context_dims.items():
-            # Only check dimensions that are actually declared in this hypercube.
             if dim_qname not in hc_dim_set:
                 continue
 
             dim_model = self._taxonomy.dimensions.get(dim_qname)
             if dim_model is None:
-                # Cannot validate — dimension model not loaded; skip silently.
                 continue
 
             declared_members: set[QName] = {m.qname for m in dim_model.members}
-
-            # If the dimension has no members at all (e.g. typed), skip member check.
             if not declared_members:
                 continue
 
@@ -172,12 +232,9 @@ class DimensionalConstraintValidator:
                 )
 
         # --- 3. CLOSED_MISSING_DIMENSION -------------------------------------
-        # Applies only to "all" (positive) hypercubes that are closed.
-        # A required dimension (no default member) is missing from the context.
-        if hc.arcrole == "all" and hc.closed:
+        if hc.closed:
             for dim_qname in hc.dimensions:
                 if dim_qname in context_dims:
-                    # Dimension is present — no violation.
                     continue
 
                 dim_model = self._taxonomy.dimensions.get(dim_qname)
@@ -203,35 +260,34 @@ class DimensionalConstraintValidator:
                         )
                     )
 
-        # --- 4. PROHIBITED_COMBINATION ---------------------------------------
-        # Applies to "notAll" (negative) hypercubes.
-        # The fact violates the notAll constraint when ALL dimensions of the
-        # hypercube are present in the context (the prohibited combination is
-        # fully satisfied).
-        if hc.arcrole == "notAll":
-            # A notAll hypercube with zero dimensions has no discriminating
-            # constraints; skip it (degenerate/incomplete model).
-            if not hc.dimensions:
-                return
-            all_dims_present = all(d in context_dims for d in hc.dimensions)
-            if all_dims_present:
-                # Report once per hypercube; use the first dimension (or None) as
-                # the representative dimension_qname.
-                representative_dim = hc.dimensions[0] if hc.dimensions else None
-                findings.append(
-                    ValidationFinding(
-                        rule_id="xbrldie:PrimaryItemDimensionallyInvalidError",
-                        severity=ValidationSeverity.ERROR,
-                        message=(
-                            f"Fact '{fact.concept}' in context '{fact.context_ref}' "
-                            f"satisfies all dimensions of notAll hypercube '{hc.qname}', "
-                            f"which is a prohibited dimensional combination."
-                        ),
-                        source="dimensional",
-                        concept_qname=fact.concept,
-                        context_ref=fact.context_ref,
-                        hypercube_qname=hc.qname,
-                        dimension_qname=representative_dim,
-                        constraint_type="PROHIBITED_COMBINATION",
-                    )
+    def _check_notall_hypercube(
+        self,
+        fact,
+        context_dims: dict[QName, QName],
+        hc: HypercubeModel,
+        findings: list[ValidationFinding],
+    ) -> None:
+        """Check one negative ('notAll') hypercube — each is an independent prohibition."""
+        # A notAll hypercube with zero dimensions has no discriminating constraints.
+        if not hc.dimensions:
+            return
+        all_dims_present = all(d in context_dims for d in hc.dimensions)
+        if all_dims_present:
+            representative_dim = hc.dimensions[0] if hc.dimensions else None
+            findings.append(
+                ValidationFinding(
+                    rule_id="xbrldie:PrimaryItemDimensionallyInvalidError",
+                    severity=ValidationSeverity.ERROR,
+                    message=(
+                        f"Fact '{fact.concept}' in context '{fact.context_ref}' "
+                        f"satisfies all dimensions of notAll hypercube '{hc.qname}', "
+                        f"which is a prohibited dimensional combination."
+                    ),
+                    source="dimensional",
+                    concept_qname=fact.concept,
+                    context_ref=fact.context_ref,
+                    hypercube_qname=hc.qname,
+                    dimension_qname=representative_dim,
+                    constraint_type="PROHIBITED_COMBINATION",
                 )
+            )
