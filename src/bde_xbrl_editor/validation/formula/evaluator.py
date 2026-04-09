@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import itertools
 import threading
 from collections.abc import Callable
@@ -20,7 +21,7 @@ from bde_xbrl_editor.taxonomy.models import (
 from bde_xbrl_editor.validation.errors import ValidationEngineError
 from bde_xbrl_editor.validation.formula.filters import apply_filters
 from bde_xbrl_editor.validation.formula.xfi_functions import (
-    XFI_FUNCTION_REGISTRY,
+    build_formula_parser,
     clear_evaluation_context,
     set_evaluation_context,
 )
@@ -68,10 +69,8 @@ class FormulaEvaluator:
             if self._cancel_event and self._cancel_event.is_set():
                 break
             if self._progress_callback:
-                try:
+                with contextlib.suppress(Exception):
                     self._progress_callback(idx, total, assertion.assertion_id)
-                except Exception:  # noqa: BLE001
-                    pass
 
             try:
                 bindings = self._bind_variables(assertion, instance)
@@ -103,10 +102,8 @@ class FormulaEvaluator:
                 ))
 
         if self._progress_callback:
-            try:
+            with contextlib.suppress(Exception):
                 self._progress_callback(total, total, "Formula evaluation complete")
-            except Exception:  # noqa: BLE001
-                pass
 
         return findings
 
@@ -148,7 +145,7 @@ class FormulaEvaluator:
         result: list[dict[str, list[Fact]]] = []
         for combo in itertools.product(*candidate_lists):
             binding: dict[str, list[Fact]] = {
-                name: facts for name, facts in zip(variable_names, combo)
+                name: facts for name, facts in zip(variable_names, combo, strict=False)
             }
             result.append(binding)
         return result
@@ -170,7 +167,9 @@ class FormulaEvaluator:
 
         for binding in bindings:
             try:
-                result = self._eval_xpath(assertion.test_xpath, binding, instance)
+                result = self._eval_xpath(
+                    assertion.test_xpath, binding, instance, assertion.namespaces
+                )
                 passed = _to_bool(result)
             except Exception as exc:  # noqa: BLE001
                 findings.append(ValidationFinding(
@@ -233,7 +232,9 @@ class FormulaEvaluator:
             if fact is None:
                 continue
             try:
-                computed = self._eval_xpath(assertion.formula_xpath, binding, instance)
+                computed = self._eval_xpath(
+                    assertion.formula_xpath, binding, instance, assertion.namespaces
+                )
                 # elementpath.select returns a list; unwrap single-element results
                 if isinstance(computed, list):
                     if not computed:
@@ -276,11 +277,14 @@ class FormulaEvaluator:
         xpath_expr: str,
         binding: dict[str, list[Fact]],
         instance: XbrlInstance,
+        namespaces: dict[str, str] | None = None,
     ) -> Any:
         """Evaluate an XPath 2.0 expression with the current fact binding."""
         import elementpath  # type: ignore[import-untyped]
 
-        # Build a variable map for elementpath: variable_name → value
+        # Build a variable map: variable_name → Decimal (or "" for empty bindings).
+        # Decimal values support XPath arithmetic; xfi: functions use the global
+        # _eval_context for fact-level metadata.
         variables: dict[str, Any] = {}
         first_fact: Fact | None = None
         for var_name, facts in binding.items():
@@ -289,9 +293,9 @@ class FormulaEvaluator:
                 if first_fact is None:
                     first_fact = facts[0]
             else:
-                variables[var_name] = ""
+                variables[var_name] = Decimal(0)
 
-        # Set xfi: context
+        # Populate the thread-local xfi: evaluation context
         ctx_obj = None
         unit_obj = None
         if first_fact:
@@ -304,22 +308,24 @@ class FormulaEvaluator:
             "_current_fact": first_fact,
             "_context": ctx_obj,
             "_unit": unit_obj,
+            "_instance": instance,
         })
 
-        # elementpath requires either a root XML node or an `item` context.
-        # For formula XPath (pure arithmetic / fact-value expressions) we
-        # use the first fact's value as the context item (or True as a
-        # harmless sentinel when no facts are bound).
-        context_item = None
-        if first_fact is not None:
-            context_item = first_fact.value
-        else:
-            context_item = True  # any non-None value satisfies elementpath
+        # Use the context item as a Decimal (for arithmetic) when available;
+        # fall back to True as a harmless sentinel so elementpath stays happy.
+        context_item: Any = (
+            _coerce_value(first_fact.value) if first_fact is not None else True
+        )
 
+        parser = build_formula_parser(namespaces)
         try:
-            result = elementpath.select(
-                None, xpath_expr, variables=variables, item=context_item
+            token = parser.parse(xpath_expr)
+            ctx = elementpath.XPathContext(
+                root=None,
+                item=context_item,
+                variables=variables,
             )
+            result = list(token.select(ctx))
         finally:
             clear_evaluation_context()
 
@@ -366,7 +372,14 @@ def _to_bool(value: Any) -> bool:
     if isinstance(value, bool):
         return value
     if isinstance(value, list):
-        return bool(value)
+        if not value:
+            return False
+        first = value[0]
+        if isinstance(first, bool):
+            return first
+        if isinstance(first, str):
+            return first.lower() not in ("", "false", "0")
+        return bool(first)
     if isinstance(value, str):
         return value.lower() not in ("", "false", "0")
     return bool(value)

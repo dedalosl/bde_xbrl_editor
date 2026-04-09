@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QEvent, QModelIndex, Qt
+from PySide6.QtCore import QEvent, QModelIndex, QPoint, QRect, Qt
+from PySide6.QtGui import QColor, QFont, QPainter, QPolygon
 from PySide6.QtWidgets import (
     QComboBox,
     QDateEdit,
@@ -17,12 +18,17 @@ from PySide6.QtWidgets import (
 
 from bde_xbrl_editor.instance.models import DuplicateFactError
 from bde_xbrl_editor.instance.validator import XbrlTypeValidator
+from bde_xbrl_editor.ui.widgets.table_body_model import CELL_CODE_ROLE
 
 if TYPE_CHECKING:
     from bde_xbrl_editor.instance.editor import InstanceEditor
     from bde_xbrl_editor.instance.models import XbrlInstance
     from bde_xbrl_editor.table_renderer.models import CellCoordinate, ComputedTableLayout
     from bde_xbrl_editor.taxonomy.models import QName, TaxonomyStructure
+
+
+_CELL_CODE_FG = QColor("#1E3A5F")      # dark navy text for cell code
+_CELL_CODE_CORNER = QColor("#8B7355")  # dark triangle corner marker
 
 
 def _get_type_category(taxonomy: TaxonomyStructure, concept: QName) -> str:
@@ -42,30 +48,37 @@ def _find_fact_index(
     """Find the index in instance.facts that matches coordinate, or None."""
     if coordinate.concept is None:
         return None
+    coord_dims = coordinate.explicit_dimensions or {}
     for i, fact in enumerate(instance.facts):
         if fact.concept != coordinate.concept:
             continue
-        if coordinate.explicit_dimensions:
-            context = instance.contexts.get(fact.context_ref)
-            if context is None:
-                continue
-            fact_dims = context.dimensions
-            if any(fact_dims.get(d) != m for d, m in coordinate.explicit_dimensions.items()):
-                continue
+        context = instance.contexts.get(fact.context_ref)
+        if context is None:
+            continue
+        fact_dims = context.dimensions
+        # All coordinate dims must match
+        if any(fact_dims.get(d) != m for d, m in coord_dims.items()):
+            continue
+        # Fact must not have extra dims the coordinate doesn't specify
+        if any(d not in coord_dims for d in fact_dims):
+            continue
         return i
     return None
 
 
-def _find_context_ref(instance: XbrlInstance, coordinate: CellCoordinate) -> str:
-    """Find or fall back to a context_ref that satisfies coordinate dimensions."""
+def _ensure_context_ref(instance: XbrlInstance, coordinate: CellCoordinate) -> str:
+    """Return the deterministic context_ref for this coordinate, creating the context if needed."""
+    from bde_xbrl_editor.instance.context_builder import (  # noqa: PLC0415
+        build_dimensional_context,
+        generate_context_id,
+    )
+
     dims = coordinate.explicit_dimensions or {}
-    for ctx_id, ctx in instance.contexts.items():
-        if all(ctx.dimensions.get(d) == m for d, m in dims.items()):
-            return ctx_id
-    # Fall back: first context
-    if instance.contexts:
-        return next(iter(instance.contexts))
-    return ""
+    ctx_id = generate_context_id(instance.entity, instance.period, dims)
+    if ctx_id not in instance.contexts:
+        ctx = build_dimensional_context(instance.entity, instance.period, dims)
+        instance.contexts[ctx_id] = ctx
+    return ctx_id
 
 
 class CellEditDelegate(QStyledItemDelegate):
@@ -73,22 +86,64 @@ class CellEditDelegate(QStyledItemDelegate):
 
     def __init__(
         self,
-        taxonomy: TaxonomyStructure,
-        editor: InstanceEditor,
-        table_layout: ComputedTableLayout | None,
-        table_view_widget: QWidget,
+        taxonomy: TaxonomyStructure | None = None,
+        editor: InstanceEditor | None = None,
+        table_layout: ComputedTableLayout | None = None,
+        table_view_widget: QWidget | None = None,
     ) -> None:
         super().__init__(table_view_widget)
         self._taxonomy = taxonomy
         self._editor = editor
         self._table_layout = table_layout
         self._table_view_widget = table_view_widget
-        self._validator = XbrlTypeValidator(taxonomy)
+        self._validator = XbrlTypeValidator(taxonomy) if taxonomy is not None else None
         self._invalid_editors: set[int] = set()  # id(editor) for invalid-state editors
 
     def set_table_layout(self, layout: ComputedTableLayout | None) -> None:
         """Update active layout reference after Z-axis change."""
         self._table_layout = layout
+
+    # ------------------------------------------------------------------
+    # paint — draws cell content + soft-blue cell-code badge
+    # ------------------------------------------------------------------
+
+    def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex) -> None:
+        super().paint(painter, option, index)
+
+        cell_code = index.data(CELL_CODE_ROLE)
+        if not cell_code:
+            return
+
+        rect = option.rect
+        _CORNER = 7  # triangle leg size in pixels
+
+        painter.save()
+        painter.setClipping(False)
+
+        # Small folded-corner triangle in top-right
+        tr = rect.topRight()
+        triangle = QPolygon([
+            QPoint(tr.x(), tr.y()),
+            QPoint(tr.x() - _CORNER, tr.y()),
+            QPoint(tr.x(), tr.y() + _CORNER),
+        ])
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(_CELL_CODE_CORNER)
+        painter.drawPolygon(triangle)
+
+        # Cell code text — top-left, small font
+        painter.setPen(_CELL_CODE_FG)
+        font = QFont(painter.font())
+        font.setPointSizeF(7.0)
+        painter.setFont(font)
+        text_rect = QRect(rect.x() + 2, rect.y() + 1, rect.width() - _CORNER - 4, rect.height() - 2)
+        painter.drawText(
+            text_rect,
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
+            cell_code,
+        )
+
+        painter.restore()
 
     # ------------------------------------------------------------------
     # Coordinate lookup
@@ -110,6 +165,8 @@ class CellEditDelegate(QStyledItemDelegate):
     def createEditor(
         self, parent: QWidget, option: QStyleOptionViewItem, index: QModelIndex
     ) -> QWidget | None:
+        if self._editor is None or self._taxonomy is None:
+            return None
         coordinate = self._get_coordinate(index)
         if coordinate is None or coordinate.concept is None:
             return None
@@ -128,7 +185,18 @@ class CellEditDelegate(QStyledItemDelegate):
             return ed
 
         # monetary, decimal, integer, string
-        return QLineEdit(parent)
+        line = QLineEdit(parent)
+        if category in ("monetary", "decimal"):
+            from PySide6.QtGui import QDoubleValidator  # noqa: PLC0415
+
+            v = QDoubleValidator(line)
+            v.setNotation(QDoubleValidator.Notation.StandardNotation)
+            line.setValidator(v)
+        elif category == "integer":
+            from PySide6.QtGui import QIntValidator  # noqa: PLC0415
+
+            line.setValidator(QIntValidator(line))
+        return line
 
     # ------------------------------------------------------------------
     # setEditorData
@@ -165,6 +233,8 @@ class CellEditDelegate(QStyledItemDelegate):
     def setModelData(
         self, editor_widget: QWidget, model, index: QModelIndex
     ) -> None:
+        if self._editor is None or self._taxonomy is None or self._validator is None:
+            return
         coordinate = self._get_coordinate(index)
         if coordinate is None or coordinate.concept is None:
             return
@@ -202,11 +272,16 @@ class CellEditDelegate(QStyledItemDelegate):
             if fact_index is not None:
                 self._editor.update_fact(fact_index, normalised)
             else:
-                context_ref = _find_context_ref(instance, coordinate)
+                context_ref = _ensure_context_ref(instance, coordinate)
+                category = _get_type_category(self._taxonomy, coordinate.concept)
+                unit_ref = None
+                if category in ("monetary", "decimal", "integer"):
+                    unit_ref = next(iter(instance.units), None)
                 self._editor.add_fact(
                     concept=coordinate.concept,
                     context_ref=context_ref,
                     value=normalised,
+                    unit_ref=unit_ref,
                 )
         except DuplicateFactError:
             # Race condition — re-read index and try update

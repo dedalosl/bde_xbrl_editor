@@ -5,8 +5,6 @@ from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
 
-import pytest
-
 from bde_xbrl_editor.instance.models import (
     Fact,
     ReportingEntity,
@@ -18,7 +16,6 @@ from bde_xbrl_editor.taxonomy.models import (
     ConsistencyAssertionDefinition,
     ExistenceAssertionDefinition,
     FactVariableDefinition,
-    FormulaAssertion,
     FormulaAssertionSet,
     QName,
     TaxonomyMetadata,
@@ -227,7 +224,7 @@ class TestValueAssertion:
 
     def test_value_assertion_passes_for_each_binding(self) -> None:
         """A passing assertion produces no finding even with multiple bound facts."""
-        var_def = FactVariableDefinition(variable_name="v", concept_filter=_qn("Amount"))
+        _var_def = FactVariableDefinition(variable_name="v", concept_filter=_qn("Amount"))
         assertion = ValueAssertionDefinition(
             **_base_assertion_kwargs(assertion_id="VA_MULTI"),
             test_xpath="true()",

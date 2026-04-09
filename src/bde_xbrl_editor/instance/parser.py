@@ -176,7 +176,13 @@ def _parse_unit(el: etree._Element) -> XbrlUnit:
 
 
 def _resolve_prefixed_qname(el: etree._Element, prefixed: str) -> str:
-    """Resolve a prefix:local QName string to Clark notation using element namespace map."""
+    """Resolve a QName string to Clark notation using element namespace map.
+
+    Handles both standard prefix:local notation and Clark {namespace}local notation
+    (written by the serializer when the QName has no prefix).
+    """
+    if prefixed.startswith("{"):
+        return prefixed  # Already Clark notation — pass through unchanged
     if ":" in prefixed:
         prefix, local = prefixed.split(":", 1)
         nsmap = el.nsmap or {}

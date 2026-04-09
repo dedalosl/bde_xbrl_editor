@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 from bde_xbrl_editor.table_renderer.errors import TableLayoutError, ZIndexOutOfRangeError
 from bde_xbrl_editor.table_renderer.layout_engine import TableLayoutEngine
 from bde_xbrl_editor.table_renderer.models import ComputedTableLayout
+from bde_xbrl_editor.ui.widgets.cell_edit_delegate import CellEditDelegate
 from bde_xbrl_editor.ui.widgets.column_header import MultiLevelColumnHeader
 from bde_xbrl_editor.ui.widgets.row_header import MultiLevelRowHeader
 from bde_xbrl_editor.ui.widgets.table_body_model import TableBodyModel
@@ -194,6 +195,15 @@ class XbrlTableView(QFrame):
             model.set_formatter(formatter, self._taxonomy)
         self._body_view.setModel(model)
 
+        # Keep delegate in sync with the new layout. If main_window has installed a full
+        # CellEditDelegate (with taxonomy + editor), update its layout reference so coordinate
+        # lookups stay correct after Z-axis changes. Otherwise install a minimal one for painting.
+        existing_delegate = self._body_view.itemDelegate()
+        if isinstance(existing_delegate, CellEditDelegate):
+            existing_delegate.set_table_layout(layout)
+        else:
+            self._body_view.setItemDelegate(CellEditDelegate(table_view_widget=self._body_view))
+
         # Update headers
         self._col_header.set_header_grid(layout.column_header)
         self._row_header.set_header_grid(layout.row_header)
@@ -202,9 +212,7 @@ class XbrlTableView(QFrame):
         self._body_view.horizontalHeader().setMinimumHeight(
             layout.column_header.depth * 28
         )
-        self._body_view.verticalHeader().setMinimumWidth(
-            layout.row_header.depth * 120
-        )
+        self._body_view.verticalHeader().setMinimumWidth(280)
 
         # Wire cell selection
         self._body_view.clicked.connect(

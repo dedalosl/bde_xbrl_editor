@@ -1,10 +1,8 @@
 """Unit tests for StructuralConformanceValidator (validation/structural.py)."""
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
-
-import pytest
 
 from bde_xbrl_editor.instance.models import (
     Fact,
@@ -16,15 +14,13 @@ from bde_xbrl_editor.instance.models import (
 )
 from bde_xbrl_editor.taxonomy.models import (
     Concept,
-    QName,
-    TaxonomyStructure,
-    TaxonomyMetadata,
     FormulaAssertionSet,
+    QName,
+    TaxonomyMetadata,
+    TaxonomyStructure,
 )
 from bde_xbrl_editor.validation.models import ValidationSeverity
 from bde_xbrl_editor.validation.structural import StructuralConformanceValidator
-
-from datetime import datetime
 
 # ---------------------------------------------------------------------------
 # Reusable helpers
@@ -80,7 +76,6 @@ def _minimal_taxonomy(
     type_local: str = "stringItemType",
 ) -> TaxonomyStructure:
     """Build a minimal TaxonomyStructure with one concept."""
-    from datetime import datetime
     meta = TaxonomyMetadata(
         name="Test",
         version="1.0",

@@ -15,14 +15,15 @@ from lxml import etree
 
 from bde_xbrl_editor.taxonomy.cache import TaxonomyCache
 from bde_xbrl_editor.taxonomy.constants import (
+    ARCROLE_ALL,
+    ARCROLE_DIMENSION_DEFAULT,
+    ARCROLE_DIMENSION_DOMAIN,
+    ARCROLE_DOMAIN_MEMBER,
+    ARCROLE_HYPERCUBE_DIMENSION,
+    ARCROLE_NOT_ALL,
     NS_FORMULA,
     NS_TABLE_PWD,
     NS_XBRLDT,
-    ARCROLE_ALL,
-    ARCROLE_NOT_ALL,
-    ARCROLE_HYPERCUBE_DIMENSION,
-    ARCROLE_DIMENSION_DOMAIN,
-    ARCROLE_DIMENSION_DEFAULT,
 )
 from bde_xbrl_editor.taxonomy.discovery import discover_dts
 from bde_xbrl_editor.taxonomy.label_resolver import LabelResolver
@@ -35,6 +36,8 @@ from bde_xbrl_editor.taxonomy.linkbases.presentation import parse_presentation_l
 from bde_xbrl_editor.taxonomy.linkbases.table_pwd import parse_table_linkbase
 from bde_xbrl_editor.taxonomy.models import (
     Concept,
+    DimensionModel,
+    DomainMember,
     QName,
     TaxonomyMetadata,
     TaxonomyParseError,
@@ -71,15 +74,26 @@ def _sniff_linkbase_type(path: Path) -> str:
     if "formula" in name or "form" in name:
         return "formula"
 
-    # Try to detect by root element namespace
+    # BDE places all formula linkbases under a subdirectory named "formula/"
+    if path.parent.name.lower() == "formula":
+        return "formula"
+
+    # Fallback: scan child elements for formula/assertion namespaces
+    _FORMULA_NS = {
+        "http://xbrl.org/2008/formula",
+        "http://xbrl.org/2008/assertion/value",
+        "http://xbrl.org/2008/assertion/existence",
+        "http://xbrl.org/2008/assertion/consistency",
+    }
     try:
         ctx = etree.iterparse(str(path), events=("start",))
         for _, el in ctx:
-            if NS_TABLE_PWD in str(el.tag):
+            tag = str(el.tag)
+            if NS_TABLE_PWD in tag:
                 return "table"
-            if NS_FORMULA in str(el.tag):
+            ns = tag[1:tag.index("}")] if tag.startswith("{") else ""
+            if ns in _FORMULA_NS or NS_FORMULA in tag:
                 return "formula"
-            break
     except Exception:  # noqa: BLE001
         pass
     return "unknown"
@@ -159,7 +173,7 @@ _SG_DIMENSION = QName(NS_XBRLDT, "dimensionItem")
 
 
 def _check_dimensional_constraints(
-    concepts: dict[QName, "Concept"],
+    concepts: dict[QName, Concept],
     definition_arcs: dict[str, list],
 ) -> None:
     """Check XBRL Dimensions 1.0 taxonomy structure constraints (xbrldte:* errors).
@@ -172,25 +186,23 @@ def _check_dimensional_constraints(
     # Check 1: hypercube items must be abstract (xbrldte:HypercubeElementIsNotAbstractError)
     for qname, concept in concepts.items():
         sg = concept.substitution_group
-        if sg and sg.namespace == NS_XBRLDT and sg.local_name == "hypercubeItem":
-            if not concept.abstract:
-                raise TaxonomyParseError(
-                    file_path="",
-                    message=(
-                        f"xbrldte:HypercubeElementIsNotAbstractError: "
-                        f"Hypercube element {qname} must be abstract"
-                    ),
-                )
+        if sg and sg.namespace == NS_XBRLDT and sg.local_name == "hypercubeItem" and not concept.abstract:
+            raise TaxonomyParseError(
+                file_path="",
+                message=(
+                    f"xbrldte:HypercubeElementIsNotAbstractError: "
+                    f"Hypercube element {qname} must be abstract"
+                ),
+            )
         # Check 2: dimension items must be abstract (xbrldte:DimensionElementIsNotAbstractError)
-        if sg and sg.namespace == NS_XBRLDT and sg.local_name == "dimensionItem":
-            if not concept.abstract:
-                raise TaxonomyParseError(
-                    file_path="",
-                    message=(
-                        f"xbrldte:DimensionElementIsNotAbstractError: "
-                        f"Dimension element {qname} must be abstract"
-                    ),
-                )
+        if sg and sg.namespace == NS_XBRLDT and sg.local_name == "dimensionItem" and not concept.abstract:
+            raise TaxonomyParseError(
+                file_path="",
+                message=(
+                    f"xbrldte:DimensionElementIsNotAbstractError: "
+                    f"Dimension element {qname} must be abstract"
+                ),
+            )
 
     # Build sets of hypercube/dimension QNames for arc checks
     hypercube_qnames = {
@@ -268,16 +280,15 @@ def _check_dimensional_constraints(
 
             # Check 7: source of dimension-domain arc must be a dimension item
             # (xbrldte:DimensionDomainSourceError)
-            if arcrole == ARCROLE_DIMENSION_DOMAIN:
-                if arc.source in concepts and arc.source not in dimension_qnames:
-                    raise TaxonomyParseError(
-                        file_path="",
-                        message=(
-                            f"xbrldte:DimensionDomainSourceError: "
-                            f"Source of dimension-domain arc must be a dimension item, "
-                            f"got {arc.source}"
-                        ),
-                    )
+            if arcrole == ARCROLE_DIMENSION_DOMAIN and arc.source in concepts and arc.source not in dimension_qnames:
+                raise TaxonomyParseError(
+                    file_path="",
+                    message=(
+                        f"xbrldte:DimensionDomainSourceError: "
+                        f"Source of dimension-domain arc must be a dimension item, "
+                        f"got {arc.source}"
+                    ),
+                )
 
             # Check 8: dimension-default arcs — track for too many defaults
             # (xbrldte:TooManyDefaultMembersError)
@@ -295,6 +306,64 @@ def _check_dimensional_constraints(
                         ),
                     )
 
+
+
+def _rebuild_dimensions(definition_arcs: dict[str, list]) -> dict[QName, DimensionModel]:
+    """Build DimensionModel objects by BFS-walking the complete merged definition arc set.
+
+    The per-file approach in parse_definition_linkbase cannot associate domain-member
+    arcs from extension linkbases (where dim_domain is not yet known) with their
+    parent dimensions.  By using the globally merged definition_arcs we see all arcs
+    across all files and correctly populate every dimension's member set.
+    """
+    dim_domain: dict[QName, QName] = {}  # dimension → root domain concept
+    dim_defaults: dict[QName, QName] = {}
+    # Children in the domain-member arc graph, indexed by parent concept
+    dm_children: dict[QName, list[tuple[QName, float, bool]]] = {}
+
+    for _elr, arcs in definition_arcs.items():
+        for arc in arcs:
+            if arc.arcrole == ARCROLE_DIMENSION_DOMAIN:
+                if arc.source not in dim_domain:
+                    dim_domain[arc.source] = arc.target
+            elif arc.arcrole == ARCROLE_DOMAIN_MEMBER:
+                usable = arc.usable if arc.usable is not None else True
+                dm_children.setdefault(arc.source, []).append(
+                    (arc.target, arc.order, usable)
+                )
+            elif arc.arcrole == ARCROLE_DIMENSION_DEFAULT:
+                dim_defaults[arc.source] = arc.target
+
+    dimensions: dict[QName, DimensionModel] = {}
+    for dim_q, domain_q in dim_domain.items():
+        # BFS from the root domain concept to collect all members transitively
+        all_members: list[DomainMember] = []
+        visited: set[QName] = set()
+        # queue entries: (concept, parent, order, usable)
+        queue: list[tuple[QName, QName | None, float, bool]] = [
+            (domain_q, None, 1.0, True)
+        ]
+        while queue:
+            current_q, parent_q, order, usable = queue.pop(0)
+            if current_q in visited:
+                continue
+            visited.add(current_q)
+            all_members.append(
+                DomainMember(qname=current_q, parent=parent_q, order=order, usable=usable)
+            )
+            for child_q, child_order, child_usable in dm_children.get(current_q, []):
+                if child_q not in visited:
+                    queue.append((child_q, current_q, child_order, child_usable))
+
+        dimensions[dim_q] = DimensionModel(
+            qname=dim_q,
+            dimension_type="explicit",
+            default_member=dim_defaults.get(dim_q),
+            domain=domain_q,
+            members=tuple(all_members),
+        )
+
+    return dimensions
 
 
 class TaxonomyLoader:
@@ -454,10 +523,12 @@ class TaxonomyLoader:
         standard_labels: dict[QName, list] = {}
         generic_labels: dict[QName, list] = {}
         formula_linkbase_path: Path | None = None
+        formula_linkbase_paths: list[Path] = []
 
         for lb_path in linkbase_paths:
             lb_type = _sniff_linkbase_type(lb_path)
             if lb_type == "formula":
+                formula_linkbase_paths.append(lb_path)
                 if formula_linkbase_path is None:
                     formula_linkbase_path = lb_path
                 continue
@@ -488,7 +559,6 @@ class TaxonomyLoader:
         calculation: dict[str, Any] = {}
         definition_arcs: dict[str, Any] = {}
         hypercubes: list[Any] = []
-        dimensions: dict[Any, Any] = {}
 
         for lb_path in linkbase_paths:
             lb_type = _sniff_linkbase_type(lb_path)
@@ -501,7 +571,7 @@ class TaxonomyLoader:
                     for elr, arc_list in arcs.items():
                         calculation.setdefault(elr, []).extend(arc_list)
                 elif lb_type == "def":
-                    arcs_by_elr, hcs, dims = parse_definition_linkbase(
+                    arcs_by_elr, hcs, _dims = parse_definition_linkbase(
                         lb_path, concept_id_map,
                         ns_qualified_map=ns_qualified_map,
                         schema_ns_map=schema_ns_map,
@@ -509,7 +579,6 @@ class TaxonomyLoader:
                     for elr, arc_list in arcs_by_elr.items():
                         definition_arcs.setdefault(elr, []).extend(arc_list)
                     hypercubes.extend(hcs)
-                    dimensions.update(dims)
             except TaxonomyParseError:
                 raise
             except Exception as exc:  # noqa: BLE001
@@ -517,6 +586,11 @@ class TaxonomyLoader:
                     file_path=str(lb_path),
                     message=f"Unexpected error: {exc}",
                 ) from exc
+
+        # Build dimensions once from the complete merged arc set so that
+        # domain-member arcs in extension linkbases are correctly associated
+        # with their parent dimensions (which may be declared in a different file).
+        dimensions = _rebuild_dimensions(definition_arcs)
 
         # Step 4b: XBRL Dimensions 1.0 taxonomy constraint checks (xbrldte:* errors)
         _check_dimensional_constraints(concepts, definition_arcs)
@@ -540,11 +614,18 @@ class TaxonomyLoader:
 
         # Step 6: Parse formula linkbase (if present)
         progress("Assembling taxonomy structure…", 6)
-        from bde_xbrl_editor.taxonomy.models import FormulaAssertionSet  # noqa: PLC0415
+        from bde_xbrl_editor.taxonomy.models import (  # noqa: PLC0415
+            FormulaAssertion,
+            FormulaAssertionSet,
+        )
 
         formula_assertion_set: FormulaAssertionSet
-        if formula_linkbase_path is not None:
-            formula_assertion_set = parse_formula_linkbase(formula_linkbase_path)
+        if formula_linkbase_paths:
+            all_assertions: list[FormulaAssertion] = []
+            for flp in formula_linkbase_paths:
+                fas = parse_formula_linkbase(flp)
+                all_assertions.extend(fas.assertions)
+            formula_assertion_set = FormulaAssertionSet(assertions=tuple(all_assertions))
         else:
             formula_assertion_set = FormulaAssertionSet()
 

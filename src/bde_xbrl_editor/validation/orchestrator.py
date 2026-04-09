@@ -6,10 +6,10 @@ assembling the results into an immutable ValidationReport. Never raises.
 
 from __future__ import annotations
 
+import contextlib
 import threading
 from collections.abc import Callable
 from datetime import datetime
-from typing import TYPE_CHECKING
 
 from bde_xbrl_editor.instance.models import XbrlInstance
 from bde_xbrl_editor.taxonomy.models import TaxonomyStructure
@@ -52,10 +52,8 @@ class InstanceValidator:
         # --- 1. Structural checks -------------------------------------------
         if not (self._cancel_event and self._cancel_event.is_set()):
             if self._progress_callback:
-                try:
+                with contextlib.suppress(Exception):
                     self._progress_callback(0, 3, "Running structural checks…")
-                except Exception:  # noqa: BLE001
-                    pass
             try:
                 sv = StructuralConformanceValidator()
                 findings.extend(sv.validate(instance, self._taxonomy))
@@ -70,10 +68,8 @@ class InstanceValidator:
         # --- 2. Dimensional checks -------------------------------------------
         if not (self._cancel_event and self._cancel_event.is_set()):
             if self._progress_callback:
-                try:
+                with contextlib.suppress(Exception):
                     self._progress_callback(1, 3, "Running dimensional checks…")
-                except Exception:  # noqa: BLE001
-                    pass
             try:
                 dv = DimensionalConstraintValidator(self._taxonomy)
                 findings.extend(dv.validate(instance))
@@ -91,10 +87,8 @@ class InstanceValidator:
         )
         if not (self._cancel_event and self._cancel_event.is_set()):
             if self._progress_callback:
-                try:
+                with contextlib.suppress(Exception):
                     self._progress_callback(2, 3, "Evaluating formula assertions…")
-                except Exception:  # noqa: BLE001
-                    pass
             try:
                 fe = FormulaEvaluator(
                     taxonomy=self._taxonomy,
@@ -111,10 +105,8 @@ class InstanceValidator:
                 ))
 
         if self._progress_callback:
-            try:
+            with contextlib.suppress(Exception):
                 self._progress_callback(3, 3, "Validation complete")
-            except Exception:  # noqa: BLE001
-                pass
 
         meta = self._taxonomy.metadata
         return ValidationReport(

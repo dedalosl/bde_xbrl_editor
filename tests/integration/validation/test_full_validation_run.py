@@ -9,7 +9,7 @@ import pytest
 from bde_xbrl_editor.taxonomy.cache import TaxonomyCache
 from bde_xbrl_editor.taxonomy.loader import TaxonomyLoader
 from bde_xbrl_editor.taxonomy.settings import LoaderSettings
-from bde_xbrl_editor.validation import InstanceValidator, ValidationReport, ValidationSeverity
+from bde_xbrl_editor.validation import InstanceValidator, ValidationReport
 
 TAXONOMY_PATH = Path("test_data/taxonomies/basicTaxonomy/sampleTaxonomy.xsd")
 

@@ -13,8 +13,6 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QListWidget,
-    QListWidgetItem,
     QMainWindow,
     QMessageBox,
     QPushButton,
@@ -25,6 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from bde_xbrl_editor.taxonomy import TaxonomyCache, TaxonomyStructure
+from bde_xbrl_editor.ui.widgets.activity_sidebar import ActivitySidebar
 from bde_xbrl_editor.ui.widgets.loader_settings_dialog import load_saved_settings
 from bde_xbrl_editor.ui.widgets.taxonomy_loader_widget import TaxonomyLoaderWidget
 
@@ -44,7 +43,7 @@ class MainWindow(QMainWindow):
         self._current_instance = None  # XbrlInstance | None
         self._editor = None  # InstanceEditor | None
         self._table_view = None  # XbrlTableView | None
-        self._taxonomy_table_list: QListWidget | None = None
+        self._sidebar: ActivitySidebar | None = None
         self._context_bar: QFrame | None = None
 
         # Validation
@@ -233,16 +232,18 @@ class MainWindow(QMainWindow):
         self._setup_browser_layout()
 
     def _setup_browser_layout(self) -> None:
-        """Create the main split layout: context bar + table-list sidebar + XbrlTableView."""
+        """Create the main split layout: context bar + activity sidebar + XbrlTableView."""
         from bde_xbrl_editor.ui.widgets.xbrl_table_view import XbrlTableView  # noqa: PLC0415
 
-        sidebar = self._build_taxonomy_sidebar()
+        assert self._current_taxonomy is not None
+        self._sidebar = ActivitySidebar(self._current_taxonomy, parent=self)
+        self._sidebar.table_selected.connect(self._on_table_selected)
 
         if self._table_view is None:
             self._table_view = XbrlTableView(parent=self)
 
         splitter = QSplitter(self)
-        splitter.addWidget(sidebar)
+        splitter.addWidget(self._sidebar)
         splitter.addWidget(self._table_view)
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
@@ -260,98 +261,6 @@ class MainWindow(QMainWindow):
 
         # Defer first-table render so the splitter/headers are fully laid out first
         QTimer.singleShot(0, self._select_first_taxonomy_table)
-
-    def _build_taxonomy_sidebar(self) -> QWidget:
-        """Build the sidebar: taxonomy header + table list + taxonomy info panel."""
-        assert self._current_taxonomy is not None
-        meta = self._current_taxonomy.metadata
-
-        sidebar = QFrame(self)
-        sidebar.setFixedWidth(260)
-        sidebar.setStyleSheet("QFrame { background: #F5F7FA; }")
-
-        layout = QVBoxLayout(sidebar)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-
-        # Taxonomy name header
-        header = QLabel(f"{meta.name}  v{meta.version}")
-        header.setStyleSheet(
-            "background: #1E3A5F; color: #FFFFFF; font-weight: bold;"
-            " font-size: 13px; padding: 8px 12px;"
-        )
-        header.setWordWrap(True)
-        layout.addWidget(header)
-
-        # "TABLES" section label
-        section = QLabel(f"TABLES  ({len(self._current_taxonomy.tables)})")
-        section.setStyleSheet(
-            "background: #2B5287; color: #FFFFFF; font-weight: bold;"
-            " font-size: 11px; padding: 4px 8px;"
-        )
-        layout.addWidget(section)
-
-        # Table list — stretch to fill available space
-        self._taxonomy_table_list = QListWidget()
-        self._taxonomy_table_list.setStyleSheet("""
-            QListWidget {
-                border: none;
-                background: #FFFFFF;
-                font-size: 12px;
-                color: #1E3A5F;
-                outline: none;
-            }
-            QListWidget::item {
-                padding: 5px 8px;
-                border-bottom: 1px solid #E8EDF5;
-            }
-            QListWidget::item:selected {
-                background: #1E3A5F;
-                color: #FFFFFF;
-            }
-            QListWidget::item:hover:!selected {
-                background: #DCE8F5;
-            }
-        """)
-        for table in self._current_taxonomy.tables:
-            item = QListWidgetItem(f"{table.table_id}\n{table.label}")
-            item.setData(0x0100, table)
-            self._taxonomy_table_list.addItem(item)
-        self._taxonomy_table_list.itemClicked.connect(self._on_taxonomy_table_list_clicked)
-        layout.addWidget(self._taxonomy_table_list, stretch=1)
-
-        # ── Taxonomy info panel (collapsed under the list) ──────────────
-        info_section = QLabel("TAXONOMY INFO")
-        info_section.setStyleSheet(
-            "background: #2B5287; color: #FFFFFF; font-weight: bold;"
-            " font-size: 11px; padding: 4px 8px;"
-        )
-        layout.addWidget(info_section)
-
-        info_style = "color: #1E3A5F; font-size: 11px; padding: 2px 10px;"
-        key_style = "color: #5A7FA8; font-size: 10px; padding: 1px 10px; font-weight: bold;"
-
-        def _row(key: str, value: str) -> None:
-            layout.addWidget(QLabel(key, styleSheet=key_style))
-            lbl = QLabel(value)
-            lbl.setStyleSheet(info_style)
-            lbl.setWordWrap(True)
-            lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-            layout.addWidget(lbl)
-
-        _row("NAME", meta.name)
-        _row("VERSION", meta.version)
-        _row("PUBLISHER", meta.publisher)
-        _row("ENTRY POINT", str(meta.entry_point_path.name))
-        _row("LOADED AT", meta.loaded_at.strftime("%Y-%m-%d %H:%M"))
-        _row("LANGUAGES", ", ".join(meta.declared_languages) or "—")
-        _row("CONCEPTS", str(len(self._current_taxonomy.concepts)))
-        _row("TABLES", str(len(self._current_taxonomy.tables)))
-
-        # Spacer at the very bottom
-        layout.addSpacing(6)
-
-        return sidebar
 
     # ------------------------------------------------------------------
     # Context bar
@@ -425,7 +334,29 @@ class MainWindow(QMainWindow):
             " border-color: rgba(255,255,255,0.1); }"
         )
 
-        if instance is None and self._current_taxonomy is not None:
+        if instance is not None:
+            validate_btn = QPushButton("⚡ Validate")
+            validate_btn.setStyleSheet(btn_style)
+            validate_btn.setToolTip("Run validation on the current instance (Ctrl+Shift+V)")
+            validate_btn.clicked.connect(self._on_validate_from_context_bar)
+            layout.addWidget(validate_btn)
+
+            save_btn = QPushButton("Save")
+            save_btn.setStyleSheet(btn_style)
+            save_btn.clicked.connect(self._on_save)
+            layout.addWidget(save_btn)
+
+            open_inst_btn = QPushButton("Open Instance…")
+            open_inst_btn.setStyleSheet(btn_style)
+            open_inst_btn.clicked.connect(self._on_open_instance)
+            layout.addWidget(open_inst_btn)
+
+            new_inst_btn = QPushButton("New Instance…")
+            new_inst_btn.setStyleSheet(btn_style)
+            new_inst_btn.clicked.connect(self._on_new_instance)
+            layout.addWidget(new_inst_btn)
+
+        elif self._current_taxonomy is not None:
             open_inst_btn = QPushButton("Open Instance…")
             open_inst_btn.setStyleSheet(btn_style)
             open_inst_btn.clicked.connect(self._on_open_instance)
@@ -456,7 +387,7 @@ class MainWindow(QMainWindow):
         self._current_instance = None
         self._editor = None
         self._table_view = None
-        self._taxonomy_table_list = None
+        self._sidebar = None
         self._context_bar = None
 
         self._reload_action.setEnabled(False)
@@ -503,16 +434,9 @@ class MainWindow(QMainWindow):
 
         self._setup_browser_layout()
 
-    def _on_taxonomy_table_list_clicked(self, item: QListWidgetItem) -> None:
-        table = item.data(0x0100)
-        if table is not None:
-            self._on_table_selected(table)
-
     def _select_first_taxonomy_table(self) -> None:
-        if self._taxonomy_table_list is not None and self._taxonomy_table_list.count() > 0:
-            first = self._taxonomy_table_list.item(0)
-            self._taxonomy_table_list.setCurrentItem(first)
-            self._on_taxonomy_table_list_clicked(first)
+        if self._sidebar is not None:
+            self._sidebar.select_first_table()
 
     def _on_reload(self) -> None:
         if self._current_taxonomy:
@@ -530,10 +454,8 @@ class MainWindow(QMainWindow):
         wizard = InstanceCreationWizard(taxonomy=self._current_taxonomy, parent=self)
         if wizard.exec() == QDialog.DialogCode.Accepted:
             instance = wizard.created_instance
-            if instance and instance.source_path:
-                self._status.showMessage(
-                    f"Instance created: {instance.source_path}"
-                )
+            if instance:
+                self._load_instance(instance)
 
     # ------------------------------------------------------------------
     # File → Open Instance (T015)
@@ -604,6 +526,8 @@ class MainWindow(QMainWindow):
             parent=self,
         )
         info_panel.table_selected.connect(self._on_table_selected)
+        info_panel.save_requested.connect(self._on_save)
+        info_panel.open_instance_requested.connect(self._on_open_instance)
 
         splitter = QSplitter(self)
         splitter.addWidget(info_panel)
@@ -638,6 +562,15 @@ class MainWindow(QMainWindow):
         # Auto-render the first filed table immediately
         info_panel.select_first_table()
 
+        # Show validation panel (cleared) so user sees it's ready
+        self._ensure_validation_panel()
+        dock = self._find_validation_dock()
+        if dock:
+            dock.setVisible(True)
+        if self._validation_panel:
+            self._validation_panel.clear()
+        self._show_validation_panel_action.setEnabled(True)
+
     # ------------------------------------------------------------------
     # Table selection → XbrlTableView (T017)
     # ------------------------------------------------------------------
@@ -670,6 +603,12 @@ class MainWindow(QMainWindow):
 
     def _on_changes_made(self) -> None:
         self.setWindowModified(True)
+        if self._table_view is not None:
+            # Defer refresh so the editor widget is fully closed before the model is replaced.
+            QTimer.singleShot(0, lambda: (
+                self._table_view.refresh_instance(self._current_instance)
+                if self._table_view is not None else None
+            ))
 
     # ------------------------------------------------------------------
     # File → Save / Save As (T029, T030)
@@ -778,6 +717,11 @@ class MainWindow(QMainWindow):
             if dock.objectName() == "ValidationDock":
                 return dock
         return None
+
+    def _on_validate_from_context_bar(self) -> None:
+        """Show the validation dock and start a validation run."""
+        self._show_validation_panel()
+        self._trigger_validation()
 
     def _trigger_validation(self) -> None:
         """Start a background validation run. Guard against double-trigger."""
