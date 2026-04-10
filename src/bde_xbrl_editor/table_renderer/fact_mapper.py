@@ -35,27 +35,23 @@ class FactMapper:
             # Check explicit dimensions — fact's context must match exactly:
             # all coordinate dims must be present with correct values AND
             # the fact's context must not carry extra dimensions absent from coordinate.
-            if coordinate.explicit_dimensions or True:  # always check
-                context = instance.contexts.get(fact.context_ref)
-                if context is None:
-                    continue
-                fact_dims = context.dimensions if hasattr(context, "dimensions") else {}
-                coord_dims = coordinate.explicit_dimensions or {}
-                # All coordinate dims must match
-                match = True
-                for dim, expected_mem in coord_dims.items():
-                    if fact_dims.get(dim) != expected_mem:
-                        match = False
-                        break
-                if not match:
-                    continue
-                # Fact must not have extra dimensions the coordinate doesn't specify
-                for dim in fact_dims:
-                    if dim not in coord_dims:
-                        match = False
-                        break
-                if not match:
-                    continue
+            context = instance.contexts.get(fact.context_ref)
+            if context is None:
+                continue
+            fact_dims = context.dimensions if hasattr(context, "dimensions") else {}
+            coord_dims = coordinate.explicit_dimensions or {}
+            # All coordinate dims must be satisfied by the fact's context.
+            # Extra dimensions in the fact context (e.g. report-level meta-dimensions
+            # like Agrupacion, or period selectors like MCY that are not axes of this
+            # particular table) are intentionally ignored — the table only constrains
+            # the dimensions it declares as axes.
+            match = True
+            for dim, expected_mem in coord_dims.items():
+                if fact_dims.get(dim) != expected_mem:
+                    match = False
+                    break
+            if not match:
+                continue
             matching.append(fact)
 
         count = len(matching)

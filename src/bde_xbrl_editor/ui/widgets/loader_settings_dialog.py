@@ -69,10 +69,24 @@ def add_recent_file(path: str) -> None:
     """Prepend path to the recent-files list and persist (deduped, max _MAX_RECENT)."""
     data = _read_raw()
     recent: list[str] = data.get("recent_files", [])
-    # Remove duplicates, insert at front
     recent = [p for p in recent if p != path]
     recent.insert(0, path)
     data["recent_files"] = recent[:_MAX_RECENT]
+    _write_raw(data)
+
+
+def load_recent_instances() -> list[str]:
+    """Return up to _MAX_RECENT recently opened instance paths."""
+    return list(_read_raw().get("recent_instances", []))[:_MAX_RECENT]
+
+
+def add_recent_instance(path: str) -> None:
+    """Prepend path to the recent-instances list and persist (deduped, max _MAX_RECENT)."""
+    data = _read_raw()
+    recent: list[str] = data.get("recent_instances", [])
+    recent = [p for p in recent if p != path]
+    recent.insert(0, path)
+    data["recent_instances"] = recent[:_MAX_RECENT]
     _write_raw(data)
 
 

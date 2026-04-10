@@ -139,7 +139,7 @@ class MainWindow(QMainWindow):
 
         self._open_instance_action = file_menu.addAction("Open &Instance…")
         self._open_instance_action.setShortcut("Ctrl+Shift+O")
-        self._open_instance_action.setEnabled(False)
+        self._open_instance_action.setEnabled(True)
         self._open_instance_action.triggered.connect(self._on_open_instance)
 
         file_menu.addSeparator()
@@ -196,6 +196,7 @@ class MainWindow(QMainWindow):
             parent=self,
         )
         widget.taxonomy_loaded.connect(self._on_taxonomy_loaded)
+        widget.instance_loaded.connect(self._on_instance_loaded_from_widget)
         if path is not None:
             widget._path_edit.setText(path)
         self._loader_widget = widget
@@ -230,6 +231,20 @@ class MainWindow(QMainWindow):
         self._close_taxonomy_action.setEnabled(True)
 
         self._setup_browser_layout()
+
+    def _on_instance_loaded_from_widget(self, instance, taxonomy: TaxonomyStructure) -> None:
+        """Handle an instance+taxonomy loaded directly from the welcome screen."""
+        self._current_taxonomy = taxonomy
+        meta = taxonomy.metadata
+        self._reload_action.setEnabled(True)
+        self._new_instance_action.setEnabled(True)
+        self._open_instance_action.setEnabled(True)
+        self._close_taxonomy_action.setEnabled(True)
+        self._status.showMessage(
+            f"Loaded: {meta.name} v{meta.version} — "
+            f"{len(taxonomy.concepts)} concepts, {len(taxonomy.tables)} tables"
+        )
+        self._load_instance(instance)
 
     def _setup_browser_layout(self) -> None:
         """Create the main split layout: context bar + activity sidebar + XbrlTableView."""
@@ -392,7 +407,7 @@ class MainWindow(QMainWindow):
 
         self._reload_action.setEnabled(False)
         self._new_instance_action.setEnabled(False)
-        self._open_instance_action.setEnabled(False)
+        self._open_instance_action.setEnabled(True)  # Keep enabled; allows opening instances directly
         self._save_action.setEnabled(False)
         self._save_as_action.setEnabled(False)
         self._validate_action.setEnabled(False)
@@ -462,8 +477,6 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _on_open_instance(self) -> None:
-        if self._current_taxonomy is None:
-            return
         if not self._check_unsaved_changes():
             return
 
@@ -490,6 +503,25 @@ class MainWindow(QMainWindow):
         except InstanceParseError as exc:
             QMessageBox.critical(self, "Parse Error", str(exc))
             return
+
+        # Resolve the taxonomy from the instance (may be newly loaded or already in cache)
+        if instance.taxonomy_entry_point:
+            with contextlib.suppress(Exception):
+                self._current_taxonomy = loader.load(instance.taxonomy_entry_point)
+
+        if self._current_taxonomy is None:
+            QMessageBox.critical(
+                self,
+                "Taxonomy Error",
+                "Could not resolve the taxonomy for this instance. "
+                "Please open the taxonomy first via File → Open Taxonomy.",
+            )
+            return
+
+        # Enable taxonomy-level actions now that a taxonomy is loaded
+        self._reload_action.setEnabled(True)
+        self._new_instance_action.setEnabled(True)
+        self._close_taxonomy_action.setEnabled(True)
 
         if orphaned:
             QMessageBox.information(

@@ -1,4 +1,4 @@
-"""TaxonomyLoaderWidget — welcome screen with recent-file picker and load trigger."""
+"""TaxonomyLoaderWidget — welcome screen with two panels: Open Taxonomy / Open Instance."""
 
 from __future__ import annotations
 
@@ -26,7 +26,9 @@ from bde_xbrl_editor.taxonomy import (
 )
 from bde_xbrl_editor.ui.widgets.loader_settings_dialog import (
     add_recent_file,
+    add_recent_instance,
     load_recent_files,
+    load_recent_instances,
 )
 from bde_xbrl_editor.ui.widgets.progress_dialog import TaxonomyProgressDialog
 
@@ -41,7 +43,6 @@ _TEXT_MAIN = "#1E3A5F"
 _TEXT_MUTED = "#6B8AAE"
 _BORDER = "#C8D4E5"
 _HOVER_ROW = "#EEF3FA"
-_SELECTED_ROW = "#DCE8F5"
 
 
 class _LoadWorker(QObject):
@@ -70,10 +71,47 @@ class _LoadWorker(QObject):
             self.error.emit(f"Unexpected error: {exc}")
 
 
+class _InstanceLoadWorker(QObject):
+    """Worker that runs InstanceParser.load() in a background QThread."""
+
+    finished = Signal(object, object)  # (XbrlInstance, TaxonomyStructure)
+    error = Signal(str)
+    orphaned = Signal(int)  # emits orphaned fact count if > 0
+
+    def __init__(self, cache: TaxonomyCache, settings: LoaderSettings, path: str) -> None:
+        super().__init__()
+        self._cache = cache
+        self._settings = settings
+        self._path = path
+
+    def run(self) -> None:
+        from bde_xbrl_editor.instance.models import (  # noqa: PLC0415
+            InstanceParseError,
+            TaxonomyResolutionError,
+        )
+        from bde_xbrl_editor.instance.parser import InstanceParser  # noqa: PLC0415
+        from bde_xbrl_editor.taxonomy.loader import TaxonomyLoader  # noqa: PLC0415
+
+        loader = TaxonomyLoader(cache=self._cache, settings=self._settings)
+        parser = InstanceParser(taxonomy_loader=loader)
+        try:
+            instance, orphaned_facts = parser.load(self._path)
+            taxonomy = loader.load(instance.taxonomy_entry_point)
+            if orphaned_facts:
+                self.orphaned.emit(len(orphaned_facts))
+            self.finished.emit(instance, taxonomy)
+        except TaxonomyResolutionError as exc:
+            self.error.emit(str(exc))
+        except InstanceParseError as exc:
+            self.error.emit(str(exc))
+        except Exception as exc:  # noqa: BLE001
+            self.error.emit(f"Unexpected error: {exc}")
+
+
 class _RecentFileRow(QFrame):
     """A single clickable row in the Recent Files list."""
 
-    clicked = Signal(str)  # emits the file path
+    clicked = Signal(str)
 
     def __init__(self, path: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -82,27 +120,22 @@ class _RecentFileRow(QFrame):
 
         self.setFrameShape(QFrame.Shape.NoFrame)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setStyleSheet(f"""
-            _RecentFileRow {{
+        self.setStyleSheet("""
+            _RecentFileRow {
                 background: transparent;
                 border-radius: 6px;
-            }}
-            _RecentFileRow:hover {{
-                background: {_HOVER_ROW};
-            }}
+            }
         """)
 
         layout = QHBoxLayout(self)
         layout.setContentsMargins(10, 7, 10, 7)
         layout.setSpacing(10)
 
-        # File icon indicator
         icon = QLabel("◈")
         icon.setStyleSheet(f"color: {_ACCENT}; font-size: 16px;")
         icon.setFixedWidth(20)
         layout.addWidget(icon)
 
-        # Name + path stacked vertically
         text_col = QVBoxLayout()
         text_col.setSpacing(1)
 
@@ -119,7 +152,6 @@ class _RecentFileRow(QFrame):
 
         layout.addLayout(text_col, stretch=1)
 
-        # Arrow
         arrow = QLabel("›")
         arrow.setStyleSheet(f"color: {_TEXT_MUTED}; font-size: 18px;")
         layout.addWidget(arrow)
@@ -149,13 +181,15 @@ class _RecentFileRow(QFrame):
 
 
 class TaxonomyLoaderWidget(QWidget):
-    """Welcome screen — file picker + recent files list.
+    """Welcome screen with two panels: Open Taxonomy (left) and Open Instance (right).
 
     Signals:
-        taxonomy_loaded(TaxonomyStructure): Emitted on successful load.
+        taxonomy_loaded(TaxonomyStructure): Emitted on successful taxonomy load.
+        instance_loaded(XbrlInstance, TaxonomyStructure): Emitted on successful instance load.
     """
 
     taxonomy_loaded = Signal(object)
+    instance_loaded = Signal(object, object)  # (XbrlInstance, TaxonomyStructure)
 
     def __init__(
         self,
@@ -169,12 +203,13 @@ class TaxonomyLoaderWidget(QWidget):
         self._loader = TaxonomyLoader(cache=self._cache, settings=self._settings)
         self._thread: QThread | None = None
         self._worker: _LoadWorker | None = None
+        self._inst_thread: QThread | None = None
+        self._inst_worker: _InstanceLoadWorker | None = None
         self._setup_ui()
 
     # ── UI construction ────────────────────────────────────────────────────
 
     def _setup_ui(self) -> None:
-        # Full-screen background
         self.setStyleSheet(f"TaxonomyLoaderWidget {{ background: {_BG}; }}")
 
         outer = QVBoxLayout(self)
@@ -211,106 +246,21 @@ class TaxonomyLoaderWidget(QWidget):
         header_layout.addStretch()
         outer.addWidget(header)
 
-        # ── Centred card area ──────────────────────────────────────────
-        scroll_area = QVBoxLayout()
-        scroll_area.setContentsMargins(0, 0, 0, 0)
+        # ── Two-panel card area ────────────────────────────────────────
+        content = QVBoxLayout()
+        content.setContentsMargins(0, 0, 0, 0)
+        content.setSpacing(0)
+        content.addSpacing(32)
 
-        # Centering wrapper
-        h_center = QHBoxLayout()
-        h_center.addStretch()
+        cards_row = QHBoxLayout()
+        cards_row.setContentsMargins(32, 0, 32, 0)
+        cards_row.setSpacing(24)
 
-        card = QFrame()
-        card.setFixedWidth(580)
-        card.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
-        card.setStyleSheet(
-            f"QFrame {{ background: {_CARD_BG}; border-radius: 10px;"
-            f" border: 1px solid {_BORDER}; }}"
-        )
-        card_layout = QVBoxLayout(card)
-        card_layout.setContentsMargins(32, 28, 32, 28)
-        card_layout.setSpacing(0)
+        cards_row.addWidget(self._build_taxonomy_card(), stretch=1)
+        cards_row.addWidget(self._build_instance_card(), stretch=1)
 
-        # ── Open taxonomy section ──────────────────────────────────────
-        open_title = QLabel("Open Taxonomy")
-        open_title.setStyleSheet(
-            f"color: {_TEXT_MAIN}; font-size: 15px; font-weight: 700;"
-            f" border: none; background: transparent;"
-        )
-        card_layout.addWidget(open_title)
-        card_layout.addSpacing(4)
-
-        divider1 = QFrame()
-        divider1.setFrameShape(QFrame.Shape.HLine)
-        divider1.setStyleSheet(f"border: none; background: {_BORDER}; max-height: 1px;")
-        divider1.setFixedHeight(1)
-        card_layout.addWidget(divider1)
-        card_layout.addSpacing(16)
-
-        # Path row
-        path_row = QHBoxLayout()
-        path_row.setSpacing(8)
-
-        self._path_edit = QLineEdit()
-        self._path_edit.setPlaceholderText("Select the taxonomy entry-point .xsd file…")
-        self._path_edit.setStyleSheet(
-            f"QLineEdit {{ border: 1px solid {_BORDER}; border-radius: 5px;"
-            f" padding: 7px 10px; font-size: 12px; color: {_TEXT_MAIN};"
-            f" background: #FAFCFF; }}"
-            f"QLineEdit:focus {{ border-color: {_ACCENT}; }}"
-        )
-        path_row.addWidget(self._path_edit)
-
-        browse_btn = QPushButton("Browse…")
-        browse_btn.setFixedWidth(80)
-        browse_btn.setStyleSheet(self._secondary_btn_style())
-        browse_btn.clicked.connect(self._on_browse)
-        path_row.addWidget(browse_btn)
-        card_layout.addLayout(path_row)
-        card_layout.addSpacing(12)
-
-        # Load button
-        self._load_btn = QPushButton("Load Taxonomy")
-        self._load_btn.setDefault(True)
-        self._load_btn.setFixedHeight(38)
-        self._load_btn.setStyleSheet(self._primary_btn_style())
-        self._load_btn.clicked.connect(self._on_load)
-        card_layout.addWidget(self._load_btn)
-
-        # ── Recent files section ───────────────────────────────────────
-        recent_paths = load_recent_files()
-        if recent_paths:
-            card_layout.addSpacing(24)
-
-            recent_title = QLabel("Recent Files")
-            recent_title.setStyleSheet(
-                f"color: {_TEXT_MAIN}; font-size: 15px; font-weight: 700;"
-                f" border: none; background: transparent;"
-            )
-            card_layout.addWidget(recent_title)
-            card_layout.addSpacing(4)
-
-            divider2 = QFrame()
-            divider2.setFrameShape(QFrame.Shape.HLine)
-            divider2.setStyleSheet(f"border: none; background: {_BORDER}; max-height: 1px;")
-            divider2.setFixedHeight(1)
-            card_layout.addWidget(divider2)
-            card_layout.addSpacing(4)
-
-            self._recent_container = QVBoxLayout()
-            self._recent_container.setSpacing(2)
-            for path in recent_paths:
-                row = _RecentFileRow(path)
-                row.clicked.connect(self._on_recent_clicked)
-                self._recent_container.addWidget(row)
-            card_layout.addLayout(self._recent_container)
-
-        h_center.addWidget(card)
-        h_center.addStretch()
-
-        v_center = QVBoxLayout()
-        v_center.addSpacing(32)
-        v_center.addLayout(h_center)
-        v_center.addStretch()
+        content.addLayout(cards_row)
+        content.addStretch()
 
         # Settings link at bottom-right
         footer = QHBoxLayout()
@@ -325,13 +275,131 @@ class TaxonomyLoaderWidget(QWidget):
         settings_btn.clicked.connect(self._on_settings)
         footer.addWidget(settings_btn)
         footer.setContentsMargins(0, 0, 20, 12)
+        content.addLayout(footer)
 
-        v_center.addLayout(footer)
+        outer.addLayout(content, stretch=1)
 
-        scroll_area.addLayout(v_center)
-        outer.addLayout(scroll_area, stretch=1)
+    def _make_card(self) -> tuple[QFrame, QVBoxLayout]:
+        """Create a styled card frame and return (card, layout)."""
+        card = QFrame()
+        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        card.setStyleSheet(
+            f"QFrame {{ background: {_CARD_BG}; border-radius: 10px;"
+            f" border: 1px solid {_BORDER}; }}"
+        )
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(32, 28, 32, 28)
+        layout.setSpacing(0)
+        return card, layout
 
-    # ── Button styles ──────────────────────────────────────────────────────
+    def _add_section_header(self, layout: QVBoxLayout, title: str) -> None:
+        lbl = QLabel(title)
+        lbl.setStyleSheet(
+            f"color: {_TEXT_MAIN}; font-size: 15px; font-weight: 700;"
+            f" border: none; background: transparent;"
+        )
+        layout.addWidget(lbl)
+        layout.addSpacing(4)
+
+        divider = QFrame()
+        divider.setFrameShape(QFrame.Shape.HLine)
+        divider.setStyleSheet(f"border: none; background: {_BORDER}; max-height: 1px;")
+        divider.setFixedHeight(1)
+        layout.addWidget(divider)
+        layout.addSpacing(16)
+
+    def _build_taxonomy_card(self) -> QFrame:
+        card, layout = self._make_card()
+
+        self._add_section_header(layout, "Open Taxonomy")
+
+        path_row = QHBoxLayout()
+        path_row.setSpacing(8)
+
+        self._path_edit = QLineEdit()
+        self._path_edit.setPlaceholderText("Select the taxonomy entry-point .xsd file…")
+        self._path_edit.setStyleSheet(self._input_style())
+        path_row.addWidget(self._path_edit)
+
+        browse_btn = QPushButton("Browse…")
+        browse_btn.setFixedWidth(80)
+        browse_btn.setStyleSheet(self._secondary_btn_style())
+        browse_btn.clicked.connect(self._on_browse_taxonomy)
+        path_row.addWidget(browse_btn)
+        layout.addLayout(path_row)
+        layout.addSpacing(12)
+
+        self._load_btn = QPushButton("Load Taxonomy")
+        self._load_btn.setDefault(True)
+        self._load_btn.setFixedHeight(38)
+        self._load_btn.setStyleSheet(self._primary_btn_style())
+        self._load_btn.clicked.connect(self._on_load)
+        layout.addWidget(self._load_btn)
+
+        recent_paths = load_recent_files()
+        if recent_paths:
+            layout.addSpacing(24)
+            self._add_section_header(layout, "Recent Taxonomies")
+            layout.addSpacing(-12)  # tighten after header spacing
+
+            for path in recent_paths:
+                row = _RecentFileRow(path)
+                row.clicked.connect(self._on_recent_taxonomy_clicked)
+                layout.addWidget(row)
+
+        layout.addStretch()
+        return card
+
+    def _build_instance_card(self) -> QFrame:
+        card, layout = self._make_card()
+
+        self._add_section_header(layout, "Open Instance")
+
+        path_row = QHBoxLayout()
+        path_row.setSpacing(8)
+
+        self._inst_path_edit = QLineEdit()
+        self._inst_path_edit.setPlaceholderText("Select an XBRL instance file…")
+        self._inst_path_edit.setStyleSheet(self._input_style())
+        path_row.addWidget(self._inst_path_edit)
+
+        browse_btn = QPushButton("Browse…")
+        browse_btn.setFixedWidth(80)
+        browse_btn.setStyleSheet(self._secondary_btn_style())
+        browse_btn.clicked.connect(self._on_browse_instance)
+        path_row.addWidget(browse_btn)
+        layout.addLayout(path_row)
+        layout.addSpacing(12)
+
+        self._load_inst_btn = QPushButton("Load Instance")
+        self._load_inst_btn.setFixedHeight(38)
+        self._load_inst_btn.setStyleSheet(self._primary_btn_style())
+        self._load_inst_btn.clicked.connect(self._on_load_instance)
+        layout.addWidget(self._load_inst_btn)
+
+        recent_instances = load_recent_instances()
+        if recent_instances:
+            layout.addSpacing(24)
+            self._add_section_header(layout, "Recent Instances")
+            layout.addSpacing(-12)
+
+            for path in recent_instances:
+                row = _RecentFileRow(path)
+                row.clicked.connect(self._on_recent_instance_clicked)
+                layout.addWidget(row)
+
+        layout.addStretch()
+        return card
+
+    # ── Button / input styles ──────────────────────────────────────────────
+
+    def _input_style(self) -> str:
+        return (
+            f"QLineEdit {{ border: 1px solid {_BORDER}; border-radius: 5px;"
+            f" padding: 7px 10px; font-size: 12px; color: {_TEXT_MAIN};"
+            f" background: #FAFCFF; }}"
+            f"QLineEdit:focus {{ border-color: {_ACCENT}; }}"
+        )
 
     def _primary_btn_style(self) -> str:
         return (
@@ -351,9 +419,9 @@ class TaxonomyLoaderWidget(QWidget):
             f"QPushButton:hover {{ background: {_HOVER_ROW}; border-color: {_ACCENT}; }}"
         )
 
-    # ── Slots ──────────────────────────────────────────────────────────────
+    # ── Taxonomy slots ─────────────────────────────────────────────────────
 
-    def _on_browse(self) -> None:
+    def _on_browse_taxonomy(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self,
             "Open Taxonomy Entry Point",
@@ -363,7 +431,7 @@ class TaxonomyLoaderWidget(QWidget):
         if path:
             self._path_edit.setText(path)
 
-    def _on_recent_clicked(self, path: str) -> None:
+    def _on_recent_taxonomy_clicked(self, path: str) -> None:
         self._path_edit.setText(path)
         self._on_load()
 
@@ -400,7 +468,6 @@ class TaxonomyLoaderWidget(QWidget):
         self._progress_dialog.close()
         self._load_btn.setEnabled(True)
 
-        # Persist to recent files
         add_recent_file(self._path_edit.text().strip())
 
         if skipped_urls:
@@ -429,6 +496,82 @@ class TaxonomyLoaderWidget(QWidget):
             self._thread.wait()
             self._thread = None
             self._worker = None
+
+    # ── Instance slots ─────────────────────────────────────────────────────
+
+    def _on_browse_instance(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open XBRL Instance",
+            "",
+            "XBRL Files (*.xbrl *.xml);;All Files (*)",
+        )
+        if path:
+            self._inst_path_edit.setText(path)
+
+    def _on_recent_instance_clicked(self, path: str) -> None:
+        self._inst_path_edit.setText(path)
+        self._on_load_instance()
+
+    def _on_load_instance(self) -> None:
+        path = self._inst_path_edit.text().strip()
+        if not path:
+            QMessageBox.warning(self, "No File Selected", "Please select an XBRL instance file.")
+            return
+        if not Path(path).exists():
+            QMessageBox.warning(self, "File Not Found", f"File not found:\n{path}")
+            return
+
+        self._load_inst_btn.setEnabled(False)
+
+        self._inst_progress_dialog = TaxonomyProgressDialog(self)
+        self._inst_progress_dialog.show()
+
+        self._inst_worker = _InstanceLoadWorker(self._cache, self._settings, path)
+        self._inst_thread = QThread(self)
+        self._inst_worker.moveToThread(self._inst_thread)
+        self._inst_thread.started.connect(self._inst_worker.run)
+        self._inst_worker.finished.connect(
+            self._on_inst_load_finished, Qt.ConnectionType.QueuedConnection
+        )
+        self._inst_worker.error.connect(
+            self._on_inst_load_error, Qt.ConnectionType.QueuedConnection
+        )
+        self._inst_worker.orphaned.connect(
+            self._on_inst_orphaned, Qt.ConnectionType.QueuedConnection
+        )
+        self._inst_thread.start()
+
+    def _on_inst_load_finished(self, instance: object, taxonomy: object) -> None:
+        self._cleanup_inst_thread()
+        self._inst_progress_dialog.close()
+        self._load_inst_btn.setEnabled(True)
+
+        add_recent_instance(self._inst_path_edit.text().strip())
+        self.instance_loaded.emit(instance, taxonomy)
+
+    def _on_inst_orphaned(self, count: int) -> None:
+        QMessageBox.information(
+            self,
+            "Orphaned Facts",
+            f"{count} fact(s) in this instance have concepts not found in the "
+            f"taxonomy and will be preserved verbatim on save.",
+        )
+
+    def _on_inst_load_error(self, message: str) -> None:
+        self._cleanup_inst_thread()
+        self._inst_progress_dialog.close()
+        self._load_inst_btn.setEnabled(True)
+        QMessageBox.critical(self, "Instance Load Error", message)
+
+    def _cleanup_inst_thread(self) -> None:
+        if self._inst_thread:
+            self._inst_thread.quit()
+            self._inst_thread.wait()
+            self._inst_thread = None
+            self._inst_worker = None
+
+    # ── Settings ───────────────────────────────────────────────────────────
 
     def _on_settings(self) -> None:
         from bde_xbrl_editor.ui.widgets.loader_settings_dialog import (  # noqa: PLC0415
