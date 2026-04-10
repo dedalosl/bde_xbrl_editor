@@ -233,6 +233,33 @@ class FilingIndicator:
 
 
 @dataclass
+class BdeCodigoEstado:
+    """One estado (financial state form) declared in the BDE preamble.
+
+    Corresponds to a single ``es-be-cm-pblo:CodigoEstado`` element inside
+    ``es-be-cm-pblo:EstadosReportados``.
+    """
+
+    codigo: str          # 4-digit numeric estado code (e.g. "3201")
+    blanco: bool = False  # True when the estado is being cleared (blanco="true")
+    context_ref: ContextId = ""
+
+
+@dataclass
+class BdePreambulo:
+    """BDE IE_2008_02 preamble metadata parsed from ``es-be-cm-pblo:*`` elements.
+
+    These are direct children of ``xbrli:xbrl`` (no wrapper element).
+    """
+
+    entidad_presentadora: str = ""          # 4-digit entity code (no ES prefix)
+    entidad_context_ref: ContextId = ""
+    tipo_envio: str = ""                    # Ordinario | Complementario | Sustitutivo
+    tipo_envio_context_ref: ContextId = ""
+    estados_reportados: list[BdeCodigoEstado] = field(default_factory=list)
+
+
+@dataclass
 class Fact:
     """A single XBRL fact (created empty in Feature 002; populated in Feature 004)."""
 
@@ -282,6 +309,7 @@ class XbrlInstance:
     schema_ref_href: str
     entity: ReportingEntity
     period: ReportingPeriod
+    preambulo: BdePreambulo | None = None
     filing_indicators: list[FilingIndicator] = field(default_factory=list)
     included_table_ids: list[str] = field(default_factory=list)
     dimensional_configs: dict[str, DimensionalConfiguration] = field(default_factory=dict)

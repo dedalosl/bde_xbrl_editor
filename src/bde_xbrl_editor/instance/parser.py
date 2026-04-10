@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from lxml import etree
 
 from bde_xbrl_editor.instance.constants import (
+    BDE_PBLO_NS,
     FILING_IND_NS,
     LINK_NS,
     XBRLDI_NS,
@@ -17,6 +18,8 @@ from bde_xbrl_editor.instance.constants import (
     XLINK_NS,
 )
 from bde_xbrl_editor.instance.models import (
+    BdeCodigoEstado,
+    BdePreambulo,
     ContextId,
     Fact,
     FilingIndicator,
@@ -56,6 +59,13 @@ _FILING_IND = f"{{{FILING_IND_NS}}}filingIndicator"
 _XLINK_HREF = f"{{{XLINK_NS}}}href"
 _XLINK_TYPE = f"{{{XLINK_NS}}}type"
 
+# BDE IE_2008_02 preamble tag constants
+_BDE_PBLO_ENTIDAD = f"{{{BDE_PBLO_NS}}}EntidadPresentadora"
+_BDE_PBLO_TIPO_ENVIO = f"{{{BDE_PBLO_NS}}}TipoEnvio"
+_BDE_PBLO_ESTADOS = f"{{{BDE_PBLO_NS}}}EstadosReportados"
+_BDE_PBLO_CODIGO = f"{{{BDE_PBLO_NS}}}CodigoEstado"
+_BDE_PBLO_BLANCO = f"{{{BDE_PBLO_NS}}}blanco"
+
 # Known non-fact tags (skipped when iterating facts)
 _NON_FACT_TAGS = frozenset([
     _LINK_SCHEMA_REF,
@@ -63,6 +73,9 @@ _NON_FACT_TAGS = frozenset([
     _XBRLI_UNIT,
     _FILING_IND,
     f"{{{FILING_IND_NS}}}fIndicators",
+    _BDE_PBLO_ENTIDAD,
+    _BDE_PBLO_TIPO_ENVIO,
+    _BDE_PBLO_ESTADOS,
 ])
 
 
@@ -267,6 +280,9 @@ class InstanceParser:
             unit = _parse_unit(unit_el)
             units[unit.unit_id] = unit
 
+        # Stage 4b: Parse BDE preamble (EntidadPresentadora, TipoEnvio, EstadosReportados)
+        preambulo = _parse_preambulo(root)
+
         # Stage 5: Parse filing indicators
         filing_indicators: list[FilingIndicator] = []
         # They may be inside ef-find:fIndicators wrapper or directly as children
@@ -338,6 +354,7 @@ class InstanceParser:
             schema_ref_href=schema_href,
             entity=instance_entity,
             period=instance_period,
+            preambulo=preambulo,
             filing_indicators=filing_indicators,
             included_table_ids=[fi.template_id for fi in filing_indicators if fi.filed],
             contexts=contexts,
@@ -397,3 +414,61 @@ def _parse_filing_indicator(el: etree._Element, out: list[FilingIndicator]) -> N
             filed=filed,
             context_ref=context_ref,
         ))
+
+
+def _parse_preambulo(root: etree._Element) -> BdePreambulo | None:
+    """Extract BDE IE_2008_02 preamble elements from the root xbrli:xbrl element.
+
+    Looks for direct children:
+    - ``es-be-cm-pblo:EntidadPresentadora``
+    - ``es-be-cm-pblo:TipoEnvio``
+    - ``es-be-cm-pblo:EstadosReportados`` (contains ``CodigoEstado`` children)
+
+    Returns ``None`` when none of these elements are present (non-BDE instance).
+    """
+    entidad: str = ""
+    entidad_ctx: str = ""
+    tipo_envio: str = ""
+    tipo_envio_ctx: str = ""
+    estados: list[BdeCodigoEstado] = []
+
+    found_any = False
+    for child in root:
+        if not isinstance(child.tag, str):
+            continue
+        if child.tag == _BDE_PBLO_ENTIDAD:
+            found_any = True
+            entidad = (child.text or "").strip()
+            entidad_ctx = child.get("contextRef", "")
+        elif child.tag == _BDE_PBLO_TIPO_ENVIO:
+            found_any = True
+            tipo_envio = (child.text or "").strip()
+            tipo_envio_ctx = child.get("contextRef", "")
+        elif child.tag == _BDE_PBLO_ESTADOS:
+            found_any = True
+            for codigo_el in child:
+                if not isinstance(codigo_el.tag, str):
+                    continue
+                if codigo_el.tag != _BDE_PBLO_CODIGO:
+                    continue
+                codigo = (codigo_el.text or "").strip()
+                if not codigo:
+                    continue
+                blanco_val = codigo_el.get(_BDE_PBLO_BLANCO, "false").lower()
+                blanco = blanco_val in ("true", "1", "yes")
+                estados.append(BdeCodigoEstado(
+                    codigo=codigo,
+                    blanco=blanco,
+                    context_ref=codigo_el.get("contextRef", ""),
+                ))
+
+    if not found_any:
+        return None
+
+    return BdePreambulo(
+        entidad_presentadora=entidad,
+        entidad_context_ref=entidad_ctx,
+        tipo_envio=tipo_envio,
+        tipo_envio_context_ref=tipo_envio_ctx,
+        estados_reportados=estados,
+    )

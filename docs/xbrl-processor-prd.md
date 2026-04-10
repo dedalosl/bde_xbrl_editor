@@ -324,3 +324,11 @@ All specifications are published at [https://specifications.xbrl.org](https://sp
 - **XBRL Generic Links** — Specification defining the generic linkbase mechanism (`gen:link`, `gen:arc`) as an extensible alternative to standard XLink linkbases.
 - **XBRL Generic Labels** — Extension to Generic Links defining generic label arcs and label resource elements (`genlab:label`), enabling label definitions in generic linkbases.
 - **Conformance Suites** — Available at https://specifications.xbrl.org for each of the above specifications. The processor must achieve 100% pass on all mandatory test cases in each suite.
+
+## Apendix 2: Colors Convention
+Instance reader conventions:
+Color	Hex	Meaning
+White	white	Applicable, no issue
+Very light grey	#F8F8F8	is_applicable=False (abstract row)
+Pink/salmon	#FFD0D0	is_duplicate=True — multiple facts in the instance matched this cell's dimensional coordinate
+Dark grey	#A8A8A8	is_excluded=True — dimensional constraints forbid this cell
