@@ -80,6 +80,10 @@ def _make_parser(taxonomy: TaxonomyStructure | None = None) -> tuple[InstancePar
     return parser, loader
 
 
+_BDE_PBLO_NS = "http://www.bde.es/es/fr/esrs/comun/2008-06-01/preambulo"
+_BDE_DIM_NS = "http://www.bde.es/es/fr/esrs/comun/2008-06-01/dimensiones"
+
+
 def _write_xbrl(tmp_path: Path, xml_body: str, schema_href: str = "entry.xsd") -> Path:
     """Write a minimal XBRL instance to a temp file."""
     content = (
@@ -89,7 +93,9 @@ def _write_xbrl(tmp_path: Path, xml_body: str, schema_href: str = "entry.xsd") -
         f' xmlns:link="http://www.xbrl.org/2003/linkbase"'
         f' xmlns:xlink="http://www.w3.org/1999/xlink"'
         f' xmlns:test="{_TEST_NS}"'
-        f' xmlns:ef-find="http://www.eurofiling.info/xbrl/ext/filing-indicators">\n'
+        f' xmlns:ef-find="http://www.eurofiling.info/xbrl/ext/filing-indicators"'
+        f' xmlns:es-be-cm-pblo="{_BDE_PBLO_NS}"'
+        f' xmlns:es-be-cm-dim="{_BDE_DIM_NS}">\n'
         f'  <link:schemaRef xlink:type="simple" xlink:href="{schema_href}"/>\n'
         f'{xml_body}\n'
         '</xbrli:xbrl>\n'
@@ -334,3 +340,111 @@ def test_source_path_set_after_load(tmp_path: Path) -> None:
     parser, _ = _make_parser()
     instance, _ = parser.load(p)
     assert instance.source_path == p
+
+
+# ---------------------------------------------------------------------------
+# Tests: BDE preamble parsing
+# ---------------------------------------------------------------------------
+
+
+def test_preambulo_is_none_for_non_bde_instance(tmp_path: Path) -> None:
+    p = _write_xbrl(tmp_path, "")
+    parser, _ = _make_parser()
+    instance, _ = parser.load(p)
+    assert instance.preambulo is None
+
+
+def test_parses_entidad_presentadora_and_tipo_envio(tmp_path: Path) -> None:
+    body = textwrap.dedent("""\
+        <xbrli:context id="cBasico">
+          <xbrli:entity>
+            <xbrli:identifier scheme="http://www.ecb.int/stats/money/mfi">ES9000</xbrli:identifier>
+          </xbrli:entity>
+          <xbrli:period><xbrli:instant>2024-01-31</xbrli:instant></xbrli:period>
+        </xbrli:context>
+        <es-be-cm-pblo:EntidadPresentadora contextRef="cBasico">9000</es-be-cm-pblo:EntidadPresentadora>
+        <es-be-cm-pblo:TipoEnvio contextRef="cBasico">Ordinario</es-be-cm-pblo:TipoEnvio>
+    """)
+    p = _write_xbrl(tmp_path, body)
+    parser, _ = _make_parser()
+    instance, _ = parser.load(p)
+    assert instance.preambulo is not None
+    assert instance.preambulo.entidad_presentadora == "9000"
+    assert instance.preambulo.entidad_context_ref == "cBasico"
+    assert instance.preambulo.tipo_envio == "Ordinario"
+    assert instance.preambulo.tipo_envio_context_ref == "cBasico"
+
+
+def test_parses_estados_reportados(tmp_path: Path) -> None:
+    body = textwrap.dedent("""\
+        <xbrli:context id="cBasico">
+          <xbrli:entity>
+            <xbrli:identifier scheme="http://www.ecb.int/stats/money/mfi">ES9000</xbrli:identifier>
+          </xbrli:entity>
+          <xbrli:period><xbrli:instant>2024-01-31</xbrli:instant></xbrli:period>
+        </xbrli:context>
+        <es-be-cm-pblo:EstadosReportados>
+          <es-be-cm-pblo:CodigoEstado contextRef="cBasico">3201</es-be-cm-pblo:CodigoEstado>
+          <es-be-cm-pblo:CodigoEstado contextRef="cBasico" es-be-cm-pblo:blanco="true">3251</es-be-cm-pblo:CodigoEstado>
+        </es-be-cm-pblo:EstadosReportados>
+    """)
+    p = _write_xbrl(tmp_path, body)
+    parser, _ = _make_parser()
+    instance, _ = parser.load(p)
+    assert instance.preambulo is not None
+    estados = instance.preambulo.estados_reportados
+    assert len(estados) == 2
+    assert estados[0].codigo == "3201"
+    assert estados[0].blanco is False
+    assert estados[0].context_ref == "cBasico"
+    assert estados[1].codigo == "3251"
+    assert estados[1].blanco is True
+
+
+def test_preamble_elements_not_collected_as_facts(tmp_path: Path) -> None:
+    """EntidadPresentadora, TipoEnvio, and EstadosReportados must never appear as facts."""
+    body = textwrap.dedent("""\
+        <xbrli:context id="cBasico">
+          <xbrli:entity>
+            <xbrli:identifier scheme="http://www.ecb.int/stats/money/mfi">ES9000</xbrli:identifier>
+          </xbrli:entity>
+          <xbrli:period><xbrli:instant>2024-01-31</xbrli:instant></xbrli:period>
+        </xbrli:context>
+        <es-be-cm-pblo:EntidadPresentadora contextRef="cBasico">9000</es-be-cm-pblo:EntidadPresentadora>
+        <es-be-cm-pblo:TipoEnvio contextRef="cBasico">Ordinario</es-be-cm-pblo:TipoEnvio>
+        <es-be-cm-pblo:EstadosReportados>
+          <es-be-cm-pblo:CodigoEstado contextRef="cBasico">3201</es-be-cm-pblo:CodigoEstado>
+        </es-be-cm-pblo:EstadosReportados>
+    """)
+    p = _write_xbrl(tmp_path, body)
+    parser, _ = _make_parser()
+    instance, orphaned = parser.load(p)
+    assert instance.facts == []
+    assert orphaned == []
+
+
+def test_parses_segment_agrupacion_dimension(tmp_path: Path) -> None:
+    """Agrupacion dimension inside xbrli:segment is parsed into context dimensions."""
+    body = textwrap.dedent("""\
+        <xbrli:context id="ctx1">
+          <xbrli:entity>
+            <xbrli:identifier scheme="http://www.ecb.int/stats/money/mfi">ES9000</xbrli:identifier>
+            <xbrli:segment>
+              <xbrldi:explicitMember
+                xmlns:xbrldi="http://xbrl.org/2006/xbrldi"
+                dimension="es-be-cm-dim:Agrupacion">es-be-cm-dim:AgrupacionIndividual</xbrldi:explicitMember>
+            </xbrli:segment>
+          </xbrli:entity>
+          <xbrli:period><xbrli:instant>2024-01-31</xbrli:instant></xbrli:period>
+        </xbrli:context>
+    """)
+    p = _write_xbrl(tmp_path, body)
+    parser, _ = _make_parser()
+    instance, _ = parser.load(p)
+    ctx = instance.contexts["ctx1"]
+    assert ctx.context_element == "segment"
+    from bde_xbrl_editor.taxonomy.models import QName
+    dim_qname = QName(namespace=_BDE_DIM_NS, local_name="Agrupacion")
+    mem_qname = QName(namespace=_BDE_DIM_NS, local_name="AgrupacionIndividual")
+    assert dim_qname in ctx.dimensions
+    assert ctx.dimensions[dim_qname] == mem_qname

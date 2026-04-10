@@ -9,6 +9,10 @@ from urllib.parse import urlparse
 from lxml import etree
 
 from bde_xbrl_editor.instance.constants import (
+    BDE_DIM_NS,
+    BDE_DIM_PFX,
+    BDE_PBLO_NS,
+    BDE_PBLO_PFX,
     FILING_IND_NS,
     FILING_IND_PFX,
     ISO4217_NS,
@@ -34,7 +38,11 @@ _BASE_NSMAP: dict[str, str] = {
     "xbrldi": XBRLDI_NS,
     "iso4217": ISO4217_NS,
     FILING_IND_PFX: FILING_IND_NS,
+    BDE_PBLO_PFX: BDE_PBLO_NS,
+    BDE_DIM_PFX: BDE_DIM_NS,
 }
+
+_BDE_PBLO_BLANCO = f"{{{BDE_PBLO_NS}}}blanco"
 
 
 def _last_segment(namespace: str) -> str:
@@ -243,6 +251,28 @@ class InstanceSerializer:
             _XLINK_ARCROLE,
             "http://www.xbrl.org/2003/arcrole/facet-equivalence",
         )
+
+        # 1b. BDE preamble elements (direct children, no wrapper — IE_2008_02 spec)
+        if instance.preambulo is not None:
+            pblo = instance.preambulo
+            if pblo.entidad_presentadora:
+                el = etree.SubElement(root, f"{{{BDE_PBLO_NS}}}EntidadPresentadora")
+                el.set("contextRef", pblo.entidad_context_ref)
+                el.text = pblo.entidad_presentadora
+            if pblo.tipo_envio:
+                el = etree.SubElement(root, f"{{{BDE_PBLO_NS}}}TipoEnvio")
+                el.set("contextRef", pblo.tipo_envio_context_ref)
+                el.text = pblo.tipo_envio
+            if pblo.estados_reportados:
+                estados_el = etree.SubElement(root, f"{{{BDE_PBLO_NS}}}EstadosReportados")
+                for estado in pblo.estados_reportados:
+                    codigo_el = etree.SubElement(
+                        estados_el, f"{{{BDE_PBLO_NS}}}CodigoEstado"
+                    )
+                    codigo_el.set("contextRef", estado.context_ref)
+                    if estado.blanco:
+                        codigo_el.set(_BDE_PBLO_BLANCO, "true")
+                    codigo_el.text = estado.codigo
 
         # 2. Contexts — sorted by context_id for determinism
         for ctx in sorted(instance.contexts.values(), key=lambda c: c.context_id):

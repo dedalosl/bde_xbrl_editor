@@ -4,11 +4,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from bde_xbrl_editor.instance.constants import BDE_DIM_NS
 from bde_xbrl_editor.table_renderer.models import CellCoordinate, FactMatchResult
+from bde_xbrl_editor.taxonomy.models import QName
 
 if TYPE_CHECKING:
     from bde_xbrl_editor.instance.models import XbrlInstance
     from bde_xbrl_editor.taxonomy.models import TaxonomyStructure
+
+# BDE Agrupacion is a report-level segment dimension set on the XBRL instance context
+# to declare the consolidation scope.  It is absent from all table definition linkbases
+# so it must be stripped from fact contexts before dimension matching.
+_AGRUPACION_DIM = QName(namespace=BDE_DIM_NS, local_name="Agrupacion")
 
 
 class FactMapper:
@@ -22,7 +29,11 @@ class FactMapper:
 
         Matching rules:
         - concept must match (if coordinate.concept is None, no match)
-        - all explicit_dimensions must match
+        - all explicit_dimensions in the coordinate must be present in the fact's
+          context with the same member values
+        - the fact context's Agrupacion dimension is stripped before comparison —
+          it is a BDE instance-level segment dimension not declared in any table
+          definition linkbase and must never influence cell matching
         - period_override and entity_override are used if set
         """
         if coordinate.concept is None:
@@ -32,19 +43,21 @@ class FactMapper:
         for fact in instance.facts:
             if fact.concept != coordinate.concept:
                 continue
-            # Check explicit dimensions — fact's context must match exactly:
-            # all coordinate dims must be present with correct values AND
-            # the fact's context must not carry extra dimensions absent from coordinate.
             context = instance.contexts.get(fact.context_ref)
             if context is None:
                 continue
-            fact_dims = context.dimensions if hasattr(context, "dimensions") else {}
+            # Strip Agrupacion before matching — it is not a table axis
+            fact_dims = {
+                dim: mem
+                for dim, mem in (context.dimensions if hasattr(context, "dimensions") else {}).items()
+                if dim != _AGRUPACION_DIM
+            }
             coord_dims = coordinate.explicit_dimensions or {}
-            # All coordinate dims must be satisfied by the fact's context.
-            # Extra dimensions in the fact context (e.g. report-level meta-dimensions
-            # like Agrupacion, or period selectors like MCY that are not axes of this
-            # particular table) are intentionally ignored — the table only constrains
-            # the dimensions it declares as axes.
+            # Exact match: fact dimensions (after stripping Agrupacion) must equal
+            # coordinate dimensions exactly — not just a subset. A fact with extra
+            # dimensions would belong to a different (more specific) table cell.
+            if set(fact_dims.keys()) != set(coord_dims.keys()):
+                continue
             match = True
             for dim, expected_mem in coord_dims.items():
                 if fact_dims.get(dim) != expected_mem:
@@ -65,7 +78,7 @@ class FactMapper:
                 fact_decimals=fact.decimals,
                 duplicate_count=1,
             )
-        # Multiple matches — duplicate
+        # Multiple matches — true table-level duplicate
         fact = matching[0]
         return FactMatchResult(
             matched=True,
