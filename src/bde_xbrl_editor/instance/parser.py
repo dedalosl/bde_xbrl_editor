@@ -372,16 +372,31 @@ class InstanceParser:
         self, instance_path: Path, schema_href: str, path_str: str
     ) -> TaxonomyStructure:
         """Resolve the schemaRef href to a taxonomy path and load it."""
-        # Try relative to instance file directory first
-        if not schema_href.startswith(("http://", "https://", "/")):
+        is_remote = schema_href.startswith(("http://", "https://"))
+
+        # Try relative to instance file directory first (only for local hrefs)
+        if not is_remote and not schema_href.startswith("/"):
             candidate = instance_path.parent / schema_href
             if candidate.exists():
                 return self._loader.load(candidate)
 
-        # Try absolute path
-        abs_candidate = Path(schema_href)
-        if abs_candidate.exists():
-            return self._loader.load(abs_candidate)
+        # Try absolute path (only for local hrefs)
+        if not is_remote:
+            abs_candidate = Path(schema_href)
+            if abs_candidate.exists():
+                return self._loader.load(abs_candidate)
+
+        # For remote URLs, apply the loader's local_catalog mapping — the same
+        # catalog used during DTS discovery so the same offline mirror is reused.
+        if is_remote:
+            catalog = self._loader.settings.local_catalog
+            if catalog:
+                for prefix, local_root in catalog.items():
+                    if schema_href.startswith(prefix):
+                        rel = schema_href[len(prefix):].lstrip("/")
+                        candidate = (local_root / rel).resolve()
+                        if candidate.exists():
+                            return self._loader.load(candidate)
 
         # Fall back to manual resolver
         if self._resolver is not None:
