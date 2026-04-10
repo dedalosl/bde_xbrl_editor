@@ -344,25 +344,43 @@ def _parse_linkbase_element(
 
         table_xl = table_el.get(_XLINK_LABEL_ATTR, "")
 
-        # Build arc maps by inspecting local tag names (namespace-agnostic)
-        breakdown_arcs: dict[str, str] = {}  # breakdown_xl → axis ("x"/"y"/"z")
-        node_children: dict[str, list[str]] = {}  # parent_xl → [child_xl, ...]
+        # Build arc maps by inspecting local tag names (namespace-agnostic).
+        # Children are stored as (order, child_xl) and sorted by order before use.
+        breakdown_arcs: dict[str, tuple[float, str]] = {}  # breakdown_xl → (order, axis)
+        node_children_ordered: dict[str, list[tuple[float, str]]] = {}  # parent → [(order, child_xl)]
 
         for el in parent.iter():
             if not isinstance(el.tag, str):
                 continue
             local = el.tag.split("}")[-1] if "}" in el.tag else el.tag
+            try:
+                arc_order = float(el.get("order", "1"))
+            except (TypeError, ValueError):
+                arc_order = 1.0
             if local == "tableBreakdownArc":
                 frm = el.get(_XLINK_FROM, "")
                 to = el.get(_XLINK_TO, "")
                 axis = el.get("axis", _AXIS_X)
                 if frm == table_xl and to:
-                    breakdown_arcs[to] = axis
+                    # Keep only the lowest-order arc if duplicates exist
+                    if to not in breakdown_arcs or arc_order < breakdown_arcs[to][0]:
+                        breakdown_arcs[to] = (arc_order, axis)
             elif local in ("breakdownTreeArc", "definitionNodeSubtreeArc"):
                 frm = el.get(_XLINK_FROM, "")
                 to = el.get(_XLINK_TO, "")
                 if frm and to:
-                    node_children.setdefault(frm, []).append(to)
+                    node_children_ordered.setdefault(frm, []).append((arc_order, to))
+
+        # Sort children by arc order and build the final axis → breakdown map
+        node_children: dict[str, list[str]] = {
+            parent_xl: [child_xl for _, child_xl in sorted(pairs)]
+            for parent_xl, pairs in node_children_ordered.items()
+        }
+        # Sort breakdown arcs by order to get consistent breakdown ordering per axis
+        breakdown_arcs_sorted: dict[str, str] = {
+            bd_xl: axis
+            for bd_xl, (_, axis) in sorted(breakdown_arcs.items(), key=lambda kv: kv[1][0])
+        }
 
         # Build label/rc/fin maps keyed by xlink:label.
         # Primary source: sibling *-lab-*.xml files, keyed by element id attribute.
@@ -408,14 +426,15 @@ def _parse_linkbase_element(
         y_nodes: list[tuple[etree._Element, str]] = []
         z_nodes: list[tuple[etree._Element, str]] = []
 
-        for bd_xl, axis in breakdown_arcs.items():
+        for bd_xl, axis in breakdown_arcs_sorted.items():
             bd_el = all_nodes.get(bd_xl)
             if bd_el is not None:
                 bd_pco_raw = bd_el.get("parentChildOrder")
                 bd_pco = bd_pco_raw if bd_pco_raw in _VALID_PCO else table_pco
             else:
                 bd_pco = table_pco
-            # Root nodes are children of the breakdown node via breakdownTreeArc
+            # Root nodes are children of the breakdown node via breakdownTreeArc,
+            # already ordered by arc @order via node_children.
             root_nodes = [
                 (all_nodes[c], bd_pco)
                 for c in node_children.get(bd_xl, [])
