@@ -9,6 +9,10 @@ from urllib.parse import urlparse
 from lxml import etree
 
 from bde_xbrl_editor.instance.constants import (
+    BDE_DIM_NS,
+    BDE_DIM_PFX,
+    BDE_PBLO_NS,
+    BDE_PBLO_PFX,
     FILING_IND_NS,
     FILING_IND_PFX,
     ISO4217_NS,
@@ -18,6 +22,7 @@ from bde_xbrl_editor.instance.constants import (
     XLINK_NS,
 )
 from bde_xbrl_editor.instance.models import (
+    BdePreambulo,
     InstanceSaveError,
     ReportingPeriod,
     XbrlContext,
@@ -34,6 +39,12 @@ _BASE_NSMAP: dict[str, str] = {
     "xbrldi": XBRLDI_NS,
     "iso4217": ISO4217_NS,
     FILING_IND_PFX: FILING_IND_NS,
+}
+
+# BDE-specific namespaces added to the root element when preambulo data is present
+_BDE_NSMAP: dict[str, str] = {
+    BDE_PBLO_PFX: BDE_PBLO_NS,
+    BDE_DIM_PFX: BDE_DIM_NS,
 }
 
 
@@ -217,6 +228,35 @@ def _build_unit_el(unit: XbrlUnit) -> etree._Element:
     return unit_el
 
 
+def _build_bde_preambulo_els(preambulo: BdePreambulo, root: etree._Element) -> None:
+    """Append BDE IE_2008_02 preamble elements as direct children of *root*.
+
+    Order per spec: EntidadPresentadora → TipoEnvio → EstadosReportados.
+    All elements share the same contextRef (typically the dimensionless context).
+    """
+    ctx_ref = preambulo.context_ref
+
+    if preambulo.entidad_presentadora:
+        el = etree.SubElement(root, f"{{{BDE_PBLO_NS}}}EntidadPresentadora")
+        el.set("contextRef", ctx_ref)
+        el.text = preambulo.entidad_presentadora
+
+    if preambulo.tipo_envio:
+        el = etree.SubElement(root, f"{{{BDE_PBLO_NS}}}TipoEnvio")
+        el.set("contextRef", ctx_ref)
+        el.text = preambulo.tipo_envio
+
+    if preambulo.estados_reportados:
+        wrapper = etree.SubElement(root, f"{{{BDE_PBLO_NS}}}EstadosReportados")
+        blanco_attr = f"{{{BDE_PBLO_NS}}}blanco"
+        for estado in preambulo.estados_reportados:
+            estado_el = etree.SubElement(wrapper, f"{{{BDE_PBLO_NS}}}CodigoEstado")
+            estado_el.set("contextRef", estado.context_ref or ctx_ref)
+            if estado.blanco:
+                estado_el.set(blanco_attr, "true")
+            estado_el.text = estado.codigo
+
+
 class InstanceSerializer:
     """Serialises an XbrlInstance to XBRL 2.1 XML bytes or writes to disk."""
 
@@ -225,11 +265,13 @@ class InstanceSerializer:
 
         The output is always deterministic for the same instance state.
         """
-        # Build namespace map: base namespaces + every namespace used in this instance.
+        # Build namespace map: base namespaces + BDE namespaces (when needed) +
+        # every other namespace used in this instance.
         # All prefixes are declared on the root element so the output is self-contained
         # and validators can resolve every QName without relying on default namespaces.
+        bde_nsmap = _BDE_NSMAP if instance.bde_preambulo is not None else {}
         extra_nsmap = _collect_extra_nsmap(instance)
-        full_nsmap: dict[str, str] = {**_BASE_NSMAP, **extra_nsmap}
+        full_nsmap: dict[str, str] = {**_BASE_NSMAP, **bde_nsmap, **extra_nsmap}
         ns_to_prefix: dict[str, str] = {ns: pfx for pfx, ns in full_nsmap.items()}
 
         # Root element
@@ -244,15 +286,19 @@ class InstanceSerializer:
             "http://www.xbrl.org/2003/arcrole/facet-equivalence",
         )
 
-        # 2. Contexts — sorted by context_id for determinism
+        # 2. BDE preamble elements (before contexts — per IE_2008_02 convention)
+        if instance.bde_preambulo is not None:
+            _build_bde_preambulo_els(instance.bde_preambulo, root)
+
+        # 3. Contexts — sorted by context_id for determinism
         for ctx in sorted(instance.contexts.values(), key=lambda c: c.context_id):
             root.append(_build_context_el(ctx, ns_to_prefix))
 
-        # 3. Units — sorted by unit_id
+        # 4. Units — sorted by unit_id
         for unit in sorted(instance.units.values(), key=lambda u: u.unit_id):
             root.append(_build_unit_el(unit))
 
-        # 4. Filing indicators wrapper
+        # 5. Filing indicators wrapper
         if instance.filing_indicators:
             fi_wrapper = etree.SubElement(
                 root, f"{{{FILING_IND_NS}}}fIndicators"
@@ -268,7 +314,7 @@ class InstanceSerializer:
                 )
                 fi_el.text = fi.template_id
 
-        # 5. Known facts
+        # 6. Known facts
         for fact in instance.facts:
             concept_qname = fact.concept
             tag = (
@@ -286,7 +332,7 @@ class InstanceSerializer:
             fact_el = etree.SubElement(root, tag, attrib=attrib)
             fact_el.text = fact.value
 
-        # 6. Orphaned facts — preserved verbatim in original document order
+        # 7. Orphaned facts — preserved verbatim in original document order
         for orphan in instance.orphaned_facts:
             orphan_el = etree.fromstring(orphan.raw_element_xml)  # noqa: S320
             root.append(orphan_el)

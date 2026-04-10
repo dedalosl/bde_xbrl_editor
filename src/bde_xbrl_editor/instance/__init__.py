@@ -14,6 +14,8 @@ from bde_xbrl_editor.instance.context_builder import (
 from bde_xbrl_editor.instance.editor import InstanceEditor
 from bde_xbrl_editor.instance.factory import InstanceFactory
 from bde_xbrl_editor.instance.models import (
+    BdeEstadoReportado,
+    BdePreambulo,
     ContextId,
     DimensionalConfiguration,
     DuplicateFactError,
@@ -56,6 +58,9 @@ __all__ = [
     "Fact",
     "ContextId",
     "UnitId",
+    # BDE IE_2008_02 preamble
+    "BdePreambulo",
+    "BdeEstadoReportado",
     # Feature 004 additions
     "InstanceEditor",
     "InstanceParser",

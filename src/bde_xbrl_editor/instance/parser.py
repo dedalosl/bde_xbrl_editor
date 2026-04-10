@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from lxml import etree
 
 from bde_xbrl_editor.instance.constants import (
+    BDE_PBLO_NS,
     FILING_IND_NS,
     LINK_NS,
     XBRLDI_NS,
@@ -17,6 +18,8 @@ from bde_xbrl_editor.instance.constants import (
     XLINK_NS,
 )
 from bde_xbrl_editor.instance.models import (
+    BdeEstadoReportado,
+    BdePreambulo,
     ContextId,
     Fact,
     FilingIndicator,
@@ -56,13 +59,23 @@ _FILING_IND = f"{{{FILING_IND_NS}}}filingIndicator"
 _XLINK_HREF = f"{{{XLINK_NS}}}href"
 _XLINK_TYPE = f"{{{XLINK_NS}}}type"
 
+# BDE IE_2008_02 preamble Clark-notation tags
+_BDE_ENTIDAD = f"{{{BDE_PBLO_NS}}}EntidadPresentadora"
+_BDE_TIPO_ENVIO = f"{{{BDE_PBLO_NS}}}TipoEnvio"
+_BDE_ESTADOS_REPORTADOS = f"{{{BDE_PBLO_NS}}}EstadosReportados"
+_BDE_CODIGO_ESTADO = f"{{{BDE_PBLO_NS}}}CodigoEstado"
+
 # Known non-fact tags (skipped when iterating facts)
+# All es-be-cm-pblo namespace elements are BDE preamble data, not XBRL facts.
 _NON_FACT_TAGS = frozenset([
     _LINK_SCHEMA_REF,
     _XBRLI_CONTEXT,
     _XBRLI_UNIT,
     _FILING_IND,
     f"{{{FILING_IND_NS}}}fIndicators",
+    _BDE_ENTIDAD,
+    _BDE_TIPO_ENVIO,
+    _BDE_ESTADOS_REPORTADOS,
 ])
 
 
@@ -267,7 +280,12 @@ class InstanceParser:
             unit = _parse_unit(unit_el)
             units[unit.unit_id] = unit
 
-        # Stage 5: Parse filing indicators
+        # Stage 5a: Parse BDE IE_2008_02 preamble (EntidadPresentadora, TipoEnvio,
+        # EstadosReportados).  Must run before fact iteration so the preambulo
+        # elements are already identified and excluded from the facts loop.
+        bde_preambulo = _parse_bde_preambulo(root)
+
+        # Stage 5b: Parse Eurofiling filing indicators
         filing_indicators: list[FilingIndicator] = []
         # They may be inside ef-find:fIndicators wrapper or directly as children
         for child in root:
@@ -291,10 +309,9 @@ class InstanceParser:
                 continue
             if child.tag in _NON_FACT_TAGS:
                 continue
-            # Skip fIndicators wrapper
-            local = child.tag.split("}")[-1] if "}" in child.tag else child.tag
+            # Skip fIndicators wrapper and any other Eurofiling or BDE preamble elements
             ns = child.tag.split("}")[0][1:] if "}" in child.tag else ""
-            if ns == FILING_IND_NS:
+            if ns in (FILING_IND_NS, BDE_PBLO_NS):
                 continue
             if child.tag == _LINK_SCHEMA_REF:
                 continue
@@ -344,6 +361,7 @@ class InstanceParser:
             units=units,
             facts=facts,
             orphaned_facts=orphaned,
+            bde_preambulo=bde_preambulo,
             source_path=path,
             _dirty=False,
         )
@@ -390,3 +408,76 @@ def _parse_filing_indicator(el: etree._Element, out: list[FilingIndicator]) -> N
             filed=filed,
             context_ref=context_ref,
         ))
+
+
+def _parse_bde_preambulo(root: etree._Element) -> BdePreambulo | None:
+    """Extract BDE IE_2008_02 preamble elements from the document root.
+
+    BDE instances carry three types of preamble data as direct children of
+    ``<xbrli:xbrl>`` in the ``es-be-cm-pblo`` namespace:
+
+    * ``EntidadPresentadora`` — 4-digit entity code (no "ES" prefix).
+    * ``TipoEnvio`` — submission type (Ordinario / Complementario / Sustitutivo).
+    * ``EstadosReportados`` — wrapper containing one or more ``CodigoEstado``
+      elements, each optionally carrying ``es-be-cm-pblo:blanco="true"`` to
+      signal a clearing submission for that estado.
+
+    The Agrupacion consolidation group is NOT a preamble element — it is a
+    proper XBRL explicit dimension declared in the ``es-be-cm-dim`` namespace
+    and encoded as ``<xbrldi:explicitMember>`` inside ``<xbrli:segment>``.
+    It is therefore parsed as a regular dimension by ``_parse_context()``.
+
+    Returns ``None`` when no preamble elements are present (non-BDE instance).
+    """
+    entidad = ""
+    tipo_envio = ""
+    estados: list[BdeEstadoReportado] = []
+    context_ref = ""
+    found_any = False
+
+    for child in root:
+        if not isinstance(child.tag, str):
+            continue
+        tag = child.tag
+
+        if tag == _BDE_ENTIDAD:
+            found_any = True
+            entidad = (child.text or "").strip()
+            context_ref = context_ref or child.get("contextRef", "")
+
+        elif tag == _BDE_TIPO_ENVIO:
+            found_any = True
+            tipo_envio = (child.text or "").strip()
+            context_ref = context_ref or child.get("contextRef", "")
+
+        elif tag == _BDE_ESTADOS_REPORTADOS:
+            found_any = True
+            # CodigoEstado children: each declares one estado code.
+            # blanco="true" signals that the estado is being cleared.
+            blanco_attr = f"{{{BDE_PBLO_NS}}}blanco"
+            for estado_el in child:
+                if not isinstance(estado_el.tag, str):
+                    continue
+                if estado_el.tag != _BDE_CODIGO_ESTADO:
+                    continue
+                codigo = (estado_el.text or "").strip()
+                if not codigo:
+                    continue
+                blanco_val = estado_el.get(blanco_attr, "false").lower()
+                blanco = blanco_val in ("true", "1", "yes")
+                estado_ctx = estado_el.get("contextRef", "") or context_ref
+                estados.append(BdeEstadoReportado(
+                    codigo=codigo,
+                    blanco=blanco,
+                    context_ref=estado_ctx,
+                ))
+
+    if not found_any:
+        return None
+
+    return BdePreambulo(
+        entidad_presentadora=entidad,
+        tipo_envio=tipo_envio,
+        estados_reportados=estados,
+        context_ref=context_ref,
+    )
