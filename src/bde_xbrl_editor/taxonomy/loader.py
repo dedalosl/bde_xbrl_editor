@@ -383,6 +383,10 @@ class TaxonomyLoader:
         """Remote URLs that were skipped (not in local catalog) during the last load."""
         return self._last_skipped_urls
 
+    @property
+    def settings(self) -> LoaderSettings:
+        return self._settings
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------

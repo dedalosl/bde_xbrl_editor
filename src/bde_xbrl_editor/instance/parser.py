@@ -360,6 +360,13 @@ class InstanceParser:
             if candidate.exists():
                 return self._loader.load(candidate)
 
+        # Try catalog resolution for remote URLs (same catalog used for taxonomy loading)
+        from bde_xbrl_editor.taxonomy.discovery import _is_remote, _resolve_href  # noqa: PLC0415
+        if _is_remote(schema_href):
+            resolved = _resolve_href(schema_href, instance_path.parent, self._loader.settings)
+            if resolved is not None and resolved.exists():
+                return self._loader.load(resolved)
+
         # Try absolute path
         abs_candidate = Path(schema_href)
         if abs_candidate.exists():
