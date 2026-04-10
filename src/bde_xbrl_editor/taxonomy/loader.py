@@ -99,6 +99,114 @@ def _sniff_linkbase_type(path: Path) -> str:
     return "unknown"
 
 
+_ARCROLE_GROUP_TABLE = "http://www.eurofiling.info/xbrl/arcrole/group-table"
+_NS_XLINK_FULL = "http://www.w3.org/1999/xlink"
+
+
+def _parse_group_table_order(linkbase_paths: list[Path]) -> dict[str, int]:
+    """Parse presentation linkbases for group-table arcrole arcs.
+
+    The BDE taxonomy uses a two-level tree in the presentation linkbase:
+      root_concept --[order=N]--> table_group --[order=M]--> table
+    or directly:
+      root_concept --[order=N]--> table
+
+    This function performs a DFS traversal of that tree (ordered by arc order)
+    and assigns each leaf table a flat sequential position (0, 1, 2, ...).
+
+    Returns a mapping of table XML id (fragment) → flat display position.
+    Used to sort TaxonomyStructure.tables in the intended display order.
+    Tables not referenced in any presentation linkbase are placed last.
+    """
+    # children[parent_fragment] = [(order, child_fragment)]
+    children: dict[str, list[tuple[float, str]]] = {}
+    # label_to_href_fragment: xlink:label → href#fragment (only for *-rend.xml locs)
+    label_to_fragment: dict[str, str] = {}
+    # label_to_is_rend: whether the locator points to a *-rend.xml (i.e., a real table)
+    label_is_rend: set[str] = set()
+    # Root concept fragment (the "from" side of root→group/table arcs)
+    root_fragment: str | None = None
+
+    for lb_path in linkbase_paths:
+        lb_type = _sniff_linkbase_type(lb_path)
+        if lb_type not in ("pres", "unknown"):
+            continue
+        try:
+            tree = etree.parse(str(lb_path))  # noqa: S320
+        except Exception:  # noqa: BLE001
+            continue
+        root_el = tree.getroot()
+        # Build label → href-fragment map from all loc elements
+        local_label_to_fragment: dict[str, str] = {}
+        local_label_is_rend: set[str] = set()
+        for loc in root_el.iter():
+            if not isinstance(loc.tag, str):
+                continue
+            if loc.tag.split("}")[-1] != "loc":
+                continue
+            label = loc.get(f"{{{_NS_XLINK_FULL}}}label") or ""
+            href = loc.get(f"{{{_NS_XLINK_FULL}}}href") or ""
+            if label and "#" in href:
+                fragment = href.split("#", 1)[1]
+                local_label_to_fragment[label] = fragment
+                if "-rend.xml" in href:
+                    local_label_is_rend.add(label)
+        label_to_fragment.update(local_label_to_fragment)
+        label_is_rend.update(local_label_is_rend)
+        # Collect group-table arcs
+        for arc in root_el.iter():
+            if not isinstance(arc.tag, str):
+                continue
+            if arc.tag.split("}")[-1] != "arc":
+                continue
+            if arc.get(f"{{{_NS_XLINK_FULL}}}arcrole") != _ARCROLE_GROUP_TABLE:
+                continue
+            from_label = arc.get(f"{{{_NS_XLINK_FULL}}}from") or ""
+            to_label = arc.get(f"{{{_NS_XLINK_FULL}}}to") or ""
+            from_frag = local_label_to_fragment.get(from_label, from_label)
+            to_frag = local_label_to_fragment.get(to_label)
+            if not to_frag:
+                continue
+            try:
+                arc_order = float(arc.get("order", "1"))
+            except (TypeError, ValueError):
+                arc_order = 1.0
+            children.setdefault(from_frag, []).append((arc_order, to_frag))
+            # The first "from" side that is NOT a rend table is the root
+            if root_fragment is None and from_label not in local_label_is_rend:
+                root_fragment = from_frag
+
+    if not children or root_fragment is None:
+        return {}
+
+    # Sort children by arc order
+    for parent in children:
+        children[parent].sort(key=lambda x: x[0])
+
+    # Pre-order DFS traversal to assign flat positions to leaf tables.
+    # Stack holds items in LIFO order; push children in reverse so the first
+    # child (lowest order) is processed next.
+    rend_fragments = set(label_to_fragment[lbl] for lbl in label_is_rend)
+    flat_order: dict[str, int] = {}
+    counter = 0
+    stack: list[str] = [root_fragment]
+    visited: set[str] = set()
+    while stack:
+        node = stack.pop()  # LIFO
+        if node in visited:
+            continue
+        visited.add(node)
+        if node in rend_fragments:
+            flat_order[node] = counter
+            counter += 1
+        # Push children in REVERSE order so first child (lowest arc order) is on top
+        node_children = children.get(node, [])
+        for _, child_frag in reversed(node_children):
+            if child_frag not in visited:
+                stack.append(child_frag)
+    return flat_order
+
+
 def _build_concept_id_map(concepts: dict[QName, Concept]) -> dict[str, QName]:
     """Build a map from XML id-style fragment → QName.
 
@@ -615,6 +723,11 @@ class TaxonomyLoader:
                         file_path=str(lb_path),
                         message=f"Unexpected error parsing table linkbase: {exc}",
                     ) from exc
+
+        # Sort tables by the order attribute on group-table arcs in presentation linkbases.
+        group_table_order = _parse_group_table_order(list(linkbase_paths))
+        if group_table_order:
+            tables.sort(key=lambda t: group_table_order.get(t.table_id, float("inf")))
 
         # Step 6: Parse formula linkbase (if present)
         progress("Assembling taxonomy structure…", 6)
