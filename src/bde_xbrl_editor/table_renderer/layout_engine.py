@@ -201,8 +201,12 @@ def _build_axis_grid(
 
         accumulated = _accumulate_constraints(parent_constraints, node.aspect_constraints)
         all_non_abstract = _collect_all_non_abstract(node)
-        is_leaf = not node.is_abstract
-        span = len(all_non_abstract)
+        # A roll-up node is non-abstract AND has children.  It contributes both a
+        # spanning header cell (at this level) and a virtual leaf cell (at the next
+        # level, whose position follows parentChildOrder).
+        is_rollup = not node.is_abstract and bool(node.children)
+        is_leaf = not node.is_abstract and not node.children
+        span = max(len(all_non_abstract), 1)
 
         label = _get_label(node, taxonomy, language_preference)
         cell = HeaderCell(
@@ -218,8 +222,36 @@ def _build_axis_grid(
         )
         levels[level].append(cell)
 
-        for child in node.children:
-            _dfs(child, level + 1, accumulated)
+        if is_rollup:
+            # Build a virtual leaf that represents this roll-up node's own data column.
+            # It inherits all constraints from the roll-up node itself.
+            virtual_leaf = HeaderCell(
+                label="",  # label already shown in the spanning header above
+                rc_code=_get_rc_code(node, taxonomy, language_preference),
+                fin_code=_get_fin_code(node, taxonomy, language_preference),
+                span=1,
+                level=level + 1,
+                is_leaf=True,
+                is_abstract=False,
+                source_node=node,
+                accumulated_aspect_constraints=accumulated,
+            )
+            while len(levels) <= level + 1:
+                levels.append([])
+            pco = node.parent_child_order
+            if pco == "children-first":
+                # Children come before the roll-up's own virtual leaf
+                for child in node.children:
+                    _dfs(child, level + 1, accumulated)
+                levels[level + 1].append(virtual_leaf)
+            else:
+                # parent-first (default): virtual leaf comes before children
+                levels[level + 1].append(virtual_leaf)
+                for child in node.children:
+                    _dfs(child, level + 1, accumulated)
+        else:
+            for child in node.children:
+                _dfs(child, level + 1, accumulated)
 
     for child in root.children:
         _dfs(child, 0, {})

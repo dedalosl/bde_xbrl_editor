@@ -97,12 +97,16 @@ def _node_type_from_tag(tag: str) -> str:
     return mapping.get(local, "rule")
 
 
+_VALID_PCO = frozenset(("parent-first", "children-first"))
+
+
 def _build_breakdown_node(
     el: etree._Element,
     label_map: dict[str, str],  # xlink:label → display label
     rc_map: dict[str, str],     # xlink:label → rc_code (eurofiling roles)
     fin_map: dict[str, str],    # xlink:label → fin_code (bde fin-code role)
     child_map: dict[str, list[etree._Element]],  # xlink:label → child elements
+    inherited_pco: str = "parent-first",  # effective parentChildOrder from ancestor
 ) -> BreakdownNode:
     xlink_label = el.get(_XLINK_LABEL_ATTR, "")
     node_type = _node_type_from_tag(el.tag)
@@ -111,6 +115,8 @@ def _build_breakdown_node(
     fin_code = fin_map.get(xlink_label)
     is_abstract = el.get("abstract", "false").lower() == "true"
     merge = el.get("merge", "false").lower() == "true"
+    own_pco = el.get("parentChildOrder")
+    effective_pco = own_pco if own_pco in _VALID_PCO else inherited_pco
 
     aspect_constraints: dict[str, Any] = {}
     # explicit_dims accumulates across multiple <formula:explicitDimension> children
@@ -159,10 +165,12 @@ def _build_breakdown_node(
     if explicit_dims:
         aspect_constraints["explicitDimension"] = explicit_dims
 
-    # Build children recursively
+    # Build children recursively, propagating effective_pco as the inherited value
     children: list[BreakdownNode] = []
     for child_el in child_map.get(xlink_label, []):
-        children.append(_build_breakdown_node(child_el, label_map, rc_map, fin_map, child_map))
+        children.append(
+            _build_breakdown_node(child_el, label_map, rc_map, fin_map, child_map, effective_pco)
+        )
 
     return BreakdownNode(
         node_type=node_type,
@@ -173,6 +181,7 @@ def _build_breakdown_node(
         merge=merge,
         children=children,
         aspect_constraints=aspect_constraints,
+        parent_child_order=effective_pco,
     )
 
 
@@ -318,6 +327,8 @@ def _parse_linkbase_element(
     """Parse table elements from within a linkbase or linkbase container."""
     for table_el in container.iter(_TABLE):
         table_id = table_el.get("id", "")
+        table_pco_raw = table_el.get("parentChildOrder")
+        table_pco = table_pco_raw if table_pco_raw in _VALID_PCO else "parent-first"
 
         # The gen:link parent holds all sibling nodes/arcs for this table.
         # The xlink:role (ELR) is on the gen:link container, not on table:table itself.
@@ -391,15 +402,22 @@ def _parse_linkbase_element(
                 all_nodes[c] for c in child_xls if c in all_nodes
             ]
 
-        # Separate breakdown root nodes by axis
-        x_nodes: list[etree._Element] = []
-        y_nodes: list[etree._Element] = []
-        z_nodes: list[etree._Element] = []
+        # Separate breakdown root nodes by axis, also resolving each breakdown's PCO.
+        # breakdown_pco[bd_xl] = effective parentChildOrder for that breakdown
+        x_nodes: list[tuple[etree._Element, str]] = []  # (element, pco)
+        y_nodes: list[tuple[etree._Element, str]] = []
+        z_nodes: list[tuple[etree._Element, str]] = []
 
         for bd_xl, axis in breakdown_arcs.items():
+            bd_el = all_nodes.get(bd_xl)
+            if bd_el is not None:
+                bd_pco_raw = bd_el.get("parentChildOrder")
+                bd_pco = bd_pco_raw if bd_pco_raw in _VALID_PCO else table_pco
+            else:
+                bd_pco = table_pco
             # Root nodes are children of the breakdown node via breakdownTreeArc
             root_nodes = [
-                all_nodes[c]
+                (all_nodes[c], bd_pco)
                 for c in node_children.get(bd_xl, [])
                 if c in all_nodes
             ]
@@ -411,29 +429,30 @@ def _parse_linkbase_element(
                 z_nodes.extend(root_nodes)
 
         def make_root_node(
-            node_els: list[etree._Element],
+            node_pco_pairs: list[tuple[etree._Element, str]],
             _lm: dict[str, str] = label_map,
             _rm: dict[str, str] = rc_map,
             _fm: dict[str, str] = fin_map,
             _cem: dict[str, list[etree._Element]] = child_elem_map,
         ) -> BreakdownNode:
-            if not node_els:
+            if not node_pco_pairs:
                 return BreakdownNode(node_type="rule", label=None)
-            if len(node_els) == 1:
-                return _build_breakdown_node(node_els[0], _lm, _rm, _fm, _cem)
+            if len(node_pco_pairs) == 1:
+                n, pco = node_pco_pairs[0]
+                return _build_breakdown_node(n, _lm, _rm, _fm, _cem, pco)
             # Multiple root nodes — wrap in abstract parent
             root = BreakdownNode(node_type="rule", is_abstract=True)
             root.children = [
-                _build_breakdown_node(n, _lm, _rm, _fm, _cem)
-                for n in node_els
+                _build_breakdown_node(n, _lm, _rm, _fm, _cem, pco)
+                for n, pco in node_pco_pairs
             ]
             return root
 
         x_bd = make_root_node(x_nodes)
         y_bd = make_root_node(y_nodes)
         z_bds = tuple(
-            _build_breakdown_node(n, label_map, rc_map, fin_map, child_elem_map)
-            for n in z_nodes
+            _build_breakdown_node(n, label_map, rc_map, fin_map, child_elem_map, pco)
+            for n, pco in z_nodes
         )
 
         table_label = label_map.get(table_xl, table_id)

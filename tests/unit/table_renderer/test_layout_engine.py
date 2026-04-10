@@ -70,7 +70,7 @@ class TestAxisDFS:
         assert all(c.is_leaf for c in cells)
 
     def test_two_level_x_axis_span(self):
-        """Two-level X-axis: parent with 2 children, parent is non-abstract."""
+        """Two-level X-axis: non-abstract parent with 2 children is a roll-up node."""
         x_root = _make_node(
             children=[
                 _make_node(
@@ -87,13 +87,17 @@ class TestAxisDFS:
         engine = TableLayoutEngine(taxonomy)
         layout = engine.compute(_simple_table(x_root, y_root))
 
-        # Non-abstract parent P has span=3 (1 for itself + 2 for its children)
+        # Roll-up node P: spanning header (not a leaf) with span=3 (itself + 2 children)
         assert layout.column_header.levels[0][0].span == 3
-        assert layout.column_header.levels[0][0].is_leaf
-        # Level 1: two children with span=1
-        assert len(layout.column_header.levels[1]) == 2
+        assert not layout.column_header.levels[0][0].is_leaf
+        # Level 1: virtual leaf for P + A + B = 3 cells
+        assert len(layout.column_header.levels[1]) == 3
         assert all(c.span == 1 for c in layout.column_header.levels[1])
-        # Total leaf count: P + A + B = 3
+        # First cell is the virtual leaf (parent-first default), last two are children
+        assert layout.column_header.levels[1][0].source_node.label == "P"
+        assert layout.column_header.levels[1][1].source_node.label == "A"
+        assert layout.column_header.levels[1][2].source_node.label == "B"
+        # Total leaf count: P-virtual + A + B = 3
         assert layout.column_header.leaf_count == 3
 
     def test_y_axis_symmetric(self):
@@ -147,6 +151,83 @@ class TestAxisDFS:
         assert layout.column_header.levels[0][0].span == 4
         # Total leaf count: G + A + B + C = 4
         assert layout.column_header.leaf_count == 4
+
+
+class TestRollUpNodes:
+    """Tests for roll-up node handling (non-abstract nodes with children)."""
+
+    def _make_rollup_node(
+        self,
+        label: str,
+        children: list,
+        parent_child_order: str = "parent-first",
+    ) -> BreakdownNode:
+        return BreakdownNode(
+            node_type="rule",
+            label=label,
+            is_abstract=False,
+            children=children,
+            parent_child_order=parent_child_order,
+        )
+
+    def test_rollup_parent_first_virtual_leaf_before_children(self):
+        """parent-first: virtual leaf is the first cell at level 1, before children."""
+        rollup = self._make_rollup_node(
+            "R0180",
+            children=[_make_node("R0185")],
+            parent_child_order="parent-first",
+        )
+        x_root = _make_node(children=[rollup])
+        y_root = _make_node(children=[_make_node("Row")])
+        taxonomy = _make_taxonomy()
+        layout = TableLayoutEngine(taxonomy).compute(_simple_table(x_root, y_root))
+
+        # Level 0: roll-up spanning header (not a leaf, span=2)
+        assert len(layout.column_header.levels[0]) == 1
+        assert not layout.column_header.levels[0][0].is_leaf
+        assert layout.column_header.levels[0][0].span == 2
+        # Level 1: [R0180-virtual, R0185] — virtual comes first (parent-first)
+        assert len(layout.column_header.levels[1]) == 2
+        assert layout.column_header.levels[1][0].is_leaf
+        assert layout.column_header.levels[1][0].source_node.label == "R0180"  # virtual
+        assert layout.column_header.levels[1][1].source_node.label == "R0185"
+        # Leaf count = 2 (virtual + child)
+        assert layout.column_header.leaf_count == 2
+
+    def test_rollup_children_first_virtual_leaf_after_children(self):
+        """children-first: virtual leaf is the last cell at level 1, after children."""
+        rollup = self._make_rollup_node(
+            "R0180",
+            children=[_make_node("R0185"), _make_node("R0186")],
+            parent_child_order="children-first",
+        )
+        x_root = _make_node(children=[rollup])
+        y_root = _make_node(children=[_make_node("Row")])
+        taxonomy = _make_taxonomy()
+        layout = TableLayoutEngine(taxonomy).compute(_simple_table(x_root, y_root))
+
+        # Level 1: [R0185, R0186, R0180-virtual] — virtual comes last (children-first)
+        assert len(layout.column_header.levels[1]) == 3
+        assert layout.column_header.levels[1][0].source_node.label == "R0185"
+        assert layout.column_header.levels[1][1].source_node.label == "R0186"
+        assert layout.column_header.levels[1][2].source_node.label == "R0180"  # virtual last
+        assert layout.column_header.levels[1][2].is_leaf
+        assert layout.column_header.leaf_count == 3
+
+    def test_rollup_body_has_correct_column_count(self):
+        """Body columns match leaf count including the virtual leaf."""
+        rollup = self._make_rollup_node(
+            "R0180",
+            children=[_make_node("R0185")],
+        )
+        x_root = _make_node(children=[rollup])
+        y_root = _make_node(children=[_make_node("Row1"), _make_node("Row2")])
+        taxonomy = _make_taxonomy()
+        layout = TableLayoutEngine(taxonomy).compute(_simple_table(x_root, y_root))
+
+        # 2 rows × 2 columns (R0180-virtual + R0185)
+        assert len(layout.body) == 2
+        assert all(len(row) == 2 for row in layout.body)
 
 
 class TestRowAxisDFS:
@@ -323,7 +404,8 @@ class TestLabelFallback:
         assert layout.row_header.levels[0][0].rc_code == "r0010"
 
     def test_rc_code_none_on_branch(self):
-        """Branch nodes have rc_code=None."""
+        """Roll-up node (non-abstract with children) has rc_code=None on the spanning header;
+        virtual leaf inherits the same rc_code (None); children follow."""
         x_root = _make_node(
             children=[
                 _make_node(
@@ -340,8 +422,12 @@ class TestLabelFallback:
         taxonomy = _make_taxonomy()
         engine = TableLayoutEngine(taxonomy)
         layout = engine.compute(_simple_table(x_root, y_root))
+        # Level 0: spanning header for roll-up Parent (rc_code=None)
         assert layout.column_header.levels[0][0].rc_code is None
-        assert layout.column_header.levels[1][0].rc_code == "c0010"
+        # Level 1: [Parent-virtual (rc_code=None), Child1 (rc_code=c0010), Child2 (rc_code=c0020)]
+        assert layout.column_header.levels[1][0].rc_code is None   # virtual leaf
+        assert layout.column_header.levels[1][1].rc_code == "c0010"
+        assert layout.column_header.levels[1][2].rc_code == "c0020"
 
 
 class TestDimensionalExclusion:

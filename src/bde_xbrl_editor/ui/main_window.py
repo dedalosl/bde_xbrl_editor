@@ -45,6 +45,8 @@ class MainWindow(QMainWindow):
         self._table_view = None  # XbrlTableView | None
         self._sidebar: ActivitySidebar | None = None
         self._context_bar: QFrame | None = None
+        self._table_chip_sep: QLabel | None = None
+        self._table_chip_label: QLabel | None = None
 
         # Validation
         self._validation_thread: QThread | None = None
@@ -337,6 +339,23 @@ class MainWindow(QMainWindow):
             inst_close.clicked.connect(self._on_close_instance)
             layout.addWidget(inst_close)
 
+        # ── Selected-table chip ────────────────────────────────────────
+        table_sep = QLabel("›")
+        table_sep.setStyleSheet(sep_style)
+        table_sep.setVisible(False)
+        layout.addWidget(table_sep)
+        self._table_chip_sep = table_sep
+
+        table_chip = QLabel()
+        table_chip.setStyleSheet(
+            "QLabel { color: #D4E8FF; font-size: 11px; font-weight: 600;"
+            " background: rgba(255,255,255,0.08); border-radius: 3px;"
+            " padding: 2px 7px; }"
+        )
+        table_chip.setVisible(False)
+        layout.addWidget(table_chip)
+        self._table_chip_label = table_chip
+
         layout.addStretch()
 
         # ── Action buttons on the right ────────────────────────────────
@@ -404,6 +423,8 @@ class MainWindow(QMainWindow):
         self._table_view = None
         self._sidebar = None
         self._context_bar = None
+        self._table_chip_sep = None
+        self._table_chip_label = None
 
         self._reload_action.setEnabled(False)
         self._new_instance_action.setEnabled(False)
@@ -610,6 +631,14 @@ class MainWindow(QMainWindow):
     def _on_table_selected(self, table) -> None:
         if self._table_view is None or self._current_taxonomy is None:
             return
+        # Update the selected-table chip in the context bar
+        if self._table_chip_label is not None and self._table_chip_sep is not None:
+            label = getattr(table, "label", None) or ""
+            table_id = getattr(table, "table_id", "")
+            chip_text = f"⊡  {table_id}" + (f"  —  {label}" if label else "")
+            self._table_chip_label.setText(chip_text)
+            self._table_chip_label.setVisible(True)
+            self._table_chip_sep.setVisible(True)
         self._table_view.set_table(
             table=table,
             taxonomy=self._current_taxonomy,
