@@ -233,30 +233,40 @@ class FilingIndicator:
 
 
 @dataclass
-class BdeCodigoEstado:
-    """One estado (financial state form) declared in the BDE preamble.
+class BdeEstadoReportado:
+    """One estado entry inside EstadosReportados (BDE IE_2008_02 preamble).
 
-    Corresponds to a single ``es-be-cm-pblo:CodigoEstado`` element inside
-    ``es-be-cm-pblo:EstadosReportados``.
+    Each CodigoEstado element carries a 4-digit numeric estado code and an
+    optional ``blanco="true"`` attribute that signals a clearing submission.
     """
 
-    codigo: str          # 4-digit numeric estado code (e.g. "3201")
-    blanco: bool = False  # True when the estado is being cleared (blanco="true")
+    codigo: str  # 4-digit numeric estado code (e.g. "3201")
+    blanco: bool = False  # True when blanco="true" — clearing the estado
     context_ref: ContextId = ""
 
 
 @dataclass
 class BdePreambulo:
-    """BDE IE_2008_02 preamble metadata parsed from ``es-be-cm-pblo:*`` elements.
+    """BDE-specific preamble data from the es-be-cm-pblo namespace.
 
-    These are direct children of ``xbrli:xbrl`` (no wrapper element).
+    In IE_2008_02 instances these elements appear as direct children of
+    ``<xbrli:xbrl>`` (no wrapper).  The parser extracts them into this
+    structure so the rest of the application can read them without having
+    to walk the XML tree.
+
+    Attributes:
+        entidad_presentadora: 4-digit BDE entity code (no "ES" prefix).
+        tipo_envio: Submission type — "Ordinario", "Complementario", or
+            "Sustitutivo".
+        estados_reportados: Ordered list of reported/cleared estados.
+        context_ref: The contextRef shared by all preamble elements
+            (typically the dimensionless "cBasico" context).
     """
 
-    entidad_presentadora: str = ""          # 4-digit entity code (no ES prefix)
-    entidad_context_ref: ContextId = ""
-    tipo_envio: str = ""                    # Ordinario | Complementario | Sustitutivo
-    tipo_envio_context_ref: ContextId = ""
-    estados_reportados: list[BdeCodigoEstado] = field(default_factory=list)
+    entidad_presentadora: str = ""
+    tipo_envio: str = ""
+    estados_reportados: list[BdeEstadoReportado] = field(default_factory=list)
+    context_ref: ContextId = ""
 
 
 @dataclass
@@ -309,7 +319,6 @@ class XbrlInstance:
     schema_ref_href: str
     entity: ReportingEntity
     period: ReportingPeriod
-    preambulo: BdePreambulo | None = None
     filing_indicators: list[FilingIndicator] = field(default_factory=list)
     included_table_ids: list[str] = field(default_factory=list)
     dimensional_configs: dict[str, DimensionalConfiguration] = field(default_factory=dict)
@@ -318,6 +327,9 @@ class XbrlInstance:
     facts: list[Fact] = field(default_factory=list)
     orphaned_facts: list[OrphanedFact] = field(default_factory=list)
     edit_history: list[EditOperation] = field(default_factory=list)
+    # BDE IE_2008_02 preamble (EntidadPresentadora, TipoEnvio, EstadosReportados).
+    # None when the instance was not created from a BDE IE_2008_02 source.
+    bde_preambulo: BdePreambulo | None = None
     source_path: Path | None = None
     _dirty: bool = field(default=True, repr=False)
 

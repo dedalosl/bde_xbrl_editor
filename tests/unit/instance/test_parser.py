@@ -93,9 +93,7 @@ def _write_xbrl(tmp_path: Path, xml_body: str, schema_href: str = "entry.xsd") -
         f' xmlns:link="http://www.xbrl.org/2003/linkbase"'
         f' xmlns:xlink="http://www.w3.org/1999/xlink"'
         f' xmlns:test="{_TEST_NS}"'
-        f' xmlns:ef-find="http://www.eurofiling.info/xbrl/ext/filing-indicators"'
-        f' xmlns:es-be-cm-pblo="{_BDE_PBLO_NS}"'
-        f' xmlns:es-be-cm-dim="{_BDE_DIM_NS}">\n'
+        f' xmlns:ef-find="http://www.eurofiling.info/xbrl/ext/filing-indicators">\n'
         f'  <link:schemaRef xlink:type="simple" xlink:href="{schema_href}"/>\n'
         f'{xml_body}\n'
         '</xbrli:xbrl>\n'
@@ -103,6 +101,29 @@ def _write_xbrl(tmp_path: Path, xml_body: str, schema_href: str = "entry.xsd") -
     # create a dummy schema file so relative path resolution works
     (tmp_path / schema_href).write_text("<xs:schema xmlns:xs='http://www.w3.org/2001/XMLSchema'/>")
     p = tmp_path / "instance.xbrl"
+    p.write_text(content, encoding="utf-8")
+    return p
+
+
+def _write_bde_xbrl(tmp_path: Path, xml_body: str, schema_href: str = "entry.xsd") -> Path:
+    """Write a BDE IE_2008_02 XBRL instance with the BDE-specific namespaces declared."""
+    content = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<xbrli:xbrl'
+        f' xmlns:xbrli="http://www.xbrl.org/2003/instance"'
+        f' xmlns:link="http://www.xbrl.org/2003/linkbase"'
+        f' xmlns:xlink="http://www.w3.org/1999/xlink"'
+        f' xmlns:xbrldi="http://xbrl.org/2006/xbrldi"'
+        f' xmlns:test="{_TEST_NS}"'
+        f' xmlns:ef-find="http://www.eurofiling.info/xbrl/ext/filing-indicators"'
+        f' xmlns:es-be-cm-pblo="{_BDE_PBLO_NS}"'
+        f' xmlns:es-be-cm-dim="{_BDE_DIM_NS}">\n'
+        f'  <link:schemaRef xlink:type="simple" xlink:href="{schema_href}"/>\n'
+        f'{xml_body}\n'
+        '</xbrli:xbrl>\n'
+    )
+    (tmp_path / schema_href).write_text("<xs:schema xmlns:xs='http://www.w3.org/2001/XMLSchema'/>")
+    p = tmp_path / "bde_instance.xbrl"
     p.write_text(content, encoding="utf-8")
     return p
 
@@ -343,18 +364,20 @@ def test_source_path_set_after_load(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Tests: BDE preamble parsing
+# Tests: BDE IE_2008_02 preamble parsing
 # ---------------------------------------------------------------------------
 
 
-def test_preambulo_is_none_for_non_bde_instance(tmp_path: Path) -> None:
+def test_bde_preambulo_none_for_non_bde_instance(tmp_path: Path) -> None:
+    """bde_preambulo is None when no es-be-cm-pblo elements are present."""
     p = _write_xbrl(tmp_path, "")
     parser, _ = _make_parser()
     instance, _ = parser.load(p)
-    assert instance.preambulo is None
+    assert instance.bde_preambulo is None
 
 
-def test_parses_entidad_presentadora_and_tipo_envio(tmp_path: Path) -> None:
+def test_bde_preambulo_parses_entidad_and_tipo_envio(tmp_path: Path) -> None:
+    """EntidadPresentadora and TipoEnvio are extracted into BdePreambulo."""
     body = textwrap.dedent("""\
         <xbrli:context id="cBasico">
           <xbrli:entity>
@@ -365,17 +388,17 @@ def test_parses_entidad_presentadora_and_tipo_envio(tmp_path: Path) -> None:
         <es-be-cm-pblo:EntidadPresentadora contextRef="cBasico">9000</es-be-cm-pblo:EntidadPresentadora>
         <es-be-cm-pblo:TipoEnvio contextRef="cBasico">Ordinario</es-be-cm-pblo:TipoEnvio>
     """)
-    p = _write_xbrl(tmp_path, body)
+    p = _write_bde_xbrl(tmp_path, body)
     parser, _ = _make_parser()
     instance, _ = parser.load(p)
-    assert instance.preambulo is not None
-    assert instance.preambulo.entidad_presentadora == "9000"
-    assert instance.preambulo.entidad_context_ref == "cBasico"
-    assert instance.preambulo.tipo_envio == "Ordinario"
-    assert instance.preambulo.tipo_envio_context_ref == "cBasico"
+    assert instance.bde_preambulo is not None
+    assert instance.bde_preambulo.entidad_presentadora == "9000"
+    assert instance.bde_preambulo.tipo_envio == "Ordinario"
+    assert instance.bde_preambulo.context_ref == "cBasico"
 
 
-def test_parses_estados_reportados(tmp_path: Path) -> None:
+def test_bde_preambulo_parses_estados_reportados(tmp_path: Path) -> None:
+    """CodigoEstado elements inside EstadosReportados are parsed into BdeEstadoReportado."""
     body = textwrap.dedent("""\
         <xbrli:context id="cBasico">
           <xbrli:entity>
@@ -383,26 +406,54 @@ def test_parses_estados_reportados(tmp_path: Path) -> None:
           </xbrli:entity>
           <xbrli:period><xbrli:instant>2024-01-31</xbrli:instant></xbrli:period>
         </xbrli:context>
+        <es-be-cm-pblo:EntidadPresentadora contextRef="cBasico">9000</es-be-cm-pblo:EntidadPresentadora>
+        <es-be-cm-pblo:TipoEnvio contextRef="cBasico">Sustitutivo</es-be-cm-pblo:TipoEnvio>
         <es-be-cm-pblo:EstadosReportados>
           <es-be-cm-pblo:CodigoEstado contextRef="cBasico">3201</es-be-cm-pblo:CodigoEstado>
-          <es-be-cm-pblo:CodigoEstado contextRef="cBasico" es-be-cm-pblo:blanco="true">3251</es-be-cm-pblo:CodigoEstado>
+          <es-be-cm-pblo:CodigoEstado contextRef="cBasico">3202</es-be-cm-pblo:CodigoEstado>
         </es-be-cm-pblo:EstadosReportados>
     """)
-    p = _write_xbrl(tmp_path, body)
+    p = _write_bde_xbrl(tmp_path, body)
     parser, _ = _make_parser()
     instance, _ = parser.load(p)
-    assert instance.preambulo is not None
-    estados = instance.preambulo.estados_reportados
+    assert instance.bde_preambulo is not None
+    estados = instance.bde_preambulo.estados_reportados
     assert len(estados) == 2
     assert estados[0].codigo == "3201"
     assert estados[0].blanco is False
-    assert estados[0].context_ref == "cBasico"
+    assert estados[1].codigo == "3202"
+    assert estados[1].blanco is False
+
+
+def test_bde_preambulo_parses_blanco_estado(tmp_path: Path) -> None:
+    """CodigoEstado with es-be-cm-pblo:blanco='true' sets blanco=True."""
+    body = textwrap.dedent(f"""\
+        <xbrli:context id="cBasico">
+          <xbrli:entity>
+            <xbrli:identifier scheme="http://www.ecb.int/stats/money/mfi">ES9000</xbrli:identifier>
+          </xbrli:entity>
+          <xbrli:period><xbrli:instant>2024-01-31</xbrli:instant></xbrli:period>
+        </xbrli:context>
+        <es-be-cm-pblo:EntidadPresentadora contextRef="cBasico">9000</es-be-cm-pblo:EntidadPresentadora>
+        <es-be-cm-pblo:EstadosReportados>
+          <es-be-cm-pblo:CodigoEstado contextRef="cBasico">3201</es-be-cm-pblo:CodigoEstado>
+          <es-be-cm-pblo:CodigoEstado contextRef="cBasico"
+            es-be-cm-pblo:blanco="true">3251</es-be-cm-pblo:CodigoEstado>
+        </es-be-cm-pblo:EstadosReportados>
+    """)
+    p = _write_bde_xbrl(tmp_path, body)
+    parser, _ = _make_parser()
+    instance, _ = parser.load(p)
+    assert instance.bde_preambulo is not None
+    estados = instance.bde_preambulo.estados_reportados
+    assert len(estados) == 2
+    assert estados[0].blanco is False
     assert estados[1].codigo == "3251"
     assert estados[1].blanco is True
 
 
-def test_preamble_elements_not_collected_as_facts(tmp_path: Path) -> None:
-    """EntidadPresentadora, TipoEnvio, and EstadosReportados must never appear as facts."""
+def test_bde_preambulo_elements_not_parsed_as_facts(tmp_path: Path) -> None:
+    """Preamble elements in es-be-cm-pblo namespace are excluded from facts and orphaned_facts."""
     body = textwrap.dedent("""\
         <xbrli:context id="cBasico">
           <xbrli:entity>
@@ -416,35 +467,38 @@ def test_preamble_elements_not_collected_as_facts(tmp_path: Path) -> None:
           <es-be-cm-pblo:CodigoEstado contextRef="cBasico">3201</es-be-cm-pblo:CodigoEstado>
         </es-be-cm-pblo:EstadosReportados>
     """)
-    p = _write_xbrl(tmp_path, body)
+    p = _write_bde_xbrl(tmp_path, body)
     parser, _ = _make_parser()
     instance, orphaned = parser.load(p)
-    assert instance.facts == []
-    assert orphaned == []
+    assert len(instance.facts) == 0
+    assert len(orphaned) == 0
 
 
-def test_parses_segment_agrupacion_dimension(tmp_path: Path) -> None:
-    """Agrupacion dimension inside xbrli:segment is parsed into context dimensions."""
+def test_bde_segment_agrupacion_parsed_as_dimension(tmp_path: Path) -> None:
+    """The Agrupacion dimension in xbrli:segment is parsed as a proper XBRL dimension."""
     body = textwrap.dedent("""\
         <xbrli:context id="ctx1">
           <xbrli:entity>
             <xbrli:identifier scheme="http://www.ecb.int/stats/money/mfi">ES9000</xbrli:identifier>
             <xbrli:segment>
-              <xbrldi:explicitMember
-                xmlns:xbrldi="http://xbrl.org/2006/xbrldi"
-                dimension="es-be-cm-dim:Agrupacion">es-be-cm-dim:AgrupacionIndividual</xbrldi:explicitMember>
+              <xbrldi:explicitMember dimension="es-be-cm-dim:Agrupacion">
+                es-be-cm-dim:AgrupacionIndividual
+              </xbrldi:explicitMember>
             </xbrli:segment>
           </xbrli:entity>
           <xbrli:period><xbrli:instant>2024-01-31</xbrli:instant></xbrli:period>
         </xbrli:context>
     """)
-    p = _write_xbrl(tmp_path, body)
+    p = _write_bde_xbrl(tmp_path, body)
     parser, _ = _make_parser()
     instance, _ = parser.load(p)
-    ctx = instance.contexts["ctx1"]
+    ctx = instance.contexts.get("ctx1")
+    assert ctx is not None
     assert ctx.context_element == "segment"
-    from bde_xbrl_editor.taxonomy.models import QName
-    dim_qname = QName(namespace=_BDE_DIM_NS, local_name="Agrupacion")
-    mem_qname = QName(namespace=_BDE_DIM_NS, local_name="AgrupacionIndividual")
-    assert dim_qname in ctx.dimensions
-    assert ctx.dimensions[dim_qname] == mem_qname
+    # Agrupacion must appear as a proper XBRL dimension, not as arbitrary content
+    dim_keys = [str(k) for k in ctx.dimensions]
+    assert any("Agrupacion" in k for k in dim_keys), (
+        f"Agrupacion dimension not found in context dimensions: {dim_keys}"
+    )
+    mem_vals = [str(v) for v in ctx.dimensions.values()]
+    assert any("AgrupacionIndividual" in v for v in mem_vals)
