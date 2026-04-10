@@ -173,8 +173,12 @@ class MultiLevelColumnHeader(QHeaderView):
         total_levels: int,
         font_pts: float,
     ) -> None:
-        # Background gradient
-        if is_leaf:
+        # Background gradient.
+        # Roll-up virtual leaves (is_rollup_virtual) get the span colour to signal they are
+        # the "own-data" column of a roll-up rather than a pure leaf column.
+        if getattr(cell, "is_rollup_virtual", False):
+            bg = _BG_SPAN_LIGHT if level_idx == 0 else _BG_SPAN
+        elif is_leaf:
             bg = _BG_LEAF
         elif level_idx == 0 and total_levels > 2:
             bg = _BG_SPAN_LIGHT

@@ -229,6 +229,63 @@ class TestRollUpNodes:
         assert len(layout.body) == 2
         assert all(len(row) == 2 for row in layout.body)
 
+    def test_nested_rollup_two_levels_ordered_leaves_and_placeholders(self):
+        """Two-level roll-up: ordered_leaves in DFS order; placeholder cells align cursor."""
+        # Tree: R0010 (rollup) → R0020 (rollup) → R0030 (leaf)
+        #                      → R0040 (leaf)
+        inner_rollup = BreakdownNode(
+            node_type="rule", label="R0020",
+            is_abstract=False,
+            children=[_make_node("R0030"), _make_node("R0040")],
+            parent_child_order="parent-first",
+        )
+        outer_rollup = BreakdownNode(
+            node_type="rule", label="R0010",
+            is_abstract=False,
+            children=[inner_rollup, _make_node("R0050")],
+            parent_child_order="parent-first",
+        )
+        x_root = _make_node(children=[outer_rollup])
+        y_root = _make_node(children=[_make_node("Row")])
+        taxonomy = _make_taxonomy()
+        layout = TableLayoutEngine(taxonomy).compute(_simple_table(x_root, y_root))
+
+        ch = layout.column_header
+        # Level 0: R0010 spanning header (span=5: itself + R0020 + R0030 + R0040 + R0050)
+        assert len(ch.levels[0]) == 1
+        assert ch.levels[0][0].span == 5
+        assert not ch.levels[0][0].is_leaf
+
+        # Level 1: [R0010-virtual, R0020(span=3), R0050]  — parent-first for R0010
+        assert len(ch.levels[1]) == 3
+        assert ch.levels[1][0].is_rollup_virtual        # R0010 virtual leaf
+        assert ch.levels[1][0].source_node.label == "R0010"
+        assert ch.levels[1][1].source_node.label == "R0020"
+        assert not ch.levels[1][1].is_leaf              # R0020 is a roll-up spanning header
+        assert ch.levels[1][1].span == 3
+        assert ch.levels[1][2].source_node.label == "R0050"
+
+        # Level 2: [placeholder, R0020-virtual, R0030, R0040]  (placeholder for R0010-virtual)
+        assert len(ch.levels[2]) == 4
+        assert ch.levels[2][0].is_abstract              # placeholder for R0010-virtual
+        assert ch.levels[2][0].span == 1
+        assert ch.levels[2][1].is_rollup_virtual        # R0020 virtual leaf
+        assert ch.levels[2][2].source_node.label == "R0030"
+        assert ch.levels[2][3].source_node.label == "R0040"
+
+        # ordered_leaves: DFS order [R0010-virtual, R0020-virtual, R0030, R0040, R0050]
+        leaves = ch.ordered_leaves
+        assert len(leaves) == 5
+        assert leaves[0].source_node.label == "R0010"   # R0010 virtual leaf, col 0
+        assert leaves[1].source_node.label == "R0020"   # R0020 virtual leaf, col 1
+        assert leaves[2].source_node.label == "R0030"   # col 2
+        assert leaves[3].source_node.label == "R0040"   # col 3
+        assert leaves[4].source_node.label == "R0050"   # col 4
+
+        # leaf_count and body dimensions
+        assert ch.leaf_count == 5
+        assert len(layout.body[0]) == 5
+
 
 class TestRowAxisDFS:
     """Tests for Y-axis DFS row ordering with abstract and non-abstract parent nodes."""
