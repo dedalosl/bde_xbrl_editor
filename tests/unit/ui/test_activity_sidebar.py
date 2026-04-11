@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+import pytest
+
 from bde_xbrl_editor.taxonomy.models import (
     BooleanFilterDefinition,
     ConsistencyAssertionDefinition,
@@ -91,3 +93,17 @@ def test_format_assertion_expression_includes_consistency_radius() -> None:
     assert "$a + $b" in text
     assert "absolute radius: 0.5" in text
     assert format_assertion_type(assertion) == "Consistency Assertion"
+
+
+@pytest.mark.qt
+def test_activity_sidebar_merges_taxonomy_panels_into_tax_button(qtbot):
+    from bde_xbrl_editor.ui.widgets.activity_sidebar import ActivitySidebar
+    from tests.unit.ui.test_main_window_loader_flow import _taxonomy
+
+    sidebar = ActivitySidebar(_taxonomy())
+    qtbot.addWidget(sidebar)
+    sidebar.show()
+
+    assert [btn.text() for btn in sidebar._buttons] == ["TAX", "TAB", "VAL", "INS"]
+    assert sidebar._buttons[0].accessibleName() == "Taxonomy"
+    assert sidebar._stack.count() == 4

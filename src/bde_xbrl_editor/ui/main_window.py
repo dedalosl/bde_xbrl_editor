@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from shiboken6 import isValid
 
 from bde_xbrl_editor.taxonomy import TaxonomyCache, TaxonomyStructure
 from bde_xbrl_editor.ui import theme
@@ -49,6 +50,8 @@ class MainWindow(QMainWindow):
         self._context_bar: QFrame | None = None
         self._table_chip_sep: QLabel | None = None
         self._table_chip_label: QLabel | None = None
+        self._context_title_label: QLabel | None = None
+        self._context_meta_label: QLabel | None = None
 
         # Validation
         self._validation_thread: QThread | None = None
@@ -228,12 +231,30 @@ class MainWindow(QMainWindow):
         self._loader_widget: TaxonomyLoaderWidget | None = None
         self._show_loader_widget()
 
+    def _clear_browser_view_refs(self) -> None:
+        """Drop references to Qt-owned browser widgets before replacing the central view."""
+        self._table_view = None
+        self._sidebar = None
+        self._browser_splitter = None
+        self._context_bar = None
+        self._table_chip_sep = None
+        self._table_chip_label = None
+        self._context_title_label = None
+        self._context_meta_label = None
+
     def _show_loader_widget(self, path: str | None = None) -> None:
         """Create a fresh TaxonomyLoaderWidget and set it as the central widget.
 
         Qt takes ownership of (and deletes) the previous central widget, so we
         must never reuse the old reference — always construct a new instance.
         """
+        if self._editor is not None:
+            with contextlib.suppress(RuntimeError, TypeError):
+                self._editor.changes_made.disconnect(self._on_changes_made)
+        self._editor = None
+        self._current_instance = None
+        self._clear_browser_view_refs()
+
         widget = TaxonomyLoaderWidget(
             cache=self._cache,
             settings=self._settings,
@@ -261,6 +282,8 @@ class MainWindow(QMainWindow):
         self._show_loader_widget()
 
     def _on_taxonomy_loaded(self, structure: TaxonomyStructure) -> None:
+        self._current_instance = None
+        self._editor = None
         self._current_taxonomy = structure
         meta = structure.metadata
         table_count = len(structure.tables)
@@ -299,8 +322,7 @@ class MainWindow(QMainWindow):
         self._sidebar.table_selected.connect(self._on_table_selected)
         self._sidebar.width_changed.connect(self._on_sidebar_width_changed)
 
-        if self._table_view is None:
-            self._table_view = XbrlTableView(parent=self)
+        self._table_view = XbrlTableView(parent=self)
 
         splitter = QSplitter(self)
         splitter.addWidget(self._sidebar)
@@ -328,123 +350,177 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _build_context_bar(self, instance=None) -> QFrame:
-        """Return a slim bar showing taxonomy + instance breadcrumbs with × close buttons."""
+        """Return a structured workspace header with context on the left and actions on the right."""
         bar = QFrame()
-        bar.setFixedHeight(36)
+        bar.setFixedHeight(72)
         bar.setStyleSheet(
-            f"QFrame {{ background: {theme.NAV_BG}; border-bottom: 1px solid {theme.BORDER_STRONG}; }}"
+            f"QFrame {{ background: {theme.SURFACE_ALT_BG}; }}"
         )
 
         layout = QHBoxLayout(bar)
-        layout.setContentsMargins(10, 0, 10, 0)
-        layout.setSpacing(6)
+        layout.setContentsMargins(14, 10, 14, 10)
+        layout.setSpacing(14)
 
-        chip_style = (
-            f"QLabel {{ color: {theme.TEXT_MAIN}; font-size: 11px; font-weight: 600;"
-            f" background: rgba(255,253,248,0.55); border: 1px solid {theme.BORDER};"
-            " border-radius: 3px; padding: 2px 7px; }"
+        pill_style = (
+            f"QLabel {{ color: {theme.TEXT_MUTED}; font-size: 10px; font-weight: bold;"
+            f" background: {theme.SURFACE_BG}; border: 1px solid {theme.BORDER};"
+            " border-radius: 8px; padding: 3px 8px; }"
         )
-        close_style = (
-            f"QPushButton {{ color: {theme.TEXT_MUTED}; background: transparent; border: none;"
-            " font-size: 14px; padding: 0 3px; }"
-            f"QPushButton:hover {{ color: {theme.TEXT_MAIN}; background: rgba(255,253,248,0.35);"
-            " border-radius: 3px; }"
-        )
-        sep_style = f"QLabel {{ color: {theme.TEXT_MUTED}; font-size: 14px; background: transparent; }}"
 
-        # ── Taxonomy chip ──────────────────────────────────────────────
+        context_block = QWidget(bar)
+        context_layout = QVBoxLayout(context_block)
+        context_layout.setContentsMargins(0, 0, 0, 0)
+        context_layout.setSpacing(2)
+
+        eyebrow = QLabel("Workspace")
+        eyebrow.setStyleSheet(
+            f"color: {theme.TEXT_SUBTLE}; font-size: 10px; font-weight: bold;"
+        )
+        context_layout.addWidget(eyebrow)
+
+        title = QLabel()
+        title.setStyleSheet(
+            f"color: {theme.TEXT_MAIN}; font-size: 18px; font-weight: bold; background: transparent;"
+        )
+        context_layout.addWidget(title)
+        self._context_title_label = title
+
+        meta_row = QHBoxLayout()
+        meta_row.setContentsMargins(0, 0, 0, 0)
+        meta_row.setSpacing(8)
+
+        meta_label = QLabel()
+        meta_label.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: 11px; background: transparent;"
+        )
+        meta_row.addWidget(meta_label)
+        self._context_meta_label = meta_label
+
+        meta_row.addStretch()
+        context_layout.addLayout(meta_row)
+        layout.addWidget(context_block, stretch=1)
+
+        info_group = QWidget(bar)
+        info_layout = QHBoxLayout(info_group)
+        info_layout.setContentsMargins(0, 0, 0, 0)
+        info_layout.setSpacing(8)
+
         if self._current_taxonomy:
             meta = self._current_taxonomy.metadata
-            tax_chip = QLabel(f"◈  {meta.name}  v{meta.version}")
-            tax_chip.setStyleSheet(chip_style)
-            layout.addWidget(tax_chip)
+            tax_pill = QLabel(f"Taxonomy {meta.name} v{meta.version}")
+            tax_pill.setStyleSheet(pill_style)
+            info_layout.addWidget(tax_pill)
 
-            tax_close = QPushButton("×")
-            tax_close.setFixedSize(20, 20)
-            tax_close.setStyleSheet(close_style)
-            tax_close.setToolTip("Close taxonomy")
-            tax_close.clicked.connect(self._on_close_taxonomy)
-            layout.addWidget(tax_close)
-
-        # ── Instance chip ──────────────────────────────────────────────
         if instance is not None:
-            sep = QLabel("›")
-            sep.setStyleSheet(sep_style)
-            layout.addWidget(sep)
-
-            fname = Path(instance.source_path).name if instance.source_path else "instance"
-            inst_chip = QLabel(f"  {fname}")
-            inst_chip.setStyleSheet(chip_style)
-            layout.addWidget(inst_chip)
-
-            inst_close = QPushButton("×")
-            inst_close.setFixedSize(20, 20)
-            inst_close.setStyleSheet(close_style)
-            inst_close.setToolTip("Close instance")
-            inst_close.clicked.connect(self._on_close_instance)
-            layout.addWidget(inst_close)
-
-        # ── Selected-table chip ────────────────────────────────────────
-        table_sep = QLabel("›")
-        table_sep.setStyleSheet(sep_style)
-        table_sep.setVisible(False)
-        layout.addWidget(table_sep)
-        self._table_chip_sep = table_sep
+            fname = Path(instance.source_path).name if instance.source_path else "Unsaved instance"
+            inst_pill = QLabel(f"Instance {fname}")
+            inst_pill.setStyleSheet(pill_style)
+            info_layout.addWidget(inst_pill)
 
         table_chip = QLabel()
         table_chip.setStyleSheet(
-            f"QLabel {{ color: {theme.TEXT_MAIN}; font-size: 11px; font-weight: 600;"
-            f" background: rgba(255,248,236,0.65); border: 1px solid {theme.BORDER};"
-            " border-radius: 3px; padding: 2px 7px; }"
+            f"QLabel {{ color: {theme.TEXT_MAIN}; font-size: 10px; font-weight: bold;"
+            f" background: {theme.HEADER_BG_LIGHT}; border: 1px solid {theme.BORDER};"
+            " border-radius: 8px; padding: 3px 8px; }}"
         )
         table_chip.setVisible(False)
-        layout.addWidget(table_chip)
+        info_layout.addWidget(table_chip)
         self._table_chip_label = table_chip
+        self._table_chip_sep = None
 
-        layout.addStretch()
+        layout.addWidget(info_group, stretch=0)
 
-        # ── Action buttons on the right ────────────────────────────────
         btn_style = (
-            f"QPushButton {{ color: {theme.TEXT_MAIN}; background: rgba(255,250,242,0.72);"
-            f" border: 1px solid {theme.BORDER}; border-radius: 3px;"
-            " font-size: 11px; padding: 3px 10px; }"
-            f"QPushButton:hover {{ background: {theme.HEADER_BG_LIGHT}; border-color: {theme.BORDER_STRONG}; }}"
+            f"QPushButton {{ color: {theme.TEXT_MAIN}; background: {theme.SURFACE_BG};"
+            f" border: 1px solid {theme.BORDER}; border-radius: 8px;"
+            " font-size: 10px; font-weight: 600; padding: 0 12px; }"
+            f"QPushButton:hover {{ background: {theme.INPUT_BG}; border-color: {theme.BORDER_STRONG}; }}"
             f"QPushButton:disabled {{ color: {theme.DISABLED_FG}; background: transparent;"
             f" border-color: {theme.BORDER}; }}"
         )
+        primary_btn_style = (
+            f"QPushButton {{ color: {theme.TEXT_INVERSE}; background: {theme.NAV_BG_DEEP};"
+            " border: none; border-radius: 8px; font-size: 10px; font-weight: 600; padding: 0 12px; }"
+            f"QPushButton:hover {{ background: {theme.NAV_BG_DARK}; }}"
+            f"QPushButton:disabled {{ background: {theme.DISABLED_BG}; color: {theme.DISABLED_FG}; }}"
+        )
+
+        action_group = QWidget(bar)
+        action_layout = QHBoxLayout(action_group)
+        action_layout.setContentsMargins(0, 0, 0, 0)
+        action_layout.setSpacing(8)
 
         if instance is not None:
-            validate_btn = QPushButton("⚡ Validate")
-            validate_btn.setStyleSheet(btn_style)
+            back_btn = QPushButton("Back")
+            back_btn.setStyleSheet(btn_style)
+            back_btn.setFixedHeight(28)
+            back_btn.clicked.connect(self._on_close_taxonomy)
+            action_layout.addWidget(back_btn)
+
+            close_inst_btn = QPushButton("Close Instance")
+            close_inst_btn.setStyleSheet(btn_style)
+            close_inst_btn.setFixedHeight(28)
+            close_inst_btn.clicked.connect(self._on_close_instance)
+            action_layout.addWidget(close_inst_btn)
+
+            validate_btn = QPushButton("Validate")
+            validate_btn.setStyleSheet(primary_btn_style)
+            validate_btn.setFixedHeight(28)
             validate_btn.setToolTip("Run validation on the current instance (Ctrl+Shift+V)")
             validate_btn.clicked.connect(self._on_validate_from_context_bar)
-            layout.addWidget(validate_btn)
+            action_layout.addWidget(validate_btn)
 
             save_btn = QPushButton("Save")
-            save_btn.setStyleSheet(btn_style)
+            save_btn.setStyleSheet(primary_btn_style)
+            save_btn.setFixedHeight(28)
             save_btn.clicked.connect(self._on_save)
-            layout.addWidget(save_btn)
+            action_layout.addWidget(save_btn)
 
             open_inst_btn = QPushButton("Open Instance…")
             open_inst_btn.setStyleSheet(btn_style)
+            open_inst_btn.setFixedHeight(28)
             open_inst_btn.clicked.connect(self._on_open_instance)
-            layout.addWidget(open_inst_btn)
+            action_layout.addWidget(open_inst_btn)
 
             new_inst_btn = QPushButton("New Instance…")
             new_inst_btn.setStyleSheet(btn_style)
+            new_inst_btn.setFixedHeight(28)
             new_inst_btn.clicked.connect(self._on_new_instance)
-            layout.addWidget(new_inst_btn)
+            action_layout.addWidget(new_inst_btn)
 
         elif self._current_taxonomy is not None:
+            back_btn = QPushButton("Back")
+            back_btn.setStyleSheet(btn_style)
+            back_btn.setFixedHeight(28)
+            back_btn.clicked.connect(self._on_close_taxonomy)
+            action_layout.addWidget(back_btn)
+
             open_inst_btn = QPushButton("Open Instance…")
             open_inst_btn.setStyleSheet(btn_style)
+            open_inst_btn.setFixedHeight(28)
             open_inst_btn.clicked.connect(self._on_open_instance)
-            layout.addWidget(open_inst_btn)
+            action_layout.addWidget(open_inst_btn)
 
             new_inst_btn = QPushButton("New Instance…")
-            new_inst_btn.setStyleSheet(btn_style)
+            new_inst_btn.setStyleSheet(primary_btn_style)
+            new_inst_btn.setFixedHeight(28)
             new_inst_btn.clicked.connect(self._on_new_instance)
-            layout.addWidget(new_inst_btn)
+            action_layout.addWidget(new_inst_btn)
+
+        layout.addWidget(action_group, stretch=0)
+
+        if self._current_taxonomy is not None:
+            meta = self._current_taxonomy.metadata
+            title_text = meta.name
+            meta_parts = [f"Version {meta.version}", f"{len(self._current_taxonomy.tables)} tables"]
+            if instance is not None:
+                fname = Path(instance.source_path).name if instance.source_path else "Unsaved instance"
+                meta_parts.append(fname)
+            self._context_title_label.setText(title_text)
+            self._context_meta_label.setText("  |  ".join(meta_parts))
+        else:
+            self._context_title_label.setText("Workspace")
+            self._context_meta_label.setText("")
 
         return bar
 
@@ -471,6 +547,8 @@ class MainWindow(QMainWindow):
         self._context_bar = None
         self._table_chip_sep = None
         self._table_chip_label = None
+        self._context_title_label = None
+        self._context_meta_label = None
 
         self._reload_action.setEnabled(False)
         self._new_instance_action.setEnabled(False)
@@ -521,7 +599,7 @@ class MainWindow(QMainWindow):
         self._setup_browser_layout()
 
     def _select_first_taxonomy_table(self) -> None:
-        if self._sidebar is not None:
+        if self._sidebar is not None and isValid(self._sidebar):
             self._sidebar.select_first_table()
 
     def _on_reload(self) -> None:
@@ -616,12 +694,10 @@ class MainWindow(QMainWindow):
         self._editor = InstanceEditor(instance, parent=self)
         self._editor.changes_made.connect(self._on_changes_made)
 
-        # Reuse existing table view if available, otherwise create one
-        if self._table_view is None:
-            self._table_view = XbrlTableView(parent=self)
+        self._table_view = XbrlTableView(parent=self)
 
         # Ensure the sidebar exists (may be absent when loading directly from welcome screen)
-        if self._sidebar is None:
+        if self._sidebar is None or not isValid(self._sidebar):
             self._sidebar = ActivitySidebar(self._current_taxonomy, parent=self)
             self._sidebar.table_selected.connect(self._on_table_selected)
             self._sidebar.width_changed.connect(self._on_sidebar_width_changed)
@@ -673,17 +749,18 @@ class MainWindow(QMainWindow):
         self._show_validation_panel_action.setEnabled(True)
 
     def _on_sidebar_width_changed(self, width: int) -> None:
-        if self._browser_splitter is None:
+        splitter = self._browser_splitter
+        if splitter is None or not isValid(splitter):
             return
 
         def _apply() -> None:
-            if self._browser_splitter is None:
+            if not isValid(splitter):
                 return
-            total = sum(self._browser_splitter.sizes())
+            total = sum(splitter.sizes())
             if total <= 0:
-                total = self._browser_splitter.width()
+                total = splitter.width()
             main_width = max(total - width, 0)
-            self._browser_splitter.setSizes([width, main_width])
+            splitter.setSizes([width, main_width])
 
         QTimer.singleShot(0, _apply)
 
@@ -695,13 +772,23 @@ class MainWindow(QMainWindow):
         if self._table_view is None or self._current_taxonomy is None:
             return
         # Update the selected-table chip in the context bar
-        if self._table_chip_label is not None and self._table_chip_sep is not None:
+        if self._table_chip_label is not None:
             label = getattr(table, "label", None) or ""
             table_id = getattr(table, "table_id", "")
-            chip_text = f"⊡  {table_id}" + (f"  —  {label}" if label else "")
+            chip_text = f"Table {table_id}" + (f"  |  {label}" if label else "")
             self._table_chip_label.setText(chip_text)
             self._table_chip_label.setVisible(True)
-            self._table_chip_sep.setVisible(True)
+        if self._context_title_label is not None:
+            table_label = getattr(table, "label", None) or getattr(table, "table_id", "")
+            self._context_title_label.setText(table_label)
+        if self._context_meta_label is not None and self._current_taxonomy is not None:
+            meta = self._current_taxonomy.metadata
+            table_id = getattr(table, "table_id", "")
+            meta_parts = [meta.name, f"Version {meta.version}", table_id]
+            if self._current_instance is not None:
+                fname = Path(self._current_instance.source_path).name if self._current_instance.source_path else "Unsaved instance"
+                meta_parts.append(fname)
+            self._context_meta_label.setText("  |  ".join(meta_parts))
         self._table_view.set_table(
             table=table,
             taxonomy=self._current_taxonomy,
@@ -727,12 +814,15 @@ class MainWindow(QMainWindow):
 
     def _on_changes_made(self) -> None:
         self.setWindowModified(True)
-        if self._table_view is not None:
+        table_view = self._table_view
+        if table_view is not None and isValid(table_view):
             # Defer refresh so the editor widget is fully closed before the model is replaced.
-            QTimer.singleShot(0, lambda: (
-                self._table_view.refresh_instance(self._current_instance)
-                if self._table_view is not None else None
-            ))
+            def _refresh() -> None:
+                if not isValid(table_view):
+                    return
+                table_view.refresh_instance(self._current_instance)
+
+            QTimer.singleShot(0, _refresh)
 
     # ------------------------------------------------------------------
     # File → Save / Save As (T029, T030)
