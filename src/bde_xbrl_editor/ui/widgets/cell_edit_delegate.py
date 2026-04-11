@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from bde_xbrl_editor.instance.models import DuplicateFactError
+from bde_xbrl_editor.ui import theme
 from bde_xbrl_editor.instance.validator import XbrlTypeValidator
 from bde_xbrl_editor.ui.widgets.table_body_model import CELL_CODE_ROLE
 
@@ -27,8 +28,10 @@ if TYPE_CHECKING:
     from bde_xbrl_editor.taxonomy.models import QName, TaxonomyStructure
 
 
-_CELL_CODE_FG = QColor("#1E3A5F")      # dark navy text for cell code
+_CELL_CODE_FG = QColor(theme.TEXT_MAIN)
 _CELL_CODE_CORNER = QColor("#8B7355")  # dark triangle corner marker
+_CELL_CODE_BG = QColor("#E4EEF9")
+_CELL_CODE_BORDER = QColor("#9EB6D4")
 
 
 def _get_type_category(taxonomy: TaxonomyStructure, concept: QName) -> str:
@@ -104,7 +107,7 @@ class CellEditDelegate(QStyledItemDelegate):
         self._table_layout = layout
 
     # ------------------------------------------------------------------
-    # paint — draws cell content + soft-blue cell-code badge
+    # paint — draws cell content + regulator-style cell-code badge
     # ------------------------------------------------------------------
 
     def paint(self, painter: QPainter, option: QStyleOptionViewItem, index: QModelIndex) -> None:
@@ -131,15 +134,26 @@ class CellEditDelegate(QStyledItemDelegate):
         painter.setBrush(_CELL_CODE_CORNER)
         painter.drawPolygon(triangle)
 
-        # Cell code text — top-left, small font
-        painter.setPen(_CELL_CODE_FG)
         font = QFont(painter.font())
-        font.setPointSizeF(7.0)
+        font.setPointSizeF(7.5)
         painter.setFont(font)
-        text_rect = QRect(rect.x() + 2, rect.y() + 1, rect.width() - _CORNER - 4, rect.height() - 2)
+
+        # Blue badge behind the cell code, aligned to the top-left like the regulator tables.
+        badge_width = min(rect.width() - _CORNER - 2, 40)
+        badge_height = min(rect.height() - 2, 18)
+        if badge_width > 10 and badge_height > 8:
+            badge_rect = QRect(rect.x() + 1, rect.y() + 1, badge_width, badge_height)
+            painter.setPen(_CELL_CODE_BORDER)
+            painter.setBrush(_CELL_CODE_BG)
+            painter.drawRect(badge_rect)
+            text_rect = badge_rect.adjusted(3, 0, -2, -1)
+        else:
+            text_rect = QRect(rect.x() + 2, rect.y() + 1, rect.width() - _CORNER - 4, rect.height() - 2)
+
+        painter.setPen(_CELL_CODE_FG)
         painter.drawText(
             text_rect,
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
+            Qt.AlignmentFlag.AlignCenter,
             cell_code,
         )
 

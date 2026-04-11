@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from bde_xbrl_editor.taxonomy import TaxonomyCache, TaxonomyStructure
+from bde_xbrl_editor.ui import theme
 from bde_xbrl_editor.ui.widgets.activity_sidebar import ActivitySidebar
 from bde_xbrl_editor.ui.widgets.loader_settings_dialog import load_saved_settings
 from bde_xbrl_editor.ui.widgets.taxonomy_loader_widget import TaxonomyLoaderWidget
@@ -45,6 +46,8 @@ class MainWindow(QMainWindow):
         self._table_view = None  # XbrlTableView | None
         self._sidebar: ActivitySidebar | None = None
         self._context_bar: QFrame | None = None
+        self._table_chip_sep: QLabel | None = None
+        self._table_chip_label: QLabel | None = None
 
         # Validation
         self._validation_thread: QThread | None = None
@@ -56,64 +59,104 @@ class MainWindow(QMainWindow):
         self._setup_statusbar()
 
     def _apply_stylesheet(self) -> None:
-        self.setStyleSheet("""
-            QMainWindow, QWidget {
-                font-family: -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+        self.setStyleSheet(f"""
+            QMainWindow, QWidget {{
+                font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
                 font-size: 12px;
-            }
-            QMenuBar {
-                background: #1E3A5F;
-                color: #FFFFFF;
+                color: {theme.TEXT_MAIN};
+            }}
+            QMenuBar {{
+                background: {theme.NAV_BG_DEEP};
+                color: {theme.TEXT_INVERSE};
                 padding: 2px 4px;
-            }
-            QMenuBar::item:selected {
-                background: #2B5287;
-            }
-            QMenu {
-                background: #FFFFFF;
-                border: 1px solid #C8D4E5;
-                color: #1E3A5F;
-            }
-            QMenu::item:selected {
-                background: #1E3A5F;
-                color: #FFFFFF;
-            }
-            QStatusBar {
-                background: #F0F4FA;
-                color: #1E3A5F;
-                border-top: 1px solid #C8D4E5;
+                border-bottom: 1px solid {theme.BORDER_STRONG};
+            }}
+            QMenuBar::item:selected {{
+                background: {theme.NAV_BG};
+            }}
+            QMenu {{
+                background: {theme.SURFACE_BG};
+                border: 1px solid {theme.BORDER};
+                color: {theme.TEXT_MAIN};
+            }}
+            QMenu::item:selected {{
+                background: {theme.SELECTION_BG};
+                color: {theme.TEXT_MAIN};
+            }}
+            QStatusBar {{
+                background: {theme.PANEL_BG};
+                color: {theme.TEXT_MAIN};
+                border-top: 1px solid {theme.BORDER};
                 font-size: 11px;
                 padding: 2px 6px;
-            }
-            QScrollBar:vertical {
+            }}
+            QTableView, QTreeView, QListView {{
+                background: {theme.CELL_BG};
+                alternate-background-color: {theme.CELL_BG_MUTED};
+                color: {theme.TEXT_MAIN};
+                gridline-color: {theme.BORDER};
+                border: 1px solid {theme.BORDER};
+                selection-background-color: {theme.SELECTION_BG};
+                selection-color: {theme.SELECTION_FG};
+            }}
+            QHeaderView::section {{
+                background: {theme.HEADER_BG_LIGHT};
+                color: {theme.TEXT_MAIN};
+                border: 1px solid {theme.BORDER};
+                padding: 4px 6px;
+                font-weight: 600;
+            }}
+            QPushButton, QComboBox, QLineEdit, QTextEdit {{
+                background: {theme.INPUT_BG};
+                color: {theme.TEXT_MAIN};
+                border: 1px solid {theme.BORDER};
+                border-radius: 4px;
+            }}
+            QPushButton {{
+                padding: 4px 10px;
+            }}
+            QPushButton:hover, QComboBox:hover, QLineEdit:hover {{
+                border-color: {theme.BORDER_STRONG};
+                background: {theme.SURFACE_BG};
+            }}
+            QPushButton:disabled, QComboBox:disabled, QLineEdit:disabled {{
+                background: {theme.DISABLED_BG};
+                color: {theme.DISABLED_FG};
+                border-color: {theme.BORDER};
+            }}
+            QTextEdit {{
+                selection-background-color: {theme.SELECTION_BG};
+                selection-color: {theme.SELECTION_FG};
+            }}
+            QScrollBar:vertical {{
                 width: 10px;
-                background: #F0F4FA;
+                background: {theme.SURFACE_ALT_BG};
                 border: none;
-            }
-            QScrollBar::handle:vertical {
-                background: #B0C4DE;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {theme.ACCENT_SOFT};
                 border-radius: 4px;
                 min-height: 20px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background: #2B5287;
-            }
-            QScrollBar:horizontal {
+            }}
+            QScrollBar::handle:vertical:hover {{
+                background: {theme.ACCENT};
+            }}
+            QScrollBar:horizontal {{
                 height: 10px;
-                background: #F0F4FA;
+                background: {theme.SURFACE_ALT_BG};
                 border: none;
-            }
-            QScrollBar::handle:horizontal {
-                background: #B0C4DE;
+            }}
+            QScrollBar::handle:horizontal {{
+                background: {theme.ACCENT_SOFT};
                 border-radius: 4px;
                 min-width: 20px;
-            }
-            QScrollBar::handle:horizontal:hover {
-                background: #2B5287;
-            }
-            QSplitter::handle {
-                background: #C8D4E5;
-            }
+            }}
+            QScrollBar::handle:horizontal:hover {{
+                background: {theme.ACCENT};
+            }}
+            QSplitter::handle {{
+                background: {theme.BORDER};
+            }}
         """)
 
     def _setup_menu(self) -> None:
@@ -286,7 +329,7 @@ class MainWindow(QMainWindow):
         bar = QFrame()
         bar.setFixedHeight(36)
         bar.setStyleSheet(
-            "QFrame { background: #2B5287; border-bottom: 1px solid #1E3A5F; }"
+            f"QFrame {{ background: {theme.NAV_BG}; border-bottom: 1px solid {theme.BORDER_STRONG}; }}"
         )
 
         layout = QHBoxLayout(bar)
@@ -294,16 +337,17 @@ class MainWindow(QMainWindow):
         layout.setSpacing(6)
 
         chip_style = (
-            "QLabel { color: #FFFFFF; font-size: 11px; font-weight: 600;"
-            " background: rgba(255,255,255,0.12); border-radius: 3px; padding: 2px 7px; }"
+            f"QLabel {{ color: {theme.TEXT_MAIN}; font-size: 11px; font-weight: 600;"
+            f" background: rgba(255,253,248,0.55); border: 1px solid {theme.BORDER};"
+            " border-radius: 3px; padding: 2px 7px; }"
         )
         close_style = (
-            "QPushButton { color: #A8C8EE; background: transparent; border: none;"
+            f"QPushButton {{ color: {theme.TEXT_MUTED}; background: transparent; border: none;"
             " font-size: 14px; padding: 0 3px; }"
-            "QPushButton:hover { color: #FFFFFF; background: rgba(255,255,255,0.2);"
+            f"QPushButton:hover {{ color: {theme.TEXT_MAIN}; background: rgba(255,253,248,0.35);"
             " border-radius: 3px; }"
         )
-        sep_style = "QLabel { color: #7BA4C8; font-size: 14px; background: transparent; }"
+        sep_style = f"QLabel {{ color: {theme.TEXT_MUTED}; font-size: 14px; background: transparent; }}"
 
         # ── Taxonomy chip ──────────────────────────────────────────────
         if self._current_taxonomy:
@@ -337,16 +381,33 @@ class MainWindow(QMainWindow):
             inst_close.clicked.connect(self._on_close_instance)
             layout.addWidget(inst_close)
 
+        # ── Selected-table chip ────────────────────────────────────────
+        table_sep = QLabel("›")
+        table_sep.setStyleSheet(sep_style)
+        table_sep.setVisible(False)
+        layout.addWidget(table_sep)
+        self._table_chip_sep = table_sep
+
+        table_chip = QLabel()
+        table_chip.setStyleSheet(
+            f"QLabel {{ color: {theme.TEXT_MAIN}; font-size: 11px; font-weight: 600;"
+            f" background: rgba(255,248,236,0.65); border: 1px solid {theme.BORDER};"
+            " border-radius: 3px; padding: 2px 7px; }"
+        )
+        table_chip.setVisible(False)
+        layout.addWidget(table_chip)
+        self._table_chip_label = table_chip
+
         layout.addStretch()
 
         # ── Action buttons on the right ────────────────────────────────
         btn_style = (
-            "QPushButton { color: #FFFFFF; background: rgba(255,255,255,0.15);"
-            " border: 1px solid rgba(255,255,255,0.3); border-radius: 3px;"
+            f"QPushButton {{ color: {theme.TEXT_MAIN}; background: rgba(255,250,242,0.72);"
+            f" border: 1px solid {theme.BORDER}; border-radius: 3px;"
             " font-size: 11px; padding: 3px 10px; }"
-            "QPushButton:hover { background: rgba(255,255,255,0.25); }"
-            "QPushButton:disabled { color: #7BA4C8; background: transparent;"
-            " border-color: rgba(255,255,255,0.1); }"
+            f"QPushButton:hover {{ background: {theme.HEADER_BG_LIGHT}; border-color: {theme.BORDER_STRONG}; }}"
+            f"QPushButton:disabled {{ color: {theme.DISABLED_FG}; background: transparent;"
+            f" border-color: {theme.BORDER}; }}"
         )
 
         if instance is not None:
@@ -404,6 +465,8 @@ class MainWindow(QMainWindow):
         self._table_view = None
         self._sidebar = None
         self._context_bar = None
+        self._table_chip_sep = None
+        self._table_chip_label = None
 
         self._reload_action.setEnabled(False)
         self._new_instance_action.setEnabled(False)
@@ -435,6 +498,10 @@ class MainWindow(QMainWindow):
         self._save_as_action.setEnabled(False)
         self._validate_action.setEnabled(False)
         self._close_instance_action.setEnabled(False)
+
+        # Return the sidebar to browse mode before rebuilding the layout
+        if self._sidebar is not None:
+            self._sidebar.clear_instance()
 
         # Discard existing table view so _setup_browser_layout creates a fresh one
         self._table_view = None
@@ -535,9 +602,6 @@ class MainWindow(QMainWindow):
 
     def _load_instance(self, instance) -> None:
         from bde_xbrl_editor.instance.editor import InstanceEditor  # noqa: PLC0415
-        from bde_xbrl_editor.ui.widgets.instance_info_panel import (
-            InstanceInfoPanel,  # noqa: PLC0415
-        )
         from bde_xbrl_editor.ui.widgets.xbrl_table_view import XbrlTableView  # noqa: PLC0415
 
         # Disconnect old editor signals
@@ -552,17 +616,16 @@ class MainWindow(QMainWindow):
         if self._table_view is None:
             self._table_view = XbrlTableView(parent=self)
 
-        info_panel = InstanceInfoPanel(
-            instance=instance,
-            taxonomy=self._current_taxonomy,
-            parent=self,
-        )
-        info_panel.table_selected.connect(self._on_table_selected)
-        info_panel.save_requested.connect(self._on_save)
-        info_panel.open_instance_requested.connect(self._on_open_instance)
+        # Ensure the sidebar exists (may be absent when loading directly from welcome screen)
+        if self._sidebar is None:
+            self._sidebar = ActivitySidebar(self._current_taxonomy, parent=self)
+            self._sidebar.table_selected.connect(self._on_table_selected)
+
+        # Switch the sidebar to instance mode (6th panel: entity, period, FI, filed tables)
+        self._sidebar.set_instance(instance, self._current_taxonomy)
 
         splitter = QSplitter(self)
-        splitter.addWidget(info_panel)
+        splitter.addWidget(self._sidebar)
         splitter.addWidget(self._table_view)
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
@@ -592,7 +655,7 @@ class MainWindow(QMainWindow):
         )
 
         # Auto-render the first filed table immediately
-        info_panel.select_first_table()
+        self._sidebar.select_first_instance_table()
 
         # Show validation panel (cleared) so user sees it's ready
         self._ensure_validation_panel()
@@ -610,6 +673,14 @@ class MainWindow(QMainWindow):
     def _on_table_selected(self, table) -> None:
         if self._table_view is None or self._current_taxonomy is None:
             return
+        # Update the selected-table chip in the context bar
+        if self._table_chip_label is not None and self._table_chip_sep is not None:
+            label = getattr(table, "label", None) or ""
+            table_id = getattr(table, "table_id", "")
+            chip_text = f"⊡  {table_id}" + (f"  —  {label}" if label else "")
+            self._table_chip_label.setText(chip_text)
+            self._table_chip_label.setVisible(True)
+            self._table_chip_sep.setVisible(True)
         self._table_view.set_table(
             table=table,
             taxonomy=self._current_taxonomy,

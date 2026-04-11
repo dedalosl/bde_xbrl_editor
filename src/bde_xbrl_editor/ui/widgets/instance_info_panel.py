@@ -15,37 +15,38 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from bde_xbrl_editor.ui import theme
 
 if TYPE_CHECKING:
     from bde_xbrl_editor.instance.models import XbrlInstance
     from bde_xbrl_editor.taxonomy.models import TableDefinitionPWD, TaxonomyStructure
 
-_SIDEBAR_BG = "#F5F7FA"
+_SIDEBAR_BG = theme.PANEL_BG
 _SECTION_HEADER_STYLE = (
-    "background: #2B5287; color: #FFFFFF; font-weight: bold; font-size: 11px;"
+    f"background: {theme.NAV_BG_DARK}; color: {theme.TEXT_INVERSE}; font-weight: bold; font-size: 11px;"
     " padding: 4px 8px; margin-top: 4px;"
 )
 _VALUE_STYLE = (
-    "color: #1E3A5F; font-size: 12px; padding: 2px 8px;"
+    f"color: {theme.TEXT_MAIN}; font-size: 12px; padding: 2px 8px;"
 )
 _TABLE_LIST_STYLE = """
 QListWidget {
-    border: 1px solid #C8D4E5;
-    background: #FFFFFF;
+    border: 1px solid """ + theme.BORDER + """;
+    background: """ + theme.SURFACE_BG + """;
     font-size: 12px;
-    color: #1E3A5F;
+    color: """ + theme.TEXT_MAIN + """;
     outline: none;
 }
 QListWidget::item {
     padding: 5px 8px;
-    border-bottom: 1px solid #E8EDF5;
+    border-bottom: 1px solid """ + theme.ACCENT_SOFT + """;
 }
 QListWidget::item:selected {
-    background: #1E3A5F;
-    color: #FFFFFF;
+    background: """ + theme.SELECTION_BG + """;
+    color: """ + theme.SELECTION_FG + """;
 }
 QListWidget::item:hover:!selected {
-    background: #DCE8F5;
+    background: """ + theme.HOVER_BG + """;
 }
 """
 
@@ -92,15 +93,15 @@ class InstanceInfoPanel(QFrame):
 
         # ── Action buttons ─────────────────────────────────────────────
         btn_bar = QWidget()
-        btn_bar.setStyleSheet("background: #1E3A5F;")
+        btn_bar.setStyleSheet(f"background: {theme.NAV_BG};")
         btn_layout = QHBoxLayout(btn_bar)
         btn_layout.setContentsMargins(6, 4, 6, 4)
         btn_layout.setSpacing(4)
         btn_style = (
-            "QPushButton { color: #FFFFFF; background: rgba(255,255,255,0.15);"
-            " border: 1px solid rgba(255,255,255,0.3); border-radius: 3px;"
+            f"QPushButton {{ color: {theme.TEXT_MAIN}; background: rgba(255,250,242,0.72);"
+            f" border: 1px solid {theme.BORDER}; border-radius: 3px;"
             " font-size: 11px; padding: 3px 8px; }"
-            "QPushButton:hover { background: rgba(255,255,255,0.3); }"
+            f"QPushButton:hover {{ background: {theme.HEADER_BG_LIGHT}; }}"
         )
         save_btn = QPushButton("Save")
         save_btn.setStyleSheet(btn_style)

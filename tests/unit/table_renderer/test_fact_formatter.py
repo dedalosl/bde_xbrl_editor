@@ -28,11 +28,20 @@ class TestFactFormatter:
         assert "1,234,567" in result
 
     def test_monetary_with_negative_decimals(self):
-        """@decimals='-3' means round to thousands."""
+        """@decimals='-3' declares accuracy to thousands but does not round the stored value.
+
+        The stored value is displayed as-is (integer, with comma separator). Rounding to
+        the quantum would corrupt small values (e.g. 1, 2, 3) to 0.
+        """
         f = _make_formatter("monetaryItemType")
         result = f.format("1234567", _CONCEPT, decimals="-3")
-        # 1234567 rounded to nearest thousand = 1,235,000
-        assert "1,235,000" in result
+        assert "1,234,567" in result
+
+    def test_monetary_small_value_with_negative_decimals_not_zeroed(self):
+        """Values like 1 with decimals='-3' must display as '1', not '0'."""
+        f = _make_formatter("monetaryItemType")
+        assert f.format("1", _CONCEPT, decimals="-3") == "1"
+        assert f.format("999", _CONCEPT, decimals="-3") == "999"
 
     def test_percent(self):
         f = _make_formatter("percentItemType")

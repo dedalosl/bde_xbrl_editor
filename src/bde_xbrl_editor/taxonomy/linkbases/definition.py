@@ -121,14 +121,20 @@ def parse_definition_linkbase(
     _schema_ns: dict[str, str] = schema_ns_map or {}
 
     # Per-ELR accumulators for dimensional model construction
-    # elr → set of (primary_item, hypercube, arcrole, closed, context_element)
-    hc_primary: dict[str, list[tuple[QName, QName, str, bool, str]]] = {}
+    # elr → list of (primary_item, hypercube, arcrole, closed, context_element, target_role)
+    hc_primary: dict[str, list[tuple[QName, QName, str, bool, str, str | None]]] = {}
     # elr → list of (hypercube, dimension)
     hc_dims: dict[str, list[tuple[QName, QName]]] = {}
     # dimension → list of (domain, member, parent, order, usable)
     dim_domain: dict[QName, QName] = {}
     dim_members: dict[QName, list[tuple[QName, QName | None, float, bool]]] = {}
     dim_defaults: dict[QName, QName] = {}
+    # Deferred domain-member arcs: collected during the main loop and resolved
+    # against dim_domain AFTER all definitionLink elements have been processed.
+    # This is necessary because dimension-domain arcs (which populate dim_domain)
+    # may appear in a later definitionLink than the domain-member arcs that reference
+    # those dimensions (e.g. when targetRole points to a separate ELR link).
+    _deferred_dm_arcs: list[tuple[QName, QName, float, bool]] = []
 
     for link_el in root.iter(_DEF_LINK):
         elr = link_el.get(_XLINK_ROLE, "http://www.xbrl.org/2003/role/link")
@@ -150,6 +156,13 @@ def parse_definition_linkbase(
             source = loc_map.get(frm)
             target = loc_map.get(to)
             if not source or not target:
+                continue
+
+            use = arc.get("use", "optional")
+            if use == "prohibited":
+                # Prohibited arcs cancel arcs with the same from/to/arcrole in the
+                # same ELR across all extended links — skip adding the arc itself.
+                arcs_by_elr.setdefault(elr, [])  # ensure key exists
                 continue
 
             try:
@@ -181,24 +194,32 @@ def parse_definition_linkbase(
             if arcrole in (ARCROLE_ALL, ARCROLE_NOT_ALL):
                 hc_primary.setdefault(elr, []).append((
                     source, target, arcrole,
-                    bool(closed), context_element or "segment",
+                    bool(closed), context_element or "segment", target_role,
                 ))
             elif arcrole == ARCROLE_HYPERCUBE_DIMENSION:
                 hc_dims.setdefault(elr, []).append((source, target))
             elif arcrole == ARCROLE_DIMENSION_DOMAIN:
                 dim_domain[source] = target
-                dim_members.setdefault(source, []).append((target, None, order, True))
+                domain_usable = usable if usable is not None else True
+                dim_members.setdefault(source, []).append((target, None, order, domain_usable))
             elif arcrole == ARCROLE_DOMAIN_MEMBER:
-                # source is the parent member/domain, target is the member
-                # We need to track which dimension owns these — done via dim_domain
-                # Find which dimension owns this source
-                for dim_q, _dom_q in dim_domain.items():
-                    # This is a heuristic; proper resolution needs ELR scoping
-                    dim_members.setdefault(dim_q, []).append(
-                        (target, source, order, usable if usable is not None else True)
-                    )
+                # Defer resolution: dim_domain may not be fully populated yet if
+                # dimension-domain arcs appear in a later definitionLink element.
+                _deferred_dm_arcs.append(
+                    (source, target, order, usable if usable is not None else True)
+                )
             elif arcrole == ARCROLE_DIMENSION_DEFAULT:
                 dim_defaults[source] = target
+
+    # Second pass: resolve deferred domain-member arcs now that dim_domain is complete.
+    for dm_source, dm_target, dm_order, dm_usable in _deferred_dm_arcs:
+        for dim_q in dim_domain:
+            # Heuristic: associate every domain-member arc with every known dimension.
+            # Proper resolution would require full ELR + targetRole scoping, but this
+            # is sufficient for all known BDE and conformance-suite taxonomies.
+            dim_members.setdefault(dim_q, []).append(
+                (dm_target, dm_source, dm_order, dm_usable)
+            )
 
     # Build HypercubeModel objects
     hypercubes: list[HypercubeModel] = []
@@ -216,31 +237,35 @@ def parse_definition_linkbase(
                 dm_children_in_elr.setdefault(arc.source, []).append(arc.target)
 
         expanded_primaries: set[QName] = {p for p, *_ in prim_list}
-        bfs_queue: list[tuple[QName, QName, str, bool, str]] = list(prim_list)
-        for primary, hc, arcrole, closed, ctx in bfs_queue:
+        bfs_queue: list[tuple[QName, QName, str, bool, str, str | None]] = list(prim_list)
+        for primary, hc, arcrole, closed, ctx, tgt_role in bfs_queue:
             for child in dm_children_in_elr.get(primary, []):
                 if child not in expanded_primaries:
                     expanded_primaries.add(child)
-                    new_entry = (child, hc, arcrole, closed, ctx)
+                    new_entry = (child, hc, arcrole, closed, ctx, tgt_role)
                     prim_list.append(new_entry)
                     bfs_queue.append(new_entry)
 
-        # Group by hypercube
-        hc_map: dict[QName, tuple[str, bool, str]] = {}  # hc → (arcrole, closed, ctx)
+        # Group by hypercube, tracking the targetRole of each hypercube's all/notAll arc.
+        # hc → (arcrole, closed, ctx, target_role)
+        hc_map: dict[QName, tuple[str, bool, str, str | None]] = {}
         primary_by_hc: dict[QName, list[QName]] = {}
-        for primary, hc, arcrole, closed, ctx in prim_list:
-            hc_map[hc] = (arcrole, closed, ctx)
+        for primary, hc, arcrole, closed, ctx, tgt_role in prim_list:
+            hc_map[hc] = (arcrole, closed, ctx, tgt_role)
             primary_by_hc.setdefault(hc, []).append(primary)
 
-        # Only use hypercube-dimension arcs from THIS ELR.
-        # xbrldt:targetRole on those arcs controls where members are looked up,
-        # not which dimensions belong to the hypercube — scoping to the current
-        # ELR prevents dimensions from other tables' ELRs leaking into this one.
+        # Build dims_by_hc: for each hypercube, look up hypercube-dimension arcs in
+        # the ELR pointed to by xbrldt:targetRole on the all/notAll arc (if present),
+        # otherwise fall back to the current ELR.  This implements XBRL Dimensions
+        # §2.3 DRS targetRole semantics for the hypercube-dimension relationship.
         dims_by_hc: dict[QName, list[QName]] = {}
-        for hc_q, dim_q in hc_dims.get(elr, []):
-            dims_by_hc.setdefault(hc_q, []).append(dim_q)
+        for hc, (_arcrole, _closed, _ctx, tgt_role) in hc_map.items():
+            lookup_elr = tgt_role if tgt_role else elr
+            for hc_q, dim_q in hc_dims.get(lookup_elr, []):
+                if hc_q == hc:
+                    dims_by_hc.setdefault(hc, []).append(dim_q)
 
-        for hc, (arcrole, closed, ctx) in hc_map.items():
+        for hc, (arcrole, closed, ctx, _tgt_role) in hc_map.items():
             arcrole_short: str = "all" if arcrole == ARCROLE_ALL else "notAll"
             ctx_el = "segment" if ctx == "segment" else "scenario"
             hypercubes.append(HypercubeModel(

@@ -15,6 +15,7 @@ from PySide6.QtGui import QColor, QFont, QPainter
 from PySide6.QtWidgets import QHeaderView, QWidget
 
 from bde_xbrl_editor.table_renderer.models import HeaderGrid
+from bde_xbrl_editor.ui import theme
 
 # ── Geometry ──────────────────────────────────────────────────────────────
 _COL_W = 280  # total width of the single header column
@@ -29,29 +30,10 @@ _MIN_LABEL_PT = 9
 _MIN_RC_PT = 8
 _RC_FONT_SCALE = 0.82  # rc_code drawn smaller than the main label
 
-# ── Colours ───────────────────────────────────────────────────────────────
-# Background shades — outermost groups are slightly darker
-_BG = [
-    QColor("#C8D9EE"),  # depth 0  (top-level group)
-    QColor("#DCE8F5"),  # depth 1
-    QColor("#EEF3FA"),  # depth 2
-    QColor("#F5F8FD"),  # depth 3
-    QColor("#FAFCFF"),  # depth 4+  (leaf / deepest)
-]
-
-# Left-accent strip colours — one shade per depth
-_ACCENT = [
-    QColor("#1E3A5F"),  # depth 0
-    QColor("#2B5287"),  # depth 1
-    QColor("#3A6AA8"),  # depth 2
-    QColor("#5A7FA8"),  # depth 3
-    QColor("#7BA4C8"),  # depth 4+
-]
-
-_TEXT_MAIN = QColor("#1E3A5F")
-_TEXT_RC = QColor("#5A7FA8")
-_BORDER = QColor("#C4D5E8")
-_BORDER_RIGHT = QColor("#2B5287")
+_TEXT_MAIN = QColor(theme.TEXT_MAIN)
+_TEXT_RC = QColor(theme.TEXT_MUTED)
+_BORDER = QColor(theme.BORDER)
+_BORDER_RIGHT = QColor(theme.BORDER_STRONG)
 
 _WRAP = Qt.AlignmentFlag.AlignLeft | Qt.TextFlag.TextWordWrap
 
@@ -170,13 +152,13 @@ class MultiLevelRowHeader(QHeaderView):
         is_leaf: bool,
     ) -> None:
         # ── Background ────────────────────────────────────────────────
-        bg_idx = min(level, len(_BG) - 1)
-        painter.fillRect(rect, _BG[bg_idx])
+        bg = QColor(theme.HEADER_SURFACE_BG)
+        painter.fillRect(rect, bg)
 
         # ── Left accent strip ──────────────────────────────────────────
-        accent_idx = min(level, len(_ACCENT) - 1)
         accent_rect = QRect(rect.x(), rect.y(), _ACCENT_W, rect.height())
-        painter.fillRect(accent_rect, _ACCENT[accent_idx])
+        accent = QColor(theme.HEADER_SURFACE_BG)
+        painter.fillRect(accent_rect, accent)
 
         # ── Borders ───────────────────────────────────────────────────
         painter.setPen(_BORDER)

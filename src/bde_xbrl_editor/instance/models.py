@@ -213,6 +213,11 @@ class XbrlContext:
     period: ReportingPeriod
     dimensions: dict[QName, QName] = field(default_factory=dict)
     context_element: Literal["scenario", "segment"] = "scenario"
+    # Per-dimension container: "segment" or "scenario" for each dimension QName.
+    # Used to validate xbrldt:contextElement constraints on hypercubes.
+    dim_containers: dict[QName, Literal["segment", "scenario"]] = field(
+        default_factory=dict
+    )
 
 
 @dataclass
@@ -229,6 +234,43 @@ class FilingIndicator:
 
     template_id: str
     filed: bool = True
+    context_ref: ContextId = ""
+
+
+@dataclass
+class BdeEstadoReportado:
+    """One estado entry inside EstadosReportados (BDE IE_2008_02 preamble).
+
+    Each CodigoEstado element carries a 4-digit numeric estado code and an
+    optional ``blanco="true"`` attribute that signals a clearing submission.
+    """
+
+    codigo: str  # 4-digit numeric estado code (e.g. "3201")
+    blanco: bool = False  # True when blanco="true" — clearing the estado
+    context_ref: ContextId = ""
+
+
+@dataclass
+class BdePreambulo:
+    """BDE-specific preamble data from the es-be-cm-pblo namespace.
+
+    In IE_2008_02 instances these elements appear as direct children of
+    ``<xbrli:xbrl>`` (no wrapper).  The parser extracts them into this
+    structure so the rest of the application can read them without having
+    to walk the XML tree.
+
+    Attributes:
+        entidad_presentadora: 4-digit BDE entity code (no "ES" prefix).
+        tipo_envio: Submission type — "Ordinario", "Complementario", or
+            "Sustitutivo".
+        estados_reportados: Ordered list of reported/cleared estados.
+        context_ref: The contextRef shared by all preamble elements
+            (typically the dimensionless "cBasico" context).
+    """
+
+    entidad_presentadora: str = ""
+    tipo_envio: str = ""
+    estados_reportados: list[BdeEstadoReportado] = field(default_factory=list)
     context_ref: ContextId = ""
 
 
@@ -290,6 +332,9 @@ class XbrlInstance:
     facts: list[Fact] = field(default_factory=list)
     orphaned_facts: list[OrphanedFact] = field(default_factory=list)
     edit_history: list[EditOperation] = field(default_factory=list)
+    # BDE IE_2008_02 preamble (EntidadPresentadora, TipoEnvio, EstadosReportados).
+    # None when the instance was not created from a BDE IE_2008_02 source.
+    bde_preambulo: BdePreambulo | None = None
     source_path: Path | None = None
     _dirty: bool = field(default=True, repr=False)
 

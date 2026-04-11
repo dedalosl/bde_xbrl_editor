@@ -65,18 +65,19 @@ class FactFormatter:
     def _format_decimal(raw_value: str, decimals: str | None) -> str:
         """Format a numeric value with optional precision from @decimals.
 
-        @decimals=N means N decimal places; @decimals=-3 means round to thousands.
+        @decimals=N (N>=1) means show N decimal places.
+        @decimals=0 or negative means show as integer (no rounding to quantum —
+        the stored value is the actual value; decimals only expresses accuracy).
         """
         d = Decimal(raw_value.strip())
         if decimals is not None and decimals.strip().upper() != "INF":
             try:
                 precision = int(decimals)
-                # Build quantum from exponent: precision=2 → '0.01'; precision=-3 → '1E+3'
+                if precision <= 0:
+                    # Display stored integer value without rounding to magnitude
+                    return f"{int(d.to_integral_value(rounding=ROUND_HALF_UP)):,}"
                 quantum = Decimal(f"1E{-precision}")
                 d = d.quantize(quantum, rounding=ROUND_HALF_UP)
-                # Convert to plain int string then add thousands separator
-                if precision <= 0:
-                    return f"{int(d):,}"
                 return f"{d:,}"
             except (InvalidOperation, ValueError):
                 pass

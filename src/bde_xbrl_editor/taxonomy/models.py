@@ -256,6 +256,9 @@ class BreakdownNode:
     span: int | None = None
     children: list[BreakdownNode] = field(default_factory=list)
     aspect_constraints: dict[str, Any] = field(default_factory=dict)
+    # Roll-up ordering: "parent-first" (default) puts the roll-up node before its children;
+    # "children-first" puts it after.  Inherited from table > breakdown > parent node.
+    parent_child_order: str = "parent-first"
 
 
 @dataclass(frozen=True)

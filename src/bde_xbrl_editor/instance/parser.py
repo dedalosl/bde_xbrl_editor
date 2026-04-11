@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from lxml import etree
 
 from bde_xbrl_editor.instance.constants import (
+    BDE_PBLO_NS,
     FILING_IND_NS,
     LINK_NS,
     XBRLDI_NS,
@@ -17,6 +18,8 @@ from bde_xbrl_editor.instance.constants import (
     XLINK_NS,
 )
 from bde_xbrl_editor.instance.models import (
+    BdeEstadoReportado,
+    BdePreambulo,
     ContextId,
     Fact,
     FilingIndicator,
@@ -56,18 +59,33 @@ _FILING_IND = f"{{{FILING_IND_NS}}}filingIndicator"
 _XLINK_HREF = f"{{{XLINK_NS}}}href"
 _XLINK_TYPE = f"{{{XLINK_NS}}}type"
 
+# BDE IE_2008_02 preamble Clark-notation tags
+_BDE_ENTIDAD = f"{{{BDE_PBLO_NS}}}EntidadPresentadora"
+_BDE_TIPO_ENVIO = f"{{{BDE_PBLO_NS}}}TipoEnvio"
+_BDE_ESTADOS_REPORTADOS = f"{{{BDE_PBLO_NS}}}EstadosReportados"
+_BDE_CODIGO_ESTADO = f"{{{BDE_PBLO_NS}}}CodigoEstado"
+
 # Known non-fact tags (skipped when iterating facts)
+# All es-be-cm-pblo namespace elements are BDE preamble data, not XBRL facts.
 _NON_FACT_TAGS = frozenset([
     _LINK_SCHEMA_REF,
     _XBRLI_CONTEXT,
     _XBRLI_UNIT,
     _FILING_IND,
     f"{{{FILING_IND_NS}}}fIndicators",
+    _BDE_ENTIDAD,
+    _BDE_TIPO_ENVIO,
+    _BDE_ESTADOS_REPORTADOS,
 ])
 
 
 def _parse_date(text: str) -> date:
-    return date.fromisoformat(text.strip())
+    stripped = text.strip()
+    # XBRL allows ISO 8601 datetime strings for instant dates (e.g. "2009-01-01T00:00:00").
+    # Python's date.fromisoformat() rejects these, so strip the time portion first.
+    if "T" in stripped:
+        stripped = stripped.split("T")[0]
+    return date.fromisoformat(stripped)
 
 
 def _parse_context(el: etree._Element) -> XbrlContext:
@@ -106,6 +124,7 @@ def _parse_context(el: etree._Element) -> XbrlContext:
     # Dimensions must be unique across BOTH segment and scenario combined.
     # NOTE: scenario is a direct child of context; segment is inside entity.
     dimensions: dict[QName, QName] = {}
+    dim_containers: dict[QName, str] = {}
     context_element: str = "scenario"
     _segment_container = entity_el.find(_XBRLI_SEGMENT) if entity_el is not None else None
     _containers: list[tuple[etree._Element, str]] = []
@@ -133,6 +152,7 @@ def _parse_context(el: etree._Element) -> XbrlContext:
                             f"context '{context_id}'",
                         )
                     dimensions[dim_qname] = QName.from_clark(mem_clark)
+                    dim_containers[dim_qname] = _ce
                 except InstanceParseError:
                     raise
                 except Exception:  # noqa: BLE001
@@ -153,6 +173,7 @@ def _parse_context(el: etree._Element) -> XbrlContext:
                         )
                     # Use dim_qname itself as placeholder value for typed members
                     dimensions[dim_qname] = dim_qname
+                    dim_containers[dim_qname] = _ce
                 except InstanceParseError:
                     raise
                 except Exception:  # noqa: BLE001
@@ -164,6 +185,7 @@ def _parse_context(el: etree._Element) -> XbrlContext:
         period=period,
         dimensions=dimensions,
         context_element=context_element,  # type: ignore[arg-type]
+        dim_containers=dim_containers,  # type: ignore[arg-type]
     )
 
 
@@ -207,7 +229,11 @@ class InstanceParser:
         self._loader = taxonomy_loader
         self._resolver = manual_taxonomy_resolver
 
-    def load(self, path: str | Path) -> tuple[XbrlInstance, list[OrphanedFact]]:
+    def load(
+        self,
+        path: str | Path,
+        progress_callback: Callable[[str, int, int], None] | None = None,
+    ) -> tuple[XbrlInstance, list[OrphanedFact]]:
         """Parse the XBRL instance at path and return (XbrlInstance, orphaned_facts).
 
         Raises:
@@ -217,7 +243,12 @@ class InstanceParser:
         path = Path(path)
         path_str = str(path)
 
+        def progress(message: str, current: int, total: int = 100) -> None:
+            if progress_callback is not None:
+                progress_callback(message, current, total)
+
         # Stage 1: Parse XML and validate root
+        progress("Parsing instance XML…", 5)
         try:
             tree = etree.parse(str(path))  # noqa: S320
             root = tree.getroot()
@@ -238,9 +269,25 @@ class InstanceParser:
         if not schema_href:
             raise InstanceParseError(path_str, "link:schemaRef missing xlink:href")
 
-        taxonomy = self._resolve_taxonomy(path, schema_href, path_str)
+        progress("Resolving instance taxonomy…", 12)
+
+        def taxonomy_progress(message: str, current: int, total: int) -> None:
+            if total <= 0:
+                progress(f"Loading taxonomy… {message}", 45)
+                return
+            # Map taxonomy loader progress into the middle of the instance load lifecycle.
+            mapped = 12 + int((current / total) * 58)
+            progress(f"Loading taxonomy… {message}", min(mapped, 70))
+
+        taxonomy = self._resolve_taxonomy(
+            path,
+            schema_href,
+            path_str,
+            progress_callback=taxonomy_progress,
+        )
 
         # Stage 3: Parse contexts
+        progress("Reading contexts…", 78)
         contexts: dict[ContextId, XbrlContext] = {}
         for ctx_el in root.findall(_XBRLI_CONTEXT):
             try:
@@ -262,12 +309,19 @@ class InstanceParser:
             )
 
         # Stage 4: Parse units
+        progress("Reading units…", 84)
         units: dict[UnitId, XbrlUnit] = {}
         for unit_el in root.findall(_XBRLI_UNIT):
             unit = _parse_unit(unit_el)
             units[unit.unit_id] = unit
 
-        # Stage 5: Parse filing indicators
+        # Stage 5a: Parse BDE IE_2008_02 preamble (EntidadPresentadora, TipoEnvio,
+        # EstadosReportados).  Must run before fact iteration so the preambulo
+        # elements are already identified and excluded from the facts loop.
+        progress("Reading filing metadata…", 88)
+        bde_preambulo = _parse_bde_preambulo(root)
+
+        # Stage 5b: Parse Eurofiling filing indicators
         filing_indicators: list[FilingIndicator] = []
         # They may be inside ef-find:fIndicators wrapper or directly as children
         for child in root:
@@ -282,6 +336,7 @@ class InstanceParser:
                 _parse_filing_indicator(child, filing_indicators)
 
         # Stages 6–7: Parse facts
+        progress("Reading facts…", 93)
         facts: list[Fact] = []
         orphaned: list[OrphanedFact] = []
         known_concepts = taxonomy.concepts if taxonomy else {}
@@ -291,15 +346,17 @@ class InstanceParser:
                 continue
             if child.tag in _NON_FACT_TAGS:
                 continue
-            # Skip fIndicators wrapper
-            local = child.tag.split("}")[-1] if "}" in child.tag else child.tag
+            # Skip fIndicators wrapper and any other Eurofiling or BDE preamble elements
             ns = child.tag.split("}")[0][1:] if "}" in child.tag else ""
-            if ns == FILING_IND_NS:
+            if ns in (FILING_IND_NS, BDE_PBLO_NS):
                 continue
             if child.tag == _LINK_SCHEMA_REF:
                 continue
 
-            # It's a fact element
+            # It's a fact element. XBRL tuples do not have contextRef — skip them
+            # entirely to avoid false structural:unresolved-context-ref findings.
+            if "contextRef" not in child.attrib:
+                continue
             context_ref = child.get("contextRef", "")
             unit_ref = child.get("unitRef")
             decimals = child.get("decimals")
@@ -344,39 +401,53 @@ class InstanceParser:
             units=units,
             facts=facts,
             orphaned_facts=orphaned,
+            bde_preambulo=bde_preambulo,
             source_path=path,
             _dirty=False,
         )
 
+        progress("Instance parsed successfully", 100)
         return instance, orphaned
 
     def _resolve_taxonomy(
-        self, instance_path: Path, schema_href: str, path_str: str
+        self,
+        instance_path: Path,
+        schema_href: str,
+        path_str: str,
+        progress_callback: Callable[[str, int, int], None] | None = None,
     ) -> TaxonomyStructure:
         """Resolve the schemaRef href to a taxonomy path and load it."""
-        # Try relative to instance file directory first
-        if not schema_href.startswith(("http://", "https://", "/")):
+        is_remote = schema_href.startswith(("http://", "https://"))
+
+        # Try relative to instance file directory first (only for local hrefs)
+        if not is_remote and not schema_href.startswith("/"):
             candidate = instance_path.parent / schema_href
             if candidate.exists():
-                return self._loader.load(candidate)
+                return self._loader.load(candidate, progress_callback=progress_callback)
 
-        # Try catalog resolution for remote URLs (same catalog used for taxonomy loading)
-        from bde_xbrl_editor.taxonomy.discovery import _is_remote, _resolve_href  # noqa: PLC0415
-        if _is_remote(schema_href):
-            resolved = _resolve_href(schema_href, instance_path.parent, self._loader.settings)
-            if resolved is not None and resolved.exists():
-                return self._loader.load(resolved)
+        # Try absolute path (only for local hrefs)
+        if not is_remote:
+            abs_candidate = Path(schema_href)
+            if abs_candidate.exists():
+                return self._loader.load(abs_candidate, progress_callback=progress_callback)
 
-        # Try absolute path
-        abs_candidate = Path(schema_href)
-        if abs_candidate.exists():
-            return self._loader.load(abs_candidate)
+        # For remote URLs, apply the loader's local_catalog mapping — the same
+        # catalog used during DTS discovery so the same offline mirror is reused.
+        if is_remote:
+            catalog = self._loader.settings.local_catalog
+            if catalog:
+                for prefix, local_root in catalog.items():
+                    if schema_href.startswith(prefix):
+                        rel = schema_href[len(prefix):].lstrip("/")
+                        candidate = (local_root / rel).resolve()
+                    if candidate.exists():
+                        return self._loader.load(candidate, progress_callback=progress_callback)
 
         # Fall back to manual resolver
         if self._resolver is not None:
             resolved = self._resolver(schema_href)
             if resolved is not None and resolved.exists():
-                return self._loader.load(resolved)
+                return self._loader.load(resolved, progress_callback=progress_callback)
 
         raise TaxonomyResolutionError(
             schema_href,
@@ -397,3 +468,76 @@ def _parse_filing_indicator(el: etree._Element, out: list[FilingIndicator]) -> N
             filed=filed,
             context_ref=context_ref,
         ))
+
+
+def _parse_bde_preambulo(root: etree._Element) -> BdePreambulo | None:
+    """Extract BDE IE_2008_02 preamble elements from the document root.
+
+    BDE instances carry three types of preamble data as direct children of
+    ``<xbrli:xbrl>`` in the ``es-be-cm-pblo`` namespace:
+
+    * ``EntidadPresentadora`` — 4-digit entity code (no "ES" prefix).
+    * ``TipoEnvio`` — submission type (Ordinario / Complementario / Sustitutivo).
+    * ``EstadosReportados`` — wrapper containing one or more ``CodigoEstado``
+      elements, each optionally carrying ``es-be-cm-pblo:blanco="true"`` to
+      signal a clearing submission for that estado.
+
+    The Agrupacion consolidation group is NOT a preamble element — it is a
+    proper XBRL explicit dimension declared in the ``es-be-cm-dim`` namespace
+    and encoded as ``<xbrldi:explicitMember>`` inside ``<xbrli:segment>``.
+    It is therefore parsed as a regular dimension by ``_parse_context()``.
+
+    Returns ``None`` when no preamble elements are present (non-BDE instance).
+    """
+    entidad = ""
+    tipo_envio = ""
+    estados: list[BdeEstadoReportado] = []
+    context_ref = ""
+    found_any = False
+
+    for child in root:
+        if not isinstance(child.tag, str):
+            continue
+        tag = child.tag
+
+        if tag == _BDE_ENTIDAD:
+            found_any = True
+            entidad = (child.text or "").strip()
+            context_ref = context_ref or child.get("contextRef", "")
+
+        elif tag == _BDE_TIPO_ENVIO:
+            found_any = True
+            tipo_envio = (child.text or "").strip()
+            context_ref = context_ref or child.get("contextRef", "")
+
+        elif tag == _BDE_ESTADOS_REPORTADOS:
+            found_any = True
+            # CodigoEstado children: each declares one estado code.
+            # blanco="true" signals that the estado is being cleared.
+            blanco_attr = f"{{{BDE_PBLO_NS}}}blanco"
+            for estado_el in child:
+                if not isinstance(estado_el.tag, str):
+                    continue
+                if estado_el.tag != _BDE_CODIGO_ESTADO:
+                    continue
+                codigo = (estado_el.text or "").strip()
+                if not codigo:
+                    continue
+                blanco_val = estado_el.get(blanco_attr, "false").lower()
+                blanco = blanco_val in ("true", "1", "yes")
+                estado_ctx = estado_el.get("contextRef", "") or context_ref
+                estados.append(BdeEstadoReportado(
+                    codigo=codigo,
+                    blanco=blanco,
+                    context_ref=estado_ctx,
+                ))
+
+    if not found_any:
+        return None
+
+    return BdePreambulo(
+        entidad_presentadora=entidad,
+        tipo_envio=tipo_envio,
+        estados_reportados=estados,
+        context_ref=context_ref,
+    )
