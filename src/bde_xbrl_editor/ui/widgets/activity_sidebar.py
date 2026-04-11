@@ -8,8 +8,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QEasingCurve, QVariantAnimation, Qt, Signal
 from PySide6.QtWidgets import (
+    QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -45,9 +46,12 @@ from bde_xbrl_editor.validation.formula.details import (
 
 _BAR_W = 44          # icon bar width in px
 _PANEL_W = 260       # content panel width in px
+_SIDEBAR_ANIM_MS = 160
+_FADE_ANIM_MS = 120
+_SECTION_ANIM_MS = 140
 
-_ICONS = ["⊡", "⊞", "⚡", "≡", "⟷", "◈"]
-_TIPS = ["DTS Files", "Tables", "Validations", "Concepts", "Definition Linkbase", "Instance"]
+_ICONS = ["TAX", "TAB", "VAL", "INS"]
+_TIPS = ["Taxonomy", "Tables", "Validations", "Instance"]
 
 _BAR_STYLE = """
     QWidget#ActivityBar {
@@ -61,18 +65,20 @@ _BTN_STYLE = """
         background: transparent;
         border: none;
         color: """ + theme.ACCENT_SOFT + """;
-        font-size: 20px;
-        padding: 6px;
-        border-radius: 4px;
+        font-size: 9px;
+        font-weight: 700;
+        padding: 4px 2px;
+        border-radius: 8px;
+        text-align: center;
     }
     QToolButton:hover {
         color: """ + theme.TEXT_INVERSE + """;
-        background: rgba(255,253,248,0.12);
+        background: rgba(255,253,248,0.10);
     }
     QToolButton:checked {
         color: """ + theme.TEXT_INVERSE + """;
-        background: rgba(255,248,236,0.2);
-        border-left: 3px solid """ + theme.HEADER_BG_LIGHT + """;
+        background: rgba(255,248,236,0.18);
+        border-left: 2px solid """ + theme.HEADER_BG_LIGHT + """;
     }
 """
 
@@ -84,14 +90,15 @@ _PANEL_STYLE = """
 """
 
 _SECTION_HDR_STYLE = (
-    f"background: {theme.NAV_BG_DARK}; color: {theme.TEXT_INVERSE}; font-weight: bold;"
-    " font-size: 11px; padding: 6px 10px; letter-spacing: 1px;"
+    f"background: {theme.SURFACE_ALT_BG}; color: {theme.TEXT_MUTED}; font-weight: bold;"
+    f" font-size: 10px; padding: 7px 10px;"
 )
 
 _COLLAPSIBLE_HDR_STYLE = (
-    f"QPushButton {{ text-align: left; padding: 5px 8px; background: {theme.HEADER_BG};"
-    f" color: {theme.TEXT_MAIN}; font-size: 11px; font-weight: bold; border: none; }}"
-    f"QPushButton:hover {{ background: {theme.HEADER_BG_LIGHT}; }}"
+    f"QPushButton {{ text-align: left; padding: 6px 8px; background: {theme.SURFACE_BG};"
+    f" color: {theme.TEXT_MAIN}; font-size: 11px; font-weight: 600; border: none;"
+    f" border-bottom: 1px solid {theme.ACCENT_SOFT}; }}"
+    f"QPushButton:hover {{ background: {theme.SURFACE_ALT_BG}; }}"
 )
 
 _LIST_STYLE = """
@@ -103,8 +110,7 @@ _LIST_STYLE = """
         outline: none;
     }
     QListWidget::item {
-        padding: 5px 8px;
-        border-bottom: 1px solid """ + theme.ACCENT_SOFT + """;
+        padding: 7px 8px;
     }
     QListWidget::item:selected {
         background: """ + theme.SELECTION_BG + """;
@@ -158,16 +164,44 @@ class _CollapsibleSection(QWidget):
 
         self._body = body
         layout.addWidget(body, body_stretch)
+        self._body_height_hint = max(body.sizeHint().height(), 1)
+        self._body.setMaximumHeight(16777215)
+        self._toggle_anim = QVariantAnimation(self)
+        self._toggle_anim.setDuration(_SECTION_ANIM_MS)
+        self._toggle_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._toggle_anim.valueChanged.connect(self._on_toggle_animate)
+        self._toggle_anim.finished.connect(self._on_toggle_finished)
 
         if not expanded:
             self._btn.setChecked(False)
-            self._toggle(False)
+            self._body.setMaximumHeight(0)
+            self._body.setVisible(False)
+            self._btn.setText(f"▸  {title}")
 
     def _toggle(self, checked: bool) -> None:
-        self._body.setVisible(checked)
+        self._body_height_hint = max(self._body.sizeHint().height(), self._body_height_hint, 1)
+        self._toggle_anim.stop()
         arrow = "▾" if checked else "▸"
         text = self._btn.text()[2:]  # strip old arrow + space
         self._btn.setText(f"{arrow}  {text}")
+        if checked:
+            self._body.setVisible(True)
+            self._toggle_anim.setStartValue(max(self._body.maximumHeight(), 0))
+            self._toggle_anim.setEndValue(self._body_height_hint)
+        else:
+            self._toggle_anim.setStartValue(self._body.height() or self._body_height_hint)
+            self._toggle_anim.setEndValue(0)
+        self._toggle_anim.start()
+
+    def _on_toggle_animate(self, value: object) -> None:
+        height = max(int(value), 0)
+        self._body.setMaximumHeight(height)
+        if height == 0 and not self._btn.isChecked():
+            self._body.setVisible(False)
+
+    def _on_toggle_finished(self) -> None:
+        if self._btn.isChecked():
+            self._body.setMaximumHeight(16777215)
 
 
 # ---------------------------------------------------------------------------
@@ -175,15 +209,22 @@ class _CollapsibleSection(QWidget):
 # ---------------------------------------------------------------------------
 
 class _DtsFilesPanel(QWidget):
-    def __init__(self, taxonomy: TaxonomyStructure, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        taxonomy: TaxonomyStructure,
+        parent: QWidget | None = None,
+        *,
+        show_header: bool = True,
+    ) -> None:
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        hdr = QLabel("DTS FILES")
-        hdr.setStyleSheet(_SECTION_HDR_STYLE)
-        layout.addWidget(hdr)
+        if show_header:
+            hdr = QLabel("DTS Files")
+            hdr.setStyleSheet(_SECTION_HDR_STYLE)
+            layout.addWidget(hdr)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -251,7 +292,7 @@ class _TablesPanel(QWidget):
 
         meta = taxonomy.metadata
 
-        hdr = QLabel(f"TABLES  ({len(taxonomy.tables)})")
+        hdr = QLabel(f"Tables  ({len(taxonomy.tables)})")
         hdr.setStyleSheet(_SECTION_HDR_STYLE)
         layout.addWidget(hdr)
 
@@ -292,7 +333,7 @@ class _TablesPanel(QWidget):
         val_style = f"color: {theme.TEXT_MAIN}; font-size: 11px;"
 
         def _row(key: str, value: str) -> None:
-            kl = QLabel(key)
+            kl = QLabel(key.title())
             kl.setStyleSheet(key_style)
             layout.addWidget(kl)
             vl = QLabel(value)
@@ -335,7 +376,7 @@ class _ValidationsPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        hdr = QLabel("VALIDATIONS (Formula)")
+        hdr = QLabel("Validations")
         hdr.setStyleSheet(_SECTION_HDR_STYLE)
         layout.addWidget(hdr)
 
@@ -427,13 +468,13 @@ class _ValidationsPanel(QWidget):
             detail_body_layout.addWidget(vl)
             return vl
 
-        self._det_id = _make_row("ID")
-        self._det_label = _make_row("LABEL")
-        self._det_type = _make_row("TYPE")
-        self._det_severity = _make_row("SEVERITY")
-        self._det_test = _make_row("TEST / FORMULA")
-        self._det_vars = _make_row("OPERANDS")
-        self._det_precond = _make_row("PRECONDITION")
+        self._det_id = _make_row("Id")
+        self._det_label = _make_row("Label")
+        self._det_type = _make_row("Type")
+        self._det_severity = _make_row("Severity")
+        self._det_test = _make_row("Test / Formula")
+        self._det_vars = _make_row("Operands")
+        self._det_precond = _make_row("Precondition")
 
         detail_scroll = QScrollArea()
         detail_scroll.setWidgetResizable(True)
@@ -515,15 +556,22 @@ class _ValidationsPanel(QWidget):
 # ---------------------------------------------------------------------------
 
 class _ConceptsPanel(QWidget):
-    def __init__(self, taxonomy: TaxonomyStructure, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        taxonomy: TaxonomyStructure,
+        parent: QWidget | None = None,
+        *,
+        show_header: bool = True,
+    ) -> None:
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        hdr = QLabel(f"CONCEPTS  ({len(taxonomy.concepts)})")
-        hdr.setStyleSheet(_SECTION_HDR_STYLE)
-        layout.addWidget(hdr)
+        if show_header:
+            hdr = QLabel(f"Concepts  ({len(taxonomy.concepts)})")
+            hdr.setStyleSheet(_SECTION_HDR_STYLE)
+            layout.addWidget(hdr)
 
         search = QLineEdit()
         search.setPlaceholderText("Filter concepts…")
@@ -558,15 +606,22 @@ class _ConceptsPanel(QWidget):
 # ---------------------------------------------------------------------------
 
 class _DefinitionPanel(QWidget):
-    def __init__(self, taxonomy: TaxonomyStructure, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        taxonomy: TaxonomyStructure,
+        parent: QWidget | None = None,
+        *,
+        show_header: bool = True,
+    ) -> None:
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        hdr = QLabel("DEFINITION LINKBASE")
-        hdr.setStyleSheet(_SECTION_HDR_STYLE)
-        layout.addWidget(hdr)
+        if show_header:
+            hdr = QLabel("Definition Linkbase")
+            hdr.setStyleSheet(_SECTION_HDR_STYLE)
+            layout.addWidget(hdr)
 
         definition = taxonomy.definition
         if not definition:
@@ -649,7 +704,7 @@ class _InstancePanel(QWidget):
         meta_layout.setContentsMargins(8, 6, 8, 8)
         meta_layout.setSpacing(2)
 
-        kl1 = QLabel("ENTITY")
+        kl1 = QLabel("Entity")
         kl1.setStyleSheet(_key_style)
         self._entity_val = QLabel("—")
         self._entity_val.setStyleSheet(_val_style)
@@ -657,7 +712,7 @@ class _InstancePanel(QWidget):
         meta_layout.addWidget(kl1)
         meta_layout.addWidget(self._entity_val)
 
-        kl2 = QLabel("PERIOD")
+        kl2 = QLabel("Period")
         kl2.setStyleSheet(_key_style)
         self._period_val = QLabel("—")
         self._period_val.setStyleSheet(_val_style)
@@ -678,7 +733,7 @@ class _InstancePanel(QWidget):
         fi_layout.addWidget(self._fi_val)
 
         layout.addWidget(
-            _CollapsibleSection("FILING INDICATORS", fi_body, expanded=False)
+            _CollapsibleSection("Filing Indicators", fi_body, expanded=False)
         )
 
         # ── TABLES section (collapsible, expanded, takes all remaining height) ──
@@ -687,7 +742,7 @@ class _InstancePanel(QWidget):
         self._table_list.itemClicked.connect(self._on_item_clicked)
 
         self._tables_section = _CollapsibleSection(
-            "TABLES", self._table_list, expanded=True
+            "Tables", self._table_list, expanded=True
         )
         layout.addWidget(self._tables_section, stretch=1)
 
@@ -737,7 +792,7 @@ class _InstancePanel(QWidget):
 
         # Update the TABLES section header to show the count
         arrow = "▾" if self._tables_section._body.isVisible() else "▸"
-        self._tables_section._btn.setText(f"{arrow}  TABLES  ({count})")
+        self._tables_section._btn.setText(f"{arrow}  Tables  ({count})")
 
     def select_first(self) -> None:
         """Select and emit the first table in the list, if any."""
@@ -750,6 +805,56 @@ class _InstancePanel(QWidget):
         table = item.data(Qt.ItemDataRole.UserRole)
         if table is not None:
             self.table_selected.emit(table)
+
+
+class _TaxonomyPanel(QWidget):
+    """Compact taxonomy panel combining DTS, concepts, and definition content."""
+
+    def __init__(self, taxonomy: TaxonomyStructure, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        hdr = QLabel("Taxonomy")
+        hdr.setStyleSheet(_SECTION_HDR_STYLE)
+        layout.addWidget(hdr)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setStyleSheet("QScrollArea { border: none; }")
+
+        inner = QWidget()
+        inner_layout = QVBoxLayout(inner)
+        inner_layout.setContentsMargins(0, 0, 0, 0)
+        inner_layout.setSpacing(0)
+
+        inner_layout.addWidget(
+            _CollapsibleSection(
+                f"DTS Files  ({len(taxonomy.schema_files) + len(taxonomy.linkbase_files)})",
+                _DtsFilesPanel(taxonomy, show_header=False),
+                expanded=True,
+            )
+        )
+        inner_layout.addWidget(
+            _CollapsibleSection(
+                f"Concepts  ({len(taxonomy.concepts)})",
+                _ConceptsPanel(taxonomy, show_header=False),
+                expanded=False,
+            )
+        )
+        inner_layout.addWidget(
+            _CollapsibleSection(
+                "Definition Linkbase",
+                _DefinitionPanel(taxonomy, show_header=False),
+                expanded=False,
+            )
+        )
+        inner_layout.addStretch(1)
+
+        scroll.setWidget(inner)
+        layout.addWidget(scroll, stretch=1)
 
 
 # ---------------------------------------------------------------------------
@@ -769,7 +874,12 @@ class ActivitySidebar(QWidget):
         super().__init__(parent)
         self._taxonomy = taxonomy
         self._active_index: int | None = None
+        self._target_width = _BAR_W + _PANEL_W
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
+        self._width_anim = QVariantAnimation(self)
+        self._width_anim.setDuration(_SIDEBAR_ANIM_MS)
+        self._width_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._width_anim.valueChanged.connect(self._on_width_animate)
 
         root_layout = QHBoxLayout(self)
         root_layout.setContentsMargins(0, 0, 0, 0)
@@ -790,12 +900,16 @@ class ActivitySidebar(QWidget):
             btn = QToolButton()
             btn.setText(icon)
             btn.setToolTip(tip)
+            btn.setAccessibleName(tip)
             btn.setCheckable(True)
             btn.setFixedSize(_BAR_W, _BAR_W)
             btn.setStyleSheet(_BTN_STYLE)
             btn.clicked.connect(lambda checked, idx=i: self._on_button_clicked(idx))
             bar_layout.addWidget(btn)
             self._buttons.append(btn)
+
+        # The instance panel is only useful once an instance is loaded.
+        self._buttons[3].setVisible(False)
 
         bar_layout.addStretch(1)
         root_layout.addWidget(self._bar)
@@ -804,6 +918,13 @@ class ActivitySidebar(QWidget):
         self._panel_root = QWidget()
         self._panel_root.setObjectName("PanelRoot")
         self._panel_root.setStyleSheet(_PANEL_STYLE)
+        self._panel_opacity = QGraphicsOpacityEffect(self._panel_root)
+        self._panel_opacity.setOpacity(1.0)
+        self._panel_root.setGraphicsEffect(self._panel_opacity)
+        self._fade_anim = QVariantAnimation(self)
+        self._fade_anim.setDuration(_FADE_ANIM_MS)
+        self._fade_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._fade_anim.valueChanged.connect(self._on_fade_animate)
         panel_layout = QVBoxLayout(self._panel_root)
         panel_layout.setContentsMargins(0, 0, 0, 0)
         panel_layout.setSpacing(0)
@@ -817,18 +938,21 @@ class ActivitySidebar(QWidget):
         self._instance_panel = _InstancePanel()
         self._instance_panel.table_selected.connect(self.table_selected)
 
-        self._stack.addWidget(_DtsFilesPanel(taxonomy))       # 0
+        self._stack.addWidget(_TaxonomyPanel(taxonomy))       # 0
         self._stack.addWidget(self._tables_panel)             # 1
         self._stack.addWidget(_ValidationsPanel(taxonomy))    # 2
-        self._stack.addWidget(_ConceptsPanel(taxonomy))       # 3
-        self._stack.addWidget(_DefinitionPanel(taxonomy))     # 4
-        self._stack.addWidget(self._instance_panel)           # 5
+        self._stack.addWidget(self._instance_panel)           # 3
 
         root_layout.addWidget(self._panel_root)
 
         # Start with Tables panel visible
-        self._activate(1)
-        self._apply_sidebar_width(_BAR_W + _PANEL_W)
+        self._stack.setCurrentIndex(1)
+        self._panel_root.setVisible(True)
+        self._panel_opacity.setOpacity(1.0)
+        self._active_index = 1
+        for i, btn in enumerate(self._buttons):
+            btn.setChecked(i == 1)
+        self._apply_sidebar_width(_BAR_W + _PANEL_W, animated=False)
 
     # ------------------------------------------------------------------
     # Toggle logic
@@ -837,10 +961,10 @@ class ActivitySidebar(QWidget):
     def _on_button_clicked(self, idx: int) -> None:
         if self._active_index == idx and self._panel_root.isVisible():
             # Clicking the already-active button → collapse panel
-            self._panel_root.setVisible(False)
             self._buttons[idx].setChecked(False)
             self._active_index = None
-            self._apply_sidebar_width(_BAR_W)
+            self._animate_panel_visibility(False)
+            self._apply_sidebar_width(_BAR_W, animated=True)
         else:
             self._activate(idx)
 
@@ -848,14 +972,45 @@ class ActivitySidebar(QWidget):
         self._active_index = idx
         self._stack.setCurrentIndex(idx)
         self._panel_root.setVisible(True)
-        self._apply_sidebar_width(_BAR_W + _PANEL_W)
+        self._animate_panel_visibility(True)
+        self._apply_sidebar_width(_BAR_W + _PANEL_W, animated=True)
         for i, btn in enumerate(self._buttons):
             btn.setChecked(i == idx)
 
-    def _apply_sidebar_width(self, width: int) -> None:
+    def _apply_sidebar_width(self, width: int, *, animated: bool) -> None:
+        self._target_width = width
+        if not animated:
+            self.setFixedWidth(width)
+            self.updateGeometry()
+            self.width_changed.emit(width)
+            return
+        self._width_anim.stop()
+        self._width_anim.setStartValue(self.width())
+        self._width_anim.setEndValue(width)
+        self._width_anim.start()
+
+    def _on_width_animate(self, value: object) -> None:
+        width = max(int(value), _BAR_W)
         self.setFixedWidth(width)
         self.updateGeometry()
         self.width_changed.emit(width)
+
+    def _animate_panel_visibility(self, visible: bool) -> None:
+        self._fade_anim.stop()
+        if visible:
+            self._panel_root.setVisible(True)
+            self._fade_anim.setStartValue(self._panel_opacity.opacity())
+            self._fade_anim.setEndValue(1.0)
+        else:
+            self._fade_anim.setStartValue(self._panel_opacity.opacity())
+            self._fade_anim.setEndValue(0.0)
+        self._fade_anim.start()
+
+    def _on_fade_animate(self, value: object) -> None:
+        opacity = max(0.0, min(float(value), 1.0))
+        self._panel_opacity.setOpacity(opacity)
+        if opacity == 0.0 and self._active_index is None:
+            self._panel_root.setVisible(False)
 
     # ------------------------------------------------------------------
     # Public API
@@ -869,10 +1024,12 @@ class ActivitySidebar(QWidget):
     def set_instance(self, instance: object, taxonomy: object) -> None:
         """Populate the Instance panel with *instance* data and switch to it."""
         self._instance_panel.populate(instance, taxonomy)
-        self._activate(5)
+        self._buttons[3].setVisible(True)
+        self._activate(3)
 
     def clear_instance(self) -> None:
         """Switch back to the Tables panel (used when an instance is closed)."""
+        self._buttons[3].setVisible(False)
         self._activate(1)
 
     def select_first_instance_table(self) -> None:

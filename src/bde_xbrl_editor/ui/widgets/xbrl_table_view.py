@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QFrame,
+    QHBoxLayout,
     QLabel,
     QTableView,
     QVBoxLayout,
@@ -50,6 +51,62 @@ class XbrlTableView(QFrame):
         self._outer_layout.setContentsMargins(0, 0, 0, 0)
         self._outer_layout.setSpacing(0)
 
+        self.setStyleSheet(f"QFrame {{ background: {theme.SURFACE_BG}; }}")
+
+        # Table workspace header
+        self._table_header = QFrame(self)
+        self._table_header.setStyleSheet(
+            f"QFrame {{ background: {theme.SURFACE_BG}; }}"
+        )
+        header_layout = QHBoxLayout(self._table_header)
+        header_layout.setContentsMargins(16, 12, 16, 12)
+        header_layout.setSpacing(16)
+
+        title_col = QVBoxLayout()
+        title_col.setContentsMargins(0, 0, 0, 0)
+        title_col.setSpacing(2)
+
+        self._title_label = QLabel("No table selected", self._table_header)
+        self._title_label.setStyleSheet(
+            f"color: {theme.TEXT_MAIN}; font-size: 18px; font-weight: 700; background: transparent;"
+        )
+        title_col.addWidget(self._title_label)
+
+        self._subtitle_label = QLabel("Select a table from the sidebar to start working.", self._table_header)
+        self._subtitle_label.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: 11px; background: transparent;"
+        )
+        title_col.addWidget(self._subtitle_label)
+        header_layout.addLayout(title_col, stretch=1)
+
+        status_col = QVBoxLayout()
+        status_col.setContentsMargins(0, 0, 0, 0)
+        status_col.setSpacing(6)
+
+        self._meta_label = QLabel("", self._table_header)
+        self._meta_label.setStyleSheet(
+            f"color: {theme.TEXT_SUBTLE}; font-size: 10px; font-weight: 600; background: transparent;"
+        )
+        self._meta_label.setAlignment(Qt.AlignmentFlag.AlignRight)
+        status_col.addWidget(self._meta_label)
+
+        pills_row = QHBoxLayout()
+        pills_row.setContentsMargins(0, 0, 0, 0)
+        pills_row.setSpacing(8)
+
+        self._mode_pill = QLabel("Browse mode", self._table_header)
+        self._mode_pill.setStyleSheet(self._pill_style(theme.SURFACE_ALT_BG, theme.TEXT_MUTED))
+        pills_row.addWidget(self._mode_pill)
+
+        self._z_pill = QLabel("Single view", self._table_header)
+        self._z_pill.setStyleSheet(self._pill_style(theme.HEADER_BG_LIGHT, theme.TEXT_MAIN))
+        pills_row.addWidget(self._z_pill)
+
+        status_col.addLayout(pills_row)
+        header_layout.addLayout(status_col, stretch=0)
+
+        self._outer_layout.addWidget(self._table_header)
+
         # Error banner (hidden by default)
         self._error_banner = QLabel(self)
         self._error_banner.setWordWrap(True)
@@ -72,7 +129,7 @@ class XbrlTableView(QFrame):
         self._body_view.horizontalHeader().setDefaultSectionSize(_DEFAULT_BODY_COLUMN_WIDTH)
         self._body_view.horizontalHeader().setMinimumSectionSize(120)
         self._body_view.setStyleSheet(
-            f"QTableView {{ background: {theme.CELL_BG}; border: 1px solid {theme.BORDER}; }}"
+            f"QTableView {{ background: {theme.CELL_BG}; border: none; }}"
         )
         self._outer_layout.addWidget(self._body_view)
 
@@ -87,6 +144,14 @@ class XbrlTableView(QFrame):
     @property
     def active_table_id(self) -> str | None:
         return self._table.table_id if self._table is not None else None
+
+    @staticmethod
+    def _pill_style(background: str, color: str) -> str:
+        return (
+            f"QLabel {{ color: {color}; font-size: 10px; font-weight: 600;"
+            f" background: {background}; border: 1px solid {theme.BORDER};"
+            " border-radius: 8px; padding: 3px 8px; }}"
+        )
 
     # ------------------------------------------------------------------
     # Public API
@@ -162,6 +227,11 @@ class XbrlTableView(QFrame):
         self._instance = None
         self._layout = None
         self._error_banner.hide()
+        self._title_label.setText("No table selected")
+        self._subtitle_label.setText("Select a table from the sidebar to start working.")
+        self._meta_label.setText("")
+        self._mode_pill.setText("Browse mode")
+        self._z_pill.setText("Single view")
         from bde_xbrl_editor.table_renderer.models import (  # noqa: PLC0415
             ComputedTableLayout,
             HeaderGrid,
@@ -185,6 +255,7 @@ class XbrlTableView(QFrame):
 
     def _install_layout(self, layout: ComputedTableLayout) -> None:
         self._layout = layout
+        self._refresh_header(layout)
 
         # Update Z-axis selector
         if self._z_selector is not None:
@@ -230,3 +301,31 @@ class XbrlTableView(QFrame):
         self._body_view.clicked.connect(
             lambda idx: self.cell_selected.emit(idx.row(), idx.column())
         )
+
+    def _refresh_header(self, layout: ComputedTableLayout) -> None:
+        title = layout.table_label or layout.table_id or "Selected table"
+        self._title_label.setText(title)
+
+        subtitle_parts = []
+        if layout.table_id:
+            subtitle_parts.append(layout.table_id)
+        if self._instance is not None:
+            subtitle_parts.append("Instance editing")
+        else:
+            subtitle_parts.append("Taxonomy browse")
+        self._subtitle_label.setText("  |  ".join(subtitle_parts))
+
+        row_count = len(layout.body)
+        col_count = len(layout.body[0]) if layout.body else 0
+        self._meta_label.setText(f"{row_count} rows  |  {col_count} columns")
+
+        self._mode_pill.setText("Edit mode" if self._instance is not None else "Browse mode")
+        if layout.z_members:
+            active = min(layout.active_z_index, len(layout.z_members) - 1)
+            current = layout.z_members[active].label
+            if len(layout.z_members) > 1:
+                self._z_pill.setText(f"Z-axis: {current}")
+            else:
+                self._z_pill.setText("Single view")
+        else:
+            self._z_pill.setText("Single view")

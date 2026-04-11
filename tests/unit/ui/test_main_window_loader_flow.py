@@ -114,6 +114,51 @@ def test_loader_instance_handoff_survives_recent_file_write_error(qtbot, qapp, m
     assert not isinstance(window.centralWidget(), TaxonomyLoaderWidget)
 
 
+def test_reload_to_loader_then_reopen_instance_rebuilds_browser_views(qtbot, qapp, monkeypatch) -> None:
+    """Reloading back to the loader must not reuse Qt widgets deleted with the old workspace."""
+    monkeypatch.setattr(TaxonomyLoaderWidget, "_on_load", lambda self: None)
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window._on_taxonomy_loaded(_taxonomy())
+    old_splitter = window._browser_splitter
+    old_table_view = window._table_view
+
+    window._on_reload()
+
+    assert isinstance(window.centralWidget(), TaxonomyLoaderWidget)
+    assert window._browser_splitter is None
+    assert window._table_view is None
+
+    loader = window.centralWidget()
+    assert isinstance(loader, TaxonomyLoaderWidget)
+
+    loader._inst_path_edit.setText("sample-instance.xbrl")
+    loader._show_progress_dialog("Loading", "Preparing")
+    loader._on_inst_load_finished(_instance(), _taxonomy())
+    qtbot.waitUntil(lambda: window._current_instance is not None, timeout=1000)
+
+    assert window._browser_splitter is not None
+    assert window._table_view is not None
+    assert window._browser_splitter is not old_splitter
+    assert window._table_view is not old_table_view
+
+
+def test_deferred_refresh_is_safe_after_returning_to_loader(qtbot, qapp) -> None:
+    """A queued table refresh must no-op cleanly if the browser view is replaced first."""
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window._on_taxonomy_loaded(_taxonomy())
+    window._on_changes_made()
+    window._show_loader_widget()
+    qtbot.wait(20)
+
+    assert isinstance(window.centralWidget(), TaxonomyLoaderWidget)
+    assert window._table_view is None
+
+
 def test_collapsing_active_sidebar_button_reallocates_splitter_space(qtbot, qapp) -> None:
     """Clicking the active activity-bar button should give space back to the main view."""
     window = MainWindow()
@@ -132,6 +177,7 @@ def test_collapsing_active_sidebar_button_reallocates_splitter_space(qtbot, qapp
     before = splitter.sizes()
     qtbot.mouseClick(window._sidebar._buttons[1], Qt.MouseButton.LeftButton)
     qtbot.waitUntil(lambda: splitter.sizes()[0] <= 60, timeout=1000)
+    qtbot.waitUntil(lambda: window._sidebar.width() == 44, timeout=1000)
     after = splitter.sizes()
 
     assert after[0] < before[0]

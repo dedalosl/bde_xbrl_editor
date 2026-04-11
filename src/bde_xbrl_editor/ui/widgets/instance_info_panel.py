@@ -23,15 +23,15 @@ if TYPE_CHECKING:
 
 _SIDEBAR_BG = theme.PANEL_BG
 _SECTION_HEADER_STYLE = (
-    f"background: {theme.NAV_BG_DARK}; color: {theme.TEXT_INVERSE}; font-weight: bold; font-size: 11px;"
-    " padding: 4px 8px; margin-top: 4px;"
+    f"background: {theme.SURFACE_ALT_BG}; color: {theme.TEXT_MUTED}; font-weight: bold; font-size: 10px;"
+    f" padding: 7px 8px; margin-top: 6px;"
 )
 _VALUE_STYLE = (
     f"color: {theme.TEXT_MAIN}; font-size: 12px; padding: 2px 8px;"
 )
 _TABLE_LIST_STYLE = """
 QListWidget {
-    border: 1px solid """ + theme.BORDER + """;
+    border: none;
     background: """ + theme.SURFACE_BG + """;
     font-size: 12px;
     color: """ + theme.TEXT_MAIN + """;
@@ -93,15 +93,15 @@ class InstanceInfoPanel(QFrame):
 
         # ── Action buttons ─────────────────────────────────────────────
         btn_bar = QWidget()
-        btn_bar.setStyleSheet(f"background: {theme.NAV_BG};")
+        btn_bar.setStyleSheet(f"background: {theme.SURFACE_ALT_BG}; border-bottom: 1px solid {theme.BORDER};")
         btn_layout = QHBoxLayout(btn_bar)
-        btn_layout.setContentsMargins(6, 4, 6, 4)
+        btn_layout.setContentsMargins(8, 6, 8, 6)
         btn_layout.setSpacing(4)
         btn_style = (
-            f"QPushButton {{ color: {theme.TEXT_MAIN}; background: rgba(255,250,242,0.72);"
-            f" border: 1px solid {theme.BORDER}; border-radius: 3px;"
+            f"QPushButton {{ color: {theme.TEXT_MAIN}; background: {theme.SURFACE_BG};"
+            f" border: 1px solid {theme.ACCENT_SOFT}; border-radius: 6px;"
             " font-size: 11px; padding: 3px 8px; }"
-            f"QPushButton:hover {{ background: {theme.HEADER_BG_LIGHT}; }}"
+            f"QPushButton:hover {{ background: {theme.INPUT_BG}; border-color: {theme.BORDER_STRONG}; }}"
         )
         save_btn = QPushButton("Save")
         save_btn.setStyleSheet(btn_style)
