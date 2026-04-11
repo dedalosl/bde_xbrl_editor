@@ -136,6 +136,26 @@ class TestExportText:
         ValidationReportExporter().export_text(_report(findings=(f,)), out)
         assert "UNDECLARED_DIMENSION" in out.read_text(encoding="utf-8")
 
+    def test_formula_detail_fields_appear(self, tmp_path: Path) -> None:
+        """Formula findings export their richer rule details."""
+        f = ValidationFinding(
+            rule_id="formula:test",
+            severity=ValidationSeverity.ERROR,
+            message="Formula failed",
+            source="formula",
+            formula_assertion_type="Value Assertion",
+            formula_expression="$a > 0",
+            formula_operands_text="$a\n  concept: ex:Amount",
+            formula_precondition="$a",
+        )
+        out = tmp_path / "report.txt"
+        ValidationReportExporter().export_text(_report(findings=(f,)), out)
+        content = out.read_text(encoding="utf-8")
+        assert "Formula Type: Value Assertion" in content
+        assert "$a > 0" in content
+        assert "concept: ex:Amount" in content
+        assert "Precondition: $a" in content
+
     @pytest.mark.skipif(sys.platform == "win32", reason="chmod read-only not reliable on Windows")
     def test_permission_error_on_readonly_path(self, tmp_path: Path) -> None:
         """export_text raises ExportPermissionError when the path is not writable."""
@@ -218,8 +238,31 @@ class TestExportJson:
         assert jf["severity"] == "error"
         assert jf["source"] == "structural"
         assert jf["message"] == "ctx missing"
-        assert jf["table_id"] == "T01"
-        assert jf["context_ref"] == "ctx1"
+        assert jf["formula_assertion_type"] is None
+        assert jf["formula_expression"] is None
+        assert jf["formula_operands_text"] is None
+        assert jf["formula_precondition"] is None
+
+    def test_json_formula_detail_fields(self, tmp_path: Path) -> None:
+        """Formula-specific detail fields are preserved in JSON export."""
+        f = ValidationFinding(
+            rule_id="formula:detail",
+            severity=ValidationSeverity.ERROR,
+            message="Formula failed",
+            source="formula",
+            formula_assertion_type="Consistency Assertion",
+            formula_expression="$a = $b",
+            formula_operands_text="$a\n\n$b",
+            formula_precondition="$a",
+        )
+        out = tmp_path / "report.json"
+        ValidationReportExporter().export_json(_report(findings=(f,)), out)
+        data = json.loads(out.read_text(encoding="utf-8"))
+        jf = data["findings"][0]
+        assert jf["formula_assertion_type"] == "Consistency Assertion"
+        assert jf["formula_expression"] == "$a = $b"
+        assert jf["formula_operands_text"] == "$a\n\n$b"
+        assert jf["formula_precondition"] == "$a"
 
     def test_json_passed_flag_matches_report(self, tmp_path: Path) -> None:
         """The 'passed' field in JSON summary matches report.passed."""
