@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Qt, QThread, Signal
@@ -498,7 +499,8 @@ class TaxonomyLoaderWidget(QWidget):
         self._close_progress_dialog()
         self._load_btn.setEnabled(True)
 
-        add_recent_file(self._path_edit.text().strip())
+        with contextlib.suppress(OSError):
+            add_recent_file(self._path_edit.text().strip())
 
         if skipped_urls:
             url_list = "\n".join(f"  • {u}" for u in skipped_urls[:20])
@@ -581,7 +583,8 @@ class TaxonomyLoaderWidget(QWidget):
         self._cleanup_inst_thread()
         self._load_inst_btn.setEnabled(True)
 
-        add_recent_instance(self._inst_path_edit.text().strip())
+        with contextlib.suppress(OSError):
+            add_recent_instance(self._inst_path_edit.text().strip())
         if self._progress_dialog is not None:
             self._progress_dialog.update_progress("Opening main window…", 100, 100)
         self.instance_loaded.emit(instance, taxonomy)

@@ -222,6 +222,41 @@ class TestValueAssertion:
         findings = FormulaEvaluator(taxonomy).evaluate(inst)
         assert any(f.rule_id == "VA_VAR" for f in findings)
 
+    def test_formula_finding_carries_rule_details(self) -> None:
+        """Failed formula findings include formatted assertion details for the UI."""
+        var_def = FactVariableDefinition(
+            variable_name="v",
+            concept_filter=_qn("Amount"),
+            fallback_value="0",
+        )
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(assertion_id="VA_DETAIL", variables=(var_def,)),
+            test_xpath="$v < 0",
+        )
+        assertion = ValueAssertionDefinition(
+            assertion_id=assertion.assertion_id,
+            label="Amount must pass",
+            severity=assertion.severity,
+            abstract=assertion.abstract,
+            variables=assertion.variables,
+            precondition_xpath="$v",
+            test_xpath=assertion.test_xpath,
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
+        inst = _instance([_fact("Amount", value="42")])
+
+        findings = FormulaEvaluator(taxonomy).evaluate(inst)
+
+        assert len(findings) == 1
+        finding = findings[0]
+        assert finding.formula_assertion_type == "Value Assertion"
+        assert finding.formula_expression == "$v < 0"
+        assert finding.formula_precondition == "$v"
+        assert finding.formula_operands_text is not None
+        assert "$v" in finding.formula_operands_text
+        assert "concept: {http://example.com/tax}Amount" in finding.formula_operands_text
+        assert "fallback: 0" in finding.formula_operands_text
+
     def test_value_assertion_passes_for_each_binding(self) -> None:
         """A passing assertion produces no finding even with multiple bound facts."""
         _var_def = FactVariableDefinition(variable_name="v", concept_filter=_qn("Amount"))

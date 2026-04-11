@@ -30,6 +30,10 @@ class ValidationFinding:
     hypercube_qname: QName | None = None
     dimension_qname: QName | None = None
     constraint_type: str | None = None
+    formula_assertion_type: str | None = None
+    formula_expression: str | None = None
+    formula_operands_text: str | None = None
+    formula_precondition: str | None = None
 
 
 @dataclass(frozen=True)

@@ -19,6 +19,7 @@ from bde_xbrl_editor.taxonomy.models import (
     ValueAssertionDefinition,
 )
 from bde_xbrl_editor.validation.errors import ValidationEngineError
+from bde_xbrl_editor.validation.formula.details import build_formula_display_details
 from bde_xbrl_editor.validation.formula.filters import apply_filters
 from bde_xbrl_editor.validation.formula.xfi_functions import (
     build_formula_parser,
@@ -92,6 +93,7 @@ class FormulaEvaluator:
                     severity=ValidationSeverity.ERROR,
                     message=f"Evaluation error: {exc}",
                     source="formula",
+                    **self._formula_detail_kwargs(assertion),
                 ))
             except Exception as exc:  # noqa: BLE001
                 findings.append(ValidationFinding(
@@ -99,6 +101,7 @@ class FormulaEvaluator:
                     severity=ValidationSeverity.ERROR,
                     message=f"Unexpected error evaluating '{assertion.assertion_id}': {exc}",
                     source="formula",
+                    **self._formula_detail_kwargs(assertion),
                 ))
 
         if self._progress_callback:
@@ -110,6 +113,16 @@ class FormulaEvaluator:
     # ------------------------------------------------------------------
     # Variable binding
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _formula_detail_kwargs(assertion: FormulaAssertion) -> dict[str, str]:
+        details = build_formula_display_details(assertion)
+        return {
+            "formula_assertion_type": details.assertion_type,
+            "formula_expression": details.expression,
+            "formula_operands_text": details.operands_text,
+            "formula_precondition": details.precondition,
+        }
 
     def _bind_variables(
         self,
@@ -177,6 +190,7 @@ class FormulaEvaluator:
                     severity=_sev(assertion),
                     message=f"XPath evaluation failed: {exc}",
                     source="formula",
+                    **self._formula_detail_kwargs(assertion),
                 ))
                 continue
 
@@ -192,6 +206,7 @@ class FormulaEvaluator:
                     source="formula",
                     concept_qname=fact.concept if fact else None,
                     context_ref=fact.context_ref if fact else None,
+                    **self._formula_detail_kwargs(assertion),
                 ))
         return findings
 
@@ -214,6 +229,7 @@ class FormulaEvaluator:
                 f"no matching facts found"
             ),
             source="formula",
+            **self._formula_detail_kwargs(assertion),
         )]
 
     def _evaluate_consistency_assertion(
@@ -265,6 +281,7 @@ class FormulaEvaluator:
                     source="formula",
                     concept_qname=fact.concept,
                     context_ref=fact.context_ref,
+                    **self._formula_detail_kwargs(assertion),
                 ))
         return findings
 
