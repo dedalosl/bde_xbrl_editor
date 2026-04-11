@@ -194,29 +194,25 @@ def _build_axis_grid(
     ``ordered_leaves`` in the returned HeaderGrid contains all leaf cells in strict
     left-to-right DFS order — use this (not level scanning) for body column mapping.
     """
-    levels: list[list[HeaderCell]] = []
+    levels: list[list[tuple[int, HeaderCell]]] = []
     ordered_leaves: list[HeaderCell] = []
 
-    def _collect_all_non_abstract(node: BreakdownNode) -> list[BreakdownNode]:
-        result = []
-        if not node.is_abstract:
-            result.append(node)
-        for child in node.children:
-            result.extend(_collect_all_non_abstract(child))
-        return result
+    def _subtree_leaf_width(node: BreakdownNode) -> int:
+        child_total = sum(_subtree_leaf_width(child) for child in node.children)
+        own_width = 1 if not node.is_abstract else 0
+        return max(own_width + child_total, 1)
 
-    def _dfs(node: BreakdownNode, level: int, parent_constraints: dict) -> None:
+    def _dfs(node: BreakdownNode, level: int, start: int, parent_constraints: dict) -> int:
         while len(levels) <= level:
             levels.append([])
 
         accumulated = _accumulate_constraints(parent_constraints, node.aspect_constraints)
-        all_non_abstract = _collect_all_non_abstract(node)
         # A roll-up node is non-abstract AND has children.  It contributes both a
         # spanning header cell (at this level) and a virtual leaf cell (at the next
         # level, whose position follows parentChildOrder).
         is_rollup = not node.is_abstract and bool(node.children)
         is_leaf = not node.is_abstract and not node.children
-        span = max(len(all_non_abstract), 1)
+        span = _subtree_leaf_width(node)
 
         label = _get_label(node, taxonomy, language_preference)
         cell = HeaderCell(
@@ -230,12 +226,13 @@ def _build_axis_grid(
             source_node=node,
             accumulated_aspect_constraints=accumulated,
         )
-        levels[level].append(cell)
+        levels[level].append((start, cell))
 
         if is_leaf:
             ordered_leaves.append(cell)
+            return span
 
-        elif is_rollup:
+        if is_rollup:
             pco = node.parent_child_order
             while len(levels) <= level + 1:
                 levels.append([])
@@ -255,44 +252,40 @@ def _build_axis_grid(
                 accumulated_aspect_constraints=accumulated,
             )
 
-            # Snapshot level sizes *before* touching level+2+ (virtual leaf is at L+1,
-            # so pre[d] for d >= L+2 is unaffected by inserting the virtual leaf).
-            pre = {i: len(lvl) for i, lvl in enumerate(levels)}
-
             if pco == "children-first":
+                cursor = start
                 for child in node.children:
-                    _dfs(child, level + 1, accumulated)
+                    child_width = _subtree_leaf_width(child)
+                    _dfs(child, level + 1, cursor, accumulated)
+                    cursor += child_width
                 ordered_leaves.append(virtual_leaf)
-                levels[level + 1].append(virtual_leaf)
-                # Placeholder appended AFTER children's contributions at deeper levels.
-                for d in range(level + 2, len(levels)):
-                    if len(levels[d]) > pre.get(d, 0):
-                        levels[d].append(HeaderCell(
-                            label="", rc_code=None, fin_code=None,
-                            span=1, level=d, is_leaf=False, is_abstract=True,
-                            source_node=node, accumulated_aspect_constraints={},
-                        ))
+                levels[level + 1].append((cursor, virtual_leaf))
             else:
                 # parent-first (default)
                 ordered_leaves.append(virtual_leaf)
-                levels[level + 1].append(virtual_leaf)
+                levels[level + 1].append((start, virtual_leaf))
+                cursor = start + 1
                 for child in node.children:
-                    _dfs(child, level + 1, accumulated)
-                # Placeholder inserted BEFORE children's contributions at deeper levels.
-                for d in range(level + 2, len(levels)):
-                    pre_d = pre.get(d, 0)
-                    if len(levels[d]) > pre_d:
-                        levels[d].insert(pre_d, HeaderCell(
-                            label="", rc_code=None, fin_code=None,
-                            span=1, level=d, is_leaf=False, is_abstract=True,
-                            source_node=node, accumulated_aspect_constraints={},
-                        ))
+                    child_width = _subtree_leaf_width(child)
+                    _dfs(child, level + 1, cursor, accumulated)
+                    cursor += child_width
         else:
+            cursor = start
             for child in node.children:
-                _dfs(child, level + 1, accumulated)
+                child_width = _subtree_leaf_width(child)
+                _dfs(child, level + 1, cursor, accumulated)
+                cursor += child_width
+
+        return span
+
+    total_leaf_count = 0
+    cursor = 0
 
     for child in root.children:
-        _dfs(child, 0, {})
+        child_width = _subtree_leaf_width(child)
+        _dfs(child, 0, cursor, {})
+        cursor += child_width
+        total_leaf_count += child_width
 
     if not levels:
         # Degenerate case: root has no children — treat root itself as a leaf
@@ -307,15 +300,54 @@ def _build_axis_grid(
             source_node=root,
             accumulated_aspect_constraints=dict(root.aspect_constraints),
         )
-        levels = [[root_cell]]
+        levels = [[(0, root_cell)]]
         ordered_leaves = [root_cell]
+        total_leaf_count = 1
 
-    leaf_count = sum(cell.span for cell in levels[0])
+    normalised_levels: list[list[HeaderCell]] = []
+    for level_idx, entries in enumerate(levels):
+        ordered_entries = sorted(entries, key=lambda item: item[0])
+        cursor = 0
+        cells: list[HeaderCell] = []
+        for start, cell in ordered_entries:
+            while cursor < start:
+                cells.append(
+                    HeaderCell(
+                        label="",
+                        rc_code=None,
+                        fin_code=None,
+                        span=1,
+                        level=level_idx,
+                        is_leaf=False,
+                        is_abstract=True,
+                        source_node=root,
+                        accumulated_aspect_constraints={},
+                    )
+                )
+                cursor += 1
+            cells.append(cell)
+            cursor += 1 if cell.is_leaf else cell.span
+        while cursor < total_leaf_count:
+            cells.append(
+                HeaderCell(
+                    label="",
+                    rc_code=None,
+                    fin_code=None,
+                    span=1,
+                    level=level_idx,
+                    is_leaf=False,
+                    is_abstract=True,
+                    source_node=root,
+                    accumulated_aspect_constraints={},
+                )
+            )
+            cursor += 1
+        normalised_levels.append(cells)
 
     return HeaderGrid(
-        levels=levels,
-        leaf_count=leaf_count,
-        depth=len(levels),
+        levels=normalised_levels,
+        leaf_count=total_leaf_count,
+        depth=len(normalised_levels),
         ordered_leaves=ordered_leaves,
     )
 

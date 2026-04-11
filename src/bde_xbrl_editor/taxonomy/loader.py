@@ -279,10 +279,71 @@ def _extract_metadata(entry_point: Path, declared_languages: list[str]) -> Taxon
 _SG_HYPERCUBE = QName(NS_XBRLDT, "hypercubeItem")
 _SG_DIMENSION = QName(NS_XBRLDT, "dimensionItem")
 
+_NS_LINK = "http://www.xbrl.org/2003/linkbase"
+_ROLE_REF_TAG = f"{{{_NS_LINK}}}roleRef"
+
+
+# XBRL 2.1 §5.1.3 — predefined roles that are always resolved without needing a roleRef.
+_PREDEFINED_XBRL_ROLES: frozenset[str] = frozenset({
+    "http://www.xbrl.org/2003/role/link",
+    "http://www.xbrl.org/2003/role/label",
+    "http://www.xbrl.org/2003/role/terseLabel",
+    "http://www.xbrl.org/2003/role/verboseLabel",
+    "http://www.xbrl.org/2003/role/positiveLabel",
+    "http://www.xbrl.org/2003/role/positiveTerseLabel",
+    "http://www.xbrl.org/2003/role/positiveVerboseLabel",
+    "http://www.xbrl.org/2003/role/negativeLabel",
+    "http://www.xbrl.org/2003/role/negativeTerseLabel",
+    "http://www.xbrl.org/2003/role/negativeVerboseLabel",
+    "http://www.xbrl.org/2003/role/zeroLabel",
+    "http://www.xbrl.org/2003/role/zeroTerseLabel",
+    "http://www.xbrl.org/2003/role/zeroVerboseLabel",
+    "http://www.xbrl.org/2003/role/totalLabel",
+    "http://www.xbrl.org/2003/role/periodStartLabel",
+    "http://www.xbrl.org/2003/role/periodEndLabel",
+    "http://www.xbrl.org/2003/role/documentation",
+    "http://www.xbrl.org/2003/role/definitionGuidance",
+    "http://www.xbrl.org/2003/role/disclosureGuidance",
+    "http://www.xbrl.org/2003/role/presentationGuidance",
+    "http://www.xbrl.org/2003/role/measurementGuidance",
+    "http://www.xbrl.org/2003/role/commentaryGuidance",
+    "http://www.xbrl.org/2003/role/exampleGuidance",
+    "http://www.xbrl.org/2003/role/reference",
+    "http://www.xbrl.org/2003/role/definitionRef",
+    "http://www.xbrl.org/2003/role/disclosureRef",
+    "http://www.xbrl.org/2003/role/mandatoryDisclosureRef",
+    "http://www.xbrl.org/2003/role/recommendedDisclosureRef",
+    "http://www.xbrl.org/2003/role/unspecifiedDisclosureRef",
+    "http://www.xbrl.org/2003/role/presentationRef",
+    "http://www.xbrl.org/2003/role/measurementRef",
+    "http://www.xbrl.org/2003/role/commentaryRef",
+    "http://www.xbrl.org/2003/role/exampleRef",
+})
+
+
+def _collect_declared_roles(linkbase_paths: list[Path]) -> set[str]:
+    """Scan all linkbases for roleRef elements and return declared role URIs.
+
+    Always includes the predefined XBRL 2.1 roles which never need a roleRef.
+    Used by _check_dimensional_constraints to validate xbrldt:targetRole values.
+    """
+    declared: set[str] = set(_PREDEFINED_XBRL_ROLES)
+    for lb_path in linkbase_paths:
+        try:
+            tree = etree.parse(str(lb_path))  # noqa: S320
+            for el in tree.getroot().iter(_ROLE_REF_TAG):
+                uri = el.get("roleURI")
+                if uri:
+                    declared.add(uri)
+        except Exception:  # noqa: BLE001
+            pass
+    return declared
+
 
 def _check_dimensional_constraints(
     concepts: dict[QName, Concept],
     definition_arcs: dict[str, list],
+    declared_roles: set[str] | None = None,
 ) -> None:
     """Check XBRL Dimensions 1.0 taxonomy structure constraints (xbrldte:* errors).
 
@@ -290,11 +351,33 @@ def _check_dimensional_constraints(
     message when a constraint is violated. The conformance runner's
     _match_outcome() detects these codes in the exception message.
     """
-    # Build lookup: qname → concept
-    # Check 1: hypercube items must be abstract (xbrldte:HypercubeElementIsNotAbstractError)
-    for qname, concept in concepts.items():
-        sg = concept.substitution_group
-        if sg and sg.namespace == NS_XBRLDT and sg.local_name == "hypercubeItem" and not concept.abstract:
+    # Build substitution group chain map for transitive closure computation.
+    sg_map: dict[QName, QName] = {
+        q: c.substitution_group
+        for q, c in concepts.items()
+        if c.substitution_group is not None
+    }
+
+    # Compute transitive hypercube and dimension sets — a concept is a hypercube
+    # (dimension) item if its substitution group chain reaches xbrldt:hypercubeItem
+    # (xbrldt:dimensionItem), regardless of how many hops.
+    hypercube_qnames: set[QName] = set()
+    dimension_qnames: set[QName] = set()
+    for q in concepts:
+        sg = sg_map.get(q)
+        while sg is not None:
+            if sg == _SG_HYPERCUBE:
+                hypercube_qnames.add(q)
+                break
+            if sg == _SG_DIMENSION:
+                dimension_qnames.add(q)
+                break
+            sg = sg_map.get(sg)
+
+    # Check 1: hypercube items (including transitive) must be abstract
+    # (xbrldte:HypercubeElementIsNotAbstractError)
+    for qname in hypercube_qnames:
+        if not concepts[qname].abstract:
             raise TaxonomyParseError(
                 file_path="",
                 message=(
@@ -302,8 +385,11 @@ def _check_dimensional_constraints(
                     f"Hypercube element {qname} must be abstract"
                 ),
             )
-        # Check 2: dimension items must be abstract (xbrldte:DimensionElementIsNotAbstractError)
-        if sg and sg.namespace == NS_XBRLDT and sg.local_name == "dimensionItem" and not concept.abstract:
+
+    # Check 2: dimension items (including transitive) must be abstract
+    # (xbrldte:DimensionElementIsNotAbstractError)
+    for qname in dimension_qnames:
+        if not concepts[qname].abstract:
             raise TaxonomyParseError(
                 file_path="",
                 message=(
@@ -312,25 +398,12 @@ def _check_dimensional_constraints(
                 ),
             )
 
-    # Build sets of hypercube/dimension QNames for arc checks
-    hypercube_qnames = {
-        q for q, c in concepts.items()
-        if c.substitution_group and c.substitution_group.namespace == NS_XBRLDT
-        and c.substitution_group.local_name == "hypercubeItem"
-    }
-    dimension_qnames = {
-        q for q, c in concepts.items()
-        if c.substitution_group and c.substitution_group.namespace == NS_XBRLDT
-        and c.substitution_group.local_name == "dimensionItem"
-    }
+    dim_and_hc: set[QName] = hypercube_qnames | dimension_qnames
 
-    # Build per-ELR dimension-default tracking to detect too many defaults
-    # (xbrldte:TooManyDefaultMembersError)
-    # Maps (elr, dim_qname) → set of distinct default-member QNames seen.
-    # Duplicate arcs with the same (elr, source, target) in different linkbases
-    # are silently skipped per XBRL arc-equivalence rules; only genuinely distinct
-    # default members for the same dimension in the same ELR are an error.
-    dim_defaults_seen: dict[tuple[str, QName], set[QName]] = {}
+    # Track cross-ELR dimension-default combinations to detect too many defaults.
+    # Per XBRL Dimensions §2.7.1.1, dimension-default relationships are NOT scoped
+    # by ELR — a dimension may only have one default across the entire DTS.
+    dim_defaults_seen: dict[QName, set[QName]] = {}
 
     for _elr, arcs in definition_arcs.items():
         for arc in arcs:
@@ -362,10 +435,34 @@ def _check_dimensional_constraints(
                             f"got {arc.target}"
                         ),
                     )
+                # Check: targetRole must be a declared role (xbrldte:TargetRoleNotResolvedError)
+                if (
+                    declared_roles is not None
+                    and arc.target_role is not None
+                    and arc.target_role not in declared_roles
+                ):
+                    raise TaxonomyParseError(
+                        file_path="",
+                        message=(
+                            f"xbrldte:TargetRoleNotResolvedError: "
+                            f"targetRole '{arc.target_role}' is not declared via a roleRef"
+                        ),
+                    )
 
-            # Check 5: target of all/notAll arc must be a hypercube
-            # (xbrldte:HasHypercubeTargetError)
+            # Check 5: all/notAll arc constraints
             if arcrole in (ARCROLE_ALL, ARCROLE_NOT_ALL):
+                # Check 5a: source must not be a hypercube or dimension item
+                # (xbrldte:HasHypercubeSourceError)
+                if arc.source in concepts and arc.source in dim_and_hc:
+                    raise TaxonomyParseError(
+                        file_path="",
+                        message=(
+                            f"xbrldte:HasHypercubeSourceError: "
+                            f"Source of hasHypercube arc must be a primary item, "
+                            f"got {arc.source}"
+                        ),
+                    )
+                # Check 5b: target must be a hypercube (xbrldte:HasHypercubeTargetError)
                 if arc.target in concepts and arc.target not in hypercube_qnames:
                     raise TaxonomyParseError(
                         file_path="",
@@ -385,24 +482,117 @@ def _check_dimensional_constraints(
                             "hasHypercube arc missing xbrldt:contextElement attribute"
                         ),
                     )
+                # Check: targetRole must be a declared role (xbrldte:TargetRoleNotResolvedError)
+                if (
+                    declared_roles is not None
+                    and arc.target_role is not None
+                    and arc.target_role not in declared_roles
+                ):
+                    raise TaxonomyParseError(
+                        file_path="",
+                        message=(
+                            f"xbrldte:TargetRoleNotResolvedError: "
+                            f"targetRole '{arc.target_role}' is not declared via a roleRef"
+                        ),
+                    )
 
             # Check 7: source of dimension-domain arc must be a dimension item
             # (xbrldte:DimensionDomainSourceError)
-            if arcrole == ARCROLE_DIMENSION_DOMAIN and arc.source in concepts and arc.source not in dimension_qnames:
-                raise TaxonomyParseError(
-                    file_path="",
-                    message=(
-                        f"xbrldte:DimensionDomainSourceError: "
-                        f"Source of dimension-domain arc must be a dimension item, "
-                        f"got {arc.source}"
-                    ),
-                )
+            if arcrole == ARCROLE_DIMENSION_DOMAIN:
+                if arc.source in concepts and arc.source not in dimension_qnames:
+                    raise TaxonomyParseError(
+                        file_path="",
+                        message=(
+                            f"xbrldte:DimensionDomainSourceError: "
+                            f"Source of dimension-domain arc must be a dimension item, "
+                            f"got {arc.source}"
+                        ),
+                    )
+                # Check: target of dimension-domain arc must not be a hypercube or dimension
+                # (xbrldte:DimensionDomainTargetError)
+                if arc.target in concepts and arc.target in dim_and_hc:
+                    raise TaxonomyParseError(
+                        file_path="",
+                        message=(
+                            f"xbrldte:DimensionDomainTargetError: "
+                            f"Target of dimension-domain arc must not be a hypercube or "
+                            f"dimension item, got {arc.target}"
+                        ),
+                    )
+                # Check: targetRole must be a declared role (xbrldte:TargetRoleNotResolvedError)
+                if (
+                    declared_roles is not None
+                    and arc.target_role is not None
+                    and arc.target_role not in declared_roles
+                ):
+                    raise TaxonomyParseError(
+                        file_path="",
+                        message=(
+                            f"xbrldte:TargetRoleNotResolvedError: "
+                            f"targetRole '{arc.target_role}' is not declared via a roleRef"
+                        ),
+                    )
 
-            # Check 8: dimension-default arcs — track for too many defaults
-            # (xbrldte:TooManyDefaultMembersError)
+            # Check: domain-member arc source/target must not be hypercube or dimension
+            if arcrole == ARCROLE_DOMAIN_MEMBER:
+                if arc.source in concepts and arc.source in dim_and_hc:
+                    raise TaxonomyParseError(
+                        file_path="",
+                        message=(
+                            f"xbrldte:DomainMemberSourceError: "
+                            f"Source of domain-member arc must not be a hypercube or "
+                            f"dimension item, got {arc.source}"
+                        ),
+                    )
+                if arc.target in concepts and arc.target in dim_and_hc:
+                    raise TaxonomyParseError(
+                        file_path="",
+                        message=(
+                            f"xbrldte:DomainMemberTargetError: "
+                            f"Target of domain-member arc must not be a hypercube or "
+                            f"dimension item, got {arc.target}"
+                        ),
+                    )
+                # Check: targetRole must be a declared role (xbrldte:TargetRoleNotResolvedError)
+                if (
+                    declared_roles is not None
+                    and arc.target_role is not None
+                    and arc.target_role not in declared_roles
+                ):
+                    raise TaxonomyParseError(
+                        file_path="",
+                        message=(
+                            f"xbrldte:TargetRoleNotResolvedError: "
+                            f"targetRole '{arc.target_role}' is not declared via a roleRef"
+                        ),
+                    )
+
+            # Check 8: dimension-default arcs
+            # (xbrldte:TooManyDefaultMembersError, DimensionDefaultSourceError,
+            #  DimensionDefaultTargetError)
             if arcrole == ARCROLE_DIMENSION_DEFAULT:
-                key = (_elr, arc.source)
-                targets = dim_defaults_seen.setdefault(key, set())
+                # Source must be a dimension item (xbrldte:DimensionDefaultSourceError)
+                if arc.source in concepts and arc.source not in dimension_qnames:
+                    raise TaxonomyParseError(
+                        file_path="",
+                        message=(
+                            f"xbrldte:DimensionDefaultSourceError: "
+                            f"Source of dimension-default arc must be a dimension item, "
+                            f"got {arc.source}"
+                        ),
+                    )
+                # Target must not be a hypercube or dimension item (xbrldte:DimensionDefaultTargetError)
+                if arc.target in concepts and arc.target in dim_and_hc:
+                    raise TaxonomyParseError(
+                        file_path="",
+                        message=(
+                            f"xbrldte:DimensionDefaultTargetError: "
+                            f"Target of dimension-default arc must not be a hypercube or "
+                            f"dimension item, got {arc.target}"
+                        ),
+                    )
+                # Track per-dimension (cross-ELR) to detect too many defaults.
+                targets = dim_defaults_seen.setdefault(arc.source, set())
                 targets.add(arc.target)
                 if len(targets) > 1:
                     raise TaxonomyParseError(
@@ -410,7 +600,7 @@ def _check_dimensional_constraints(
                         message=(
                             f"xbrldte:TooManyDefaultMembersError: "
                             f"Dimension {arc.source} has more than one default member "
-                            f"in ELR {_elr}"
+                            f"across the DTS"
                         ),
                     )
 
@@ -424,32 +614,47 @@ def _rebuild_dimensions(definition_arcs: dict[str, list]) -> dict[QName, Dimensi
     parent dimensions.  By using the globally merged definition_arcs we see all arcs
     across all files and correctly populate every dimension's member set.
     """
-    dim_domain: dict[QName, QName] = {}  # dimension → root domain concept
+    # dimension → (root domain concept, domain_usable)
+    # Preserves xbrldt:usable on the dimension-domain arc for the domain root.
+    dim_domain: dict[QName, tuple[QName, bool]] = {}
     dim_defaults: dict[QName, QName] = {}
-    # Children in the domain-member arc graph, indexed by parent concept
-    dm_children: dict[QName, list[tuple[QName, float, bool]]] = {}
+    # Children in the domain-member arc graph, indexed by parent concept.
+    # For duplicate (parent, child) pairs (e.g. after arc override/prohibition),
+    # usability is ANDed across all arcs — if any arc marks a member non-usable,
+    # it is treated as non-usable overall.
+    dm_children_usable: dict[QName, dict[QName, tuple[float, bool]]] = {}
 
     for _elr, arcs in definition_arcs.items():
         for arc in arcs:
             if arc.arcrole == ARCROLE_DIMENSION_DOMAIN:
                 if arc.source not in dim_domain:
-                    dim_domain[arc.source] = arc.target
+                    domain_usable = arc.usable if arc.usable is not None else True
+                    dim_domain[arc.source] = (arc.target, domain_usable)
             elif arc.arcrole == ARCROLE_DOMAIN_MEMBER:
                 usable = arc.usable if arc.usable is not None else True
-                dm_children.setdefault(arc.source, []).append(
-                    (arc.target, arc.order, usable)
-                )
+                parent_map = dm_children_usable.setdefault(arc.source, {})
+                if arc.target in parent_map:
+                    prev_order, prev_usable = parent_map[arc.target]
+                    parent_map[arc.target] = (prev_order, prev_usable and usable)
+                else:
+                    parent_map[arc.target] = (arc.order, usable)
             elif arc.arcrole == ARCROLE_DIMENSION_DEFAULT:
                 dim_defaults[arc.source] = arc.target
 
+    # Flatten the AND-merged children map into a list form for BFS.
+    dm_children: dict[QName, list[tuple[QName, float, bool]]] = {
+        parent: [(child, order, usable) for child, (order, usable) in child_map.items()]
+        for parent, child_map in dm_children_usable.items()
+    }
+
     dimensions: dict[QName, DimensionModel] = {}
-    for dim_q, domain_q in dim_domain.items():
+    for dim_q, (domain_q, domain_usable) in dim_domain.items():
         # BFS from the root domain concept to collect all members transitively
         all_members: list[DomainMember] = []
         visited: set[QName] = set()
         # queue entries: (concept, parent, order, usable)
         queue: list[tuple[QName, QName | None, float, bool]] = [
-            (domain_q, None, 1.0, True)
+            (domain_q, None, 1.0, domain_usable)
         ]
         while queue:
             current_q, parent_q, order, usable = queue.pop(0)
@@ -705,7 +910,8 @@ class TaxonomyLoader:
         dimensions = _rebuild_dimensions(definition_arcs)
 
         # Step 4b: XBRL Dimensions 1.0 taxonomy constraint checks (xbrldte:* errors)
-        _check_dimensional_constraints(concepts, definition_arcs)
+        declared_roles = _collect_declared_roles(list(linkbase_paths))
+        _check_dimensional_constraints(concepts, definition_arcs, declared_roles=declared_roles)
 
         # Step 5: Parse table linkbases
         progress("Parsing table linkbases…", 5)

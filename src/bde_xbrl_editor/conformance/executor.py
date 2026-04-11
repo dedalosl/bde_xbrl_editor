@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import time
-from pathlib import Path
 
 from bde_xbrl_editor.conformance.models import (
     ExpectedOutcome,
@@ -98,14 +97,21 @@ class TestCaseExecutor:
                 # No instance to validate — taxonomy loaded successfully = no findings
 
             else:
-                # Try loading any input files as taxonomy entry points
+                # Try loading any input files as taxonomy entry points.
+                # Keep the first load error so taxonomy-level constraint violations
+                # (xbrldte:* errors raised as TaxonomyParseError) are not silently lost.
+                first_load_error: Exception | None = None
                 for f in variation.input_files:
                     if f.suffix.lower() in (".xsd", ".xml"):
                         try:
                             taxonomy_struct = loader.load(f)
+                            first_load_error = None  # success — clear any prior error
                             break
-                        except Exception:  # noqa: BLE001
-                            pass
+                        except Exception as _exc:  # noqa: BLE001
+                            if first_load_error is None:
+                                first_load_error = _exc
+                if taxonomy_struct is None and first_load_error is not None:
+                    raise first_load_error
 
         except Exception as exc:  # noqa: BLE001
             load_error = exc
