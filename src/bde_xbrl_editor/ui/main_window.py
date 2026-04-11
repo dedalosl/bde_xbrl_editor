@@ -457,6 +457,10 @@ class MainWindow(QMainWindow):
         self._validate_action.setEnabled(False)
         self._close_instance_action.setEnabled(False)
 
+        # Return the sidebar to browse mode before rebuilding the layout
+        if self._sidebar is not None:
+            self._sidebar.clear_instance()
+
         # Discard existing table view so _setup_browser_layout creates a fresh one
         self._table_view = None
 
@@ -556,9 +560,6 @@ class MainWindow(QMainWindow):
 
     def _load_instance(self, instance) -> None:
         from bde_xbrl_editor.instance.editor import InstanceEditor  # noqa: PLC0415
-        from bde_xbrl_editor.ui.widgets.instance_info_panel import (
-            InstanceInfoPanel,  # noqa: PLC0415
-        )
         from bde_xbrl_editor.ui.widgets.xbrl_table_view import XbrlTableView  # noqa: PLC0415
 
         # Disconnect old editor signals
@@ -573,17 +574,16 @@ class MainWindow(QMainWindow):
         if self._table_view is None:
             self._table_view = XbrlTableView(parent=self)
 
-        info_panel = InstanceInfoPanel(
-            instance=instance,
-            taxonomy=self._current_taxonomy,
-            parent=self,
-        )
-        info_panel.table_selected.connect(self._on_table_selected)
-        info_panel.save_requested.connect(self._on_save)
-        info_panel.open_instance_requested.connect(self._on_open_instance)
+        # Ensure the sidebar exists (may be absent when loading directly from welcome screen)
+        if self._sidebar is None:
+            self._sidebar = ActivitySidebar(self._current_taxonomy, parent=self)
+            self._sidebar.table_selected.connect(self._on_table_selected)
+
+        # Switch the sidebar to instance mode (6th panel: entity, period, FI, filed tables)
+        self._sidebar.set_instance(instance, self._current_taxonomy)
 
         splitter = QSplitter(self)
-        splitter.addWidget(info_panel)
+        splitter.addWidget(self._sidebar)
         splitter.addWidget(self._table_view)
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
@@ -613,7 +613,7 @@ class MainWindow(QMainWindow):
         )
 
         # Auto-render the first filed table immediately
-        info_panel.select_first_table()
+        self._sidebar.select_first_instance_table()
 
         # Show validation panel (cleared) so user sees it's ready
         self._ensure_validation_panel()
