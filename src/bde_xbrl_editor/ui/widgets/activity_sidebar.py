@@ -440,7 +440,7 @@ class _ValidationsPanel(QWidget):
         self._det_id.setText(a.assertion_id)
         self._det_label.setText(getattr(a, "label", None) or "—")
         sev = getattr(a, "severity", None)
-        self._det_severity.setText(str(sev.value).upper() if sev else "—")
+        self._det_severity.setText(self._format_severity(sev))
 
         test = getattr(a, "test_xpath", None) or getattr(a, "formula_xpath", None)
         self._det_test.setText(test or "—")
@@ -458,6 +458,15 @@ class _ValidationsPanel(QWidget):
         # Auto-expand detail section
         if not self._detail_section._body.isVisible():
             self._detail_section._btn.click()
+
+    @staticmethod
+    def _format_severity(severity: object) -> str:
+        if severity is None:
+            return "—"
+
+        value = getattr(severity, "value", severity)
+        text = str(value).strip()
+        return text.upper() if text else "—"
 
 
 # ---------------------------------------------------------------------------
