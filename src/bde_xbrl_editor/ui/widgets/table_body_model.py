@@ -8,11 +8,12 @@ from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 from PySide6.QtGui import QColor
 
 from bde_xbrl_editor.table_renderer.models import ComputedTableLayout
+from bde_xbrl_editor.ui import theme
 
-_COLOR_HAS_FACT = QColor("white")
-_COLOR_DUPLICATE = QColor("#FFD0D0")
-_COLOR_NOT_APPLICABLE = QColor("#F8F8F8")
-_COLOR_EXCLUDED = QColor("#A8A8A8")  # dark grey for dimensionally-excluded cells
+_COLOR_HAS_FACT = QColor(theme.CELL_BG)
+_COLOR_DUPLICATE = QColor(theme.CELL_BG_DUPLICATE)
+_COLOR_NOT_APPLICABLE = QColor(theme.CELL_BG_MUTED)
+_COLOR_EXCLUDED = QColor(theme.CELL_BG_DISABLED)  # dark grey for dimensionally-excluded cells
 
 # Custom role for the cell code (row_fin_code + col_fin_code)
 CELL_CODE_ROLE = Qt.ItemDataRole.UserRole + 2

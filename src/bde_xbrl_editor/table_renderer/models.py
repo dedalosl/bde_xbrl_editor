@@ -25,6 +25,9 @@ class HeaderCell:
     # Accumulated constraints from root → this node (parent dims + own dims).
     # Used by layout engine to build fully-qualified CellCoordinates.
     accumulated_aspect_constraints: dict[str, Any] = field(default_factory=dict)
+    # True when this cell is the virtual leaf injected for a roll-up node (non-abstract
+    # node that also has children).  The painter uses this to apply a "roll-up" style.
+    is_rollup_virtual: bool = False
 
 
 @dataclass
@@ -34,6 +37,9 @@ class HeaderGrid:
     levels: list[list[HeaderCell]]  # outer = depth level 0 is outermost
     leaf_count: int  # total leaf cells = number of data columns or rows
     depth: int  # number of header levels
+    # Leaf cells in strict left-to-right (DFS) column order.  Used for body coordinate
+    # mapping instead of scanning levels, which gives wrong order for nested roll-ups.
+    ordered_leaves: list[HeaderCell] = field(default_factory=list)
 
 
 @dataclass

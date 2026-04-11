@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 )
 
 from bde_xbrl_editor.taxonomy.models import TaxonomyStructure
+from bde_xbrl_editor.ui import theme
 
 # ---------------------------------------------------------------------------
 # Activity bar constants
@@ -34,13 +35,13 @@ from bde_xbrl_editor.taxonomy.models import TaxonomyStructure
 _BAR_W = 44          # icon bar width in px
 _PANEL_W = 260       # content panel width in px
 
-_ICONS = ["⊡", "⊞", "⚡", "≡", "⟷"]
-_TIPS = ["DTS Files", "Tables", "Validations", "Concepts", "Definition Linkbase"]
+_ICONS = ["⊡", "⊞", "⚡", "≡", "⟷", "◈"]
+_TIPS = ["DTS Files", "Tables", "Validations", "Concepts", "Definition Linkbase", "Instance"]
 
 _BAR_STYLE = """
     QWidget#ActivityBar {
-        background: #1E3A5F;
-        border-right: 1px solid #16304F;
+        background: """ + theme.NAV_BG_DEEP + """;
+        border-right: 1px solid """ + theme.BORDER_STRONG + """;
     }
 """
 
@@ -48,75 +49,75 @@ _BTN_STYLE = """
     QToolButton {
         background: transparent;
         border: none;
-        color: #7BA4C8;
+        color: """ + theme.ACCENT_SOFT + """;
         font-size: 20px;
         padding: 6px;
         border-radius: 4px;
     }
     QToolButton:hover {
-        color: #FFFFFF;
-        background: rgba(255,255,255,0.10);
+        color: """ + theme.TEXT_INVERSE + """;
+        background: rgba(255,253,248,0.12);
     }
     QToolButton:checked {
-        color: #FFFFFF;
-        background: rgba(255,255,255,0.18);
-        border-left: 3px solid #5BA3F5;
+        color: """ + theme.TEXT_INVERSE + """;
+        background: rgba(255,248,236,0.2);
+        border-left: 3px solid """ + theme.HEADER_BG_LIGHT + """;
     }
 """
 
 _PANEL_STYLE = """
     QWidget#PanelRoot {
-        background: #F5F7FA;
-        border-right: 1px solid #C8D4E5;
+        background: """ + theme.PANEL_BG + """;
+        border-right: 1px solid """ + theme.BORDER + """;
     }
 """
 
 _SECTION_HDR_STYLE = (
-    "background: #1E3A5F; color: #FFFFFF; font-weight: bold;"
+    f"background: {theme.NAV_BG_DARK}; color: {theme.TEXT_INVERSE}; font-weight: bold;"
     " font-size: 11px; padding: 6px 10px; letter-spacing: 1px;"
 )
 
 _COLLAPSIBLE_HDR_STYLE = (
-    "QPushButton { text-align: left; padding: 5px 8px; background: #2B5287;"
-    " color: #FFFFFF; font-size: 11px; font-weight: bold; border: none; }"
-    "QPushButton:hover { background: #3A6AA8; }"
+    f"QPushButton {{ text-align: left; padding: 5px 8px; background: {theme.HEADER_BG};"
+    f" color: {theme.TEXT_MAIN}; font-size: 11px; font-weight: bold; border: none; }}"
+    f"QPushButton:hover {{ background: {theme.HEADER_BG_LIGHT}; }}"
 )
 
 _LIST_STYLE = """
     QListWidget {
         border: none;
-        background: #FFFFFF;
+        background: """ + theme.SURFACE_BG + """;
         font-size: 12px;
-        color: #1E3A5F;
+        color: """ + theme.TEXT_MAIN + """;
         outline: none;
     }
     QListWidget::item {
         padding: 5px 8px;
-        border-bottom: 1px solid #E8EDF5;
+        border-bottom: 1px solid """ + theme.ACCENT_SOFT + """;
     }
     QListWidget::item:selected {
-        background: #1E3A5F;
-        color: #FFFFFF;
+        background: """ + theme.SELECTION_BG + """;
+        color: """ + theme.SELECTION_FG + """;
     }
     QListWidget::item:hover:!selected {
-        background: #DCE8F5;
+        background: """ + theme.HOVER_BG + """;
     }
 """
 
 _TREE_STYLE = """
     QTreeWidget {
         border: none;
-        background: #FFFFFF;
+        background: """ + theme.SURFACE_BG + """;
         font-size: 11px;
-        color: #1E3A5F;
+        color: """ + theme.TEXT_MAIN + """;
         outline: none;
     }
     QTreeWidget::item {
         padding: 2px 4px;
     }
     QTreeWidget::item:selected {
-        background: #1E3A5F;
-        color: #FFFFFF;
+        background: """ + theme.SELECTION_BG + """;
+        color: """ + theme.SELECTION_FG + """;
     }
 """
 
@@ -273,8 +274,8 @@ class _TablesPanel(QWidget):
         layout.setContentsMargins(8, 4, 8, 4)
         layout.setSpacing(2)
 
-        key_style = "color: #5A7FA8; font-size: 10px; font-weight: bold;"
-        val_style = "color: #1E3A5F; font-size: 11px;"
+        key_style = f"color: {theme.TEXT_MUTED}; font-size: 10px; font-weight: bold;"
+        val_style = f"color: {theme.TEXT_MAIN}; font-size: 11px;"
 
         def _row(key: str, value: str) -> None:
             kl = QLabel(key)
@@ -304,13 +305,13 @@ class _TablesPanel(QWidget):
 
 _DETAIL_STYLE = """
     QWidget#DetailContainer {
-        background: #EEF3FA;
-        border-top: 1px solid #C8D4E5;
+        background: """ + theme.SURFACE_ALT_BG + """;
+        border-top: 1px solid """ + theme.BORDER + """;
     }
 """
 
-_DETAIL_KEY_STYLE = "color: #5A7FA8; font-size: 10px; font-weight: bold; padding: 0;"
-_DETAIL_VAL_STYLE = "color: #1E3A5F; font-size: 11px; padding: 0 0 4px 0;"
+_DETAIL_KEY_STYLE = f"color: {theme.TEXT_MUTED}; font-size: 10px; font-weight: bold; padding: 0;"
+_DETAIL_VAL_STYLE = f"color: {theme.TEXT_MAIN}; font-size: 11px; padding: 0 0 4px 0;"
 
 
 class _ValidationsPanel(QWidget):
@@ -328,7 +329,7 @@ class _ValidationsPanel(QWidget):
 
         if not assertions:
             lbl = QLabel("No formula assertions in this taxonomy.")
-            lbl.setStyleSheet("color: #7BA4C8; font-size: 11px; padding: 12px;")
+            lbl.setStyleSheet(f"color: {theme.TEXT_SUBTLE}; font-size: 11px; padding: 12px;")
             lbl.setWordWrap(True)
             layout.addWidget(lbl)
             layout.addStretch(1)
@@ -439,7 +440,7 @@ class _ValidationsPanel(QWidget):
         self._det_id.setText(a.assertion_id)
         self._det_label.setText(getattr(a, "label", None) or "—")
         sev = getattr(a, "severity", None)
-        self._det_severity.setText(str(sev.value).upper() if sev else "—")
+        self._det_severity.setText(self._format_severity(sev))
 
         test = getattr(a, "test_xpath", None) or getattr(a, "formula_xpath", None)
         self._det_test.setText(test or "—")
@@ -457,6 +458,15 @@ class _ValidationsPanel(QWidget):
         # Auto-expand detail section
         if not self._detail_section._body.isVisible():
             self._detail_section._btn.click()
+
+    @staticmethod
+    def _format_severity(severity: object) -> str:
+        if severity is None:
+            return "—"
+
+        value = getattr(severity, "value", severity)
+        text = str(value).strip()
+        return text.upper() if text else "—"
 
 
 # ---------------------------------------------------------------------------
@@ -477,8 +487,8 @@ class _ConceptsPanel(QWidget):
         search = QLineEdit()
         search.setPlaceholderText("Filter concepts…")
         search.setStyleSheet(
-            "QLineEdit { border: none; border-bottom: 1px solid #C8D4E5;"
-            " padding: 5px 8px; font-size: 11px; color: #1E3A5F; background: #FFFFFF; }"
+            f"QLineEdit {{ border: none; border-bottom: 1px solid {theme.BORDER};"
+            f" padding: 5px 8px; font-size: 11px; color: {theme.TEXT_MAIN}; background: {theme.SURFACE_BG}; }}"
         )
         layout.addWidget(search)
 
@@ -520,7 +530,7 @@ class _DefinitionPanel(QWidget):
         definition = taxonomy.definition
         if not definition:
             lbl = QLabel("No definition arcs in this taxonomy.")
-            lbl.setStyleSheet("color: #7BA4C8; font-size: 11px; padding: 12px;")
+            lbl.setStyleSheet(f"color: {theme.TEXT_SUBTLE}; font-size: 11px; padding: 12px;")
             lbl.setWordWrap(True)
             layout.addWidget(lbl)
             layout.addStretch(1)
@@ -565,6 +575,140 @@ class _DefinitionPanel(QWidget):
         inner_layout.addStretch(1)
         scroll.setWidget(inner)
         layout.addWidget(scroll, stretch=1)
+
+
+# ---------------------------------------------------------------------------
+# Panel: Instance (index 5)
+# ---------------------------------------------------------------------------
+
+class _InstancePanel(QWidget):
+    """Panel showing instance metadata (entity, period, filing indicators) and
+    a table list filtered to the filed templates.
+
+    All three sections are collapsible via ``_CollapsibleSection``:
+    - INSTANCE   — entity + period, expanded by default
+    - FILING INDICATORS — template list, collapsed by default to save space
+    - TABLES     — filed-table list, expanded + stretchy (takes all remaining height)
+    """
+
+    table_selected = Signal(object)  # TableDefinitionPWD
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        _key_style = f"color: {theme.TEXT_MUTED}; font-size: 10px; font-weight: bold; padding: 0;"
+        _val_style = f"color: {theme.TEXT_MAIN}; font-size: 11px; padding: 0 0 4px 0;"
+
+        # ── INSTANCE section (collapsible, expanded) ───────────────────
+        meta_body = QWidget()
+        meta_layout = QVBoxLayout(meta_body)
+        meta_layout.setContentsMargins(8, 6, 8, 8)
+        meta_layout.setSpacing(2)
+
+        kl1 = QLabel("ENTITY")
+        kl1.setStyleSheet(_key_style)
+        self._entity_val = QLabel("—")
+        self._entity_val.setStyleSheet(_val_style)
+        self._entity_val.setWordWrap(True)
+        meta_layout.addWidget(kl1)
+        meta_layout.addWidget(self._entity_val)
+
+        kl2 = QLabel("PERIOD")
+        kl2.setStyleSheet(_key_style)
+        self._period_val = QLabel("—")
+        self._period_val.setStyleSheet(_val_style)
+        meta_layout.addWidget(kl2)
+        meta_layout.addWidget(self._period_val)
+
+        layout.addWidget(_CollapsibleSection("INSTANCE", meta_body, expanded=True))
+
+        # ── FILING INDICATORS section (collapsible, collapsed by default) ──
+        fi_body = QWidget()
+        fi_layout = QVBoxLayout(fi_body)
+        fi_layout.setContentsMargins(8, 6, 8, 8)
+        fi_layout.setSpacing(0)
+
+        self._fi_val = QLabel("—")
+        self._fi_val.setWordWrap(True)
+        self._fi_val.setStyleSheet(f"color: {theme.TEXT_MAIN}; font-size: 11px;")
+        fi_layout.addWidget(self._fi_val)
+
+        layout.addWidget(
+            _CollapsibleSection("FILING INDICATORS", fi_body, expanded=False)
+        )
+
+        # ── TABLES section (collapsible, expanded, takes all remaining height) ──
+        self._table_list = QListWidget()
+        self._table_list.setStyleSheet(_LIST_STYLE)
+        self._table_list.itemClicked.connect(self._on_item_clicked)
+
+        self._tables_section = _CollapsibleSection(
+            "TABLES", self._table_list, expanded=True
+        )
+        layout.addWidget(self._tables_section, stretch=1)
+
+        self._table_map: dict[str, object] = {}
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def populate(self, instance: object, taxonomy: object) -> None:
+        """Fill the panel with data from *instance* and *taxonomy*."""
+        # Entity
+        entity = instance.entity  # type: ignore[union-attr]
+        self._entity_val.setText(f"{entity.identifier}\n{entity.scheme}")
+
+        # Period
+        period = instance.period  # type: ignore[union-attr]
+        if period.period_type == "instant":
+            period_text = f"Instant: {period.instant_date}"
+        else:
+            period_text = f"{period.start_date} – {period.end_date}"
+        self._period_val.setText(period_text)
+
+        # Filing indicators
+        fi_texts: list[str] = []
+        for fi in instance.filing_indicators:  # type: ignore[union-attr]
+            status = "✓" if fi.filed else "✗"
+            fi_texts.append(f"{status} {fi.template_id}")
+        self._fi_val.setText("\n".join(fi_texts) if fi_texts else "None")
+
+        # Tables — only filed ones (fall back to all if no indicators)
+        self._table_list.clear()
+        self._table_map.clear()
+        filed_ids = {
+            fi.template_id
+            for fi in instance.filing_indicators  # type: ignore[union-attr]
+            if fi.filed
+        }
+        count = 0
+        for table in taxonomy.tables:  # type: ignore[union-attr]
+            if table.table_id in filed_ids or not filed_ids:
+                item = QListWidgetItem(f"{table.table_id}\n{table.label}")
+                item.setData(Qt.ItemDataRole.UserRole, table)
+                self._table_list.addItem(item)
+                self._table_map[table.table_id] = table
+                count += 1
+
+        # Update the TABLES section header to show the count
+        arrow = "▾" if self._tables_section._body.isVisible() else "▸"
+        self._tables_section._btn.setText(f"{arrow}  TABLES  ({count})")
+
+    def select_first(self) -> None:
+        """Select and emit the first table in the list, if any."""
+        if self._table_list.count() > 0:
+            first = self._table_list.item(0)
+            self._table_list.setCurrentItem(first)
+            self._on_item_clicked(first)
+
+    def _on_item_clicked(self, item: QListWidgetItem) -> None:
+        table = item.data(Qt.ItemDataRole.UserRole)
+        if table is not None:
+            self.table_selected.emit(table)
 
 
 # ---------------------------------------------------------------------------
@@ -627,11 +771,15 @@ class ActivitySidebar(QWidget):
         self._tables_panel = _TablesPanel(taxonomy)
         self._tables_panel.table_selected.connect(self.table_selected)
 
+        self._instance_panel = _InstancePanel()
+        self._instance_panel.table_selected.connect(self.table_selected)
+
         self._stack.addWidget(_DtsFilesPanel(taxonomy))       # 0
         self._stack.addWidget(self._tables_panel)             # 1
         self._stack.addWidget(_ValidationsPanel(taxonomy))    # 2
         self._stack.addWidget(_ConceptsPanel(taxonomy))       # 3
         self._stack.addWidget(_DefinitionPanel(taxonomy))     # 4
+        self._stack.addWidget(self._instance_panel)           # 5
 
         root_layout.addWidget(self._panel_root)
 
@@ -669,3 +817,16 @@ class ActivitySidebar(QWidget):
         """Activate the Tables panel and select the first table."""
         self._activate(1)
         self._tables_panel.select_first()
+
+    def set_instance(self, instance: object, taxonomy: object) -> None:
+        """Populate the Instance panel with *instance* data and switch to it."""
+        self._instance_panel.populate(instance, taxonomy)
+        self._activate(5)
+
+    def clear_instance(self) -> None:
+        """Switch back to the Tables panel (used when an instance is closed)."""
+        self._activate(1)
+
+    def select_first_instance_table(self) -> None:
+        """Select and emit the first table from the Instance panel."""
+        self._instance_panel.select_first()

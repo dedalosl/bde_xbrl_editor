@@ -24,6 +24,7 @@ from bde_xbrl_editor.taxonomy import (
     TaxonomyLoader,
     TaxonomyLoadError,
 )
+from bde_xbrl_editor.ui import theme
 from bde_xbrl_editor.ui.widgets.loader_settings_dialog import (
     add_recent_file,
     add_recent_instance,
@@ -33,16 +34,16 @@ from bde_xbrl_editor.ui.widgets.loader_settings_dialog import (
 from bde_xbrl_editor.ui.widgets.progress_dialog import TaxonomyProgressDialog
 
 # ── Palette ────────────────────────────────────────────────────────────────
-_NAVY = "#1E3A5F"
-_NAVY_MID = "#2B5287"
-_NAVY_LIGHT = "#3A6AA8"
-_ACCENT = "#4A90D9"
-_BG = "#F0F4FA"
-_CARD_BG = "#FFFFFF"
-_TEXT_MAIN = "#1E3A5F"
-_TEXT_MUTED = "#6B8AAE"
-_BORDER = "#C8D4E5"
-_HOVER_ROW = "#EEF3FA"
+_NAVY = theme.NAV_BG_DEEP
+_NAVY_MID = theme.NAV_BG_DARK
+_NAVY_LIGHT = theme.NAV_BG
+_ACCENT = theme.ACCENT
+_BG = theme.WINDOW_BG
+_CARD_BG = theme.SURFACE_BG
+_TEXT_MAIN = theme.TEXT_MAIN
+_TEXT_MUTED = theme.TEXT_MUTED
+_BORDER = theme.BORDER
+_HOVER_ROW = theme.HOVER_BG
 
 
 class _LoadWorker(QObject):
@@ -77,6 +78,7 @@ class _InstanceLoadWorker(QObject):
     finished = Signal(object, object)  # (XbrlInstance, TaxonomyStructure)
     error = Signal(str)
     orphaned = Signal(int)  # emits orphaned fact count if > 0
+    progress = Signal(str, int, int)
 
     def __init__(self, cache: TaxonomyCache, settings: LoaderSettings, path: str) -> None:
         super().__init__()
@@ -94,11 +96,17 @@ class _InstanceLoadWorker(QObject):
 
         loader = TaxonomyLoader(cache=self._cache, settings=self._settings)
         parser = InstanceParser(taxonomy_loader=loader)
+
+        def on_progress(msg: str, current: int, total: int) -> None:
+            self.progress.emit(msg, current, total)
+
         try:
-            instance, orphaned_facts = parser.load(self._path)
-            taxonomy = loader.load(instance.taxonomy_entry_point)
+            instance, orphaned_facts = parser.load(self._path, progress_callback=on_progress)
+            self.progress.emit("Preparing editor…", 96, 100)
+            taxonomy = loader.load(instance.taxonomy_entry_point, progress_callback=on_progress)
             if orphaned_facts:
                 self.orphaned.emit(len(orphaned_facts))
+            self.progress.emit("Instance ready", 100, 100)
             self.finished.emit(instance, taxonomy)
         except TaxonomyResolutionError as exc:
             self.error.emit(str(exc))
@@ -153,7 +161,12 @@ class _RecentFileRow(QFrame):
         layout.addLayout(text_col, stretch=1)
 
         arrow = QLabel("›")
-        arrow.setStyleSheet(f"color: {_TEXT_MUTED}; font-size: 18px;")
+        arrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        arrow.setFixedSize(26, 26)
+        arrow.setStyleSheet(
+            f"color: {_TEXT_MUTED}; font-size: 18px; background: transparent;"
+            f" border: 1px solid {_BORDER};"
+        )
         layout.addWidget(arrow)
 
     def mousePressEvent(self, event) -> None:  # type: ignore[override]
@@ -205,9 +218,23 @@ class TaxonomyLoaderWidget(QWidget):
         self._worker: _LoadWorker | None = None
         self._inst_thread: QThread | None = None
         self._inst_worker: _InstanceLoadWorker | None = None
+        self._progress_dialog: TaxonomyProgressDialog | None = None
         self._setup_ui()
 
     # ── UI construction ────────────────────────────────────────────────────
+
+    def _show_progress_dialog(self, title: str, initial_message: str) -> TaxonomyProgressDialog:
+        if self._progress_dialog is None:
+            self._progress_dialog = TaxonomyProgressDialog(self)
+        self._progress_dialog.setWindowTitle(title)
+        self._progress_dialog.setLabelText(initial_message)
+        self._progress_dialog.setValue(0)
+        self._progress_dialog.show()
+        return self._progress_dialog
+
+    def _close_progress_dialog(self) -> None:
+        if self._progress_dialog is not None:
+            self._progress_dialog.close()
 
     def _setup_ui(self) -> None:
         self.setStyleSheet(f"TaxonomyLoaderWidget {{ background: {_BG}; }}")
@@ -232,7 +259,7 @@ class TaxonomyLoaderWidget(QWidget):
 
         app_title = QLabel("BDE XBRL Editor")
         app_title.setStyleSheet(
-            "color: #FFFFFF; font-size: 24px; font-weight: 700; background: transparent;"
+            f"color: {theme.TEXT_INVERSE}; font-size: 24px; font-weight: 700; background: transparent;"
         )
         title_col.addWidget(app_title)
 
@@ -282,9 +309,10 @@ class TaxonomyLoaderWidget(QWidget):
     def _make_card(self) -> tuple[QFrame, QVBoxLayout]:
         """Create a styled card frame and return (card, layout)."""
         card = QFrame()
+        card.setObjectName("LoaderCard")
         card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         card.setStyleSheet(
-            f"QFrame {{ background: {_CARD_BG}; border-radius: 10px;"
+            f"QFrame#LoaderCard {{ background: {_CARD_BG}; border-radius: 10px;"
             f" border: 1px solid {_BORDER}; }}"
         )
         layout = QVBoxLayout(card)
@@ -397,23 +425,23 @@ class TaxonomyLoaderWidget(QWidget):
         return (
             f"QLineEdit {{ border: 1px solid {_BORDER}; border-radius: 5px;"
             f" padding: 7px 10px; font-size: 12px; color: {_TEXT_MAIN};"
-            f" background: #FAFCFF; }}"
+            f" background: {theme.INPUT_BG}; }}"
             f"QLineEdit:focus {{ border-color: {_ACCENT}; }}"
         )
 
     def _primary_btn_style(self) -> str:
         return (
-            f"QPushButton {{ background: {_NAVY}; color: #FFFFFF;"
+            f"QPushButton {{ background: {_NAVY}; color: {theme.TEXT_INVERSE};"
             f" border: none; border-radius: 5px;"
             f" font-size: 13px; font-weight: 600; padding: 6px 20px; }}"
             f"QPushButton:hover {{ background: {_NAVY_MID}; }}"
             f"QPushButton:pressed {{ background: {_NAVY_LIGHT}; }}"
-            f"QPushButton:disabled {{ background: #B0C0D4; color: #FFFFFF; }}"
+            f"QPushButton:disabled {{ background: {theme.DISABLED_BG}; color: {theme.DISABLED_FG}; }}"
         )
 
     def _secondary_btn_style(self) -> str:
         return (
-            f"QPushButton {{ background: #FFFFFF; color: {_TEXT_MAIN};"
+            f"QPushButton {{ background: {theme.SURFACE_BG}; color: {_TEXT_MAIN};"
             f" border: 1px solid {_BORDER}; border-radius: 5px;"
             f" font-size: 12px; padding: 6px 12px; }}"
             f"QPushButton:hover {{ background: {_HOVER_ROW}; border-color: {_ACCENT}; }}"
@@ -446,8 +474,10 @@ class TaxonomyLoaderWidget(QWidget):
 
         self._load_btn.setEnabled(False)
 
-        self._progress_dialog = TaxonomyProgressDialog(self)
-        self._progress_dialog.show()
+        progress_dialog = self._show_progress_dialog(
+            "Loading Taxonomy…",
+            "Initialising taxonomy load…",
+        )
 
         self._worker = _LoadWorker(self._loader, path)
         self._thread = QThread(self)
@@ -459,13 +489,13 @@ class TaxonomyLoaderWidget(QWidget):
         self._worker.error.connect(
             self._on_load_error, Qt.ConnectionType.QueuedConnection
         )
-        self._worker.progress.connect(self._progress_dialog.update_progress)
+        self._worker.progress.connect(progress_dialog.update_progress)
         self._thread.start()
 
     def _on_load_finished(self, payload: object) -> None:
         structure, skipped_urls = payload  # type: ignore[misc]
         self._cleanup_thread()
-        self._progress_dialog.close()
+        self._close_progress_dialog()
         self._load_btn.setEnabled(True)
 
         add_recent_file(self._path_edit.text().strip())
@@ -486,7 +516,7 @@ class TaxonomyLoaderWidget(QWidget):
 
     def _on_load_error(self, message: str) -> None:
         self._cleanup_thread()
-        self._progress_dialog.close()
+        self._close_progress_dialog()
         self._load_btn.setEnabled(True)
         QMessageBox.critical(self, "Taxonomy Load Error", message)
 
@@ -524,8 +554,10 @@ class TaxonomyLoaderWidget(QWidget):
 
         self._load_inst_btn.setEnabled(False)
 
-        self._inst_progress_dialog = TaxonomyProgressDialog(self)
-        self._inst_progress_dialog.show()
+        progress_dialog = self._show_progress_dialog(
+            "Loading Taxonomy…",
+            "Initialising instance load…",
+        )
 
         self._inst_worker = _InstanceLoadWorker(self._cache, self._settings, path)
         self._inst_thread = QThread(self)
@@ -537,6 +569,9 @@ class TaxonomyLoaderWidget(QWidget):
         self._inst_worker.error.connect(
             self._on_inst_load_error, Qt.ConnectionType.QueuedConnection
         )
+        self._inst_worker.progress.connect(
+            progress_dialog.update_progress, Qt.ConnectionType.QueuedConnection
+        )
         self._inst_worker.orphaned.connect(
             self._on_inst_orphaned, Qt.ConnectionType.QueuedConnection
         )
@@ -544,11 +579,13 @@ class TaxonomyLoaderWidget(QWidget):
 
     def _on_inst_load_finished(self, instance: object, taxonomy: object) -> None:
         self._cleanup_inst_thread()
-        self._inst_progress_dialog.close()
         self._load_inst_btn.setEnabled(True)
 
         add_recent_instance(self._inst_path_edit.text().strip())
+        if self._progress_dialog is not None:
+            self._progress_dialog.update_progress("Opening main window…", 100, 100)
         self.instance_loaded.emit(instance, taxonomy)
+        self._close_progress_dialog()
 
     def _on_inst_orphaned(self, count: int) -> None:
         QMessageBox.information(
@@ -560,7 +597,7 @@ class TaxonomyLoaderWidget(QWidget):
 
     def _on_inst_load_error(self, message: str) -> None:
         self._cleanup_inst_thread()
-        self._inst_progress_dialog.close()
+        self._close_progress_dialog()
         self._load_inst_btn.setEnabled(True)
         QMessageBox.critical(self, "Instance Load Error", message)
 

@@ -26,6 +26,7 @@ from bde_xbrl_editor.ui.widgets.validation_results_model import (
     ValidationFilterProxy,
     ValidationResultsModel,
 )
+from bde_xbrl_editor.ui import theme
 from bde_xbrl_editor.validation.models import (
     ValidationFinding,
     ValidationReport,
@@ -112,6 +113,17 @@ class ValidationPanel(QWidget):
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
+        self.setStyleSheet(
+            f"ValidationPanel {{ background: {theme.SURFACE_ALT_BG}; }}"
+            f" QLabel {{ color: {theme.TEXT_MAIN}; }}"
+            f" QToolButton {{ color: {theme.TEXT_MAIN}; background: {theme.HEADER_BG_LIGHT};"
+            f" border: 1px solid {theme.BORDER}; border-radius: 4px; padding: 4px 8px; }}"
+            f" QToolButton:checked {{ background: {theme.HEADER_BG}; }}"
+            f" QProgressBar {{ background: {theme.SURFACE_BG}; border: 1px solid {theme.BORDER};"
+            f" border-radius: 4px; text-align: center; }}"
+            f" QProgressBar::chunk {{ background: {theme.ACCENT}; }}"
+            f" QTextEdit {{ background: {theme.INPUT_BG}; border: 1px solid {theme.BORDER}; }}"
+        )
 
         # Toolbar row
         toolbar = QHBoxLayout()
