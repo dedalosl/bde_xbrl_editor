@@ -45,6 +45,7 @@ class MainWindow(QMainWindow):
         self._editor = None  # InstanceEditor | None
         self._table_view = None  # XbrlTableView | None
         self._sidebar: ActivitySidebar | None = None
+        self._browser_splitter: QSplitter | None = None
         self._context_bar: QFrame | None = None
         self._table_chip_sep: QLabel | None = None
         self._table_chip_label: QLabel | None = None
@@ -296,6 +297,7 @@ class MainWindow(QMainWindow):
         assert self._current_taxonomy is not None
         self._sidebar = ActivitySidebar(self._current_taxonomy, parent=self)
         self._sidebar.table_selected.connect(self._on_table_selected)
+        self._sidebar.width_changed.connect(self._on_sidebar_width_changed)
 
         if self._table_view is None:
             self._table_view = XbrlTableView(parent=self)
@@ -305,6 +307,7 @@ class MainWindow(QMainWindow):
         splitter.addWidget(self._table_view)
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
+        self._browser_splitter = splitter
 
         container = QWidget(self)
         container_layout = QVBoxLayout(container)
@@ -464,6 +467,7 @@ class MainWindow(QMainWindow):
         self._editor = None
         self._table_view = None
         self._sidebar = None
+        self._browser_splitter = None
         self._context_bar = None
         self._table_chip_sep = None
         self._table_chip_label = None
@@ -620,6 +624,7 @@ class MainWindow(QMainWindow):
         if self._sidebar is None:
             self._sidebar = ActivitySidebar(self._current_taxonomy, parent=self)
             self._sidebar.table_selected.connect(self._on_table_selected)
+            self._sidebar.width_changed.connect(self._on_sidebar_width_changed)
 
         # Switch the sidebar to instance mode (6th panel: entity, period, FI, filed tables)
         self._sidebar.set_instance(instance, self._current_taxonomy)
@@ -629,6 +634,7 @@ class MainWindow(QMainWindow):
         splitter.addWidget(self._table_view)
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
+        self._browser_splitter = splitter
 
         container = QWidget(self)
         container_layout = QVBoxLayout(container)
@@ -665,6 +671,21 @@ class MainWindow(QMainWindow):
         if self._validation_panel:
             self._validation_panel.clear()
         self._show_validation_panel_action.setEnabled(True)
+
+    def _on_sidebar_width_changed(self, width: int) -> None:
+        if self._browser_splitter is None:
+            return
+
+        def _apply() -> None:
+            if self._browser_splitter is None:
+                return
+            total = sum(self._browser_splitter.sizes())
+            if total <= 0:
+                total = self._browser_splitter.width()
+            main_width = max(total - width, 0)
+            self._browser_splitter.setSizes([width, main_width])
+
+        QTimer.singleShot(0, _apply)
 
     # ------------------------------------------------------------------
     # Table selection → XbrlTableView (T017)

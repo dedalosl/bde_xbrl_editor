@@ -339,6 +339,26 @@ class ValidationPanel(QWidget):
             lines.append(f"Context   : {finding.context_ref}")
         if finding.constraint_type:
             lines.append(f"Constraint: {finding.constraint_type}")
+        if finding.formula_assertion_type:
+            lines.append(f"Formula Type: {finding.formula_assertion_type}")
+        if finding.formula_expression:
+            lines.extend([
+                "",
+                "Formula / Test:",
+                finding.formula_expression,
+            ])
+        if finding.formula_operands_text:
+            lines.extend([
+                "",
+                "Operands:",
+                finding.formula_operands_text,
+            ])
+        if finding.formula_precondition and finding.formula_precondition != "—":
+            lines.extend([
+                "",
+                "Precondition:",
+                finding.formula_precondition,
+            ])
 
         self._detail_text.setPlainText("\n".join(lines))
         self._goto_btn.setEnabled(bool(finding.context_ref))

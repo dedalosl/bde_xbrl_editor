@@ -76,6 +76,10 @@ class TestValidationFindingImmutability:
         assert f.hypercube_qname is None
         assert f.dimension_qname is None
         assert f.constraint_type is None
+        assert f.formula_assertion_type is None
+        assert f.formula_expression is None
+        assert f.formula_operands_text is None
+        assert f.formula_precondition is None
 
 
 # ---------------------------------------------------------------------------

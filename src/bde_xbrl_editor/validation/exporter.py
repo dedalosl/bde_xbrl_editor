@@ -46,6 +46,18 @@ class ValidationReportExporter:
                     lines.append(f"  Context : {finding.context_ref}")
                 if finding.constraint_type:
                     lines.append(f"  Constraint: {finding.constraint_type}")
+                if finding.formula_assertion_type:
+                    lines.append(f"  Formula Type: {finding.formula_assertion_type}")
+                if finding.formula_expression:
+                    lines.append("  Formula / Test:")
+                    for detail_line in finding.formula_expression.splitlines():
+                        lines.append(f"    {detail_line}")
+                if finding.formula_operands_text:
+                    lines.append("  Operands:")
+                    for detail_line in finding.formula_operands_text.splitlines():
+                        lines.append(f"    {detail_line}")
+                if finding.formula_precondition and finding.formula_precondition != "—":
+                    lines.append(f"  Precondition: {finding.formula_precondition}")
                 lines.append("")
         else:
             lines.append("No findings — instance passes all validation checks.")
@@ -83,6 +95,14 @@ class ValidationReportExporter:
                     "concept": str(f.concept_qname) if f.concept_qname else None,
                     "context_ref": f.context_ref,
                     "constraint_type": f.constraint_type,
+                    "formula_assertion_type": f.formula_assertion_type,
+                    "formula_expression": f.formula_expression,
+                    "formula_operands_text": f.formula_operands_text,
+                    "formula_precondition": (
+                        f.formula_precondition
+                        if f.formula_precondition != "—"
+                        else None
+                    ),
                 }
                 for f in report.findings
             ],

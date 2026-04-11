@@ -17,6 +17,8 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
+    QSplitter,
     QStackedWidget,
     QToolButton,
     QTreeWidget,
@@ -25,8 +27,17 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from bde_xbrl_editor.taxonomy.models import TaxonomyStructure
+from bde_xbrl_editor.taxonomy.models import (
+    ConsistencyAssertionDefinition,
+    ExistenceAssertionDefinition,
+    TaxonomyStructure,
+    ValueAssertionDefinition,
+)
 from bde_xbrl_editor.ui import theme
+from bde_xbrl_editor.validation.formula.details import (
+    build_formula_display_details,
+    format_assertion_expression,
+)
 
 # ---------------------------------------------------------------------------
 # Activity bar constants
@@ -122,14 +133,17 @@ _TREE_STYLE = """
 """
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 class _CollapsibleSection(QWidget):
     """A collapsible section with a toggle-button header and a body widget."""
 
-    def __init__(self, title: str, body: QWidget, expanded: bool = True, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        title: str,
+        body: QWidget,
+        expanded: bool = True,
+        parent: QWidget | None = None,
+        body_stretch: int = 0,
+    ) -> None:
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -143,7 +157,7 @@ class _CollapsibleSection(QWidget):
         layout.addWidget(self._btn)
 
         self._body = body
-        layout.addWidget(body)
+        layout.addWidget(body, body_stretch)
 
         if not expanded:
             self._btn.setChecked(False)
@@ -336,12 +350,6 @@ class _ValidationsPanel(QWidget):
             self._detail_section = None
             return
 
-        from bde_xbrl_editor.taxonomy.models import (  # noqa: PLC0415
-            ConsistencyAssertionDefinition,
-            ExistenceAssertionDefinition,
-            ValueAssertionDefinition,
-        )
-
         groups: dict[str, list] = {
             "Value Assertions": [],
             "Existence Assertions": [],
@@ -379,21 +387,28 @@ class _ValidationsPanel(QWidget):
             for a in items:
                 label = getattr(a, "label", None) or a.assertion_id
                 wi = QListWidgetItem(f"{a.assertion_id}  {label or ''}".strip())
+                wi.setToolTip(format_assertion_expression(a))
                 wi.setData(Qt.ItemDataRole.UserRole, a)
                 lst.addItem(wi)
             lst.currentItemChanged.connect(self._on_item_selected)
             self._assertion_lists.append(lst)
             section = _CollapsibleSection(
-                f"{group_name}  ({len(items)})", lst, expanded=first_non_empty
+                f"{group_name}  ({len(items)})",
+                lst,
+                expanded=first_non_empty,
+                body_stretch=1 if first_non_empty else 0,
             )
-            inner_layout.addWidget(section)
+            section.setSizePolicy(
+                QSizePolicy.Policy.Preferred,
+                QSizePolicy.Policy.Expanding if first_non_empty else QSizePolicy.Policy.Minimum,
+            )
+            lst.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Expanding)
+            inner_layout.addWidget(section, 1 if first_non_empty else 0)
             first_non_empty = False
 
-        inner_layout.addStretch(1)
         scroll.setWidget(inner)
-        layout.addWidget(scroll, stretch=1)
 
-        # ── Collapsible detail panel ───────────────────────────────────
+        # ── Resizable detail panel ─────────────────────────────────────
         detail_body = QWidget()
         detail_body.setObjectName("DetailContainer")
         detail_body.setStyleSheet(_DETAIL_STYLE)
@@ -414,16 +429,49 @@ class _ValidationsPanel(QWidget):
 
         self._det_id = _make_row("ID")
         self._det_label = _make_row("LABEL")
+        self._det_type = _make_row("TYPE")
         self._det_severity = _make_row("SEVERITY")
         self._det_test = _make_row("TEST / FORMULA")
-        self._det_vars = _make_row("VARIABLES")
+        self._det_vars = _make_row("OPERANDS")
         self._det_precond = _make_row("PRECONDITION")
 
-        self._detail_section = _CollapsibleSection("Details", detail_body, expanded=False)
-        layout.addWidget(self._detail_section)
+        detail_scroll = QScrollArea()
+        detail_scroll.setWidgetResizable(True)
+        detail_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        detail_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        detail_scroll.setStyleSheet("QScrollArea { border: none; }")
+        detail_scroll.setWidget(detail_body)
+        self._detail_scroll = detail_scroll
+
+        self._detail_section = _CollapsibleSection("Details", self._detail_scroll, expanded=False)
+        self._detail_section._btn.clicked.connect(self._sync_detail_splitter)
+
+        self._content_splitter = QSplitter(Qt.Orientation.Vertical)
+        self._content_splitter.setChildrenCollapsible(False)
+        self._content_splitter.setHandleWidth(0)
+        self._content_splitter.addWidget(scroll)
+        self._content_splitter.addWidget(self._detail_section)
+        self._content_splitter.setStretchFactor(0, 1)
+        self._content_splitter.setStretchFactor(1, 0)
+        self._detail_section.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
+        layout.addWidget(self._content_splitter, stretch=1)
+        self._sync_detail_splitter()
+
+    def _sync_detail_splitter(self) -> None:
+        checked = self._detail_section._btn.isChecked()
+        header_height = self._detail_section._btn.sizeHint().height()
+        if checked:
+            self._content_splitter.setHandleWidth(6)
+            total = max(self._content_splitter.height(), sum(self._content_splitter.sizes()))
+            detail_height = max(160, min(260, total // 3))
+            self._content_splitter.setSizes([max(total - detail_height, 0), detail_height])
+        else:
+            self._content_splitter.setHandleWidth(0)
+            total = max(self._content_splitter.height(), sum(self._content_splitter.sizes()), header_height + 1)
+            self._content_splitter.setSizes([max(total - header_height, 1), header_height])
 
     def _on_item_selected(self, current: QListWidgetItem | None, _previous) -> None:
-        if current is None or self._detail_section is None:
+        if current is None:
             return
         a = current.data(Qt.ItemDataRole.UserRole)
         if a is None:
@@ -439,25 +487,18 @@ class _ValidationsPanel(QWidget):
 
         self._det_id.setText(a.assertion_id)
         self._det_label.setText(getattr(a, "label", None) or "—")
+        details = build_formula_display_details(a)
+        self._det_type.setText(details.assertion_type)
         sev = getattr(a, "severity", None)
         self._det_severity.setText(self._format_severity(sev))
+        self._det_test.setText(details.expression)
+        self._det_vars.setText(details.operands_text)
+        self._det_precond.setText(details.precondition)
 
-        test = getattr(a, "test_xpath", None) or getattr(a, "formula_xpath", None)
-        self._det_test.setText(test or "—")
-
-        vars_ = getattr(a, "variables", ())
-        if vars_:
-            var_text = ", ".join(getattr(v, "name", str(v)) for v in vars_)
-        else:
-            var_text = "—"
-        self._det_vars.setText(var_text)
-
-        precond = getattr(a, "precondition_xpath", None)
-        self._det_precond.setText(precond or "—")
-
-        # Auto-expand detail section
-        if not self._detail_section._body.isVisible():
-            self._detail_section._btn.click()
+        if not self._detail_section._btn.isChecked():
+            self._detail_section._btn.setChecked(True)
+            self._detail_section._toggle(True)
+            self._sync_detail_splitter()
 
     @staticmethod
     def _format_severity(severity: object) -> str:
@@ -722,11 +763,13 @@ class ActivitySidebar(QWidget):
     """
 
     table_selected = Signal(object)  # TableDefinitionPWD
+    width_changed = Signal(int)
 
     def __init__(self, taxonomy: TaxonomyStructure, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._taxonomy = taxonomy
         self._active_index: int | None = None
+        self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
 
         root_layout = QHBoxLayout(self)
         root_layout.setContentsMargins(0, 0, 0, 0)
@@ -785,7 +828,7 @@ class ActivitySidebar(QWidget):
 
         # Start with Tables panel visible
         self._activate(1)
-        self.setFixedWidth(_BAR_W + _PANEL_W)
+        self._apply_sidebar_width(_BAR_W + _PANEL_W)
 
     # ------------------------------------------------------------------
     # Toggle logic
@@ -797,7 +840,7 @@ class ActivitySidebar(QWidget):
             self._panel_root.setVisible(False)
             self._buttons[idx].setChecked(False)
             self._active_index = None
-            self.setFixedWidth(_BAR_W)
+            self._apply_sidebar_width(_BAR_W)
         else:
             self._activate(idx)
 
@@ -805,9 +848,14 @@ class ActivitySidebar(QWidget):
         self._active_index = idx
         self._stack.setCurrentIndex(idx)
         self._panel_root.setVisible(True)
-        self.setFixedWidth(_BAR_W + _PANEL_W)
+        self._apply_sidebar_width(_BAR_W + _PANEL_W)
         for i, btn in enumerate(self._buttons):
             btn.setChecked(i == idx)
+
+    def _apply_sidebar_width(self, width: int) -> None:
+        self.setFixedWidth(width)
+        self.updateGeometry()
+        self.width_changed.emit(width)
 
     # ------------------------------------------------------------------
     # Public API
