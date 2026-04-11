@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
 from bde_xbrl_editor.table_renderer.errors import TableLayoutError, ZIndexOutOfRangeError
 from bde_xbrl_editor.table_renderer.layout_engine import TableLayoutEngine
 from bde_xbrl_editor.table_renderer.models import ComputedTableLayout
+from bde_xbrl_editor.ui import theme
 from bde_xbrl_editor.ui.widgets.cell_edit_delegate import CellEditDelegate
 from bde_xbrl_editor.ui.widgets.column_header import MultiLevelColumnHeader
 from bde_xbrl_editor.ui.widgets.row_header import MultiLevelRowHeader
@@ -25,6 +26,8 @@ from bde_xbrl_editor.ui.widgets.z_axis_selector import ZAxisSelector
 if TYPE_CHECKING:
     from bde_xbrl_editor.instance.models import XbrlInstance
     from bde_xbrl_editor.taxonomy.models import TableDefinitionPWD, TaxonomyStructure
+
+_DEFAULT_BODY_COLUMN_WIDTH = 172
 
 
 class XbrlTableView(QFrame):
@@ -50,7 +53,10 @@ class XbrlTableView(QFrame):
         # Error banner (hidden by default)
         self._error_banner = QLabel(self)
         self._error_banner.setWordWrap(True)
-        self._error_banner.setStyleSheet("background: #FFF3CD; color: #856404; padding: 4px;")
+        self._error_banner.setStyleSheet(
+            f"background: {theme.WARNING_BG}; color: {theme.WARNING_FG};"
+            f" border-bottom: 1px solid {theme.BORDER}; padding: 4px;"
+        )
         self._error_banner.hide()
         self._outer_layout.addWidget(self._error_banner)
 
@@ -63,6 +69,11 @@ class XbrlTableView(QFrame):
         self._row_header = MultiLevelRowHeader(parent=self._body_view)
         self._body_view.setHorizontalHeader(self._col_header)
         self._body_view.setVerticalHeader(self._row_header)
+        self._body_view.horizontalHeader().setDefaultSectionSize(_DEFAULT_BODY_COLUMN_WIDTH)
+        self._body_view.horizontalHeader().setMinimumSectionSize(120)
+        self._body_view.setStyleSheet(
+            f"QTableView {{ background: {theme.CELL_BG}; border: 1px solid {theme.BORDER}; }}"
+        )
         self._outer_layout.addWidget(self._body_view)
 
     # ------------------------------------------------------------------
@@ -209,6 +220,7 @@ class XbrlTableView(QFrame):
         self._row_header.set_header_grid(layout.row_header)
 
         # Adjust header sizes
+        self._body_view.horizontalHeader().setDefaultSectionSize(_DEFAULT_BODY_COLUMN_WIDTH)
         self._body_view.horizontalHeader().setMinimumHeight(
             layout.column_header.depth * 28
         )

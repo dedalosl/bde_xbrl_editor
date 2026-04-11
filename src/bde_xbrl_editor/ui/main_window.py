@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 from bde_xbrl_editor.taxonomy import TaxonomyCache, TaxonomyStructure
+from bde_xbrl_editor.ui import theme
 from bde_xbrl_editor.ui.widgets.activity_sidebar import ActivitySidebar
 from bde_xbrl_editor.ui.widgets.loader_settings_dialog import load_saved_settings
 from bde_xbrl_editor.ui.widgets.taxonomy_loader_widget import TaxonomyLoaderWidget
@@ -58,64 +59,104 @@ class MainWindow(QMainWindow):
         self._setup_statusbar()
 
     def _apply_stylesheet(self) -> None:
-        self.setStyleSheet("""
-            QMainWindow, QWidget {
+        self.setStyleSheet(f"""
+            QMainWindow, QWidget {{
                 font-family: -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
                 font-size: 12px;
-            }
-            QMenuBar {
-                background: #1E3A5F;
-                color: #FFFFFF;
+                color: {theme.TEXT_MAIN};
+            }}
+            QMenuBar {{
+                background: {theme.NAV_BG_DEEP};
+                color: {theme.TEXT_INVERSE};
                 padding: 2px 4px;
-            }
-            QMenuBar::item:selected {
-                background: #2B5287;
-            }
-            QMenu {
-                background: #FFFFFF;
-                border: 1px solid #C8D4E5;
-                color: #1E3A5F;
-            }
-            QMenu::item:selected {
-                background: #1E3A5F;
-                color: #FFFFFF;
-            }
-            QStatusBar {
-                background: #F0F4FA;
-                color: #1E3A5F;
-                border-top: 1px solid #C8D4E5;
+                border-bottom: 1px solid {theme.BORDER_STRONG};
+            }}
+            QMenuBar::item:selected {{
+                background: {theme.NAV_BG};
+            }}
+            QMenu {{
+                background: {theme.SURFACE_BG};
+                border: 1px solid {theme.BORDER};
+                color: {theme.TEXT_MAIN};
+            }}
+            QMenu::item:selected {{
+                background: {theme.SELECTION_BG};
+                color: {theme.TEXT_MAIN};
+            }}
+            QStatusBar {{
+                background: {theme.PANEL_BG};
+                color: {theme.TEXT_MAIN};
+                border-top: 1px solid {theme.BORDER};
                 font-size: 11px;
                 padding: 2px 6px;
-            }
-            QScrollBar:vertical {
+            }}
+            QTableView, QTreeView, QListView {{
+                background: {theme.CELL_BG};
+                alternate-background-color: {theme.CELL_BG_MUTED};
+                color: {theme.TEXT_MAIN};
+                gridline-color: {theme.BORDER};
+                border: 1px solid {theme.BORDER};
+                selection-background-color: {theme.SELECTION_BG};
+                selection-color: {theme.SELECTION_FG};
+            }}
+            QHeaderView::section {{
+                background: {theme.HEADER_BG_LIGHT};
+                color: {theme.TEXT_MAIN};
+                border: 1px solid {theme.BORDER};
+                padding: 4px 6px;
+                font-weight: 600;
+            }}
+            QPushButton, QComboBox, QLineEdit, QTextEdit {{
+                background: {theme.INPUT_BG};
+                color: {theme.TEXT_MAIN};
+                border: 1px solid {theme.BORDER};
+                border-radius: 4px;
+            }}
+            QPushButton {{
+                padding: 4px 10px;
+            }}
+            QPushButton:hover, QComboBox:hover, QLineEdit:hover {{
+                border-color: {theme.BORDER_STRONG};
+                background: {theme.SURFACE_BG};
+            }}
+            QPushButton:disabled, QComboBox:disabled, QLineEdit:disabled {{
+                background: {theme.DISABLED_BG};
+                color: {theme.DISABLED_FG};
+                border-color: {theme.BORDER};
+            }}
+            QTextEdit {{
+                selection-background-color: {theme.SELECTION_BG};
+                selection-color: {theme.SELECTION_FG};
+            }}
+            QScrollBar:vertical {{
                 width: 10px;
-                background: #F0F4FA;
+                background: {theme.SURFACE_ALT_BG};
                 border: none;
-            }
-            QScrollBar::handle:vertical {
-                background: #B0C4DE;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {theme.ACCENT_SOFT};
                 border-radius: 4px;
                 min-height: 20px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background: #2B5287;
-            }
-            QScrollBar:horizontal {
+            }}
+            QScrollBar::handle:vertical:hover {{
+                background: {theme.ACCENT};
+            }}
+            QScrollBar:horizontal {{
                 height: 10px;
-                background: #F0F4FA;
+                background: {theme.SURFACE_ALT_BG};
                 border: none;
-            }
-            QScrollBar::handle:horizontal {
-                background: #B0C4DE;
+            }}
+            QScrollBar::handle:horizontal {{
+                background: {theme.ACCENT_SOFT};
                 border-radius: 4px;
                 min-width: 20px;
-            }
-            QScrollBar::handle:horizontal:hover {
-                background: #2B5287;
-            }
-            QSplitter::handle {
-                background: #C8D4E5;
-            }
+            }}
+            QScrollBar::handle:horizontal:hover {{
+                background: {theme.ACCENT};
+            }}
+            QSplitter::handle {{
+                background: {theme.BORDER};
+            }}
         """)
 
     def _setup_menu(self) -> None:
@@ -288,7 +329,7 @@ class MainWindow(QMainWindow):
         bar = QFrame()
         bar.setFixedHeight(36)
         bar.setStyleSheet(
-            "QFrame { background: #2B5287; border-bottom: 1px solid #1E3A5F; }"
+            f"QFrame {{ background: {theme.NAV_BG}; border-bottom: 1px solid {theme.BORDER_STRONG}; }}"
         )
 
         layout = QHBoxLayout(bar)
@@ -296,16 +337,17 @@ class MainWindow(QMainWindow):
         layout.setSpacing(6)
 
         chip_style = (
-            "QLabel { color: #FFFFFF; font-size: 11px; font-weight: 600;"
-            " background: rgba(255,255,255,0.12); border-radius: 3px; padding: 2px 7px; }"
+            f"QLabel {{ color: {theme.TEXT_MAIN}; font-size: 11px; font-weight: 600;"
+            f" background: rgba(255,253,248,0.55); border: 1px solid {theme.BORDER};"
+            " border-radius: 3px; padding: 2px 7px; }"
         )
         close_style = (
-            "QPushButton { color: #A8C8EE; background: transparent; border: none;"
+            f"QPushButton {{ color: {theme.TEXT_MUTED}; background: transparent; border: none;"
             " font-size: 14px; padding: 0 3px; }"
-            "QPushButton:hover { color: #FFFFFF; background: rgba(255,255,255,0.2);"
+            f"QPushButton:hover {{ color: {theme.TEXT_MAIN}; background: rgba(255,253,248,0.35);"
             " border-radius: 3px; }"
         )
-        sep_style = "QLabel { color: #7BA4C8; font-size: 14px; background: transparent; }"
+        sep_style = f"QLabel {{ color: {theme.TEXT_MUTED}; font-size: 14px; background: transparent; }}"
 
         # ── Taxonomy chip ──────────────────────────────────────────────
         if self._current_taxonomy:
@@ -348,9 +390,9 @@ class MainWindow(QMainWindow):
 
         table_chip = QLabel()
         table_chip.setStyleSheet(
-            "QLabel { color: #D4E8FF; font-size: 11px; font-weight: 600;"
-            " background: rgba(255,255,255,0.08); border-radius: 3px;"
-            " padding: 2px 7px; }"
+            f"QLabel {{ color: {theme.TEXT_MAIN}; font-size: 11px; font-weight: 600;"
+            f" background: rgba(255,248,236,0.65); border: 1px solid {theme.BORDER};"
+            " border-radius: 3px; padding: 2px 7px; }"
         )
         table_chip.setVisible(False)
         layout.addWidget(table_chip)
@@ -360,12 +402,12 @@ class MainWindow(QMainWindow):
 
         # ── Action buttons on the right ────────────────────────────────
         btn_style = (
-            "QPushButton { color: #FFFFFF; background: rgba(255,255,255,0.15);"
-            " border: 1px solid rgba(255,255,255,0.3); border-radius: 3px;"
+            f"QPushButton {{ color: {theme.TEXT_MAIN}; background: rgba(255,250,242,0.72);"
+            f" border: 1px solid {theme.BORDER}; border-radius: 3px;"
             " font-size: 11px; padding: 3px 10px; }"
-            "QPushButton:hover { background: rgba(255,255,255,0.25); }"
-            "QPushButton:disabled { color: #7BA4C8; background: transparent;"
-            " border-color: rgba(255,255,255,0.1); }"
+            f"QPushButton:hover {{ background: {theme.HEADER_BG_LIGHT}; border-color: {theme.BORDER_STRONG}; }}"
+            f"QPushButton:disabled {{ color: {theme.DISABLED_FG}; background: transparent;"
+            f" border-color: {theme.BORDER}; }}"
         )
 
         if instance is not None:

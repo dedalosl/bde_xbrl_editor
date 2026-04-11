@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 )
 
 from bde_xbrl_editor.taxonomy.models import TaxonomyStructure
+from bde_xbrl_editor.ui import theme
 
 # ---------------------------------------------------------------------------
 # Activity bar constants
@@ -39,8 +40,8 @@ _TIPS = ["DTS Files", "Tables", "Validations", "Concepts", "Definition Linkbase"
 
 _BAR_STYLE = """
     QWidget#ActivityBar {
-        background: #1E3A5F;
-        border-right: 1px solid #16304F;
+        background: """ + theme.NAV_BG_DEEP + """;
+        border-right: 1px solid """ + theme.BORDER_STRONG + """;
     }
 """
 
@@ -48,75 +49,75 @@ _BTN_STYLE = """
     QToolButton {
         background: transparent;
         border: none;
-        color: #7BA4C8;
+        color: """ + theme.ACCENT_SOFT + """;
         font-size: 20px;
         padding: 6px;
         border-radius: 4px;
     }
     QToolButton:hover {
-        color: #FFFFFF;
-        background: rgba(255,255,255,0.10);
+        color: """ + theme.TEXT_INVERSE + """;
+        background: rgba(255,253,248,0.12);
     }
     QToolButton:checked {
-        color: #FFFFFF;
-        background: rgba(255,255,255,0.18);
-        border-left: 3px solid #5BA3F5;
+        color: """ + theme.TEXT_INVERSE + """;
+        background: rgba(255,248,236,0.2);
+        border-left: 3px solid """ + theme.HEADER_BG_LIGHT + """;
     }
 """
 
 _PANEL_STYLE = """
     QWidget#PanelRoot {
-        background: #F5F7FA;
-        border-right: 1px solid #C8D4E5;
+        background: """ + theme.PANEL_BG + """;
+        border-right: 1px solid """ + theme.BORDER + """;
     }
 """
 
 _SECTION_HDR_STYLE = (
-    "background: #1E3A5F; color: #FFFFFF; font-weight: bold;"
+    f"background: {theme.NAV_BG_DARK}; color: {theme.TEXT_INVERSE}; font-weight: bold;"
     " font-size: 11px; padding: 6px 10px; letter-spacing: 1px;"
 )
 
 _COLLAPSIBLE_HDR_STYLE = (
-    "QPushButton { text-align: left; padding: 5px 8px; background: #2B5287;"
-    " color: #FFFFFF; font-size: 11px; font-weight: bold; border: none; }"
-    "QPushButton:hover { background: #3A6AA8; }"
+    f"QPushButton {{ text-align: left; padding: 5px 8px; background: {theme.HEADER_BG};"
+    f" color: {theme.TEXT_MAIN}; font-size: 11px; font-weight: bold; border: none; }}"
+    f"QPushButton:hover {{ background: {theme.HEADER_BG_LIGHT}; }}"
 )
 
 _LIST_STYLE = """
     QListWidget {
         border: none;
-        background: #FFFFFF;
+        background: """ + theme.SURFACE_BG + """;
         font-size: 12px;
-        color: #1E3A5F;
+        color: """ + theme.TEXT_MAIN + """;
         outline: none;
     }
     QListWidget::item {
         padding: 5px 8px;
-        border-bottom: 1px solid #E8EDF5;
+        border-bottom: 1px solid """ + theme.ACCENT_SOFT + """;
     }
     QListWidget::item:selected {
-        background: #1E3A5F;
-        color: #FFFFFF;
+        background: """ + theme.SELECTION_BG + """;
+        color: """ + theme.SELECTION_FG + """;
     }
     QListWidget::item:hover:!selected {
-        background: #DCE8F5;
+        background: """ + theme.HOVER_BG + """;
     }
 """
 
 _TREE_STYLE = """
     QTreeWidget {
         border: none;
-        background: #FFFFFF;
+        background: """ + theme.SURFACE_BG + """;
         font-size: 11px;
-        color: #1E3A5F;
+        color: """ + theme.TEXT_MAIN + """;
         outline: none;
     }
     QTreeWidget::item {
         padding: 2px 4px;
     }
     QTreeWidget::item:selected {
-        background: #1E3A5F;
-        color: #FFFFFF;
+        background: """ + theme.SELECTION_BG + """;
+        color: """ + theme.SELECTION_FG + """;
     }
 """
 
@@ -273,8 +274,8 @@ class _TablesPanel(QWidget):
         layout.setContentsMargins(8, 4, 8, 4)
         layout.setSpacing(2)
 
-        key_style = "color: #5A7FA8; font-size: 10px; font-weight: bold;"
-        val_style = "color: #1E3A5F; font-size: 11px;"
+        key_style = f"color: {theme.TEXT_MUTED}; font-size: 10px; font-weight: bold;"
+        val_style = f"color: {theme.TEXT_MAIN}; font-size: 11px;"
 
         def _row(key: str, value: str) -> None:
             kl = QLabel(key)
@@ -304,13 +305,13 @@ class _TablesPanel(QWidget):
 
 _DETAIL_STYLE = """
     QWidget#DetailContainer {
-        background: #EEF3FA;
-        border-top: 1px solid #C8D4E5;
+        background: """ + theme.SURFACE_ALT_BG + """;
+        border-top: 1px solid """ + theme.BORDER + """;
     }
 """
 
-_DETAIL_KEY_STYLE = "color: #5A7FA8; font-size: 10px; font-weight: bold; padding: 0;"
-_DETAIL_VAL_STYLE = "color: #1E3A5F; font-size: 11px; padding: 0 0 4px 0;"
+_DETAIL_KEY_STYLE = f"color: {theme.TEXT_MUTED}; font-size: 10px; font-weight: bold; padding: 0;"
+_DETAIL_VAL_STYLE = f"color: {theme.TEXT_MAIN}; font-size: 11px; padding: 0 0 4px 0;"
 
 
 class _ValidationsPanel(QWidget):
@@ -328,7 +329,7 @@ class _ValidationsPanel(QWidget):
 
         if not assertions:
             lbl = QLabel("No formula assertions in this taxonomy.")
-            lbl.setStyleSheet("color: #7BA4C8; font-size: 11px; padding: 12px;")
+            lbl.setStyleSheet(f"color: {theme.TEXT_SUBTLE}; font-size: 11px; padding: 12px;")
             lbl.setWordWrap(True)
             layout.addWidget(lbl)
             layout.addStretch(1)
@@ -477,8 +478,8 @@ class _ConceptsPanel(QWidget):
         search = QLineEdit()
         search.setPlaceholderText("Filter concepts…")
         search.setStyleSheet(
-            "QLineEdit { border: none; border-bottom: 1px solid #C8D4E5;"
-            " padding: 5px 8px; font-size: 11px; color: #1E3A5F; background: #FFFFFF; }"
+            f"QLineEdit {{ border: none; border-bottom: 1px solid {theme.BORDER};"
+            f" padding: 5px 8px; font-size: 11px; color: {theme.TEXT_MAIN}; background: {theme.SURFACE_BG}; }}"
         )
         layout.addWidget(search)
 
@@ -520,7 +521,7 @@ class _DefinitionPanel(QWidget):
         definition = taxonomy.definition
         if not definition:
             lbl = QLabel("No definition arcs in this taxonomy.")
-            lbl.setStyleSheet("color: #7BA4C8; font-size: 11px; padding: 12px;")
+            lbl.setStyleSheet(f"color: {theme.TEXT_SUBTLE}; font-size: 11px; padding: 12px;")
             lbl.setWordWrap(True)
             layout.addWidget(lbl)
             layout.addStretch(1)
@@ -589,8 +590,8 @@ class _InstancePanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        _key_style = "color: #5A7FA8; font-size: 10px; font-weight: bold; padding: 0;"
-        _val_style = "color: #1E3A5F; font-size: 11px; padding: 0 0 4px 0;"
+        _key_style = f"color: {theme.TEXT_MUTED}; font-size: 10px; font-weight: bold; padding: 0;"
+        _val_style = f"color: {theme.TEXT_MAIN}; font-size: 11px; padding: 0 0 4px 0;"
 
         # ── INSTANCE section (collapsible, expanded) ───────────────────
         meta_body = QWidget()
@@ -623,7 +624,7 @@ class _InstancePanel(QWidget):
 
         self._fi_val = QLabel("—")
         self._fi_val.setWordWrap(True)
-        self._fi_val.setStyleSheet("color: #1E3A5F; font-size: 11px;")
+        self._fi_val.setStyleSheet(f"color: {theme.TEXT_MAIN}; font-size: 11px;")
         fi_layout.addWidget(self._fi_val)
 
         layout.addWidget(

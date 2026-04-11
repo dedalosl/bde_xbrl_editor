@@ -9,22 +9,24 @@ from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter
 from PySide6.QtWidgets import QHeaderView, QWidget
 
 from bde_xbrl_editor.table_renderer.models import HeaderGrid
+from bde_xbrl_editor.ui import theme
 
 _LEVEL_HEIGHT_MIN = 28   # minimum px per header level
 _LEVEL_HEIGHT_MAX = 300  # generous cap — long labels fit without font scaling
-_LEVEL_HEIGHT_PAD = 12   # total vertical padding (top + bottom) within a level
+_LEVEL_HEIGHT_PAD = 16   # total vertical padding (top + bottom) within a level
 _RC_FONT_SCALE = 0.72
 _LABEL_SPLIT = 0.78      # fraction of cell height allocated to label when rc_code present
 _MIN_LABEL_PT = 9        # minimum point size for label text
 _MIN_RC_PT = 8           # minimum point size for rc_code text
+_TEXT_PAD_X = 8
+_TEXT_PAD_TOP = 8
+_TEXT_PAD_BOTTOM = 6
+_RC_GAP = 4
+_EXTRA_LAYOUT_SLACK = 6
 
-# Color palette — navy/blue financial theme
-_BG_LEAF = QColor("#1E3A5F")       # deep navy for leaf (innermost) level
-_BG_SPAN = QColor("#2B5287")       # medium blue for span (group) levels
-_BG_SPAN_LIGHT = QColor("#3A6AA8") # lighter blue for outermost spans
-_TEXT_HEADER = QColor("#FFFFFF")
-_TEXT_RC = QColor("#A8C8EE")       # muted blue-white for RC codes
-_BORDER = QColor("#16304F")        # darker navy border
+_TEXT_HEADER = QColor(theme.TEXT_MAIN)
+_TEXT_RC = QColor(theme.TEXT_MUTED)
+_BORDER = QColor(theme.BORDER_STRONG)
 
 _WRAP = int(Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap)
 
@@ -51,6 +53,28 @@ class MultiLevelColumnHeader(QHeaderView):
         self.updateGeometry()
         self.viewport().update()
 
+    def _find_cell_at_level(self, level_idx: int, logical_index: int) -> Any | None:
+        if self._grid is None or level_idx < 0 or level_idx >= len(self._grid.levels):
+            return None
+        leaf_cursor = 0
+        for cell in self._grid.levels[level_idx]:
+            span = 1 if cell.is_leaf else cell.span
+            if leaf_cursor <= logical_index < leaf_cursor + span:
+                return cell
+            leaf_cursor += span
+        return None
+
+    def _find_cell_start(self, level_idx: int, logical_index: int) -> int | None:
+        if self._grid is None or level_idx < 0 or level_idx >= len(self._grid.levels):
+            return None
+        leaf_cursor = 0
+        for cell in self._grid.levels[level_idx]:
+            span = 1 if cell.is_leaf else cell.span
+            if leaf_cursor <= logical_index < leaf_cursor + span:
+                return leaf_cursor
+            leaf_cursor += span
+        return None
+
     # ------------------------------------------------------------------
     # Layout computation — heights + uniform font per level
     # ------------------------------------------------------------------
@@ -71,7 +95,7 @@ class MultiLevelColumnHeader(QHeaderView):
         if base_pts <= 0:
             base_pts = 12.0
         base_pts = max(base_pts, float(_MIN_LABEL_PT))
-        rc_line_h = max(int(fm.height() * _RC_FONT_SCALE), _MIN_RC_PT) + 4
+        rc_line_h = max(int(fm.height() * _RC_FONT_SCALE), _MIN_RC_PT) + 6
 
         heights: list[int] = []
         font_pts_list: list[float] = []
@@ -89,15 +113,18 @@ class MultiLevelColumnHeader(QHeaderView):
                         for k in range(span)
                         if leaf_cursor + k < self.count()
                     )
-                    - 8  # horizontal padding
+                    - (_TEXT_PAD_X * 2)
                 )
                 if cell_w > 0 and cell.label:
+                    show_rc_code = bool(cell.rc_code) and not (
+                        getattr(cell, "is_rollup_virtual", False) and not cell.label
+                    )
                     text_h = fm.boundingRect(0, 0, cell_w, 10000, _WRAP, cell.label).height()
-                    if cell.rc_code:
-                        natural_h = text_h + rc_line_h + _LEVEL_HEIGHT_PAD
+                    if show_rc_code:
+                        natural_h = text_h + rc_line_h + _TEXT_PAD_TOP + _TEXT_PAD_BOTTOM + _RC_GAP + _EXTRA_LAYOUT_SLACK
                         avail_for_label = int(_LEVEL_HEIGHT_MAX * _LABEL_SPLIT) - 4
                     else:
-                        natural_h = text_h + _LEVEL_HEIGHT_PAD
+                        natural_h = text_h + _TEXT_PAD_TOP + _TEXT_PAD_BOTTOM + _EXTRA_LAYOUT_SLACK
                         avail_for_label = _LEVEL_HEIGHT_MAX - _LEVEL_HEIGHT_PAD
                     max_natural_h = max(max_natural_h, natural_h)
                     if text_h > avail_for_label > 0:
@@ -137,8 +164,11 @@ class MultiLevelColumnHeader(QHeaderView):
         heights, font_pts_per_level = self._compute_layout()
         depth = self._grid.depth
         y_offset = 0
+        painted_leaf = False
 
         for level_idx, cells in enumerate(self._grid.levels):
+            if painted_leaf:
+                break
             level_h = heights[level_idx] if level_idx < len(heights) else _LEVEL_HEIGHT_MIN
             level_pts = font_pts_per_level[level_idx] if level_idx < len(font_pts_per_level) else float(_MIN_LABEL_PT)
             y = y_offset
@@ -147,15 +177,32 @@ class MultiLevelColumnHeader(QHeaderView):
             for cell in cells:
                 span = 1 if cell.is_leaf else cell.span
                 if leaf_cursor <= logical_index < leaf_cursor + span:
+                    if logical_index != leaf_cursor:
+                        break
                     x_start = self.sectionViewportPosition(leaf_cursor)
                     full_width = sum(
                         self.sectionSize(leaf_cursor + k)
                         for k in range(span)
                         if leaf_cursor + k < self.count()
                     )
-                    cell_rect = QRect(x_start, y, full_width, level_h)
-                    is_leaf_level = (level_idx == depth - 1)
-                    self._paint_cell(painter, cell_rect, cell, is_leaf_level, level_idx, depth, level_pts)
+                    cell_height = level_h
+                    # Some branches terminate earlier than others. When a real leaf appears
+                    # above the deepest grid level, stretch it down to the final leaf line.
+                    if cell.is_leaf:
+                        cell_height = sum(heights[level_idx:])
+                    cell_rect = QRect(x_start, y, full_width, cell_height)
+                    self._paint_cell(
+                        painter,
+                        cell_rect,
+                        cell,
+                        cell.is_leaf,
+                        level_idx,
+                        depth,
+                        level_pts,
+                        start_index=leaf_cursor,
+                        span=span,
+                    )
+                    painted_leaf = cell.is_leaf
                     break
                 leaf_cursor += span
 
@@ -172,27 +219,20 @@ class MultiLevelColumnHeader(QHeaderView):
         level_idx: int,
         total_levels: int,
         font_pts: float,
+        start_index: int,
+        span: int,
     ) -> None:
-        # Background gradient.
-        # Roll-up virtual leaves (is_rollup_virtual) get the span colour to signal they are
-        # the "own-data" column of a roll-up rather than a pure leaf column.
-        if getattr(cell, "is_rollup_virtual", False):
-            bg = _BG_SPAN_LIGHT if level_idx == 0 else _BG_SPAN
-        elif is_leaf:
-            bg = _BG_LEAF
-        elif level_idx == 0 and total_levels > 2:
-            bg = _BG_SPAN_LIGHT
-        else:
-            bg = _BG_SPAN
+        # Column headers now use one consistent tone across all levels.
+        bg = QColor(theme.HEADER_SURFACE_BG)
 
         grad = QLinearGradient(rect.topLeft(), rect.bottomLeft())
-        grad.setColorAt(0.0, bg.lighter(112))
+        grad.setColorAt(0.0, bg.lighter(104))
         grad.setColorAt(1.0, bg)
         painter.fillRect(rect, grad)
 
         # Border
         painter.setPen(_BORDER)
-        painter.drawLine(rect.bottomLeft(), rect.bottomRight())
+        self._draw_bottom_segments(painter, rect, level_idx, start_index, span)
         painter.drawLine(rect.topRight(), rect.bottomRight())
 
         # Label font — uniform size for this level
@@ -203,16 +243,22 @@ class MultiLevelColumnHeader(QHeaderView):
         painter.setFont(base_font)
 
         _wrap_flag = Qt.TextFlag.TextWordWrap
-        if cell.rc_code:
+        show_rc_code = bool(cell.rc_code) and is_leaf
+        if show_rc_code:
             # Bottom strip for rc_code; label fills the rest
-            rc_line_h = max(int(self.fontMetrics().height() * _RC_FONT_SCALE), _MIN_RC_PT) + 4
-            label_area_h = rect.height() - rc_line_h - 4
-            label_rect = QRect(rect.x() + 4, rect.y() + 2, rect.width() - 8, max(label_area_h, 0))
-            rc_y = rect.y() + label_area_h + 2
-            rc_rect = QRect(rect.x() + 4, rc_y, rect.width() - 8, rc_line_h)
+            rc_line_h = max(int(self.fontMetrics().height() * _RC_FONT_SCALE), _MIN_RC_PT) + 6
+            label_area_h = rect.height() - rc_line_h - (_TEXT_PAD_TOP + _TEXT_PAD_BOTTOM) - _RC_GAP
+            label_rect = QRect(
+                rect.x() + _TEXT_PAD_X,
+                rect.y() + _TEXT_PAD_TOP,
+                rect.width() - (_TEXT_PAD_X * 2),
+                max(label_area_h, 0),
+            )
+            rc_y = rect.bottom() - rc_line_h - 1
+            rc_rect = QRect(rect.x() + _TEXT_PAD_X, rc_y, rect.width() - (_TEXT_PAD_X * 2), rc_line_h)
             painter.drawText(
                 label_rect,
-                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom | _wrap_flag,
+                Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignVCenter | _wrap_flag,
                 cell.label,
             )
             rc_font = QFont(base_font)
@@ -222,9 +268,42 @@ class MultiLevelColumnHeader(QHeaderView):
             painter.setPen(_TEXT_RC)
             painter.drawText(rc_rect, Qt.AlignmentFlag.AlignCenter, cell.rc_code)
         else:
-            inner_rect = rect.adjusted(4, 2, -4, -2)
+            inner_rect = rect.adjusted(_TEXT_PAD_X, _TEXT_PAD_TOP, -_TEXT_PAD_X, -_TEXT_PAD_BOTTOM)
             painter.drawText(
                 inner_rect,
                 Qt.AlignmentFlag.AlignCenter | Qt.AlignmentFlag.AlignVCenter | _wrap_flag,
                 cell.label,
             )
+
+    def _draw_bottom_segments(
+        self,
+        painter: QPainter,
+        rect: QRect,
+        level_idx: int,
+        start_index: int,
+        span: int,
+    ) -> None:
+        if self._grid is None:
+            painter.drawLine(rect.bottomLeft(), rect.bottomRight())
+            return
+        if level_idx >= self._grid.depth - 1:
+            painter.drawLine(rect.bottomLeft(), rect.bottomRight())
+            return
+
+        segment_start_x: int | None = None
+        bottom_y = rect.bottom()
+        for offset in range(span):
+            logical_index = start_index + offset
+            lower_cell = self._find_cell_at_level(level_idx + 1, logical_index)
+            should_merge = bool(
+                lower_cell is not None and getattr(lower_cell, "is_rollup_virtual", False)
+            )
+            section_x = self.sectionViewportPosition(logical_index)
+            section_w = self.sectionSize(logical_index)
+            if not should_merge and segment_start_x is None:
+                segment_start_x = section_x
+            if should_merge and segment_start_x is not None:
+                painter.drawLine(segment_start_x, bottom_y, section_x, bottom_y)
+                segment_start_x = None
+            if offset == span - 1 and not should_merge and segment_start_x is not None:
+                painter.drawLine(segment_start_x, bottom_y, section_x + section_w, bottom_y)
