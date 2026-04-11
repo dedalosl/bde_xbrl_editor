@@ -34,8 +34,8 @@ from bde_xbrl_editor.taxonomy.models import TaxonomyStructure
 _BAR_W = 44          # icon bar width in px
 _PANEL_W = 260       # content panel width in px
 
-_ICONS = ["⊡", "⊞", "⚡", "≡", "⟷"]
-_TIPS = ["DTS Files", "Tables", "Validations", "Concepts", "Definition Linkbase"]
+_ICONS = ["⊡", "⊞", "⚡", "≡", "⟷", "◈"]
+_TIPS = ["DTS Files", "Tables", "Validations", "Concepts", "Definition Linkbase", "Instance"]
 
 _BAR_STYLE = """
     QWidget#ActivityBar {
@@ -568,6 +568,125 @@ class _DefinitionPanel(QWidget):
 
 
 # ---------------------------------------------------------------------------
+# Panel: Instance (index 5)
+# ---------------------------------------------------------------------------
+
+class _InstancePanel(QWidget):
+    """Panel showing instance metadata (entity, period, filing indicators) and
+    a table list filtered to the filed templates."""
+
+    table_selected = Signal(object)  # TableDefinitionPWD
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        _key_style = "color: #5A7FA8; font-size: 10px; font-weight: bold; padding: 2px 8px 0 8px;"
+        _val_style = "color: #1E3A5F; font-size: 11px; padding: 0 8px 4px 8px;"
+
+        # ── Instance metadata ──────────────────────────────────────────
+        hdr_meta = QLabel("INSTANCE")
+        hdr_meta.setStyleSheet(_SECTION_HDR_STYLE)
+        layout.addWidget(hdr_meta)
+
+        self._entity_key = QLabel("ENTITY")
+        self._entity_key.setStyleSheet(_key_style)
+        layout.addWidget(self._entity_key)
+
+        self._entity_val = QLabel("—")
+        self._entity_val.setStyleSheet(_val_style)
+        self._entity_val.setWordWrap(True)
+        layout.addWidget(self._entity_val)
+
+        self._period_key = QLabel("PERIOD")
+        self._period_key.setStyleSheet(_key_style)
+        layout.addWidget(self._period_key)
+
+        self._period_val = QLabel("—")
+        self._period_val.setStyleSheet(_val_style)
+        layout.addWidget(self._period_val)
+
+        # ── Filing indicators ──────────────────────────────────────────
+        hdr_fi = QLabel("FILING INDICATORS")
+        hdr_fi.setStyleSheet(_SECTION_HDR_STYLE)
+        layout.addWidget(hdr_fi)
+
+        self._fi_val = QLabel("—")
+        self._fi_val.setWordWrap(True)
+        self._fi_val.setStyleSheet(_val_style)
+        layout.addWidget(self._fi_val)
+
+        # ── Filed tables ───────────────────────────────────────────────
+        self._tables_hdr = QLabel("TABLES")
+        self._tables_hdr.setStyleSheet(_SECTION_HDR_STYLE)
+        layout.addWidget(self._tables_hdr)
+
+        self._table_list = QListWidget()
+        self._table_list.setStyleSheet(_LIST_STYLE)
+        self._table_list.itemClicked.connect(self._on_item_clicked)
+        layout.addWidget(self._table_list, stretch=1)
+
+        self._table_map: dict[str, object] = {}
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def populate(self, instance: object, taxonomy: object) -> None:
+        """Fill the panel with data from *instance* and *taxonomy*."""
+        # Entity
+        entity = instance.entity  # type: ignore[union-attr]
+        self._entity_val.setText(f"{entity.identifier}\n{entity.scheme}")
+
+        # Period
+        period = instance.period  # type: ignore[union-attr]
+        if period.period_type == "instant":
+            period_text = f"Instant: {period.instant_date}"
+        else:
+            period_text = f"{period.start_date} – {period.end_date}"
+        self._period_val.setText(period_text)
+
+        # Filing indicators
+        fi_texts: list[str] = []
+        for fi in instance.filing_indicators:  # type: ignore[union-attr]
+            status = "✓" if fi.filed else "✗"
+            fi_texts.append(f"{status} {fi.template_id}")
+        self._fi_val.setText("\n".join(fi_texts) if fi_texts else "None")
+
+        # Tables — only filed ones (fall back to all if no indicators)
+        self._table_list.clear()
+        self._table_map.clear()
+        filed_ids = {
+            fi.template_id
+            for fi in instance.filing_indicators  # type: ignore[union-attr]
+            if fi.filed
+        }
+        count = 0
+        for table in taxonomy.tables:  # type: ignore[union-attr]
+            if table.table_id in filed_ids or not filed_ids:
+                item = QListWidgetItem(f"{table.table_id}\n{table.label}")
+                item.setData(Qt.ItemDataRole.UserRole, table)
+                self._table_list.addItem(item)
+                self._table_map[table.table_id] = table
+                count += 1
+        self._tables_hdr.setText(f"TABLES  ({count})")
+
+    def select_first(self) -> None:
+        """Select and emit the first table in the list, if any."""
+        if self._table_list.count() > 0:
+            first = self._table_list.item(0)
+            self._table_list.setCurrentItem(first)
+            self._on_item_clicked(first)
+
+    def _on_item_clicked(self, item: QListWidgetItem) -> None:
+        table = item.data(Qt.ItemDataRole.UserRole)
+        if table is not None:
+            self.table_selected.emit(table)
+
+
+# ---------------------------------------------------------------------------
 # ActivitySidebar
 # ---------------------------------------------------------------------------
 
@@ -627,11 +746,15 @@ class ActivitySidebar(QWidget):
         self._tables_panel = _TablesPanel(taxonomy)
         self._tables_panel.table_selected.connect(self.table_selected)
 
+        self._instance_panel = _InstancePanel()
+        self._instance_panel.table_selected.connect(self.table_selected)
+
         self._stack.addWidget(_DtsFilesPanel(taxonomy))       # 0
         self._stack.addWidget(self._tables_panel)             # 1
         self._stack.addWidget(_ValidationsPanel(taxonomy))    # 2
         self._stack.addWidget(_ConceptsPanel(taxonomy))       # 3
         self._stack.addWidget(_DefinitionPanel(taxonomy))     # 4
+        self._stack.addWidget(self._instance_panel)           # 5
 
         root_layout.addWidget(self._panel_root)
 
@@ -669,3 +792,16 @@ class ActivitySidebar(QWidget):
         """Activate the Tables panel and select the first table."""
         self._activate(1)
         self._tables_panel.select_first()
+
+    def set_instance(self, instance: object, taxonomy: object) -> None:
+        """Populate the Instance panel with *instance* data and switch to it."""
+        self._instance_panel.populate(instance, taxonomy)
+        self._activate(5)
+
+    def clear_instance(self) -> None:
+        """Switch back to the Tables panel (used when an instance is closed)."""
+        self._activate(1)
+
+    def select_first_instance_table(self) -> None:
+        """Select and emit the first table from the Instance panel."""
+        self._instance_panel.select_first()
