@@ -573,7 +573,13 @@ class _DefinitionPanel(QWidget):
 
 class _InstancePanel(QWidget):
     """Panel showing instance metadata (entity, period, filing indicators) and
-    a table list filtered to the filed templates."""
+    a table list filtered to the filed templates.
+
+    All three sections are collapsible via ``_CollapsibleSection``:
+    - INSTANCE   — entity + period, expanded by default
+    - FILING INDICATORS — template list, collapsed by default to save space
+    - TABLES     — filed-table list, expanded + stretchy (takes all remaining height)
+    """
 
     table_selected = Signal(object)  # TableDefinitionPWD
 
@@ -583,50 +589,56 @@ class _InstancePanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        _key_style = "color: #5A7FA8; font-size: 10px; font-weight: bold; padding: 2px 8px 0 8px;"
-        _val_style = "color: #1E3A5F; font-size: 11px; padding: 0 8px 4px 8px;"
+        _key_style = "color: #5A7FA8; font-size: 10px; font-weight: bold; padding: 0;"
+        _val_style = "color: #1E3A5F; font-size: 11px; padding: 0 0 4px 0;"
 
-        # ── Instance metadata ──────────────────────────────────────────
-        hdr_meta = QLabel("INSTANCE")
-        hdr_meta.setStyleSheet(_SECTION_HDR_STYLE)
-        layout.addWidget(hdr_meta)
+        # ── INSTANCE section (collapsible, expanded) ───────────────────
+        meta_body = QWidget()
+        meta_layout = QVBoxLayout(meta_body)
+        meta_layout.setContentsMargins(8, 6, 8, 8)
+        meta_layout.setSpacing(2)
 
-        self._entity_key = QLabel("ENTITY")
-        self._entity_key.setStyleSheet(_key_style)
-        layout.addWidget(self._entity_key)
-
+        kl1 = QLabel("ENTITY")
+        kl1.setStyleSheet(_key_style)
         self._entity_val = QLabel("—")
         self._entity_val.setStyleSheet(_val_style)
         self._entity_val.setWordWrap(True)
-        layout.addWidget(self._entity_val)
+        meta_layout.addWidget(kl1)
+        meta_layout.addWidget(self._entity_val)
 
-        self._period_key = QLabel("PERIOD")
-        self._period_key.setStyleSheet(_key_style)
-        layout.addWidget(self._period_key)
-
+        kl2 = QLabel("PERIOD")
+        kl2.setStyleSheet(_key_style)
         self._period_val = QLabel("—")
         self._period_val.setStyleSheet(_val_style)
-        layout.addWidget(self._period_val)
+        meta_layout.addWidget(kl2)
+        meta_layout.addWidget(self._period_val)
 
-        # ── Filing indicators ──────────────────────────────────────────
-        hdr_fi = QLabel("FILING INDICATORS")
-        hdr_fi.setStyleSheet(_SECTION_HDR_STYLE)
-        layout.addWidget(hdr_fi)
+        layout.addWidget(_CollapsibleSection("INSTANCE", meta_body, expanded=True))
+
+        # ── FILING INDICATORS section (collapsible, collapsed by default) ──
+        fi_body = QWidget()
+        fi_layout = QVBoxLayout(fi_body)
+        fi_layout.setContentsMargins(8, 6, 8, 8)
+        fi_layout.setSpacing(0)
 
         self._fi_val = QLabel("—")
         self._fi_val.setWordWrap(True)
-        self._fi_val.setStyleSheet(_val_style)
-        layout.addWidget(self._fi_val)
+        self._fi_val.setStyleSheet("color: #1E3A5F; font-size: 11px;")
+        fi_layout.addWidget(self._fi_val)
 
-        # ── Filed tables ───────────────────────────────────────────────
-        self._tables_hdr = QLabel("TABLES")
-        self._tables_hdr.setStyleSheet(_SECTION_HDR_STYLE)
-        layout.addWidget(self._tables_hdr)
+        layout.addWidget(
+            _CollapsibleSection("FILING INDICATORS", fi_body, expanded=False)
+        )
 
+        # ── TABLES section (collapsible, expanded, takes all remaining height) ──
         self._table_list = QListWidget()
         self._table_list.setStyleSheet(_LIST_STYLE)
         self._table_list.itemClicked.connect(self._on_item_clicked)
-        layout.addWidget(self._table_list, stretch=1)
+
+        self._tables_section = _CollapsibleSection(
+            "TABLES", self._table_list, expanded=True
+        )
+        layout.addWidget(self._tables_section, stretch=1)
 
         self._table_map: dict[str, object] = {}
 
@@ -671,7 +683,10 @@ class _InstancePanel(QWidget):
                 self._table_list.addItem(item)
                 self._table_map[table.table_id] = table
                 count += 1
-        self._tables_hdr.setText(f"TABLES  ({count})")
+
+        # Update the TABLES section header to show the count
+        arrow = "▾" if self._tables_section._body.isVisible() else "▸"
+        self._tables_section._btn.setText(f"{arrow}  TABLES  ({count})")
 
     def select_first(self) -> None:
         """Select and emit the first table in the list, if any."""
