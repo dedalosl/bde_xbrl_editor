@@ -162,7 +162,8 @@ class InstanceInfoPanel(QFrame):
         # Tables — show only filed tables that exist in the taxonomy
         filed_ids = {fi.template_id for fi in instance.filing_indicators if fi.filed}
         for table in taxonomy.tables:
-            if table.table_id in filed_ids or not filed_ids:
+            table_code = getattr(table, "table_code", None) or ""
+            if table.table_id in filed_ids or table_code in filed_ids or not filed_ids:
                 item = QListWidgetItem(f"{table.table_id}\n{table.label}")
                 item.setData(0x0100, table.table_id)  # Qt.UserRole = 0x0100
                 self._table_list.addItem(item)

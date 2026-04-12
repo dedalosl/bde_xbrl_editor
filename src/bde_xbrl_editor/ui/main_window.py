@@ -62,6 +62,15 @@ class MainWindow(QMainWindow):
         self._setup_central()
         self._setup_statusbar()
 
+    @staticmethod
+    def _table_identity(table: object | None) -> str:
+        if table is None:
+            return ""
+        table_code = getattr(table, "table_code", None)
+        table_id = getattr(table, "table_id", "")
+        parts = [part for part in (table_code, table_id) if part]
+        return "  |  ".join(parts)
+
     def _apply_stylesheet(self) -> None:
         self.setStyleSheet(f"""
             QMainWindow, QWidget {{
@@ -323,6 +332,7 @@ class MainWindow(QMainWindow):
         self._sidebar.width_changed.connect(self._on_sidebar_width_changed)
 
         self._table_view = XbrlTableView(parent=self)
+        self._table_view.editing_mode_changed.connect(self._on_table_editing_mode_changed)
 
         splitter = QSplitter(self)
         splitter.addWidget(self._sidebar)
@@ -361,12 +371,6 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(14, 10, 14, 10)
         layout.setSpacing(14)
 
-        pill_style = (
-            f"QLabel {{ color: {theme.TEXT_MUTED}; font-size: 10px; font-weight: bold;"
-            f" background: {theme.SURFACE_BG}; border: 1px solid {theme.BORDER};"
-            " border-radius: 8px; padding: 3px 8px; }"
-        )
-
         context_block = QWidget(bar)
         context_layout = QVBoxLayout(context_block)
         context_layout.setContentsMargins(0, 0, 0, 0)
@@ -403,29 +407,25 @@ class MainWindow(QMainWindow):
         info_group = QWidget(bar)
         info_layout = QHBoxLayout(info_group)
         info_layout.setContentsMargins(0, 0, 0, 0)
-        info_layout.setSpacing(8)
+        info_layout.setSpacing(14)
+
+        context_note_style = (
+            f"color: {theme.TEXT_MUTED}; font-size: 10px; font-weight: 600; background: transparent;"
+        )
 
         if self._current_taxonomy:
             meta = self._current_taxonomy.metadata
-            tax_pill = QLabel(f"Taxonomy {meta.name} v{meta.version}")
-            tax_pill.setStyleSheet(pill_style)
-            info_layout.addWidget(tax_pill)
+            tax_label = QLabel(f"Taxonomy {meta.name}  |  Version {meta.version}")
+            tax_label.setStyleSheet(context_note_style)
+            info_layout.addWidget(tax_label)
 
         if instance is not None:
             fname = Path(instance.source_path).name if instance.source_path else "Unsaved instance"
-            inst_pill = QLabel(f"Instance {fname}")
-            inst_pill.setStyleSheet(pill_style)
-            info_layout.addWidget(inst_pill)
+            inst_label = QLabel(f"Instance {fname}")
+            inst_label.setStyleSheet(context_note_style)
+            info_layout.addWidget(inst_label)
 
-        table_chip = QLabel()
-        table_chip.setStyleSheet(
-            f"QLabel {{ color: {theme.TEXT_MAIN}; font-size: 10px; font-weight: bold;"
-            f" background: {theme.HEADER_BG_LIGHT}; border: 1px solid {theme.BORDER};"
-            " border-radius: 8px; padding: 3px 8px; }}"
-        )
-        table_chip.setVisible(False)
-        info_layout.addWidget(table_chip)
-        self._table_chip_label = table_chip
+        self._table_chip_label = None
         self._table_chip_sep = None
 
         layout.addWidget(info_group, stretch=0)
@@ -689,12 +689,15 @@ class MainWindow(QMainWindow):
         # Disconnect old editor signals
         if self._editor is not None:
             self._editor.changes_made.disconnect(self._on_changes_made)
+            self._editor.filing_indicators_changed.disconnect(self._on_filing_indicators_changed)
 
         self._current_instance = instance
         self._editor = InstanceEditor(instance, parent=self)
         self._editor.changes_made.connect(self._on_changes_made)
+        self._editor.filing_indicators_changed.connect(self._on_filing_indicators_changed)
 
         self._table_view = XbrlTableView(parent=self)
+        self._table_view.editing_mode_changed.connect(self._on_table_editing_mode_changed)
 
         # Ensure the sidebar exists (may be absent when loading directly from welcome screen)
         if self._sidebar is None or not isValid(self._sidebar):
@@ -703,7 +706,8 @@ class MainWindow(QMainWindow):
             self._sidebar.width_changed.connect(self._on_sidebar_width_changed)
 
         # Switch the sidebar to instance mode (6th panel: entity, period, FI, filed tables)
-        self._sidebar.set_instance(instance, self._current_taxonomy)
+        self._sidebar.set_instance(instance, self._current_taxonomy, self._editor)
+        self._sidebar.set_instance_editing_enabled(self._table_view.editing_enabled)
 
         splitter = QSplitter(self)
         splitter.addWidget(self._sidebar)
@@ -771,20 +775,15 @@ class MainWindow(QMainWindow):
     def _on_table_selected(self, table) -> None:
         if self._table_view is None or self._current_taxonomy is None:
             return
-        # Update the selected-table chip in the context bar
-        if self._table_chip_label is not None:
-            label = getattr(table, "label", None) or ""
-            table_id = getattr(table, "table_id", "")
-            chip_text = f"Table {table_id}" + (f"  |  {label}" if label else "")
-            self._table_chip_label.setText(chip_text)
-            self._table_chip_label.setVisible(True)
         if self._context_title_label is not None:
             table_label = getattr(table, "label", None) or getattr(table, "table_id", "")
             self._context_title_label.setText(table_label)
         if self._context_meta_label is not None and self._current_taxonomy is not None:
             meta = self._current_taxonomy.metadata
-            table_id = getattr(table, "table_id", "")
-            meta_parts = [meta.name, f"Version {meta.version}", table_id]
+            meta_parts = [meta.name, f"Version {meta.version}"]
+            table_identity = self._table_identity(table)
+            if table_identity:
+                meta_parts.append(table_identity)
             if self._current_instance is not None:
                 fname = Path(self._current_instance.source_path).name if self._current_instance.source_path else "Unsaved instance"
                 meta_parts.append(fname)
@@ -814,6 +813,11 @@ class MainWindow(QMainWindow):
 
     def _on_changes_made(self) -> None:
         self.setWindowModified(True)
+        if self._sidebar is not None and isValid(self._sidebar) and self._current_instance is not None and self._current_taxonomy is not None:
+            self._sidebar.refresh_instance_panel(self._current_instance, self._current_taxonomy, self._editor)
+            self._sidebar.set_instance_editing_enabled(
+                bool(self._table_view is not None and isValid(self._table_view) and self._table_view.editing_enabled)
+            )
         table_view = self._table_view
         if table_view is not None and isValid(table_view):
             # Defer refresh so the editor widget is fully closed before the model is replaced.
@@ -865,6 +869,20 @@ class MainWindow(QMainWindow):
     def _do_save(self, path: Path) -> None:
         from bde_xbrl_editor.instance.models import InstanceSaveError  # noqa: PLC0415
         from bde_xbrl_editor.instance.serializer import InstanceSerializer  # noqa: PLC0415
+        from bde_xbrl_editor.instance.constants import is_bde_schema_ref  # noqa: PLC0415
+
+        if self._current_instance is not None and (
+            is_bde_schema_ref(self._current_instance.schema_ref_href)
+            or self._current_instance.bde_preambulo is not None
+        ):
+            reply = QMessageBox.question(
+                self,
+                "Check Filing Indicators",
+                "Please confirm the Filing Indicators / Estados Reportados are set correctly before saving. Continue?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
 
         serializer = InstanceSerializer()
         try:
@@ -877,6 +895,18 @@ class MainWindow(QMainWindow):
 
         self.setWindowModified(False)
         self._status.showMessage(f"Saved: {path}")
+
+    def _on_table_editing_mode_changed(self, enabled: bool) -> None:
+        if self._sidebar is not None and isValid(self._sidebar):
+            self._sidebar.set_instance_editing_enabled(enabled)
+
+    def _on_filing_indicators_changed(self) -> None:
+        self.setWindowModified(True)
+        if self._sidebar is not None and isValid(self._sidebar) and self._current_instance is not None and self._current_taxonomy is not None:
+            self._sidebar.refresh_instance_panel(self._current_instance, self._current_taxonomy, self._editor)
+            self._sidebar.set_instance_editing_enabled(
+                bool(self._table_view is not None and isValid(self._table_view) and self._table_view.editing_enabled)
+            )
 
     # ------------------------------------------------------------------
     # Unsaved-changes guard (T034, T035)

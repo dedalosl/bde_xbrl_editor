@@ -270,7 +270,14 @@ class TableDefinitionPWD:
     extended_link_role: str
     x_breakdown: BreakdownNode
     y_breakdown: BreakdownNode
+    table_code: str | None = None
     z_breakdowns: tuple[BreakdownNode, ...] = field(default_factory=tuple)
+
+    @property
+    def display_code(self) -> str:
+        """Return the compact BDE identity shown in the UI."""
+        parts = [part for part in (self.table_code, self.table_id) if part]
+        return "  |  ".join(parts)
 
 
 # ---------------------------------------------------------------------------

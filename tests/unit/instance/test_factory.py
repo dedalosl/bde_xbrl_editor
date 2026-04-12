@@ -176,6 +176,39 @@ class TestFactorySuccessfulCreate:
         result = factory.create(_entity(), _instant(), ["T1"], {})
         assert "entry_point.xsd" in result.schema_ref_href
 
+    def test_bde_taxonomy_prepopulates_all_estados_reportados(self):
+        from bde_xbrl_editor.taxonomy.models import BreakdownNode
+
+        bd = BreakdownNode(node_type="rule")
+        taxonomy = _make_taxonomy(
+            tables=[
+                TableDefinitionPWD(
+                    table_id="T1",
+                    label="Table 1",
+                    extended_link_role="http://example.com/role/T1",
+                    x_breakdown=bd,
+                    y_breakdown=bd,
+                    table_code="3201",
+                ),
+                TableDefinitionPWD(
+                    table_id="T2",
+                    label="Table 2",
+                    extended_link_role="http://example.com/role/T2",
+                    x_breakdown=bd,
+                    y_breakdown=bd,
+                    table_code="3202",
+                ),
+            ]
+        )
+
+        result = InstanceFactory(taxonomy).create(_entity(), _instant(), ["T1"], {})
+
+        assert result.bde_preambulo is not None
+        assert [estado.codigo for estado in result.bde_preambulo.estados_reportados] == ["3201", "3202"]
+        assert result.bde_preambulo.estados_reportados[0].blanco is False
+        assert result.bde_preambulo.estados_reportados[1].blanco is True
+        assert [fi.template_id for fi in result.filing_indicators] == ["3201", "3202"]
+
 
 class TestFactoryDimensionalValidation:
     def _make_taxonomy_with_dim(self, has_default: bool = False) -> TaxonomyStructure:

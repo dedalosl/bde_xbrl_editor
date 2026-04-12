@@ -344,6 +344,52 @@ def test_parses_filing_indicator(tmp_path: Path) -> None:
     assert fi_map["T2"].filed is False
 
 
+def test_bde_estados_reportados_become_filing_indicators(tmp_path: Path) -> None:
+    body = textwrap.dedent("""\
+        <xbrli:context id="cBasico">
+          <xbrli:entity>
+            <xbrli:identifier scheme="http://www.ecb.int/stats/money/mfi">ES9000</xbrli:identifier>
+          </xbrli:entity>
+          <xbrli:period><xbrli:instant>2024-01-31</xbrli:instant></xbrli:period>
+        </xbrli:context>
+        <es-be-cm-pblo:EstadosReportados>
+          <es-be-cm-pblo:CodigoEstado contextRef="cBasico">3201</es-be-cm-pblo:CodigoEstado>
+          <es-be-cm-pblo:CodigoEstado contextRef="cBasico"
+            es-be-cm-pblo:blanco="true">3251</es-be-cm-pblo:CodigoEstado>
+        </es-be-cm-pblo:EstadosReportados>
+    """)
+    p = _write_bde_xbrl(tmp_path, body)
+    parser, _ = _make_parser()
+    instance, _ = parser.load(p)
+
+    fi_map = {fi.template_id: fi for fi in instance.filing_indicators}
+    assert fi_map["3201"].filed is True
+    assert fi_map["3251"].filed is False
+    assert instance.included_table_ids == ["3201"]
+
+
+def test_bde_filing_indicators_take_precedence_over_eurofiling_wrapper(tmp_path: Path) -> None:
+    body = textwrap.dedent("""\
+        <xbrli:context id="cBasico">
+          <xbrli:entity>
+            <xbrli:identifier scheme="http://www.ecb.int/stats/money/mfi">ES9000</xbrli:identifier>
+          </xbrli:entity>
+          <xbrli:period><xbrli:instant>2024-01-31</xbrli:instant></xbrli:period>
+        </xbrli:context>
+        <es-be-cm-pblo:EstadosReportados>
+          <es-be-cm-pblo:CodigoEstado contextRef="cBasico">3201</es-be-cm-pblo:CodigoEstado>
+        </es-be-cm-pblo:EstadosReportados>
+        <ef-find:fIndicators>
+          <ef-find:filingIndicator contextRef="cBasico" filed="true">T1</ef-find:filingIndicator>
+        </ef-find:fIndicators>
+    """)
+    p = _write_bde_xbrl(tmp_path, body)
+    parser, _ = _make_parser()
+    instance, _ = parser.load(p)
+
+    assert [fi.template_id for fi in instance.filing_indicators] == ["3201"]
+
+
 # ---------------------------------------------------------------------------
 # Tests: _dirty and source_path
 # ---------------------------------------------------------------------------

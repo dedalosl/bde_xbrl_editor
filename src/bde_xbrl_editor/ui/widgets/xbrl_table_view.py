@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
+    QCheckBox,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -29,6 +30,18 @@ if TYPE_CHECKING:
     from bde_xbrl_editor.taxonomy.models import TableDefinitionPWD, TaxonomyStructure
 
 _DEFAULT_BODY_COLUMN_WIDTH = 172
+_EDIT_TRIGGERS = (
+    QTableView.EditTrigger.DoubleClicked
+    | QTableView.EditTrigger.EditKeyPressed
+    | QTableView.EditTrigger.AnyKeyPressed
+    | QTableView.EditTrigger.SelectedClicked
+)
+
+
+def _table_identity(table: TableDefinitionPWD | None) -> str:
+    if table is None:
+        return ""
+    return table.display_code or table.table_id
 
 
 class XbrlTableView(QFrame):
@@ -36,6 +49,7 @@ class XbrlTableView(QFrame):
 
     cell_selected = Signal(int, int)
     z_index_changed = Signal(int)
+    editing_mode_changed = Signal(bool)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -45,6 +59,7 @@ class XbrlTableView(QFrame):
         self._instance: XbrlInstance | None = None
         self._layout: ComputedTableLayout | None = None
         self._active_z_index: int = 0
+        self._editing_enabled: bool = False
 
         # Layout
         self._outer_layout = QVBoxLayout(self)
@@ -90,19 +105,31 @@ class XbrlTableView(QFrame):
         self._meta_label.setAlignment(Qt.AlignmentFlag.AlignRight)
         status_col.addWidget(self._meta_label)
 
-        pills_row = QHBoxLayout()
-        pills_row.setContentsMargins(0, 0, 0, 0)
-        pills_row.setSpacing(8)
-
-        self._mode_pill = QLabel("Browse mode", self._table_header)
-        self._mode_pill.setStyleSheet(self._pill_style(theme.SURFACE_ALT_BG, theme.TEXT_MUTED))
-        pills_row.addWidget(self._mode_pill)
-
-        self._z_pill = QLabel("Single view", self._table_header)
-        self._z_pill.setStyleSheet(self._pill_style(theme.HEADER_BG_LIGHT, theme.TEXT_MAIN))
-        pills_row.addWidget(self._z_pill)
-
-        status_col.addLayout(pills_row)
+        self._editing_switch = QCheckBox("Editing mode on", self._table_header)
+        self._editing_switch.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._editing_switch.setStyleSheet(
+            f"""
+            QCheckBox {{
+                color: {theme.TEXT_MAIN};
+                font-size: 11px;
+                font-weight: 600;
+                spacing: 8px;
+            }}
+            QCheckBox::indicator {{
+                width: 34px;
+                height: 18px;
+                border-radius: 9px;
+                border: 1px solid {theme.BORDER};
+                background: {theme.DISABLED_BG};
+            }}
+            QCheckBox::indicator:checked {{
+                background: {theme.NAV_BG_DEEP};
+                border-color: {theme.NAV_BG_DEEP};
+            }}
+            """
+        )
+        self._editing_switch.toggled.connect(self._set_editing_enabled)
+        status_col.addWidget(self._editing_switch, alignment=Qt.AlignmentFlag.AlignRight)
         header_layout.addLayout(status_col, stretch=0)
 
         self._outer_layout.addWidget(self._table_header)
@@ -131,6 +158,7 @@ class XbrlTableView(QFrame):
         self._body_view.setStyleSheet(
             f"QTableView {{ background: {theme.CELL_BG}; border: none; }}"
         )
+        self._body_view.setEditTriggers(QTableView.EditTrigger.NoEditTriggers)
         self._outer_layout.addWidget(self._body_view)
 
     # ------------------------------------------------------------------
@@ -145,13 +173,9 @@ class XbrlTableView(QFrame):
     def active_table_id(self) -> str | None:
         return self._table.table_id if self._table is not None else None
 
-    @staticmethod
-    def _pill_style(background: str, color: str) -> str:
-        return (
-            f"QLabel {{ color: {color}; font-size: 10px; font-weight: 600;"
-            f" background: {background}; border: 1px solid {theme.BORDER};"
-            " border-radius: 8px; padding: 3px 8px; }}"
-        )
+    @property
+    def editing_enabled(self) -> bool:
+        return self._editing_enabled
 
     # ------------------------------------------------------------------
     # Public API
@@ -230,8 +254,12 @@ class XbrlTableView(QFrame):
         self._title_label.setText("No table selected")
         self._subtitle_label.setText("Select a table from the sidebar to start working.")
         self._meta_label.setText("")
-        self._mode_pill.setText("Browse mode")
-        self._z_pill.setText("Single view")
+        self._editing_switch.blockSignals(True)
+        self._editing_switch.setChecked(False)
+        self._editing_switch.blockSignals(False)
+        self._editing_switch.setVisible(False)
+        self._editing_switch.setText("Editing mode off")
+        self._set_editing_enabled(False)
         from bde_xbrl_editor.table_renderer.models import (  # noqa: PLC0415
             ComputedTableLayout,
             HeaderGrid,
@@ -286,6 +314,8 @@ class XbrlTableView(QFrame):
         else:
             self._body_view.setItemDelegate(CellEditDelegate(table_view_widget=self._body_view))
 
+        self._set_editing_enabled(self._editing_enabled and self._instance is not None)
+
         # Update headers
         self._col_header.set_header_grid(layout.column_header)
         self._row_header.set_header_grid(layout.row_header)
@@ -307,25 +337,39 @@ class XbrlTableView(QFrame):
         self._title_label.setText(title)
 
         subtitle_parts = []
-        if layout.table_id:
-            subtitle_parts.append(layout.table_id)
+        table_identity = _table_identity(self._table)
+        if table_identity:
+            subtitle_parts.append(table_identity)
         if self._instance is not None:
-            subtitle_parts.append("Instance editing")
+            subtitle_parts.append(
+                "Editing enabled" if self._editing_enabled else "Editing disabled"
+            )
         else:
             subtitle_parts.append("Taxonomy browse")
+        if layout.z_members and len(layout.z_members) > 1:
+            active = min(layout.active_z_index, len(layout.z_members) - 1)
+            subtitle_parts.append(f"View {layout.z_members[active].label}")
+        elif layout.z_members:
+            subtitle_parts.append("Single view")
         self._subtitle_label.setText("  |  ".join(subtitle_parts))
 
         row_count = len(layout.body)
         col_count = len(layout.body[0]) if layout.body else 0
         self._meta_label.setText(f"{row_count} rows  |  {col_count} columns")
+        self._editing_switch.setVisible(self._instance is not None)
+        self._editing_switch.blockSignals(True)
+        self._editing_switch.setChecked(self._editing_enabled and self._instance is not None)
+        self._editing_switch.blockSignals(False)
+        self._editing_switch.setText(
+            "Editing mode on" if self._editing_enabled and self._instance is not None else "Editing mode off"
+        )
 
-        self._mode_pill.setText("Edit mode" if self._instance is not None else "Browse mode")
-        if layout.z_members:
-            active = min(layout.active_z_index, len(layout.z_members) - 1)
-            current = layout.z_members[active].label
-            if len(layout.z_members) > 1:
-                self._z_pill.setText(f"Z-axis: {current}")
-            else:
-                self._z_pill.setText("Single view")
-        else:
-            self._z_pill.setText("Single view")
+    def _set_editing_enabled(self, enabled: bool) -> None:
+        self._editing_enabled = bool(enabled) and self._instance is not None
+        self._body_view.setEditTriggers(
+            _EDIT_TRIGGERS if self._editing_enabled else QTableView.EditTrigger.NoEditTriggers
+        )
+        self._editing_switch.setText("Editing mode on" if self._editing_enabled else "Editing mode off")
+        if self._layout is not None:
+            self._refresh_header(self._layout)
+        self.editing_mode_changed.emit(self._editing_enabled)

@@ -9,6 +9,8 @@ import pytest
 from lxml import etree
 
 from bde_xbrl_editor.instance import (
+    BdeEstadoReportado,
+    BdePreambulo,
     FilingIndicator,
     InstanceSerializer,
     ReportingEntity,
@@ -18,6 +20,7 @@ from bde_xbrl_editor.instance import (
     XbrlUnit,
 )
 from bde_xbrl_editor.instance.constants import (
+    BDE_PBLO_NS,
     FILING_IND_NS,
     LINK_NS,
     XBRLI_NS,
@@ -87,6 +90,29 @@ class TestToXml:
         )
         assert len(indicators) == 1
         assert indicators[0].text == "T1"
+
+    def test_bde_estados_reportados_suppress_eurofiling_indicator_wrapper(self):
+        inst = _make_minimal_instance()
+        inst.filing_indicators = [
+            FilingIndicator(template_id="3201", filed=True, context_ref=next(iter(inst.contexts))),
+        ]
+        inst.bde_preambulo = BdePreambulo(
+            entidad_presentadora="9000",
+            tipo_envio="Ordinario",
+            context_ref=next(iter(inst.contexts)),
+            estados_reportados=[
+                BdeEstadoReportado(codigo="3201", blanco=False, context_ref=next(iter(inst.contexts))),
+            ],
+        )
+
+        result = InstanceSerializer().to_xml(inst)
+        root = etree.fromstring(result)
+
+        indicators = root.findall(f".//{{{FILING_IND_NS}}}filingIndicator")
+        estados = root.findall(f".//{{{BDE_PBLO_NS}}}CodigoEstado")
+        assert indicators == []
+        assert len(estados) == 1
+        assert estados[0].text == "3201"
 
     def test_namespace_prefixes_declared(self):
         result = InstanceSerializer().to_xml(_make_minimal_instance())
