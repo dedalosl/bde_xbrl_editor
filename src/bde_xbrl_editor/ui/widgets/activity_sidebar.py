@@ -8,8 +8,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QEasingCurve, QVariantAnimation, Qt, Signal
+from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
+    QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -45,9 +47,12 @@ from bde_xbrl_editor.validation.formula.details import (
 
 _BAR_W = 44          # icon bar width in px
 _PANEL_W = 260       # content panel width in px
+_SIDEBAR_ANIM_MS = 160
+_FADE_ANIM_MS = 120
+_SECTION_ANIM_MS = 140
 
-_ICONS = ["⊡", "⊞", "⚡", "≡", "⟷", "◈"]
-_TIPS = ["DTS Files", "Tables", "Validations", "Concepts", "Definition Linkbase", "Instance"]
+_ICONS = ["TAX", "TAB", "VAL", "INS"]
+_TIPS = ["Taxonomy", "Tables", "Validations", "Instance"]
 
 _BAR_STYLE = """
     QWidget#ActivityBar {
@@ -61,18 +66,20 @@ _BTN_STYLE = """
         background: transparent;
         border: none;
         color: """ + theme.ACCENT_SOFT + """;
-        font-size: 20px;
-        padding: 6px;
-        border-radius: 4px;
+        font-size: 9px;
+        font-weight: 700;
+        padding: 4px 2px;
+        border-radius: 8px;
+        text-align: center;
     }
     QToolButton:hover {
         color: """ + theme.TEXT_INVERSE + """;
-        background: rgba(255,253,248,0.12);
+        background: rgba(255,253,248,0.10);
     }
     QToolButton:checked {
         color: """ + theme.TEXT_INVERSE + """;
-        background: rgba(255,248,236,0.2);
-        border-left: 3px solid """ + theme.HEADER_BG_LIGHT + """;
+        background: rgba(255,248,236,0.18);
+        border-left: 2px solid """ + theme.HEADER_BG_LIGHT + """;
     }
 """
 
@@ -84,14 +91,15 @@ _PANEL_STYLE = """
 """
 
 _SECTION_HDR_STYLE = (
-    f"background: {theme.NAV_BG_DARK}; color: {theme.TEXT_INVERSE}; font-weight: bold;"
-    " font-size: 11px; padding: 6px 10px; letter-spacing: 1px;"
+    f"background: {theme.SURFACE_ALT_BG}; color: {theme.TEXT_MUTED}; font-weight: bold;"
+    f" font-size: 10px; padding: 7px 10px;"
 )
 
 _COLLAPSIBLE_HDR_STYLE = (
-    f"QPushButton {{ text-align: left; padding: 5px 8px; background: {theme.HEADER_BG};"
-    f" color: {theme.TEXT_MAIN}; font-size: 11px; font-weight: bold; border: none; }}"
-    f"QPushButton:hover {{ background: {theme.HEADER_BG_LIGHT}; }}"
+    f"QPushButton {{ text-align: left; padding: 6px 8px; background: {theme.SURFACE_BG};"
+    f" color: {theme.TEXT_MAIN}; font-size: 11px; font-weight: 600; border: none;"
+    f" border-bottom: 1px solid {theme.ACCENT_SOFT}; }}"
+    f"QPushButton:hover {{ background: {theme.SURFACE_ALT_BG}; }}"
 )
 
 _LIST_STYLE = """
@@ -103,8 +111,7 @@ _LIST_STYLE = """
         outline: none;
     }
     QListWidget::item {
-        padding: 5px 8px;
-        border-bottom: 1px solid """ + theme.ACCENT_SOFT + """;
+        padding: 7px 8px;
     }
     QListWidget::item:selected {
         background: """ + theme.SELECTION_BG + """;
@@ -132,6 +139,40 @@ _TREE_STYLE = """
     }
 """
 
+_TABLE_HAS_DATA_BG = QColor("#F7EFD8")
+_TABLE_HAS_DATA_FG = QColor(theme.TEXT_MAIN)
+_TABLE_EMPTY_FG = QColor(theme.TEXT_SUBTLE)
+
+
+def _table_identity(table: object) -> str:
+    table_code = getattr(table, "table_code", None)
+    table_id = getattr(table, "table_id", "")
+    parts = [part for part in (table_code, table_id) if part]
+    return "  |  ".join(parts)
+
+
+def _table_matches_query(table: object, query: str) -> bool:
+    if not query:
+        return True
+    haystack = " ".join((
+        getattr(table, "table_code", "") or "",
+        getattr(table, "table_id", "") or "",
+        getattr(table, "label", "") or "",
+    )).lower()
+    return query in haystack
+
+
+def _table_is_filed(table: object, filed_ids: set[str]) -> bool:
+    table_id = getattr(table, "table_id", "") or ""
+    table_code = getattr(table, "table_code", None) or ""
+    return table_id in filed_ids or table_code in filed_ids
+
+
+def _table_matches_indicator(table: object, template_id: str) -> bool:
+    table_id = getattr(table, "table_id", "") or ""
+    table_code = getattr(table, "table_code", None) or ""
+    return template_id in {table_id, table_code}
+
 
 class _CollapsibleSection(QWidget):
     """A collapsible section with a toggle-button header and a body widget."""
@@ -148,8 +189,9 @@ class _CollapsibleSection(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
+        self._title = title
 
-        self._btn = QPushButton(f"▾  {title}")
+        self._btn = QPushButton()
         self._btn.setStyleSheet(_COLLAPSIBLE_HDR_STYLE)
         self._btn.setCheckable(True)
         self._btn.setChecked(True)
@@ -158,16 +200,51 @@ class _CollapsibleSection(QWidget):
 
         self._body = body
         layout.addWidget(body, body_stretch)
+        self._body_height_hint = max(body.sizeHint().height(), 1)
+        self._body.setMaximumHeight(16777215)
+        self._toggle_anim = QVariantAnimation(self)
+        self._toggle_anim.setDuration(_SECTION_ANIM_MS)
+        self._toggle_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._toggle_anim.valueChanged.connect(self._on_toggle_animate)
+        self._toggle_anim.finished.connect(self._on_toggle_finished)
 
         if not expanded:
             self._btn.setChecked(False)
-            self._toggle(False)
+            self._body.setMaximumHeight(0)
+            self._body.setVisible(False)
+        self._sync_header()
 
     def _toggle(self, checked: bool) -> None:
-        self._body.setVisible(checked)
-        arrow = "▾" if checked else "▸"
-        text = self._btn.text()[2:]  # strip old arrow + space
-        self._btn.setText(f"{arrow}  {text}")
+        self._body_height_hint = max(self._body.sizeHint().height(), self._body_height_hint, 1)
+        self._toggle_anim.stop()
+        self._sync_header(checked)
+        if checked:
+            self._body.setVisible(True)
+            self._toggle_anim.setStartValue(max(self._body.maximumHeight(), 0))
+            self._toggle_anim.setEndValue(self._body_height_hint)
+        else:
+            self._toggle_anim.setStartValue(self._body.height() or self._body_height_hint)
+            self._toggle_anim.setEndValue(0)
+        self._toggle_anim.start()
+
+    def _on_toggle_animate(self, value: object) -> None:
+        height = max(int(value), 0)
+        self._body.setMaximumHeight(height)
+        if height == 0 and not self._btn.isChecked():
+            self._body.setVisible(False)
+
+    def _on_toggle_finished(self) -> None:
+        if self._btn.isChecked():
+            self._body.setMaximumHeight(16777215)
+
+    def set_title(self, title: str) -> None:
+        self._title = title
+        self._sync_header()
+
+    def _sync_header(self, checked: bool | None = None) -> None:
+        is_open = self._btn.isChecked() if checked is None else checked
+        arrow = "▾" if is_open else "▸"
+        self._btn.setText(f"{arrow}  {self._title}")
 
 
 # ---------------------------------------------------------------------------
@@ -175,15 +252,22 @@ class _CollapsibleSection(QWidget):
 # ---------------------------------------------------------------------------
 
 class _DtsFilesPanel(QWidget):
-    def __init__(self, taxonomy: TaxonomyStructure, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        taxonomy: TaxonomyStructure,
+        parent: QWidget | None = None,
+        *,
+        show_header: bool = True,
+    ) -> None:
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        hdr = QLabel("DTS FILES")
-        hdr.setStyleSheet(_SECTION_HDR_STYLE)
-        layout.addWidget(hdr)
+        if show_header:
+            hdr = QLabel("DTS Files")
+            hdr.setStyleSheet(_SECTION_HDR_STYLE)
+            layout.addWidget(hdr)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
@@ -251,7 +335,7 @@ class _TablesPanel(QWidget):
 
         meta = taxonomy.metadata
 
-        hdr = QLabel(f"TABLES  ({len(taxonomy.tables)})")
+        hdr = QLabel(f"Tables  ({len(taxonomy.tables)})")
         hdr.setStyleSheet(_SECTION_HDR_STYLE)
         layout.addWidget(hdr)
 
@@ -259,7 +343,7 @@ class _TablesPanel(QWidget):
         self._list = QListWidget()
         self._list.setStyleSheet(_LIST_STYLE)
         for table in taxonomy.tables:
-            item = QListWidgetItem(f"{table.table_id}\n{table.label}")
+            item = QListWidgetItem(f"{_table_identity(table)}\n{table.label}")
             item.setData(Qt.ItemDataRole.UserRole, table)
             self._list.addItem(item)
         self._list.itemClicked.connect(self._on_item_clicked)
@@ -292,7 +376,7 @@ class _TablesPanel(QWidget):
         val_style = f"color: {theme.TEXT_MAIN}; font-size: 11px;"
 
         def _row(key: str, value: str) -> None:
-            kl = QLabel(key)
+            kl = QLabel(key.title())
             kl.setStyleSheet(key_style)
             layout.addWidget(kl)
             vl = QLabel(value)
@@ -335,7 +419,7 @@ class _ValidationsPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        hdr = QLabel("VALIDATIONS (Formula)")
+        hdr = QLabel("Validations")
         hdr.setStyleSheet(_SECTION_HDR_STYLE)
         layout.addWidget(hdr)
 
@@ -427,13 +511,13 @@ class _ValidationsPanel(QWidget):
             detail_body_layout.addWidget(vl)
             return vl
 
-        self._det_id = _make_row("ID")
-        self._det_label = _make_row("LABEL")
-        self._det_type = _make_row("TYPE")
-        self._det_severity = _make_row("SEVERITY")
-        self._det_test = _make_row("TEST / FORMULA")
-        self._det_vars = _make_row("OPERANDS")
-        self._det_precond = _make_row("PRECONDITION")
+        self._det_id = _make_row("Id")
+        self._det_label = _make_row("Label")
+        self._det_type = _make_row("Type")
+        self._det_severity = _make_row("Severity")
+        self._det_test = _make_row("Test / Formula")
+        self._det_vars = _make_row("Operands")
+        self._det_precond = _make_row("Precondition")
 
         detail_scroll = QScrollArea()
         detail_scroll.setWidgetResizable(True)
@@ -515,15 +599,22 @@ class _ValidationsPanel(QWidget):
 # ---------------------------------------------------------------------------
 
 class _ConceptsPanel(QWidget):
-    def __init__(self, taxonomy: TaxonomyStructure, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        taxonomy: TaxonomyStructure,
+        parent: QWidget | None = None,
+        *,
+        show_header: bool = True,
+    ) -> None:
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        hdr = QLabel(f"CONCEPTS  ({len(taxonomy.concepts)})")
-        hdr.setStyleSheet(_SECTION_HDR_STYLE)
-        layout.addWidget(hdr)
+        if show_header:
+            hdr = QLabel(f"Concepts  ({len(taxonomy.concepts)})")
+            hdr.setStyleSheet(_SECTION_HDR_STYLE)
+            layout.addWidget(hdr)
 
         search = QLineEdit()
         search.setPlaceholderText("Filter concepts…")
@@ -558,15 +649,22 @@ class _ConceptsPanel(QWidget):
 # ---------------------------------------------------------------------------
 
 class _DefinitionPanel(QWidget):
-    def __init__(self, taxonomy: TaxonomyStructure, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        taxonomy: TaxonomyStructure,
+        parent: QWidget | None = None,
+        *,
+        show_header: bool = True,
+    ) -> None:
         super().__init__(parent)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
-        hdr = QLabel("DEFINITION LINKBASE")
-        hdr.setStyleSheet(_SECTION_HDR_STYLE)
-        layout.addWidget(hdr)
+        if show_header:
+            hdr = QLabel("Definition Linkbase")
+            hdr.setStyleSheet(_SECTION_HDR_STYLE)
+            layout.addWidget(hdr)
 
         definition = taxonomy.definition
         if not definition:
@@ -636,6 +734,15 @@ class _InstancePanel(QWidget):
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self._instance = None
+        self._taxonomy = None
+        self._editor = None
+        self._fi_syncing = False
+        self._fi_items_by_template_id: dict[str, QListWidgetItem] = {}
+        self._fi_table_lookup: dict[str, object] = {}
+        self._editing_enabled = False
+        self._data_presence_cache_key: tuple[int, int] | None = None
+        self._data_presence_cache: dict[str, bool] = {}
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -649,7 +756,7 @@ class _InstancePanel(QWidget):
         meta_layout.setContentsMargins(8, 6, 8, 8)
         meta_layout.setSpacing(2)
 
-        kl1 = QLabel("ENTITY")
+        kl1 = QLabel("Entity")
         kl1.setStyleSheet(_key_style)
         self._entity_val = QLabel("—")
         self._entity_val.setStyleSheet(_val_style)
@@ -657,7 +764,7 @@ class _InstancePanel(QWidget):
         meta_layout.addWidget(kl1)
         meta_layout.addWidget(self._entity_val)
 
-        kl2 = QLabel("PERIOD")
+        kl2 = QLabel("Period")
         kl2.setStyleSheet(_key_style)
         self._period_val = QLabel("—")
         self._period_val.setStyleSheet(_val_style)
@@ -670,28 +777,50 @@ class _InstancePanel(QWidget):
         fi_body = QWidget()
         fi_layout = QVBoxLayout(fi_body)
         fi_layout.setContentsMargins(8, 6, 8, 8)
-        fi_layout.setSpacing(0)
+        fi_layout.setSpacing(6)
 
         self._fi_val = QLabel("—")
         self._fi_val.setWordWrap(True)
         self._fi_val.setStyleSheet(f"color: {theme.TEXT_MAIN}; font-size: 11px;")
         fi_layout.addWidget(self._fi_val)
 
+        self._fi_list = QListWidget()
+        self._fi_list.setStyleSheet(_LIST_STYLE)
+        self._fi_list.itemChanged.connect(self._on_filing_indicator_changed)
+        self._fi_list.hide()
+        fi_layout.addWidget(self._fi_list)
+
         layout.addWidget(
-            _CollapsibleSection("FILING INDICATORS", fi_body, expanded=False)
+            _CollapsibleSection("Filing Indicators", fi_body, expanded=False)
         )
 
         # ── TABLES section (collapsible, expanded, takes all remaining height) ──
+        tables_body = QWidget()
+        tables_layout = QVBoxLayout(tables_body)
+        tables_layout.setContentsMargins(0, 0, 0, 0)
+        tables_layout.setSpacing(0)
+
+        self._table_search = QLineEdit()
+        self._table_search.setPlaceholderText("Search tables…")
+        self._table_search.setStyleSheet(
+            f"QLineEdit {{ border: none; border-bottom: 1px solid {theme.BORDER};"
+            f" padding: 5px 8px; font-size: 11px; color: {theme.TEXT_MAIN}; background: {theme.SURFACE_BG}; }}"
+        )
+        self._table_search.textChanged.connect(self._filter_tables)
+        tables_layout.addWidget(self._table_search)
+
         self._table_list = QListWidget()
         self._table_list.setStyleSheet(_LIST_STYLE)
         self._table_list.itemClicked.connect(self._on_item_clicked)
+        tables_layout.addWidget(self._table_list, stretch=1)
 
         self._tables_section = _CollapsibleSection(
-            "TABLES", self._table_list, expanded=True
+            "Tables", tables_body, expanded=True
         )
         layout.addWidget(self._tables_section, stretch=1)
 
         self._table_map: dict[str, object] = {}
+        self._table_entries: list[tuple[object, bool]] = []
 
     # ------------------------------------------------------------------
     # Public API
@@ -699,6 +828,8 @@ class _InstancePanel(QWidget):
 
     def populate(self, instance: object, taxonomy: object) -> None:
         """Fill the panel with data from *instance* and *taxonomy*."""
+        self._instance = instance
+        self._taxonomy = taxonomy
         # Entity
         entity = instance.entity  # type: ignore[union-attr]
         self._entity_val.setText(f"{entity.identifier}\n{entity.scheme}")
@@ -712,32 +843,34 @@ class _InstancePanel(QWidget):
         self._period_val.setText(period_text)
 
         # Filing indicators
-        fi_texts: list[str] = []
-        for fi in instance.filing_indicators:  # type: ignore[union-attr]
-            status = "✓" if fi.filed else "✗"
-            fi_texts.append(f"{status} {fi.template_id}")
-        self._fi_val.setText("\n".join(fi_texts) if fi_texts else "None")
+        self._populate_filing_indicators(instance, taxonomy)
 
         # Tables — only filed ones (fall back to all if no indicators)
         self._table_list.clear()
         self._table_map.clear()
+        self._table_entries.clear()
         filed_ids = {
             fi.template_id
             for fi in instance.filing_indicators  # type: ignore[union-attr]
             if fi.filed
         }
-        count = 0
-        for table in taxonomy.tables:  # type: ignore[union-attr]
-            if table.table_id in filed_ids or not filed_ids:
-                item = QListWidgetItem(f"{table.table_id}\n{table.label}")
-                item.setData(Qt.ItemDataRole.UserRole, table)
-                self._table_list.addItem(item)
-                self._table_map[table.table_id] = table
-                count += 1
+        visible_tables = [
+            table
+            for table in taxonomy.tables  # type: ignore[union-attr]
+            if _table_is_filed(table, filed_ids) or not filed_ids
+        ]
+        data_presence = self._compute_table_data_presence(instance, taxonomy, visible_tables)
+        self._table_entries = sorted(
+            ((table, data_presence.get(table.table_id, False)) for table in visible_tables),
+            key=lambda entry: (not entry[1], (getattr(entry[0], "table_code", "") or ""), entry[0].table_id),
+        )
+        self._table_search.blockSignals(True)
+        self._table_search.clear()
+        self._table_search.blockSignals(False)
+        self._rebuild_table_list()
 
         # Update the TABLES section header to show the count
-        arrow = "▾" if self._tables_section._body.isVisible() else "▸"
-        self._tables_section._btn.setText(f"{arrow}  TABLES  ({count})")
+        self._tables_section.set_title(f"Tables  ({len(self._table_entries)})")
 
     def select_first(self) -> None:
         """Select and emit the first table in the list, if any."""
@@ -750,6 +883,222 @@ class _InstancePanel(QWidget):
         table = item.data(Qt.ItemDataRole.UserRole)
         if table is not None:
             self.table_selected.emit(table)
+
+    def _filter_tables(self, text: str) -> None:
+        self._rebuild_table_list(text.strip().lower())
+
+    def _rebuild_table_list(self, query: str = "") -> None:
+        selected = self._table_list.currentItem()
+        selected_id = None
+        if selected is not None:
+            table = selected.data(Qt.ItemDataRole.UserRole)
+            selected_id = getattr(table, "table_id", None)
+
+        self._table_list.clear()
+        self._table_map.clear()
+        for table, has_data in self._table_entries:
+            if not _table_matches_query(table, query):
+                continue
+            status = "Contains data" if has_data else "Empty"
+            item = QListWidgetItem(f"{_table_identity(table)}  |  {status}\n{table.label}")
+            item.setData(Qt.ItemDataRole.UserRole, table)
+            item.setToolTip(
+                f"{_table_identity(table)}\n{table.label}\n"
+                f"{'Contains facts in the current instance.' if has_data else 'No facts matched in the current instance yet.'}"
+            )
+            font = QFont(self._table_list.font())
+            font.setBold(has_data)
+            item.setFont(font)
+            if has_data:
+                item.setBackground(_TABLE_HAS_DATA_BG)
+                item.setForeground(_TABLE_HAS_DATA_FG)
+            else:
+                item.setForeground(_TABLE_EMPTY_FG)
+            self._table_list.addItem(item)
+            self._table_map[table.table_id] = table
+            if selected_id is not None and table.table_id == selected_id:
+                self._table_list.setCurrentItem(item)
+
+    def _compute_table_data_presence(
+        self,
+        instance: object,
+        taxonomy: object,
+        tables: list[object],
+    ) -> dict[str, bool]:
+        cache_key = (id(instance), len(getattr(instance, "facts", []) or []))
+        if self._data_presence_cache_key == cache_key:
+            return {table.table_id: self._data_presence_cache.get(table.table_id, False) for table in tables}
+
+        from bde_xbrl_editor.table_renderer.errors import TableLayoutError, ZIndexOutOfRangeError
+        from bde_xbrl_editor.table_renderer.layout_engine import TableLayoutEngine
+
+        engine = TableLayoutEngine(taxonomy)  # type: ignore[arg-type]
+        presence: dict[str, bool] = {}
+
+        for table in tables:
+            has_data = False
+            try:
+                layout = engine.compute(table, instance=instance)
+                layouts = [layout]
+                for z_index in range(1, len(layout.z_members)):
+                    layouts.append(engine.compute(table, instance=instance, z_index=z_index))
+                has_data = any(
+                    cell.fact_value is not None
+                    for computed in layouts
+                    for row in computed.body
+                    for cell in row
+                )
+            except (TableLayoutError, ZIndexOutOfRangeError):
+                has_data = False
+            presence[table.table_id] = has_data
+
+        self._data_presence_cache_key = cache_key
+        self._data_presence_cache = dict(presence)
+
+        return presence
+
+    def set_editor(self, editor: object | None) -> None:
+        self._editor = editor
+        self._apply_filing_indicator_editability()
+
+    def set_editing_enabled(self, enabled: bool) -> None:
+        self._editing_enabled = enabled
+        self._apply_filing_indicator_editability()
+
+    def _populate_filing_indicators(self, instance: object, taxonomy: object) -> None:
+        indicators = list(getattr(instance, "filing_indicators", []) or [])
+        self._fi_syncing = True
+        self._fi_list.clear()
+        self._fi_items_by_template_id.clear()
+        self._fi_table_lookup.clear()
+
+        if not indicators:
+            self._fi_list.hide()
+            self._fi_val.show()
+            self._fi_val.setText("None")
+            self._fi_syncing = False
+            return
+
+        tables = list(getattr(taxonomy, "tables", []) or [])
+        use_bde_list = any(getattr(table, "table_code", None) for table in tables)
+        if not use_bde_list:
+            fi_texts = []
+            for fi in indicators:
+                status = "✓" if fi.filed else "✗"
+                fi_texts.append(f"{status} {fi.template_id}")
+            self._fi_list.hide()
+            self._fi_val.show()
+            self._fi_val.setText("\n".join(fi_texts) if fi_texts else "None")
+            self._fi_syncing = False
+            return
+
+        for fi in indicators:
+            table = next((table for table in tables if _table_matches_indicator(table, fi.template_id)), None)
+            identity = _table_identity(table) if table is not None else fi.template_id
+            label = getattr(table, "label", "") if table is not None else ""
+            line = f"{identity}\n{label or 'Unknown table'}"
+            item = QListWidgetItem(line)
+            item.setData(Qt.ItemDataRole.UserRole, fi.template_id)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Checked if fi.filed else Qt.CheckState.Unchecked)
+            item.setToolTip(
+                "Checked means the table contains data and blanco is omitted.\n"
+                "Unchecked means blanco=\"true\" and the table is saved as empty."
+            )
+            self._fi_list.addItem(item)
+            self._fi_items_by_template_id[fi.template_id] = item
+            if table is not None:
+                self._fi_table_lookup[fi.template_id] = table
+
+        self._fi_val.hide()
+        self._fi_list.show()
+        self._fi_syncing = False
+        self._apply_filing_indicator_editability()
+
+    def _apply_filing_indicator_editability(self) -> None:
+        editable = self._editing_enabled and self._editor is not None and self._fi_list.count() > 0
+        self._fi_list.setEnabled(self._fi_list.count() > 0)
+        self._fi_syncing = True
+        for index in range(self._fi_list.count()):
+            item = self._fi_list.item(index)
+            flags = item.flags() | Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
+            if editable:
+                flags |= Qt.ItemFlag.ItemIsUserCheckable
+            else:
+                flags &= ~Qt.ItemFlag.ItemIsUserCheckable
+            item.setFlags(flags)
+        self._fi_syncing = False
+        title = (
+            "Filing indicators can be edited when editing mode is on."
+            if not editable
+            else "Toggle whether each reported table is saved with data or as blanco."
+        )
+        self._fi_list.setToolTip(title)
+
+    def _on_filing_indicator_changed(self, item: QListWidgetItem) -> None:
+        if self._fi_syncing or self._editor is None or not self._editing_enabled:
+            return
+        template_id = item.data(Qt.ItemDataRole.UserRole)
+        if not template_id:
+            return
+        filed = item.checkState() == Qt.CheckState.Checked
+        context_ref = ""
+        indicators = getattr(self._instance, "filing_indicators", []) if self._instance is not None else []
+        for indicator in indicators:
+            if getattr(indicator, "template_id", None) == template_id:
+                context_ref = getattr(indicator, "context_ref", "") or ""
+                break
+        self._editor.set_filing_indicator(template_id, filed, context_ref=context_ref)
+
+
+class _TaxonomyPanel(QWidget):
+    """Compact taxonomy panel combining DTS, concepts, and definition content."""
+
+    def __init__(self, taxonomy: TaxonomyStructure, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        hdr = QLabel("Taxonomy")
+        hdr.setStyleSheet(_SECTION_HDR_STYLE)
+        layout.addWidget(hdr)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setStyleSheet("QScrollArea { border: none; }")
+
+        inner = QWidget()
+        inner_layout = QVBoxLayout(inner)
+        inner_layout.setContentsMargins(0, 0, 0, 0)
+        inner_layout.setSpacing(0)
+
+        inner_layout.addWidget(
+            _CollapsibleSection(
+                f"DTS Files  ({len(taxonomy.schema_files) + len(taxonomy.linkbase_files)})",
+                _DtsFilesPanel(taxonomy, show_header=False),
+                expanded=True,
+            )
+        )
+        inner_layout.addWidget(
+            _CollapsibleSection(
+                f"Concepts  ({len(taxonomy.concepts)})",
+                _ConceptsPanel(taxonomy, show_header=False),
+                expanded=False,
+            )
+        )
+        inner_layout.addWidget(
+            _CollapsibleSection(
+                "Definition Linkbase",
+                _DefinitionPanel(taxonomy, show_header=False),
+                expanded=False,
+            )
+        )
+        inner_layout.addStretch(1)
+
+        scroll.setWidget(inner)
+        layout.addWidget(scroll, stretch=1)
 
 
 # ---------------------------------------------------------------------------
@@ -769,7 +1118,12 @@ class ActivitySidebar(QWidget):
         super().__init__(parent)
         self._taxonomy = taxonomy
         self._active_index: int | None = None
+        self._target_width = _BAR_W + _PANEL_W
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
+        self._width_anim = QVariantAnimation(self)
+        self._width_anim.setDuration(_SIDEBAR_ANIM_MS)
+        self._width_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._width_anim.valueChanged.connect(self._on_width_animate)
 
         root_layout = QHBoxLayout(self)
         root_layout.setContentsMargins(0, 0, 0, 0)
@@ -790,12 +1144,16 @@ class ActivitySidebar(QWidget):
             btn = QToolButton()
             btn.setText(icon)
             btn.setToolTip(tip)
+            btn.setAccessibleName(tip)
             btn.setCheckable(True)
             btn.setFixedSize(_BAR_W, _BAR_W)
             btn.setStyleSheet(_BTN_STYLE)
             btn.clicked.connect(lambda checked, idx=i: self._on_button_clicked(idx))
             bar_layout.addWidget(btn)
             self._buttons.append(btn)
+
+        # The instance panel is only useful once an instance is loaded.
+        self._buttons[3].setVisible(False)
 
         bar_layout.addStretch(1)
         root_layout.addWidget(self._bar)
@@ -804,6 +1162,13 @@ class ActivitySidebar(QWidget):
         self._panel_root = QWidget()
         self._panel_root.setObjectName("PanelRoot")
         self._panel_root.setStyleSheet(_PANEL_STYLE)
+        self._panel_opacity = QGraphicsOpacityEffect(self._panel_root)
+        self._panel_opacity.setOpacity(1.0)
+        self._panel_root.setGraphicsEffect(self._panel_opacity)
+        self._fade_anim = QVariantAnimation(self)
+        self._fade_anim.setDuration(_FADE_ANIM_MS)
+        self._fade_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._fade_anim.valueChanged.connect(self._on_fade_animate)
         panel_layout = QVBoxLayout(self._panel_root)
         panel_layout.setContentsMargins(0, 0, 0, 0)
         panel_layout.setSpacing(0)
@@ -817,18 +1182,21 @@ class ActivitySidebar(QWidget):
         self._instance_panel = _InstancePanel()
         self._instance_panel.table_selected.connect(self.table_selected)
 
-        self._stack.addWidget(_DtsFilesPanel(taxonomy))       # 0
+        self._stack.addWidget(_TaxonomyPanel(taxonomy))       # 0
         self._stack.addWidget(self._tables_panel)             # 1
         self._stack.addWidget(_ValidationsPanel(taxonomy))    # 2
-        self._stack.addWidget(_ConceptsPanel(taxonomy))       # 3
-        self._stack.addWidget(_DefinitionPanel(taxonomy))     # 4
-        self._stack.addWidget(self._instance_panel)           # 5
+        self._stack.addWidget(self._instance_panel)           # 3
 
         root_layout.addWidget(self._panel_root)
 
         # Start with Tables panel visible
-        self._activate(1)
-        self._apply_sidebar_width(_BAR_W + _PANEL_W)
+        self._stack.setCurrentIndex(1)
+        self._panel_root.setVisible(True)
+        self._panel_opacity.setOpacity(1.0)
+        self._active_index = 1
+        for i, btn in enumerate(self._buttons):
+            btn.setChecked(i == 1)
+        self._apply_sidebar_width(_BAR_W + _PANEL_W, animated=False)
 
     # ------------------------------------------------------------------
     # Toggle logic
@@ -837,10 +1205,10 @@ class ActivitySidebar(QWidget):
     def _on_button_clicked(self, idx: int) -> None:
         if self._active_index == idx and self._panel_root.isVisible():
             # Clicking the already-active button → collapse panel
-            self._panel_root.setVisible(False)
             self._buttons[idx].setChecked(False)
             self._active_index = None
-            self._apply_sidebar_width(_BAR_W)
+            self._animate_panel_visibility(False)
+            self._apply_sidebar_width(_BAR_W, animated=True)
         else:
             self._activate(idx)
 
@@ -848,14 +1216,45 @@ class ActivitySidebar(QWidget):
         self._active_index = idx
         self._stack.setCurrentIndex(idx)
         self._panel_root.setVisible(True)
-        self._apply_sidebar_width(_BAR_W + _PANEL_W)
+        self._animate_panel_visibility(True)
+        self._apply_sidebar_width(_BAR_W + _PANEL_W, animated=True)
         for i, btn in enumerate(self._buttons):
             btn.setChecked(i == idx)
 
-    def _apply_sidebar_width(self, width: int) -> None:
+    def _apply_sidebar_width(self, width: int, *, animated: bool) -> None:
+        self._target_width = width
+        if not animated:
+            self.setFixedWidth(width)
+            self.updateGeometry()
+            self.width_changed.emit(width)
+            return
+        self._width_anim.stop()
+        self._width_anim.setStartValue(self.width())
+        self._width_anim.setEndValue(width)
+        self._width_anim.start()
+
+    def _on_width_animate(self, value: object) -> None:
+        width = max(int(value), _BAR_W)
         self.setFixedWidth(width)
         self.updateGeometry()
         self.width_changed.emit(width)
+
+    def _animate_panel_visibility(self, visible: bool) -> None:
+        self._fade_anim.stop()
+        if visible:
+            self._panel_root.setVisible(True)
+            self._fade_anim.setStartValue(self._panel_opacity.opacity())
+            self._fade_anim.setEndValue(1.0)
+        else:
+            self._fade_anim.setStartValue(self._panel_opacity.opacity())
+            self._fade_anim.setEndValue(0.0)
+        self._fade_anim.start()
+
+    def _on_fade_animate(self, value: object) -> None:
+        opacity = max(0.0, min(float(value), 1.0))
+        self._panel_opacity.setOpacity(opacity)
+        if opacity == 0.0 and self._active_index is None:
+            self._panel_root.setVisible(False)
 
     # ------------------------------------------------------------------
     # Public API
@@ -866,13 +1265,27 @@ class ActivitySidebar(QWidget):
         self._activate(1)
         self._tables_panel.select_first()
 
-    def set_instance(self, instance: object, taxonomy: object) -> None:
+    def set_instance(self, instance: object, taxonomy: object, editor: object | None = None) -> None:
         """Populate the Instance panel with *instance* data and switch to it."""
+        self.refresh_instance_panel(instance, taxonomy, editor)
+        self._buttons[3].setVisible(True)
+        self._activate(3)
+
+    def set_instance_editing_enabled(self, enabled: bool) -> None:
+        self._instance_panel.set_editing_enabled(enabled)
+
+    def refresh_instance_panel(
+        self,
+        instance: object,
+        taxonomy: object,
+        editor: object | None = None,
+    ) -> None:
         self._instance_panel.populate(instance, taxonomy)
-        self._activate(5)
+        self._instance_panel.set_editor(editor)
 
     def clear_instance(self) -> None:
         """Switch back to the Tables panel (used when an instance is closed)."""
+        self._buttons[3].setVisible(False)
         self._activate(1)
 
     def select_first_instance_table(self) -> None:

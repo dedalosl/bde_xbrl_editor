@@ -475,6 +475,7 @@ def _parse_linkbase_element(
         )
 
         table_label = label_map.get(table_xl, table_id)
+        table_code = fin_map.get(table_xl)
 
         tables.append(TableDefinitionPWD(
             table_id=table_id,
@@ -482,5 +483,6 @@ def _parse_linkbase_element(
             extended_link_role=elr,
             x_breakdown=x_bd,
             y_breakdown=y_bd,
+            table_code=table_code,
             z_breakdowns=z_bds,
         ))

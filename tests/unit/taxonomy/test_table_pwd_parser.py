@@ -61,6 +61,28 @@ TABLE_WITH_BREAKDOWN = textwrap.dedent("""\
     </link:linkbase>
 """)
 
+TABLE_LABEL_CODES = textwrap.dedent("""\
+    <?xml version="1.0" encoding="UTF-8"?>
+    <link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+                   xmlns:gen="http://xbrl.org/2008/generic"
+                   xmlns:label="http://xbrl.org/2008/label"
+                   xmlns:xlink="http://www.w3.org/1999/xlink">
+      <gen:link xlink:type="extended">
+        <link:loc xlink:type="locator"
+                  xlink:href="sample-rend.xml#t1"
+                  xlink:label="loc_t1"/>
+        <label:label xlink:type="resource"
+                     xlink:label="label_t1"
+                     xlink:role="http://www.bde.es/xbrl/role/fin-code"
+                     xml:lang="es">0010</label:label>
+        <gen:arc xlink:type="arc"
+                 xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+                 xlink:from="loc_t1"
+                 xlink:to="label_t1"/>
+      </gen:link>
+    </link:linkbase>
+""")
+
 
 class TestMinimalTableParsing:
     def test_parse_minimal_returns_empty_tables_or_one(self, tmp_path):
@@ -99,6 +121,18 @@ class TestMinimalTableParsing:
         )
         tables = parse_table_linkbase(lb)
         assert tables == []
+
+    def test_table_fin_code_is_loaded_from_generic_label_linkbase(self, tmp_path):
+        rend = tmp_path / "sample-rend.xml"
+        rend.write_text(MINIMAL_TABLE_LB, encoding="utf-8")
+        codes = tmp_path / "sample-lab-codes.xml"
+        codes.write_text(TABLE_LABEL_CODES, encoding="utf-8")
+
+        tables = parse_table_linkbase(rend)
+
+        assert len(tables) == 1
+        assert tables[0].table_code == "0010"
+        assert tables[0].display_code == "0010  |  t1"
 
 
 class TestBreakdownNodeTypes:

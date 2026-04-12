@@ -112,56 +112,66 @@ class ValidationPanel(QWidget):
 
     def _setup_ui(self) -> None:
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(4, 4, 4, 4)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(8)
         self.setStyleSheet(
             f"ValidationPanel {{ background: {theme.SURFACE_ALT_BG}; }}"
             f" QLabel {{ color: {theme.TEXT_MAIN}; }}"
-            f" QToolButton {{ color: {theme.TEXT_MAIN}; background: {theme.HEADER_BG_LIGHT};"
-            f" border: 1px solid {theme.BORDER}; border-radius: 4px; padding: 4px 8px; }}"
-            f" QToolButton:checked {{ background: {theme.HEADER_BG}; }}"
-            f" QProgressBar {{ background: {theme.SURFACE_BG}; border: 1px solid {theme.BORDER};"
+            f" QToolButton {{ color: {theme.TEXT_MAIN}; background: {theme.SURFACE_BG};"
+            f" border: 1px solid {theme.ACCENT_SOFT}; border-radius: 6px; padding: 4px 8px; }}"
+            f" QToolButton:checked {{ background: {theme.SURFACE_BG}; border-color: {theme.BORDER_STRONG}; }}"
+            f" QProgressBar {{ background: {theme.SURFACE_BG}; border: 1px solid {theme.ACCENT_SOFT};"
             f" border-radius: 4px; text-align: center; }}"
             f" QProgressBar::chunk {{ background: {theme.ACCENT}; }}"
-            f" QTextEdit {{ background: {theme.INPUT_BG}; border: 1px solid {theme.BORDER}; }}"
+            f" QTextEdit {{ background: {theme.INPUT_BG}; border: 1px solid {theme.ACCENT_SOFT}; border-radius: 6px; }}"
         )
 
         # Toolbar row
         toolbar = QHBoxLayout()
         toolbar.setSpacing(6)
 
+        toolbar_card = QWidget()
+        toolbar_card.setStyleSheet(
+            f"background: {theme.SURFACE_BG}; border: 1px solid {theme.ACCENT_SOFT}; border-radius: 8px;"
+        )
+        toolbar_card_layout = QHBoxLayout(toolbar_card)
+        toolbar_card_layout.setContentsMargins(10, 8, 10, 8)
+        toolbar_card_layout.setSpacing(6)
+
         self._validate_btn = QPushButton("Validate")
         self._validate_btn.setToolTip("Run full validation on the current instance")
         self._validate_btn.clicked.connect(self.revalidate_requested)
-        toolbar.addWidget(self._validate_btn)
+        toolbar_card_layout.addWidget(self._validate_btn)
 
-        toolbar.addWidget(QLabel("Severity:"))
+        toolbar_card_layout.addWidget(QLabel("Severity:"))
         self._sev_combo = QComboBox()
         self._sev_combo.addItem("All", None)
         self._sev_combo.addItem("Error", ValidationSeverity.ERROR)
         self._sev_combo.addItem("Warning", ValidationSeverity.WARNING)
         self._sev_combo.currentIndexChanged.connect(self._on_severity_filter_changed)
-        toolbar.addWidget(self._sev_combo)
+        toolbar_card_layout.addWidget(self._sev_combo)
 
-        toolbar.addWidget(QLabel("Table:"))
+        toolbar_card_layout.addWidget(QLabel("Table:"))
         self._table_combo = QComboBox()
         self._table_combo.addItem("All", None)
         self._table_combo.currentIndexChanged.connect(self._on_table_filter_changed)
-        toolbar.addWidget(self._table_combo)
+        toolbar_card_layout.addWidget(self._table_combo)
 
         self._clear_filters_btn = QPushButton("Clear Filters")
         self._clear_filters_btn.clicked.connect(self._on_clear_filters)
-        toolbar.addWidget(self._clear_filters_btn)
+        toolbar_card_layout.addWidget(self._clear_filters_btn)
 
         self._summary_label = QLabel("No results")
-        toolbar.addWidget(self._summary_label)
+        toolbar_card_layout.addWidget(self._summary_label)
 
-        toolbar.addStretch()
+        toolbar_card_layout.addStretch()
 
         self._export_btn = QPushButton("Export…")
         self._export_btn.setEnabled(False)
         self._export_btn.clicked.connect(self.export_report)
-        toolbar.addWidget(self._export_btn)
+        toolbar_card_layout.addWidget(self._export_btn)
 
+        toolbar.addWidget(toolbar_card)
         layout.addLayout(toolbar)
 
         # Progress bar (hidden when idle)

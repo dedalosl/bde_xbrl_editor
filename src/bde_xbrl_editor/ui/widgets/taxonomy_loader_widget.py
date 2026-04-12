@@ -126,72 +126,101 @@ class _RecentFileRow(QFrame):
         super().__init__(parent)
         self._path = path
         p = Path(path)
+        self._file_name = p.name
+        self._directory = str(p.parent)
 
+        self.setObjectName("RecentFileRow")
         self.setFrameShape(QFrame.Shape.NoFrame)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setStyleSheet("""
-            _RecentFileRow {
-                background: transparent;
-                border-radius: 6px;
-            }
-        """)
+        self._apply_row_style(hovered=False, pressed=False)
 
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(10, 7, 10, 7)
+        layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(10)
 
         icon = QLabel("◈")
-        icon.setStyleSheet(f"color: {_ACCENT}; font-size: 16px;")
-        icon.setFixedWidth(20)
+        icon.setStyleSheet(
+            f"color: {_ACCENT}; font-size: 14px; font-weight: bold;"
+            f" background: {theme.SURFACE_ALT_BG}; border-radius: 10px; padding: 4px 6px;"
+        )
+        icon.setFixedWidth(28)
         layout.addWidget(icon)
 
-        text_col = QVBoxLayout()
-        text_col.setSpacing(1)
+        text_wrap = QWidget()
+        text_wrap.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        text_wrap.setMinimumWidth(0)
+
+        text_col = QVBoxLayout(text_wrap)
+        text_col.setContentsMargins(0, 0, 0, 0)
+        text_col.setSpacing(2)
 
         name_lbl = QLabel(p.name)
+        name_lbl.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        name_lbl.setMinimumWidth(0)
+        name_lbl.setWordWrap(False)
         name_lbl.setStyleSheet(
-            f"color: {_TEXT_MAIN}; font-weight: 600; font-size: 12px;"
+            f"color: {_TEXT_MAIN}; font-weight: bold; font-size: 12px; background: transparent;"
         )
         text_col.addWidget(name_lbl)
 
-        dir_lbl = QLabel(str(p.parent))
-        dir_lbl.setStyleSheet(f"color: {_TEXT_MUTED}; font-size: 10px;")
+        dir_lbl = QLabel(self._directory)
+        dir_lbl.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        dir_lbl.setMinimumWidth(0)
         dir_lbl.setWordWrap(False)
+        dir_lbl.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: 10px; background: transparent;"
+        )
         text_col.addWidget(dir_lbl)
 
-        layout.addLayout(text_col, stretch=1)
+        layout.addWidget(text_wrap, stretch=1)
 
         arrow = QLabel("›")
         arrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        arrow.setFixedSize(26, 26)
+        arrow.setFixedSize(20, 20)
         arrow.setStyleSheet(
-            f"color: {_TEXT_MUTED}; font-size: 18px; background: transparent;"
-            f" border: 1px solid {_BORDER};"
+            f"color: {_TEXT_MUTED}; font-size: 16px; background: transparent;"
         )
         layout.addWidget(arrow)
 
     def mousePressEvent(self, event) -> None:  # type: ignore[override]
         if event.button() == Qt.MouseButton.LeftButton:
+            self._apply_row_style(hovered=True, pressed=True)
             self.clicked.emit(self._path)
         super().mousePressEvent(event)
 
     def enterEvent(self, event) -> None:  # type: ignore[override]
-        self.setStyleSheet(f"""
-            _RecentFileRow {{
-                background: {_HOVER_ROW};
-                border-radius: 6px;
-            }}
-        """)
+        self._apply_row_style(hovered=True, pressed=False)
         super().enterEvent(event)
 
     def leaveEvent(self, event) -> None:  # type: ignore[override]
-        self.setStyleSheet("""
-            _RecentFileRow {
-                background: transparent;
-                border-radius: 6px;
-            }
-        """)
+        self._apply_row_style(hovered=False, pressed=False)
         super().leaveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # type: ignore[override]
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._apply_row_style(hovered=True, pressed=False)
+        super().mouseReleaseEvent(event)
+
+    def _apply_row_style(self, *, hovered: bool, pressed: bool) -> None:
+        if pressed:
+            background = theme.SELECTION_BG
+            border = theme.BORDER_STRONG
+        elif hovered:
+            background = _HOVER_ROW
+            border = theme.ACCENT_SOFT
+        else:
+            background = "transparent"
+            border = "transparent"
+
+        self.setStyleSheet(
+            f"""
+            QFrame#RecentFileRow {{
+                background: {background};
+                border: 1px solid {border};
+                border-radius: 10px;
+            }}
+            """
+        )
 
 
 class TaxonomyLoaderWidget(QWidget):
@@ -251,49 +280,81 @@ class TaxonomyLoaderWidget(QWidget):
             f"x1:0, y1:0, x2:1, y2:0, "
             f"stop:0 {_NAVY}, stop:1 {_NAVY_MID}); }}"
         )
-        header.setFixedHeight(110)
+        header.setFixedHeight(132)
         header_layout = QHBoxLayout(header)
-        header_layout.setContentsMargins(48, 0, 48, 0)
+        header_layout.setContentsMargins(44, 18, 44, 18)
+        header_layout.setSpacing(24)
 
         title_col = QVBoxLayout()
-        title_col.setSpacing(4)
+        title_col.setSpacing(6)
+
+        eyebrow = QLabel("XBRL filing workspace")
+        eyebrow.setStyleSheet(
+            f"color: {theme.HEADER_BG_LIGHT}; font-size: 11px; font-weight: bold; "
+            "background: transparent;"
+        )
+        title_col.addWidget(eyebrow)
 
         app_title = QLabel("BDE XBRL Editor")
         app_title.setStyleSheet(
-            f"color: {theme.TEXT_INVERSE}; font-size: 24px; font-weight: 700; background: transparent;"
+            f"color: {theme.TEXT_INVERSE}; font-size: 28px; font-weight: bold; background: transparent;"
         )
         title_col.addWidget(app_title)
 
-        subtitle = QLabel("Banco de España — Financial Reporting Tool")
+        subtitle = QLabel("Load a taxonomy first, then browse tables or open an existing filing instance.")
         subtitle.setStyleSheet(
-            f"color: {_ACCENT}; font-size: 12px; background: transparent;"
+            f"color: {theme.ACCENT_SOFT}; font-size: 12px; background: transparent;"
         )
         title_col.addWidget(subtitle)
 
         header_layout.addLayout(title_col)
         header_layout.addStretch()
+
+        summary = QFrame()
+        summary.setStyleSheet(
+            f"QFrame {{ background: rgba(255, 253, 248, 20); border: 1px solid rgba(255, 253, 248, 46);"
+            " border-radius: 10px; }}"
+        )
+        summary_layout = QVBoxLayout(summary)
+        summary_layout.setContentsMargins(16, 12, 16, 12)
+        summary_layout.setSpacing(2)
+
+        summary_label = QLabel("Recommended flow")
+        summary_label.setStyleSheet(
+            f"color: {theme.TEXT_INVERSE}; font-size: 11px; font-weight: bold; background: transparent;"
+        )
+        summary_layout.addWidget(summary_label)
+
+        summary_text = QLabel("Open a taxonomy to unlock tables, metadata, validation rules, and instance editing.")
+        summary_text.setWordWrap(True)
+        summary_text.setStyleSheet(
+            f"color: {theme.ACCENT_SOFT}; font-size: 11px; background: transparent;"
+        )
+        summary_layout.addWidget(summary_text)
+        header_layout.addWidget(summary, stretch=0)
+
         outer.addWidget(header)
 
-        # ── Two-panel card area ────────────────────────────────────────
-        content = QVBoxLayout()
-        content.setContentsMargins(0, 0, 0, 0)
-        content.setSpacing(0)
-        content.addSpacing(32)
+        # ── Main workspace area ────────────────────────────────────────
+        content = QWidget()
+        content_layout = QHBoxLayout(content)
+        content_layout.setContentsMargins(32, 24, 32, 20)
+        content_layout.setSpacing(20)
 
-        cards_row = QHBoxLayout()
-        cards_row.setContentsMargins(32, 0, 32, 0)
-        cards_row.setSpacing(24)
+        primary_card = self._build_taxonomy_card()
+        primary_card.setMinimumWidth(560)
+        content_layout.addWidget(primary_card, stretch=13)
 
-        cards_row.addWidget(self._build_taxonomy_card(), stretch=1)
-        cards_row.addWidget(self._build_instance_card(), stretch=1)
+        secondary_col = QVBoxLayout()
+        secondary_col.setContentsMargins(0, 0, 0, 0)
+        secondary_col.setSpacing(14)
+        secondary_col.addWidget(self._build_instance_card(), stretch=0)
+        secondary_col.addWidget(self._build_guidance_panel(), stretch=0)
+        secondary_col.addStretch(1)
 
-        content.addLayout(cards_row)
-        content.addStretch()
-
-        # Settings link at bottom-right
         footer = QHBoxLayout()
         footer.addStretch()
-        settings_btn = QPushButton("⚙  Settings…")
+        settings_btn = QPushButton("Settings…")
         settings_btn.setFlat(True)
         settings_btn.setStyleSheet(
             f"QPushButton {{ color: {_TEXT_MUTED}; font-size: 11px; border: none;"
@@ -302,10 +363,14 @@ class TaxonomyLoaderWidget(QWidget):
         )
         settings_btn.clicked.connect(self._on_settings)
         footer.addWidget(settings_btn)
-        footer.setContentsMargins(0, 0, 20, 12)
-        content.addLayout(footer)
+        secondary_col.addLayout(footer)
 
-        outer.addLayout(content, stretch=1)
+        secondary = QWidget()
+        secondary.setLayout(secondary_col)
+        secondary.setMinimumWidth(340)
+        content_layout.addWidget(secondary, stretch=7)
+
+        outer.addWidget(content, stretch=1)
 
     def _make_card(self) -> tuple[QFrame, QVBoxLayout]:
         """Create a styled card frame and return (card, layout)."""
@@ -313,34 +378,43 @@ class TaxonomyLoaderWidget(QWidget):
         card.setObjectName("LoaderCard")
         card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         card.setStyleSheet(
-            f"QFrame#LoaderCard {{ background: {_CARD_BG}; border-radius: 10px;"
-            f" border: 1px solid {_BORDER}; }}"
+            f"QFrame#LoaderCard {{ background: {_CARD_BG}; border-radius: 14px;"
+            f" border: 1px solid {theme.ACCENT_SOFT}; }}"
         )
         layout = QVBoxLayout(card)
-        layout.setContentsMargins(32, 28, 32, 28)
+        layout.setContentsMargins(28, 24, 28, 24)
         layout.setSpacing(0)
         return card, layout
 
     def _add_section_header(self, layout: QVBoxLayout, title: str) -> None:
         lbl = QLabel(title)
         lbl.setStyleSheet(
-            f"color: {_TEXT_MAIN}; font-size: 15px; font-weight: 700;"
+            f"color: {_TEXT_MAIN}; font-size: 16px; font-weight: bold;"
             f" border: none; background: transparent;"
         )
         layout.addWidget(lbl)
-        layout.addSpacing(4)
-
-        divider = QFrame()
-        divider.setFrameShape(QFrame.Shape.HLine)
-        divider.setStyleSheet(f"border: none; background: {_BORDER}; max-height: 1px;")
-        divider.setFixedHeight(1)
-        layout.addWidget(divider)
-        layout.addSpacing(16)
+        layout.addSpacing(12)
 
     def _build_taxonomy_card(self) -> QFrame:
         card, layout = self._make_card()
 
-        self._add_section_header(layout, "Open Taxonomy")
+        intro = QLabel("Start with a taxonomy")
+        intro.setStyleSheet(
+            f"color: {_TEXT_MAIN}; font-size: 22px; font-weight: bold; background: transparent;"
+        )
+        layout.addWidget(intro)
+
+        body = QLabel(
+            "Use an entry-point schema to load the reporting structure, tables, and validations before opening or creating an instance."
+        )
+        body.setWordWrap(True)
+        body.setStyleSheet(
+            f"color: {_TEXT_MUTED}; font-size: 12px; background: transparent;"
+        )
+        layout.addWidget(body)
+        layout.addSpacing(18)
+
+        self._add_section_header(layout, "Taxonomy Entry Point")
 
         path_row = QHBoxLayout()
         path_row.setSpacing(8)
@@ -365,11 +439,23 @@ class TaxonomyLoaderWidget(QWidget):
         self._load_btn.clicked.connect(self._on_load)
         layout.addWidget(self._load_btn)
 
+        hint = QLabel("After loading, you can browse tables, inspect DTS files, and open or create an XBRL instance.")
+        hint.setWordWrap(True)
+        hint.setStyleSheet(
+            f"color: {_TEXT_MUTED}; font-size: 11px; background: transparent; padding-top: 8px;"
+        )
+        layout.addWidget(hint)
+
         recent_paths = load_recent_files()
         if recent_paths:
             layout.addSpacing(24)
             self._add_section_header(layout, "Recent Taxonomies")
-            layout.addSpacing(-12)  # tighten after header spacing
+            recent_intro = QLabel("Resume a recently used reporting taxonomy.")
+            recent_intro.setStyleSheet(
+                f"color: {_TEXT_MUTED}; font-size: 11px; background: transparent;"
+            )
+            layout.addWidget(recent_intro)
+            layout.addSpacing(8)
 
             for path in recent_paths:
                 row = _RecentFileRow(path)
@@ -382,7 +468,23 @@ class TaxonomyLoaderWidget(QWidget):
     def _build_instance_card(self) -> QFrame:
         card, layout = self._make_card()
 
-        self._add_section_header(layout, "Open Instance")
+        title = QLabel("Open an existing instance")
+        title.setStyleSheet(
+            f"color: {_TEXT_MAIN}; font-size: 17px; font-weight: bold; background: transparent;"
+        )
+        layout.addWidget(title)
+
+        summary = QLabel(
+            "If the instance already references a taxonomy, the editor will resolve it and prepare the workspace for editing."
+        )
+        summary.setWordWrap(True)
+        summary.setStyleSheet(
+            f"color: {_TEXT_MUTED}; font-size: 11px; background: transparent;"
+        )
+        layout.addWidget(summary)
+        layout.addSpacing(18)
+
+        self._add_section_header(layout, "Instance File")
 
         path_row = QHBoxLayout()
         path_row.setSpacing(8)
@@ -410,7 +512,7 @@ class TaxonomyLoaderWidget(QWidget):
         if recent_instances:
             layout.addSpacing(24)
             self._add_section_header(layout, "Recent Instances")
-            layout.addSpacing(-12)
+            layout.addSpacing(8)
 
             for path in recent_instances:
                 row = _RecentFileRow(path)
@@ -419,6 +521,33 @@ class TaxonomyLoaderWidget(QWidget):
 
         layout.addStretch()
         return card
+
+    def _build_guidance_panel(self) -> QFrame:
+        panel, layout = self._make_card()
+        panel.setMaximumHeight(152)
+
+        title = QLabel("Workspace notes")
+        title.setStyleSheet(
+            f"color: {_TEXT_MAIN}; font-size: 13px; font-weight: bold; background: transparent;"
+        )
+        layout.addWidget(title)
+        layout.addSpacing(8)
+
+        notes = (
+            "1. Load a taxonomy to unlock tables and validation rules.",
+            "2. Open an instance to edit facts against that structure.",
+            "3. Use recent files to jump back into previous work.",
+        )
+        for note in notes:
+            row = QLabel(note)
+            row.setWordWrap(True)
+            row.setStyleSheet(
+                f"color: {_TEXT_MUTED}; font-size: 10px; background: transparent; padding-bottom: 4px;"
+            )
+            layout.addWidget(row)
+
+        layout.addStretch()
+        return panel
 
     # ── Button / input styles ──────────────────────────────────────────────
 
@@ -434,7 +563,7 @@ class TaxonomyLoaderWidget(QWidget):
         return (
             f"QPushButton {{ background: {_NAVY}; color: {theme.TEXT_INVERSE};"
             f" border: none; border-radius: 5px;"
-            f" font-size: 13px; font-weight: 600; padding: 6px 20px; }}"
+            f" font-size: 13px; font-weight: bold; padding: 6px 20px; }}"
             f"QPushButton:hover {{ background: {_NAVY_MID}; }}"
             f"QPushButton:pressed {{ background: {_NAVY_LIGHT}; }}"
             f"QPushButton:disabled {{ background: {theme.DISABLED_BG}; color: {theme.DISABLED_FG}; }}"
