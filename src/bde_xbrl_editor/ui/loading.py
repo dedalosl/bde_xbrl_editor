@@ -64,6 +64,7 @@ def _table_layout_process_entry(
     taxonomy: object,
     instance: object,
     z_index: int,
+    z_constraints: object,
     result_queue,
 ) -> None:
     """Compute a table layout in a dedicated process to keep the UI responsive."""
@@ -76,11 +77,11 @@ def _table_layout_process_entry(
     engine = TableLayoutEngine(taxonomy)
 
     try:
-        layout = engine.compute(table, instance=instance, z_index=z_index)
+        layout = engine.compute(table, instance=instance, z_index=z_index, z_constraints=z_constraints)
         result_queue.put(("finished", request_id, layout, ""))
     except TableLayoutError as exc:
         try:
-            layout = engine.compute(table, instance=None, z_index=z_index)
+            layout = engine.compute(table, instance=None, z_index=z_index, z_constraints=z_constraints)
         except Exception:  # noqa: BLE001
             result_queue.put(("error", request_id, f"Table layout warning: {exc.reason}"))
         else:
@@ -204,6 +205,7 @@ class TableLayoutLoadWorker(QObject):
         taxonomy: object,
         instance: object,
         z_index: int = 0,
+        z_constraints: object = None,
     ) -> None:
         super().__init__()
         self._request_id = request_id
@@ -211,6 +213,7 @@ class TableLayoutLoadWorker(QObject):
         self._taxonomy = taxonomy
         self._instance = instance
         self._z_index = z_index
+        self._z_constraints = z_constraints
         self._cancelled = False
         self._process = None
 
@@ -231,6 +234,7 @@ class TableLayoutLoadWorker(QObject):
                 self._taxonomy,
                 self._instance,
                 self._z_index,
+                self._z_constraints,
                 result_queue,
             ),
             daemon=True,

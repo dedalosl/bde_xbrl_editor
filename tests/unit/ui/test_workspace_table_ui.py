@@ -19,9 +19,31 @@ from PySide6.QtWidgets import QTableView
 
 from bde_xbrl_editor.instance.editor import InstanceEditor
 from bde_xbrl_editor.instance.models import BdeEstadoReportado, BdePreambulo
-from bde_xbrl_editor.taxonomy.models import BreakdownNode, TableDefinitionPWD, TaxonomyMetadata, TaxonomyStructure
+from bde_xbrl_editor.taxonomy.constants import ARCROLE_DOMAIN_MEMBER
+from bde_xbrl_editor.taxonomy.models import (
+    BreakdownNode,
+    DefinitionArc,
+    DimensionModel,
+    DomainMember,
+    HypercubeModel,
+    QName,
+    TableDefinitionPWD,
+    TaxonomyMetadata,
+    TaxonomyStructure,
+)
 from bde_xbrl_editor.ui.widgets.activity_sidebar import _InstancePanel
 from bde_xbrl_editor.ui.widgets.xbrl_table_view import XbrlTableView
+
+
+class _LabelResolverStub:
+    def __init__(self, mapping: dict[QName, str] | None = None) -> None:
+        self._mapping = mapping or {}
+
+    def resolve(self, qname, **kwargs) -> str:
+        return self._mapping.get(qname, getattr(qname, "local_name", str(qname)))
+
+    def get_all_labels(self, qname) -> list:
+        return []
 
 
 def _leaf(label: str) -> BreakdownNode:
@@ -50,13 +72,114 @@ def _taxonomy_with_tables(*tables: TableDefinitionPWD) -> TaxonomyStructure:
             declared_languages=("es", "en"),
         ),
         concepts={},
-        labels=MagicMock(),
+        labels=_LabelResolverStub(),
         presentation={},
         calculation={},
         definition={},
         hypercubes=[],
         dimensions={},
         tables=list(tables),
+    )
+
+
+def _taxonomy_with_single_view_z_axis(table: TableDefinitionPWD) -> TaxonomyStructure:
+    dim_qname = QName(namespace="http://example.com/dim", local_name="DimZ", prefix="dim")
+    root_member = QName(namespace="http://example.com/mem", local_name="RootMember", prefix="mem")
+    member_a = QName(namespace="http://example.com/mem", local_name="MemberA", prefix="mem")
+    member_b = QName(namespace="http://example.com/mem", local_name="MemberB", prefix="mem")
+    other_member = QName(namespace="http://example.com/mem", local_name="OtherMember", prefix="mem")
+    filter_linkrole = "http://example.com/role/filter"
+
+    labels = _LabelResolverStub({
+        dim_qname: "Dim Z",
+        root_member: "Root Member",
+        member_a: "Member A",
+        member_b: "Member B",
+        other_member: "Other Member",
+    })
+
+    return TaxonomyStructure(
+        metadata=TaxonomyMetadata(
+            name="SmokeTax",
+            version="1.0",
+            publisher="Test",
+            entry_point_path=Path("tax.xsd"),
+            loaded_at=datetime(2024, 1, 1),
+            declared_languages=("es", "en"),
+        ),
+        concepts={},
+        labels=labels,
+        presentation={},
+        calculation={},
+        definition={
+            filter_linkrole: [
+                DefinitionArc(
+                    arcrole=ARCROLE_DOMAIN_MEMBER,
+                    source=root_member,
+                    target=member_a,
+                    order=1.0,
+                    extended_link_role=filter_linkrole,
+                    usable=True,
+                ),
+                DefinitionArc(
+                    arcrole=ARCROLE_DOMAIN_MEMBER,
+                    source=root_member,
+                    target=member_b,
+                    order=2.0,
+                    extended_link_role=filter_linkrole,
+                    usable=True,
+                ),
+            ]
+        },
+        hypercubes=[
+            HypercubeModel(
+                qname=QName(namespace="http://example.com/hc", local_name="hc", prefix="hc"),
+                arcrole="all",
+                closed=True,
+                context_element="scenario",
+                primary_items=(),
+                dimensions=(dim_qname,),
+                extended_link_role=table.extended_link_role,
+            )
+        ],
+        dimensions={
+            dim_qname: DimensionModel(
+                qname=dim_qname,
+                dimension_type="explicit",
+                default_member=None,
+                domain=None,
+                members=(
+                    DomainMember(qname=root_member, parent=None, order=1.0),
+                    DomainMember(qname=member_a, parent=None, order=1.0),
+                    DomainMember(qname=member_b, parent=None, order=2.0),
+                    DomainMember(qname=other_member, parent=None, order=3.0),
+                ),
+            )
+        },
+        tables=[table],
+    )
+
+
+def _taxonomy_with_filter_only_z_axis(table: TableDefinitionPWD) -> TaxonomyStructure:
+    labels = _LabelResolverStub()
+
+    return TaxonomyStructure(
+        metadata=TaxonomyMetadata(
+            name="SmokeTax",
+            version="1.0",
+            publisher="Test",
+            entry_point_path=Path("tax.xsd"),
+            loaded_at=datetime(2024, 1, 1),
+            declared_languages=("es", "en"),
+        ),
+        concepts={},
+        labels=labels,
+        presentation={},
+        calculation={},
+        definition={},
+        hypercubes=[],
+        dimensions={},
+        tables=[table],
     )
 
 
@@ -76,6 +199,32 @@ def _instance_with_tables(*table_ids: str) -> SimpleNamespace:
                 for table_id in table_ids
             ],
         ),
+        dimensional_configs={},
+    )
+
+
+def _instance_with_z_usage(
+    table_id: str,
+    dimension_qname: QName,
+    selected_member: QName,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        schema_ref_href="http://www.bde.es/example.xsd",
+        entity=SimpleNamespace(identifier="ES0001", scheme="http://example.com/entity"),
+        period=SimpleNamespace(period_type="instant", instant_date=date(2024, 12, 31)),
+        filing_indicators=[],
+        included_table_ids=[table_id],
+        facts=[],
+        contexts={
+            "ctxZ": SimpleNamespace(dimensions={dimension_qname: selected_member}),
+        },
+        dimensional_configs={
+            table_id: SimpleNamespace(
+                table_id=table_id,
+                dimension_assignments={dimension_qname: selected_member},
+            )
+        },
+        bde_preambulo=None,
     )
 
 
@@ -178,6 +327,174 @@ def test_xbrl_table_view_uses_editing_switch_instead_of_passive_mode_pills(qtbot
     qtbot.mouseClick(view._editing_switch, Qt.MouseButton.LeftButton)
     assert view._editing_switch.text() == "Editing mode on"
     assert view._body_view.editTriggers() != QTableView.EditTrigger.NoEditTriggers
+
+
+@pytest.mark.qt
+def test_xbrl_table_view_shows_allowed_z_axis_members_in_selector_for_single_view_table(qtbot) -> None:
+    table = TableDefinitionPWD(
+        table_id="es_tF1_20",
+        label="Configured Z table",
+        extended_link_role="http://example.com/role/es_tF1_20",
+        x_breakdown=BreakdownNode(node_type="rule", is_abstract=True, children=[_leaf("Column")]),
+        y_breakdown=BreakdownNode(node_type="rule", is_abstract=True, children=[_leaf("Row")]),
+        z_breakdowns=(
+            BreakdownNode(
+                node_type="aspect",
+                label="Configured view",
+                is_abstract=False,
+                aspect_constraints={
+                    "dimensionAspect": "{http://example.com/dim}DimZ",
+                    "explicitDimensionFilters": [
+                        {
+                            "dimension": "{http://example.com/dim}DimZ",
+                            "members": [
+                                {
+                                    "member": "{http://example.com/mem}RootMember",
+                                    "linkrole": "http://example.com/role/filter",
+                                    "arcrole": ARCROLE_DOMAIN_MEMBER,
+                                    "axis": "descendant",
+                                }
+                            ],
+                            "complement": False,
+                        }
+                    ],
+                },
+            ),
+        ),
+    )
+    taxonomy = _taxonomy_with_single_view_z_axis(table)
+
+    view = XbrlTableView()
+    qtbot.addWidget(view)
+    view.resize(960, 640)
+    view.show()
+    view.set_table(table, taxonomy, None)
+
+    dim_qname = QName(namespace="http://example.com/dim", local_name="DimZ", prefix="dim")
+    assert view._z_selector is not None
+    combo = view._z_selector._combo_by_dimension[dim_qname]
+    assert combo.count() == 2
+    assert combo.itemText(0) == "Member A"
+    assert combo.itemText(1) == "Member B"
+    assert view._z_axis_summary_label.isHidden()
+
+
+@pytest.mark.qt
+def test_xbrl_table_view_shows_filter_only_z_axis_members_in_selector_without_hypercube_models(qtbot) -> None:
+    table = TableDefinitionPWD(
+        table_id="es_tF1_21",
+        label="Filter-only Z table",
+        extended_link_role="http://example.com/role/es_tF1_21",
+        x_breakdown=BreakdownNode(node_type="rule", is_abstract=True, children=[_leaf("Column")]),
+        y_breakdown=BreakdownNode(node_type="rule", is_abstract=True, children=[_leaf("Row")]),
+        z_breakdowns=(
+            BreakdownNode(
+                node_type="aspect",
+                label="Configured view",
+                is_abstract=False,
+                aspect_constraints={
+                    "dimensionAspect": "{http://example.com/dim}DimZ",
+                    "explicitDimensionFilters": [
+                        {
+                            "dimension": "{http://example.com/dim}DimZ",
+                            "members": [
+                                {
+                                    "member": "{http://example.com/mem}RootMember",
+                                    "linkrole": "http://example.com/role/filter",
+                                    "arcrole": ARCROLE_DOMAIN_MEMBER,
+                                    "axis": "descendant",
+                                    "resolved_members": [
+                                        "{http://example.com/mem}ChildA",
+                                        "{http://example.com/mem}ChildB",
+                                    ],
+                                }
+                            ],
+                            "complement": False,
+                        }
+                    ],
+                },
+            ),
+        ),
+    )
+    taxonomy = _taxonomy_with_filter_only_z_axis(table)
+
+    view = XbrlTableView()
+    qtbot.addWidget(view)
+    view.resize(960, 640)
+    view.show()
+    view.set_table(table, taxonomy, None)
+
+    dim_qname = QName(namespace="http://example.com/dim", local_name="DimZ", prefix="dim")
+    assert view._z_selector is not None
+    combo = view._z_selector._combo_by_dimension[dim_qname]
+    assert combo.count() == 2
+    assert combo.itemText(0) == "ChildA"
+    assert combo.itemText(1) == "ChildB"
+    assert view._z_axis_summary_label.isHidden()
+
+
+@pytest.mark.qt
+def test_xbrl_table_view_prioritises_instance_z_values_and_rerenders_on_change(qtbot) -> None:
+    dim_qname = QName(namespace="http://example.com/dim", local_name="DimZ", prefix="dim")
+    member_a = QName(namespace="http://example.com/mem", local_name="MemberA", prefix="mem")
+    member_b = QName(namespace="http://example.com/mem", local_name="MemberB", prefix="mem")
+    table = TableDefinitionPWD(
+        table_id="es_tF1_22",
+        label="Editable Z table",
+        extended_link_role="http://example.com/role/es_tF1_22",
+        x_breakdown=BreakdownNode(node_type="rule", is_abstract=True, children=[_leaf("Column")]),
+        y_breakdown=BreakdownNode(node_type="rule", is_abstract=True, children=[_leaf("Row")]),
+        z_breakdowns=(
+            BreakdownNode(
+                node_type="aspect",
+                label="Configured view",
+                is_abstract=False,
+                aspect_constraints={
+                    "dimensionAspect": "{http://example.com/dim}DimZ",
+                    "explicitDimensionFilters": [
+                        {
+                            "dimension": "{http://example.com/dim}DimZ",
+                            "members": [
+                                {
+                                    "member": "{http://example.com/mem}RootMember",
+                                    "linkrole": "http://example.com/role/filter",
+                                    "arcrole": ARCROLE_DOMAIN_MEMBER,
+                                    "axis": "descendant",
+                                }
+                            ],
+                            "complement": False,
+                        }
+                    ],
+                },
+            ),
+        ),
+    )
+    taxonomy = _taxonomy_with_single_view_z_axis(table)
+    instance = _instance_with_z_usage(table.table_id, dim_qname, member_b)
+
+    view = XbrlTableView()
+    qtbot.addWidget(view)
+    view.resize(960, 640)
+    view.show()
+    view.set_table(table, taxonomy, instance)
+
+    assert view._z_selector is not None
+    combo = view._z_selector._combo_by_dimension[dim_qname]
+    assert combo.itemText(0) == "Member B"
+    assert combo.itemText(1) == "Member A"
+    assert view._layout is not None
+    assert view._layout.body[0][0].coordinate.explicit_dimensions == {dim_qname: member_b}
+
+    combo.setCurrentIndex(1)
+    qtbot.waitUntil(
+        lambda: view._layout is not None
+        and view._layout.body[0][0].coordinate.explicit_dimensions == {dim_qname: member_a},
+        timeout=5000,
+    )
+    assert (
+        instance.dimensional_configs[table.table_id].dimension_assignments[dim_qname]
+        == member_a
+    )
 
 
 @pytest.mark.qt

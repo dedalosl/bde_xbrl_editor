@@ -419,6 +419,22 @@ class TestZAxis:
             engine.compute(table, z_index=5)
         assert exc_info.value.requested_z == 5
 
+    def test_explicit_z_constraints_override_active_coordinate(self):
+        x_root = _make_node(children=[_make_node("C")])
+        y_root = _make_node(children=[_make_node("R")])
+        table = _simple_table(x_root, y_root)
+        taxonomy = _make_taxonomy()
+        dim = QName(namespace="http://example.com/dim", local_name="DimZ", prefix="dim")
+        member = QName(namespace="http://example.com/mem", local_name="MemberA", prefix="mem")
+
+        layout = TableLayoutEngine(taxonomy).compute(
+            table,
+            z_constraints={dim: member},
+        )
+
+        assert layout.active_z_constraints == {dim: member}
+        assert layout.body[0][0].coordinate.explicit_dimensions == {dim: member}
+
 
 class TestLabelFallback:
     """Tests for label resolution and fallback chain."""
