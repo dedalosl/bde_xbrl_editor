@@ -548,3 +548,37 @@ def test_bde_segment_agrupacion_parsed_as_dimension(tmp_path: Path) -> None:
     )
     mem_vals = [str(v) for v in ctx.dimensions.values()]
     assert any("AgrupacionIndividual" in v for v in mem_vals)
+
+
+def test_fact_loading_reports_incremental_progress(tmp_path: Path) -> None:
+    context = textwrap.dedent("""\
+        <xbrli:context id="C1">
+          <xbrli:entity>
+            <xbrli:identifier scheme="http://bde.es">ES1234</xbrli:identifier>
+          </xbrli:entity>
+          <xbrli:period>
+            <xbrli:instant>2023-12-31</xbrli:instant>
+          </xbrli:period>
+        </xbrli:context>
+    """)
+    facts = "\n".join(
+        f'<test:Assets contextRef="C1">{100 + index}</test:Assets>'
+        for index in range(60)
+    )
+    p = _write_xbrl(tmp_path, f"{context}\n{facts}")
+    parser, _ = _make_parser()
+
+    progress_events: list[tuple[str, int, int]] = []
+    parser.load(p, progress_callback=lambda message, current, total: progress_events.append((message, current, total)))
+
+    fact_updates = [event for event in progress_events if event[0].startswith("Reading facts…")]
+    metadata_updates = [
+        event for event in progress_events if event[0].startswith("Reading filing metadata…")
+    ]
+    final_indexed = [event for event in progress_events if event[0].startswith("Facts indexed —")]
+
+    assert len(metadata_updates) >= 1
+    assert metadata_updates[0][0] == "Reading filing metadata… 0/62"
+    assert len(fact_updates) > 3
+    assert fact_updates[0][0] == "Reading facts… 1 parsed"
+    assert final_indexed[-1][0] == "Facts indexed — 60 resolved, 0 orphaned"

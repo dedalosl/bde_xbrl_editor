@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QThread, QTimer, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QFrame,
@@ -19,6 +19,7 @@ from bde_xbrl_editor.table_renderer.errors import TableLayoutError, ZIndexOutOfR
 from bde_xbrl_editor.table_renderer.layout_engine import TableLayoutEngine
 from bde_xbrl_editor.table_renderer.models import ComputedTableLayout
 from bde_xbrl_editor.ui import theme
+from bde_xbrl_editor.ui.loading import TableLayoutLoadWorker
 from bde_xbrl_editor.ui.widgets.cell_edit_delegate import CellEditDelegate
 from bde_xbrl_editor.ui.widgets.column_header import MultiLevelColumnHeader
 from bde_xbrl_editor.ui.widgets.row_header import MultiLevelRowHeader
@@ -44,12 +45,28 @@ def _table_identity(table: TableDefinitionPWD | None) -> str:
     return table.display_code or table.table_id
 
 
+def _empty_layout() -> ComputedTableLayout:
+    from bde_xbrl_editor.table_renderer.models import HeaderGrid  # noqa: PLC0415
+
+    empty_grid = HeaderGrid(levels=[[]], leaf_count=0, depth=0)
+    return ComputedTableLayout(
+        table_id="",
+        table_label="",
+        column_header=empty_grid,
+        row_header=empty_grid,
+        z_members=[],
+        active_z_index=0,
+        body=[],
+    )
+
+
 class XbrlTableView(QFrame):
     """Main compound widget for rendering an XBRL table."""
 
     cell_selected = Signal(int, int)
     z_index_changed = Signal(int)
     editing_mode_changed = Signal(bool)
+    layout_ready = Signal(object)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -60,6 +77,10 @@ class XbrlTableView(QFrame):
         self._layout: ComputedTableLayout | None = None
         self._active_z_index: int = 0
         self._editing_enabled: bool = False
+        self._pending_table_request: tuple[TableDefinitionPWD, TaxonomyStructure, XbrlInstance | None, int] | None = None
+        self._table_load_thread: QThread | None = None
+        self._table_load_worker: TableLayoutLoadWorker | None = None
+        self._table_load_request_id = 0
 
         # Layout
         self._outer_layout = QVBoxLayout(self)
@@ -92,6 +113,7 @@ class XbrlTableView(QFrame):
             f"color: {theme.TEXT_MUTED}; font-size: 11px; background: transparent;"
         )
         title_col.addWidget(self._subtitle_label)
+
         header_layout.addLayout(title_col, stretch=1)
 
         status_col = QVBoxLayout()
@@ -161,6 +183,10 @@ class XbrlTableView(QFrame):
         self._body_view.setEditTriggers(QTableView.EditTrigger.NoEditTriggers)
         self._outer_layout.addWidget(self._body_view)
 
+        self._table_request_timer = QTimer(self)
+        self._table_request_timer.setSingleShot(True)
+        self._table_request_timer.timeout.connect(self._apply_requested_table)
+
     # ------------------------------------------------------------------
     # Properties
     # ------------------------------------------------------------------
@@ -188,6 +214,9 @@ class XbrlTableView(QFrame):
         instance: XbrlInstance | None = None,
     ) -> None:
         """Load and render a table. Clears the previous table if any."""
+        self._cancel_async_table_load()
+        self._table_request_timer.stop()
+        self._pending_table_request = None
         self._taxonomy = taxonomy
         self._table = table
         self._instance = instance
@@ -211,6 +240,18 @@ class XbrlTableView(QFrame):
 
         self._install_layout(layout)
 
+    def request_table(
+        self,
+        table: TableDefinitionPWD,
+        taxonomy: TaxonomyStructure,
+        instance: XbrlInstance | None = None,
+    ) -> None:
+        """Queue a table render for the next UI turn so the shell can paint first."""
+        z_index = 0
+        self._pending_table_request = (table, taxonomy, instance, z_index)
+        self._show_loading_state(table, taxonomy, instance, z_index=z_index, loading_label="Loading table…")
+        self._table_request_timer.start(0)
+
     def set_layout(self, layout: ComputedTableLayout) -> None:
         """Install a pre-computed ComputedTableLayout."""
         self._install_layout(layout)
@@ -219,33 +260,45 @@ class XbrlTableView(QFrame):
         """Recompute layout for the given Z-axis member and refresh."""
         if self._table is None or self._taxonomy is None:
             return
-        engine = TableLayoutEngine(self._taxonomy)
-        try:
-            layout = engine.compute(self._table, instance=self._instance, z_index=z_index)
-        except (TableLayoutError, ZIndexOutOfRangeError):
+        if self._layout is not None and self._layout.active_z_index == z_index:
             return
-        self._active_z_index = z_index
-        self._install_layout(layout)
-        self.z_index_changed.emit(z_index)
+        self._pending_table_request = (self._table, self._taxonomy, self._instance, z_index)
+        self._show_loading_state(
+            self._table,
+            self._taxonomy,
+            self._instance,
+            z_index=z_index,
+            loading_label="Loading view…",
+        )
+        self._table_request_timer.start(0)
 
     def refresh_instance(self, instance: XbrlInstance | None) -> None:
         """Re-match fact values without recomputing structure."""
         self._instance = instance
+        if self._pending_table_request is not None:
+            table, taxonomy, _, z_index = self._pending_table_request
+            self._pending_table_request = (table, taxonomy, instance, z_index)
         if self._table is None or self._taxonomy is None:
             return
         engine = TableLayoutEngine(self._taxonomy)
-        try:
-            layout = engine.compute(
-                self._table,
-                instance=instance,
-                z_index=self._active_z_index,
-            )
-        except (TableLayoutError, ZIndexOutOfRangeError):
-            return
+        if self._layout is not None and self._layout.table_id == self._table.table_id:
+            layout = engine.populate_facts(self._layout, instance)
+        else:
+            try:
+                layout = engine.compute(
+                    self._table,
+                    instance=instance,
+                    z_index=self._active_z_index,
+                )
+            except (TableLayoutError, ZIndexOutOfRangeError):
+                return
         self._install_layout(layout)
 
     def clear(self) -> None:
         """Remove the current table and show empty state."""
+        self._cancel_async_table_load()
+        self._table_request_timer.stop()
+        self._pending_table_request = None
         self._table = None
         self._taxonomy = None
         self._instance = None
@@ -260,41 +313,142 @@ class XbrlTableView(QFrame):
         self._editing_switch.setVisible(False)
         self._editing_switch.setText("Editing mode off")
         self._set_editing_enabled(False)
-        from bde_xbrl_editor.table_renderer.models import (  # noqa: PLC0415
-            ComputedTableLayout,
-            HeaderGrid,
-        )
-
-        empty_grid = HeaderGrid(levels=[[]], leaf_count=0, depth=0)
-        empty_layout = ComputedTableLayout(
-            table_id="",
-            table_label="",
-            column_header=empty_grid,
-            row_header=empty_grid,
-            z_members=[],
-            active_z_index=0,
-            body=[],
-        )
-        self._body_view.setModel(TableBodyModel(empty_layout, self))
+        self._clear_z_selector()
+        self._body_view.setModel(TableBodyModel(_empty_layout(), self))
 
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
+
+    def _apply_requested_table(self) -> None:
+        if self._pending_table_request is None:
+            return
+        table, taxonomy, instance, z_index = self._pending_table_request
+        self._pending_table_request = None
+        self._start_async_table_load(table, taxonomy, instance, z_index)
+
+    def _start_async_table_load(
+        self,
+        table: TableDefinitionPWD,
+        taxonomy: TaxonomyStructure,
+        instance: XbrlInstance | None,
+        z_index: int,
+    ) -> None:
+        self._cancel_async_table_load()
+        self._table_load_request_id += 1
+        request_id = self._table_load_request_id
+        worker = TableLayoutLoadWorker(
+            request_id=request_id,
+            table=table,
+            taxonomy=taxonomy,
+            instance=instance,
+            z_index=z_index,
+        )
+        thread = QThread(self)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.finished.connect(self._on_async_table_loaded, Qt.ConnectionType.QueuedConnection)
+        worker.error.connect(self._on_async_table_error, Qt.ConnectionType.QueuedConnection)
+        thread.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        self._table_load_worker = worker
+        self._table_load_thread = thread
+        thread.start()
+
+    def _cancel_async_table_load(self) -> None:
+        worker = self._table_load_worker
+        thread = self._table_load_thread
+        self._table_load_worker = None
+        self._table_load_thread = None
+        if worker is not None:
+            worker.cancel()
+        if thread is not None and thread.isRunning():
+            thread.quit()
+
+    def _finish_async_table_load(self, request_id: int) -> bool:
+        if request_id != self._table_load_request_id:
+            return False
+        thread = self._table_load_thread
+        worker = self._table_load_worker
+        self._table_load_thread = None
+        self._table_load_worker = None
+        if worker is not None:
+            worker.cancel()
+        if thread is not None and thread.isRunning():
+            thread.quit()
+        return True
+
+    def _on_async_table_loaded(self, request_id: int, layout: ComputedTableLayout, warning: str) -> None:
+        if not self._finish_async_table_load(request_id):
+            return
+        if warning:
+            self._error_banner.setText(f"⚠ Table layout warning: {warning}")
+            self._error_banner.show()
+        else:
+            self._error_banner.hide()
+        self._install_layout(layout)
+
+    def _on_async_table_error(self, request_id: int, message: str) -> None:
+        if not self._finish_async_table_load(request_id):
+            return
+        self._error_banner.setText(f"⚠ {message}")
+        self._error_banner.show()
+        self._meta_label.setText("Layout failed")
+
+    def _show_loading_state(
+        self,
+        table: TableDefinitionPWD,
+        taxonomy: TaxonomyStructure,
+        instance: XbrlInstance | None,
+        *,
+        z_index: int,
+        loading_label: str,
+    ) -> None:
+        self._taxonomy = taxonomy
+        self._table = table
+        self._instance = instance
+        self._layout = None
+        self._active_z_index = z_index
+        self._error_banner.hide()
+        if self._z_selector is not None:
+            self._outer_layout.removeWidget(self._z_selector)
+            self._z_selector.deleteLater()
+            self._z_selector = None
+
+        title = table.label or table.table_id or "Selected table"
+        self._title_label.setText(title)
+        subtitle_parts = []
+        table_identity = _table_identity(table)
+        if table_identity:
+            subtitle_parts.append(table_identity)
+        subtitle_parts.append(loading_label)
+        self._subtitle_label.setText("  |  ".join(subtitle_parts))
+        self._meta_label.setText("Preparing layout…")
+        self._editing_switch.setVisible(instance is not None)
+        self._editing_switch.setEnabled(False)
+        self._editing_switch.blockSignals(True)
+        self._editing_switch.setChecked(False)
+        self._editing_switch.blockSignals(False)
+        self._editing_switch.setText(loading_label)
+        self._body_view.setModel(TableBodyModel(_empty_layout(), self))
+
+    def _clear_z_selector(self) -> None:
+        if self._z_selector is not None:
+            self._outer_layout.removeWidget(self._z_selector)
+            self._z_selector.deleteLater()
+            self._z_selector = None
 
     def _install_layout(self, layout: ComputedTableLayout) -> None:
         self._layout = layout
         self._refresh_header(layout)
 
         # Update Z-axis selector
-        if self._z_selector is not None:
-            self._outer_layout.removeWidget(self._z_selector)
-            self._z_selector.deleteLater()
-            self._z_selector = None
+        self._clear_z_selector()
 
         if layout.z_members:
             self._z_selector = ZAxisSelector(layout.z_members, parent=self)
-            self._z_selector.z_index_changed.connect(self.set_z_index)
-            self._outer_layout.insertWidget(1, self._z_selector)  # after error banner
+            self._z_selector.z_index_changed.connect(self._on_z_selector_changed)
+            self._outer_layout.insertWidget(1, self._z_selector)
 
         # Update body model
         model = TableBodyModel(layout, self)
@@ -331,6 +485,11 @@ class XbrlTableView(QFrame):
         self._body_view.clicked.connect(
             lambda idx: self.cell_selected.emit(idx.row(), idx.column())
         )
+        self.layout_ready.emit(layout)
+
+    def _on_z_selector_changed(self, index: int) -> None:
+        self.set_z_index(index)
+        self.z_index_changed.emit(index)
 
     def _refresh_header(self, layout: ComputedTableLayout) -> None:
         title = layout.table_label or layout.table_id or "Selected table"
@@ -357,6 +516,7 @@ class XbrlTableView(QFrame):
         col_count = len(layout.body[0]) if layout.body else 0
         self._meta_label.setText(f"{row_count} rows  |  {col_count} columns")
         self._editing_switch.setVisible(self._instance is not None)
+        self._editing_switch.setEnabled(self._instance is not None)
         self._editing_switch.blockSignals(True)
         self._editing_switch.setChecked(self._editing_enabled and self._instance is not None)
         self._editing_switch.blockSignals(False)

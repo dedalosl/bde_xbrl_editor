@@ -233,6 +233,7 @@ class InstanceParser:
         self,
         path: str | Path,
         progress_callback: Callable[[str, int, int], None] | None = None,
+        taxonomy_resolved_callback: Callable[[TaxonomyStructure], None] | None = None,
     ) -> tuple[XbrlInstance, list[OrphanedFact]]:
         """Parse the XBRL instance at path and return (XbrlInstance, orphaned_facts).
 
@@ -285,6 +286,12 @@ class InstanceParser:
             path_str,
             progress_callback=taxonomy_progress,
         )
+        if taxonomy_resolved_callback is not None:
+            taxonomy_resolved_callback(taxonomy)
+        progress(
+            f"Taxonomy ready — {len(taxonomy.tables)} tables, {len(taxonomy.concepts)} concepts",
+            72,
+        )
 
         # Stage 3: Parse contexts
         progress("Reading contexts…", 78)
@@ -295,6 +302,7 @@ class InstanceParser:
                 contexts[ctx.context_id] = ctx
             except Exception as exc:  # noqa: BLE001
                 raise InstanceParseError(path_str, f"Context parse error: {exc}") from exc
+        progress(f"Contexts loaded — {len(contexts)} available", 82)
 
         # Extract entity/period from first context (or default)
         if contexts:
@@ -314,85 +322,140 @@ class InstanceParser:
         for unit_el in root.findall(_XBRLI_UNIT):
             unit = _parse_unit(unit_el)
             units[unit.unit_id] = unit
+        progress(f"Units loaded — {len(units)} available", 87)
 
-        # Stage 5a: Parse BDE IE_2008_02 preamble (EntidadPresentadora, TipoEnvio,
-        # EstadosReportados).  Must run before fact iteration so the preambulo
-        # elements are already identified and excluded from the facts loop.
-        progress("Reading filing metadata…", 88)
-        bde_preambulo = _parse_bde_preambulo(root)
+        # Stage 5: Scan top-level children once so large filings keep reporting
+        # progress before fact indexing begins.
+        root_children = [child for child in root if isinstance(child.tag, str)]
+        total_root_children = len(root_children)
+        if total_root_children:
+            progress(f"Reading filing metadata… 0/{total_root_children}", 88)
+        else:
+            progress("Reading filing metadata… none found", 88)
 
-        # Stage 5b: Parse filing indicators.
-        # BDE instances use EstadosReportados/CodigoEstado as the canonical
-        # filing-indicator source, so prefer that whenever present and fall back
-        # to Eurofiling fIndicators for non-BDE taxonomies.
-        filing_indicators = _parse_bde_filing_indicators(bde_preambulo)
-        if not filing_indicators:
-            filing_indicators = []
-            # They may be inside ef-find:fIndicators wrapper or directly as children.
-            for child in root:
-                if not isinstance(child.tag, str):  # skip comments / PIs
-                    continue
-                local = child.tag.split("}")[-1] if "}" in child.tag else child.tag
-                ns = child.tag.split("}")[0][1:] if "}" in child.tag else ""
-                if ns == FILING_IND_NS and local == "fIndicators":
-                    for fi_el in child:
-                        _parse_filing_indicator(fi_el, filing_indicators)
-                elif child.tag == _FILING_IND:
-                    _parse_filing_indicator(child, filing_indicators)
-
-        # Stages 6–7: Parse facts
-        progress("Reading facts…", 93)
+        entidad = ""
+        tipo_envio = ""
+        estados: list[BdeEstadoReportado] = []
+        preambulo_context_ref = ""
+        found_preambulo = False
+        filing_indicators: list[FilingIndicator] = []
         facts: list[Fact] = []
         orphaned: list[OrphanedFact] = []
         known_concepts = taxonomy.concepts if taxonomy else {}
+        facts_seen = 0
 
-        for child in root:
-            if not isinstance(child.tag, str):  # skip comments / PIs
-                continue
-            if child.tag in _NON_FACT_TAGS:
-                continue
-            # Skip fIndicators wrapper and any other Eurofiling or BDE preamble elements
-            ns = child.tag.split("}")[0][1:] if "}" in child.tag else ""
-            if ns in (FILING_IND_NS, BDE_PBLO_NS):
-                continue
-            if child.tag == _LINK_SCHEMA_REF:
-                continue
+        metadata_progress_every = max(total_root_children // 20, 1) if total_root_children else 1
+        blanco_attr = f"{{{BDE_PBLO_NS}}}blanco"
 
-            # It's a fact element. XBRL tuples do not have contextRef — skip them
-            # entirely to avoid false structural:unresolved-context-ref findings.
-            if "contextRef" not in child.attrib:
-                continue
-            context_ref = child.get("contextRef", "")
-            unit_ref = child.get("unitRef")
-            decimals = child.get("decimals")
-            precision = child.get("precision")
-            value = (child.text or "").strip()
+        for index, child in enumerate(root_children, start=1):
+            tag = child.tag
 
-            concept_tag = child.tag
-            try:
-                concept_qname = _tag_to_qname(concept_tag)
-            except Exception:  # noqa: BLE001
-                continue
-
-            if concept_qname in known_concepts:
-                facts.append(Fact(
-                    concept=concept_qname,
-                    context_ref=context_ref,
-                    unit_ref=unit_ref,
-                    value=value,
-                    decimals=decimals,
-                    precision=precision,
-                ))
+            if tag == _BDE_ENTIDAD:
+                found_preambulo = True
+                entidad = (child.text or "").strip()
+                preambulo_context_ref = preambulo_context_ref or child.get("contextRef", "")
+            elif tag == _BDE_TIPO_ENVIO:
+                found_preambulo = True
+                tipo_envio = (child.text or "").strip()
+                preambulo_context_ref = preambulo_context_ref or child.get("contextRef", "")
+            elif tag == _BDE_ESTADOS_REPORTADOS:
+                found_preambulo = True
+                for estado_el in child:
+                    if not isinstance(estado_el.tag, str) or estado_el.tag != _BDE_CODIGO_ESTADO:
+                        continue
+                    codigo = (estado_el.text or "").strip()
+                    if not codigo:
+                        continue
+                    blanco_val = estado_el.get(blanco_attr, "false").lower()
+                    estado_ctx = estado_el.get("contextRef", "") or preambulo_context_ref
+                    estados.append(BdeEstadoReportado(
+                        codigo=codigo,
+                        blanco=blanco_val in ("true", "1", "yes"),
+                        context_ref=estado_ctx,
+                    ))
             else:
-                raw_xml = etree.tostring(child, encoding="unicode").encode("utf-8")
-                orphaned.append(OrphanedFact(
-                    concept_qname_str=concept_tag,
-                    context_ref=context_ref,
-                    unit_ref=unit_ref,
-                    value=value,
-                    decimals=decimals,
-                    raw_element_xml=raw_xml,
-                ))
+                local = tag.split("}")[-1] if "}" in tag else tag
+                ns = tag.split("}")[0][1:] if "}" in tag else ""
+                if ns == FILING_IND_NS and local == "fIndicators":
+                    for fi_el in child:
+                        _parse_filing_indicator(fi_el, filing_indicators)
+                elif tag == _FILING_IND:
+                    _parse_filing_indicator(child, filing_indicators)
+
+                if (
+                    tag not in _NON_FACT_TAGS
+                    and ns not in (FILING_IND_NS, BDE_PBLO_NS)
+                    and tag != _LINK_SCHEMA_REF
+                    and "contextRef" in child.attrib
+                ):
+                    facts_seen += 1
+                    context_ref = child.get("contextRef", "")
+                    unit_ref = child.get("unitRef")
+                    decimals = child.get("decimals")
+                    precision = child.get("precision")
+                    value = (child.text or "").strip()
+
+                    concept_tag = child.tag
+                    try:
+                        concept_qname = _tag_to_qname(concept_tag)
+                    except Exception:  # noqa: BLE001
+                        concept_qname = None
+
+                    if concept_qname is not None and concept_qname in known_concepts:
+                        facts.append(Fact(
+                            concept=concept_qname,
+                            context_ref=context_ref,
+                            unit_ref=unit_ref,
+                            value=value,
+                            decimals=decimals,
+                            precision=precision,
+                        ))
+                    else:
+                        raw_xml = etree.tostring(child, encoding="unicode").encode("utf-8")
+                        orphaned.append(OrphanedFact(
+                            concept_qname_str=concept_tag,
+                            context_ref=context_ref,
+                            unit_ref=unit_ref,
+                            value=value,
+                            decimals=decimals,
+                            raw_element_xml=raw_xml,
+                        ))
+
+            if (
+                total_root_children
+                and (index == total_root_children or index == 1 or index % metadata_progress_every == 0)
+            ):
+                mapped_progress = 88 + int((index / total_root_children) * 11)
+                if facts_seen > 0:
+                    message = f"Reading facts… {facts_seen} parsed"
+                else:
+                    message = f"Reading filing metadata… {index}/{total_root_children}"
+                progress(
+                    message,
+                    min(mapped_progress, 99),
+                )
+
+        bde_preambulo = None
+        if found_preambulo:
+            bde_preambulo = BdePreambulo(
+                entidad_presentadora=entidad,
+                tipo_envio=tipo_envio,
+                estados_reportados=estados,
+                context_ref=preambulo_context_ref,
+            )
+
+        # BDE instances encode filing-indicator semantics with CodigoEstado
+        # values, so prefer those and only fall back to Eurofiling wrappers.
+        if bde_preambulo is not None and bde_preambulo.estados_reportados:
+            filing_indicators = _parse_bde_filing_indicators(bde_preambulo)
+        progress(
+            f"Filing indicators ready — {len(filing_indicators)} found",
+            99 if total_root_children else 92,
+        )
+        progress(
+            f"Facts indexed — {len(facts)} resolved, {len(orphaned)} orphaned",
+            99,
+        )
 
         # Build the XbrlInstance
         instance = XbrlInstance(
@@ -411,7 +474,7 @@ class InstanceParser:
             _dirty=False,
         )
 
-        progress("Instance parsed successfully", 100)
+        progress("Instance parsed successfully", 99)
         return instance, orphaned
 
     def _resolve_taxonomy(

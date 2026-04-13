@@ -724,7 +724,14 @@ class TaxonomyLoader:
         cached = self._cache.get(cache_key)
         if cached is not None:
             if progress_callback:
-                progress_callback("Loaded from cache", _TOTAL_STEPS, _TOTAL_STEPS)
+                progress_callback(
+                    (
+                        "Loaded from cache — "
+                        f"{len(cached.tables)} tables, {len(cached.concepts)} concepts"
+                    ),
+                    _TOTAL_STEPS,
+                    _TOTAL_STEPS,
+                )
             return cached
 
         structure = self._do_load(entry_point, progress_callback)
@@ -759,6 +766,10 @@ class TaxonomyLoader:
             entry_point, self._settings, progress_callback=None,
         )
         self._last_skipped_urls: list[str] = skipped_urls
+        progress(
+            f"DTS discovered — {len(schema_paths)} schemas, {len(linkbase_paths)} linkbases",
+            1,
+        )
 
         # Step 2: Parse schemas → concepts (with cross-schema transitive SG resolution)
         progress("Parsing schemas…", 2)
@@ -809,6 +820,7 @@ class TaxonomyLoader:
                 entry_point=str(entry_point),
                 reason="No XBRL concepts found — file may not be a valid XBRL taxonomy entry point",
             )
+        progress(f"Schemas parsed — {len(concepts)} concepts ready", 2)
 
         concept_id_map = _build_concept_id_map(concepts)
 
@@ -869,6 +881,7 @@ class TaxonomyLoader:
             standard_labels, generic_labels,
             self._settings.language_preference,
         )
+        progress(f"Labels resolved — {len(declared_languages)} language set(s) available", 3)
 
         # Step 4: Parse structural linkbases
         progress("Parsing structural linkbases…", 4)
@@ -912,6 +925,10 @@ class TaxonomyLoader:
         # Step 4b: XBRL Dimensions 1.0 taxonomy constraint checks (xbrldte:* errors)
         declared_roles = _collect_declared_roles(list(linkbase_paths))
         _check_dimensional_constraints(concepts, definition_arcs, declared_roles=declared_roles)
+        progress(
+            f"Structure mapped — {len(dimensions)} dimensions, {len(hypercubes)} hypercubes",
+            4,
+        )
 
         # Step 5: Parse table linkbases
         progress("Parsing table linkbases…", 5)
@@ -934,6 +951,7 @@ class TaxonomyLoader:
         group_table_order = _parse_group_table_order(list(linkbase_paths))
         if group_table_order:
             tables.sort(key=lambda t: group_table_order.get(t.table_id, float("inf")))
+        progress(f"Tables prepared — {len(tables)} available", 5)
 
         # Step 6: Parse formula linkbase (if present)
         progress("Assembling taxonomy structure…", 6)
@@ -953,6 +971,7 @@ class TaxonomyLoader:
             formula_assertion_set = FormulaAssertionSet()
 
         metadata = _extract_metadata(entry_point, declared_languages)
+        progress(f"Assembled {metadata.name} v{metadata.version}", 6)
 
         # Step 7: Assemble TaxonomyStructure
         structure = TaxonomyStructure(
