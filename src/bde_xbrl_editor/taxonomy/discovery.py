@@ -9,6 +9,7 @@ Network resolution is blocked by default (LoaderSettings.allow_network=False).
 
 from __future__ import annotations
 
+from collections import deque
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -128,14 +129,14 @@ def discover_dts(
     include_ns_map: dict[Path, str] = {}
 
     # Queue: (file_path, is_linkbase)
-    queue: list[tuple[Path, bool]] = [(entry_point, False)]
+    queue = deque([(entry_point, False)])
     for ep in (extra_entry_points or []):
         ep = ep.resolve()
         if ep.exists() and ep.suffix.lower() in (".xsd", ".xml"):
             queue.append((ep, False))
 
     while queue:
-        current, is_linkbase = queue.pop(0)
+        current, is_linkbase = queue.popleft()
 
         if is_linkbase:
             if current in visited_linkbases:
