@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from lxml import etree
@@ -23,12 +24,23 @@ _XLINK_FROM = f"{{{NS_XLINK}}}from"
 _XLINK_TO = f"{{{NS_XLINK}}}to"
 _XLINK_ARCROLE = f"{{{NS_XLINK}}}arcrole"
 _XLINK_ROLE = f"{{{NS_XLINK}}}role"
+_ARCROLE_GROUP_TABLE = "http://www.eurofiling.info/xbrl/arcrole/group-table"
+
+
+@dataclass
+class PresentationLinkbaseParseResult:
+    """Parsed presentation linkbase payload plus table-order metadata."""
+
+    networks: dict[str, PresentationNetwork]
+    group_table_children: dict[str, list[tuple[float, str]]] = field(default_factory=dict)
+    group_table_rend_fragments: set[str] = field(default_factory=set)
+    group_table_root_fragment: str | None = None
 
 
 def parse_presentation_linkbase(
     linkbase_path: Path,
     concept_map: dict[str, QName],
-) -> dict[str, PresentationNetwork]:
+) -> PresentationLinkbaseParseResult:
     """Parse a presentation linkbase and return PresentationNetworks keyed by ELR.
 
     Raises:
@@ -46,6 +58,40 @@ def parse_presentation_linkbase(
 
     root = tree.getroot()
     networks: dict[str, PresentationNetwork] = {}
+    group_table_children: dict[str, list[tuple[float, str]]] = {}
+    group_table_root_fragment: str | None = None
+
+    local_label_to_fragment: dict[str, str] = {}
+    local_label_is_rend: set[str] = set()
+    for loc in root.iter(_LOC):
+        label = loc.get(_XLINK_LABEL, "")
+        href = loc.get(_XLINK_HREF, "")
+        if label and "#" in href:
+            fragment = href.split("#", 1)[1]
+            local_label_to_fragment[label] = fragment
+            if "-rend.xml" in href:
+                local_label_is_rend.add(label)
+
+    for arc in root.iter():
+        if not isinstance(arc.tag, str):
+            continue
+        if arc.tag.split("}")[-1] != "arc":
+            continue
+        if arc.get(_XLINK_ARCROLE) != _ARCROLE_GROUP_TABLE:
+            continue
+        from_label = arc.get(_XLINK_FROM, "")
+        to_label = arc.get(_XLINK_TO, "")
+        from_frag = local_label_to_fragment.get(from_label, from_label)
+        to_frag = local_label_to_fragment.get(to_label)
+        if not to_frag:
+            continue
+        try:
+            arc_order = float(arc.get("order", "1"))
+        except ValueError:
+            arc_order = 1.0
+        group_table_children.setdefault(from_frag, []).append((arc_order, to_frag))
+        if group_table_root_fragment is None and from_label not in local_label_is_rend:
+            group_table_root_fragment = from_frag
 
     for link_el in root.iter(_PRES_LINK):
         elr = link_el.get(_XLINK_ROLE, "http://www.xbrl.org/2003/role/link")
@@ -88,4 +134,9 @@ def parse_presentation_linkbase(
                 )
             )
 
-    return networks
+    return PresentationLinkbaseParseResult(
+        networks=networks,
+        group_table_children=group_table_children,
+        group_table_rend_fragments=set(local_label_to_fragment[label] for label in local_label_is_rend),
+        group_table_root_fragment=group_table_root_fragment,
+    )

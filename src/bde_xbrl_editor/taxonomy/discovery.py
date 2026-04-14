@@ -83,7 +83,7 @@ def discover_dts(
     settings: LoaderSettings,
     progress_callback=None,
     extra_entry_points: list[Path] | None = None,
-) -> tuple[list[Path], list[Path], list[str], dict[Path, str]]:
+) -> tuple[list[Path], list[Path], list[str], dict[Path, str], set[str]]:
     """Discover all schema and linkbase files reachable from entry_point.
 
     Args:
@@ -96,12 +96,14 @@ def discover_dts(
             module schemas (mod/pc_con1.xsd, etc.) and both need to be seeded.
 
     Returns:
-        (schema_paths, linkbase_paths, skipped_remote_urls, include_ns_map)
+        (schema_paths, linkbase_paths, skipped_remote_urls, include_ns_map, declared_roles)
         - schema_paths / linkbase_paths: deduplicated lists of absolute Paths
         - skipped_remote_urls: remote URLs skipped (informational, not an error)
         - include_ns_map: maps xs:include'd schema Path → the parent schema's
           targetNamespace.  Used by the loader to supply the correct namespace
           when parsing schemas that have no targetNamespace of their own.
+        - declared_roles: role URI values collected from link:roleRef elements
+          encountered while traversing linkbase files.
 
     Raises:
         UnsupportedTaxonomyFormatError — entry_point is not a valid XBRL XSD.
@@ -127,6 +129,7 @@ def discover_dts(
     skipped_remote: list[str] = []  # informational only
     # xs:include'd schema path → parent's targetNamespace
     include_ns_map: dict[Path, str] = {}
+    declared_roles: set[str] = set()
 
     # Queue: (file_path, is_linkbase)
     queue = deque([(entry_point, False)])
@@ -171,6 +174,10 @@ def discover_dts(
             # linkbaseRef (e.g. a master linkbase that aggregates others).
             for ref_el in root.iter(_ROLE_REF, _ARCROLE_REF):
                 href = ref_el.get(_XLINK_HREF)
+                if ref_el.tag == _ROLE_REF:
+                    role_uri = ref_el.get("roleURI")
+                    if role_uri:
+                        declared_roles.add(role_uri)
                 if not href:
                     continue
                 href = href.split("#")[0]
@@ -303,4 +310,10 @@ def discover_dts(
     seen: set[str] = set()
     unique_skipped = [u for u in skipped_remote if not (u in seen or seen.add(u))]  # type: ignore[func-returns-value]
 
-    return list(visited_schemas), list(visited_linkbases), unique_skipped, include_ns_map
+    return (
+        list(visited_schemas),
+        list(visited_linkbases),
+        unique_skipped,
+        include_ns_map,
+        declared_roles,
+    )
