@@ -154,6 +154,32 @@ class TestNetworkBlock:
 
 
 class TestNegativePaths:
+    def test_repairs_prefixed_start_tag_whitespace(self, tmp_path):
+        repaired = tmp_path / "repaired.xsd"
+        repaired.write_text(
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '< xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"\n'
+            '            xmlns:link="http://www.xbrl.org/2003/linkbase"\n'
+            '            xmlns:xlink="http://www.w3.org/1999/xlink"\n'
+            '            targetNamespace="http://test.example">\n'
+            '  <xs:annotation>\n'
+            '    <xs:appinfo>\n'
+            '      <link:linkbaseRef xlink:type="simple"\n'
+            '                        xlink:href="labels.xml"\n'
+            '                        xlink:role="http://www.xbrl.org/2003/role/labelLinkbaseRef"\n'
+            '                        xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase"/>\n'
+            '    </xs:appinfo>\n'
+            '  </xs:annotation>\n'
+            '</xs:schema>\n',
+            encoding="utf-8",
+        )
+        (tmp_path / "labels.xml").write_text(LABEL_XML, encoding="utf-8")
+
+        schemas, linkbases, _, _, _ = discover_dts(repaired, LoaderSettings())
+
+        assert repaired.resolve() in schemas
+        assert any(path.name == "labels.xml" for path in linkbases)
+
     def test_missing_entry_point(self, tmp_path):
         with pytest.raises(UnsupportedTaxonomyFormatError) as exc_info:
             discover_dts(tmp_path / "nonexistent.xsd", LoaderSettings())

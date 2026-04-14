@@ -22,6 +22,7 @@ from bde_xbrl_editor.taxonomy.models import (
     UnsupportedTaxonomyFormatError,
 )
 from bde_xbrl_editor.taxonomy.settings import LoaderSettings
+from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
 
 # Linkbase reference element QName
 _LINKBASE_REF = f"{{{NS_LINK}}}linkbaseRef"
@@ -155,7 +156,7 @@ def discover_dts(
             continue
 
         try:
-            tree = etree.parse(str(current))  # noqa: S320
+            tree = parse_xml_file(current)
         except etree.XMLSyntaxError as exc:
             raise TaxonomyParseError(
                 file_path=str(current),

@@ -32,13 +32,21 @@ from urllib.parse import urlparse
 
 from lxml import etree
 
-from bde_xbrl_editor.taxonomy.constants import NS_FORMULA, NS_LINK, NS_TABLE_PWD, NS_XLINK, ROLE_DEFINITION_LINKBASE_REF
+from bde_xbrl_editor.taxonomy.constants import (
+    NS_FORMULA,
+    NS_LINK,
+    NS_TABLE_PWD,
+    NS_XBRLDT,
+    NS_XLINK,
+    ROLE_DEFINITION_LINKBASE_REF,
+)
 from bde_xbrl_editor.taxonomy.models import (
     BreakdownNode,
     QName,
     TableDefinitionPWD,
     TaxonomyParseError,
 )
+from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
 
 # PWD namespace tags
 _TABLE = f"{{{NS_TABLE_PWD}}}table"
@@ -74,6 +82,7 @@ _XLINK_FROM = f"{{{NS_XLINK}}}from"
 _XLINK_TO = f"{{{NS_XLINK}}}to"
 _XLINK_ROLE = f"{{{NS_XLINK}}}role"
 _XLINK_ARCROLE = f"{{{NS_XLINK}}}arcrole"
+_XBRLDT_USABLE = f"{{{NS_XBRLDT}}}usable"
 
 # Axis values as they appear in the XML tableBreakdownArc/@axis attribute
 _AXIS_X = "x"
@@ -258,7 +267,7 @@ def _schema_id_qname_map(schema_path: Path) -> dict[str, str]:
     if not schema_path.is_file():
         return {}
     try:
-        tree = etree.parse(str(schema_path))  # noqa: S320
+        tree = parse_xml_file(schema_path)
     except Exception:  # noqa: BLE001
         return {}
 
@@ -292,7 +301,7 @@ def _descendant_members_from_role(
         return []
 
     try:
-        schema_tree = etree.parse(str(schema_path))  # noqa: S320
+        schema_tree = parse_xml_file(schema_path)
     except Exception:  # noqa: BLE001
         return []
     schema_root = schema_tree.getroot()
@@ -320,7 +329,7 @@ def _descendant_members_from_role(
 
     for def_linkbase in def_linkbases:
         try:
-            def_tree = etree.parse(str(def_linkbase))  # noqa: S320
+            def_tree = parse_xml_file(def_linkbase)
         except Exception:  # noqa: BLE001
             continue
         id_cache: dict[Path, dict[str, str]] = {}
@@ -347,6 +356,8 @@ def _descendant_members_from_role(
             for arc in def_link.iter(f"{{{NS_LINK}}}definitionArc"):
                 if arc.get(_XLINK_ARCROLE) != "http://xbrl.org/int/dim/arcrole/domain-member":
                     continue
+                if arc.get(_XBRLDT_USABLE, "true").lower() == "false":
+                    continue
                 frm = loc_map.get(arc.get(_XLINK_FROM, ""))
                 to = loc_map.get(arc.get(_XLINK_TO, ""))
                 if frm and to:
@@ -358,8 +369,9 @@ def _descendant_members_from_role(
                 if candidate in seen:
                     continue
                 seen.add(candidate)
-                descendants.append(candidate)
                 queue.extend(adjacency.get(candidate, []))
+                if not adjacency.get(candidate):
+                    descendants.append(candidate)
             if descendants:
                 return descendants
 
@@ -437,7 +449,7 @@ def _parse_node_label_file(
     if not lb_path.is_file():
         return
     try:
-        tree = etree.parse(str(lb_path))  # noqa: S320
+        tree = parse_xml_file(lb_path)
     except Exception:  # noqa: BLE001
         return
 
@@ -501,7 +513,7 @@ def parse_table_linkbase(
         TaxonomyParseError: If the file is not well-formed XML.
     """
     try:
-        tree = etree.parse(str(linkbase_path))  # noqa: S320
+        tree = parse_xml_file(linkbase_path)
     except etree.XMLSyntaxError as exc:
         raise TaxonomyParseError(
             file_path=str(linkbase_path),
