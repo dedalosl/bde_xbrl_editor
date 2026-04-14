@@ -234,6 +234,7 @@ class InstanceParser:
         path: str | Path,
         progress_callback: Callable[[str, int, int], None] | None = None,
         taxonomy_resolved_callback: Callable[[TaxonomyStructure], None] | None = None,
+        preloaded_taxonomy: TaxonomyStructure | None = None,
     ) -> tuple[XbrlInstance, list[OrphanedFact]]:
         """Parse the XBRL instance at path and return (XbrlInstance, orphaned_facts).
 
@@ -280,12 +281,22 @@ class InstanceParser:
             mapped = 12 + int((current / total) * 58)
             progress(f"Loading taxonomy… {message}", min(mapped, 70))
 
-        taxonomy = self._resolve_taxonomy(
-            path,
-            schema_href,
-            path_str,
-            progress_callback=taxonomy_progress,
-        )
+        resolved_taxonomy_path = self._resolve_taxonomy_path(path, schema_href)
+        if (
+            preloaded_taxonomy is not None
+            and resolved_taxonomy_path is not None
+            and resolved_taxonomy_path == preloaded_taxonomy.metadata.entry_point_path.resolve()
+        ):
+            progress("Reusing loaded taxonomy…", 22)
+            taxonomy = preloaded_taxonomy
+        else:
+            taxonomy = self._resolve_taxonomy(
+                path,
+                schema_href,
+                path_str,
+                progress_callback=taxonomy_progress,
+                resolved_taxonomy_path=resolved_taxonomy_path,
+            )
         if taxonomy_resolved_callback is not None:
             taxonomy_resolved_callback(taxonomy)
         progress(
@@ -477,30 +488,24 @@ class InstanceParser:
         progress("Instance parsed successfully", 99)
         return instance, orphaned
 
-    def _resolve_taxonomy(
+    def _resolve_taxonomy_path(
         self,
         instance_path: Path,
         schema_href: str,
-        path_str: str,
-        progress_callback: Callable[[str, int, int], None] | None = None,
-    ) -> TaxonomyStructure:
-        """Resolve the schemaRef href to a taxonomy path and load it."""
+    ) -> Path | None:
+        """Resolve schemaRef href to a local taxonomy path when possible."""
         is_remote = schema_href.startswith(("http://", "https://"))
 
-        # Try relative to instance file directory first (only for local hrefs)
         if not is_remote and not schema_href.startswith("/"):
-            candidate = instance_path.parent / schema_href
+            candidate = (instance_path.parent / schema_href).resolve()
             if candidate.exists():
-                return self._loader.load(candidate, progress_callback=progress_callback)
+                return candidate
 
-        # Try absolute path (only for local hrefs)
         if not is_remote:
-            abs_candidate = Path(schema_href)
+            abs_candidate = Path(schema_href).resolve()
             if abs_candidate.exists():
-                return self._loader.load(abs_candidate, progress_callback=progress_callback)
+                return abs_candidate
 
-        # For remote URLs, apply the loader's local_catalog mapping — the same
-        # catalog used during DTS discovery so the same offline mirror is reused.
         if is_remote:
             catalog = self._loader.settings.local_catalog
             if catalog:
@@ -508,14 +513,29 @@ class InstanceParser:
                     if schema_href.startswith(prefix):
                         rel = schema_href[len(prefix):].lstrip("/")
                         candidate = (local_root / rel).resolve()
-                    if candidate.exists():
-                        return self._loader.load(candidate, progress_callback=progress_callback)
+                        if candidate.exists():
+                            return candidate
 
-        # Fall back to manual resolver
         if self._resolver is not None:
             resolved = self._resolver(schema_href)
             if resolved is not None and resolved.exists():
-                return self._loader.load(resolved, progress_callback=progress_callback)
+                return resolved.resolve()
+
+        return None
+
+    def _resolve_taxonomy(
+        self,
+        instance_path: Path,
+        schema_href: str,
+        path_str: str,
+        progress_callback: Callable[[str, int, int], None] | None = None,
+        resolved_taxonomy_path: Path | None = None,
+    ) -> TaxonomyStructure:
+        """Resolve the schemaRef href to a taxonomy path and load it."""
+        if resolved_taxonomy_path is None:
+            resolved_taxonomy_path = self._resolve_taxonomy_path(instance_path, schema_href)
+        if resolved_taxonomy_path is not None:
+            return self._loader.load(resolved_taxonomy_path, progress_callback=progress_callback)
 
         raise TaxonomyResolutionError(
             schema_href,

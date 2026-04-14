@@ -20,6 +20,7 @@ from bde_xbrl_editor.taxonomy.models import (
     TaxonomyMetadata,
     TaxonomyStructure,
 )
+from bde_xbrl_editor.taxonomy.settings import LoaderSettings
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -76,6 +77,7 @@ def _make_parser(taxonomy: TaxonomyStructure | None = None) -> tuple[InstancePar
         taxonomy = _make_taxonomy()
     loader = MagicMock()
     loader.load.return_value = taxonomy
+    loader.settings = LoaderSettings()
     parser = InstanceParser(taxonomy_loader=loader)
     return parser, loader
 
@@ -195,6 +197,46 @@ def test_manual_resolver_called_as_fallback(tmp_path: Path) -> None:
     instance, _ = parser.load(p)
     resolver.assert_called_once_with("remote.xsd")
     assert instance is not None
+
+
+def test_reuses_matching_preloaded_taxonomy(tmp_path: Path) -> None:
+    p = _write_xbrl(tmp_path, "")
+    taxonomy = _make_taxonomy()
+    taxonomy = TaxonomyStructure(
+        metadata=TaxonomyMetadata(
+            name=taxonomy.metadata.name,
+            version=taxonomy.metadata.version,
+            publisher=taxonomy.metadata.publisher,
+            entry_point_path=(tmp_path / "entry.xsd").resolve(),
+            loaded_at=taxonomy.metadata.loaded_at,
+            declared_languages=taxonomy.metadata.declared_languages,
+        ),
+        concepts=taxonomy.concepts,
+        labels=taxonomy.labels,
+        presentation=taxonomy.presentation,
+        calculation=taxonomy.calculation,
+        definition=taxonomy.definition,
+        hypercubes=taxonomy.hypercubes,
+        dimensions=taxonomy.dimensions,
+        tables=taxonomy.tables,
+        formula_linkbase_path=taxonomy.formula_linkbase_path,
+        formula_assertion_set=taxonomy.formula_assertion_set,
+        schema_files=taxonomy.schema_files,
+        linkbase_files=taxonomy.linkbase_files,
+    )
+
+    parser, loader = _make_parser(taxonomy)
+    resolved = []
+
+    instance, _ = parser.load(
+        p,
+        taxonomy_resolved_callback=resolved.append,
+        preloaded_taxonomy=taxonomy,
+    )
+
+    loader.load.assert_not_called()
+    assert resolved == [taxonomy]
+    assert instance.taxonomy_entry_point == taxonomy.metadata.entry_point_path
 
 
 # ---------------------------------------------------------------------------

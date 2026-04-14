@@ -76,6 +76,17 @@ class MainWindow(QMainWindow):
         parts = [part for part in (table_code, table_id) if part]
         return "  |  ".join(parts)
 
+    @staticmethod
+    def _taxonomy_entry_point(taxonomy: TaxonomyStructure | None) -> Path | None:
+        if taxonomy is None:
+            return None
+        return taxonomy.metadata.entry_point_path.resolve()
+
+    def _same_taxonomy(self, taxonomy: TaxonomyStructure) -> bool:
+        current_entry = self._taxonomy_entry_point(self._current_taxonomy)
+        incoming_entry = self._taxonomy_entry_point(taxonomy)
+        return current_entry is not None and current_entry == incoming_entry
+
     def _apply_stylesheet(self) -> None:
         self.setStyleSheet(f"""
             QMainWindow, QWidget {{
@@ -659,6 +670,7 @@ class MainWindow(QMainWindow):
         self._status.showMessage("Opening instance…")
         self._open_instance_action.setEnabled(False)
         self._instance_open_worker = InstanceLoadWorker(self._cache, self._settings, path_str)
+        self._instance_open_worker.set_preloaded_taxonomy(self._current_taxonomy)
         self._instance_open_thread = QThread(self)
         self._instance_open_worker.moveToThread(self._instance_open_thread)
         self._instance_open_thread.started.connect(self._instance_open_worker.run)
@@ -668,6 +680,10 @@ class MainWindow(QMainWindow):
         )
         self._instance_open_worker.finished.connect(
             self._on_open_instance_finished,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self._instance_open_worker.taxonomy_resolved.connect(
+            self._on_open_instance_taxonomy_resolved,
             Qt.ConnectionType.QueuedConnection,
         )
         self._instance_open_worker.error.connect(
@@ -711,6 +727,17 @@ class MainWindow(QMainWindow):
         self._new_instance_action.setEnabled(True)
         self._close_taxonomy_action.setEnabled(True)
         self._load_instance(instance)
+
+    def _on_open_instance_taxonomy_resolved(self, taxonomy: TaxonomyStructure) -> None:
+        """Surface taxonomy readiness before instance parsing completes."""
+        if (
+            self._current_taxonomy is not None
+            and self._same_taxonomy(taxonomy)
+            and self._sidebar is not None
+            and isValid(self._sidebar)
+        ):
+            return
+        self._on_taxonomy_loaded(taxonomy)
 
     def _on_open_instance_error(self, message: str) -> None:
         self._cleanup_instance_open_thread()

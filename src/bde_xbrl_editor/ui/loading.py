@@ -19,6 +19,7 @@ from bde_xbrl_editor.taxonomy import (
 def _instance_load_process_entry(
     path: str,
     settings: LoaderSettings,
+    preloaded_taxonomy: object | None,
     result_queue,
 ) -> None:
     """Run instance parsing in a dedicated process to avoid UI-thread starvation."""
@@ -38,14 +39,16 @@ def _instance_load_process_entry(
     def on_taxonomy_ready(taxonomy: object) -> None:
         nonlocal resolved_taxonomy
         resolved_taxonomy = taxonomy
+        result_queue.put(("taxonomy_resolved", taxonomy))
 
     try:
         instance, orphaned_facts = parser.load(
             path,
             progress_callback=on_progress,
             taxonomy_resolved_callback=on_taxonomy_ready,
+            preloaded_taxonomy=preloaded_taxonomy,
         )
-        taxonomy = resolved_taxonomy
+        taxonomy = resolved_taxonomy or preloaded_taxonomy
         if taxonomy is None:
             on_progress("Preparing editor…", 96, 100)
             taxonomy = loader.load(instance.taxonomy_entry_point, progress_callback=on_progress)
@@ -129,16 +132,20 @@ class InstanceLoadWorker(QObject):
 
     def __init__(self, cache: TaxonomyCache, settings: LoaderSettings, path: str | Path) -> None:
         super().__init__()
-        self._cache = cache
         self._settings = settings
         self._path = str(path)
+        self._preloaded_taxonomy = None
+
+    def set_preloaded_taxonomy(self, taxonomy: object | None) -> None:
+        """Provide a resolved taxonomy that can be reused inside the worker process."""
+        self._preloaded_taxonomy = taxonomy
 
     def run(self) -> None:
         ctx = multiprocessing.get_context("spawn")
         result_queue = ctx.Queue()
         process = ctx.Process(
             target=_instance_load_process_entry,
-            args=(self._path, self._settings, result_queue),
+            args=(self._path, self._settings, self._preloaded_taxonomy, result_queue),
             daemon=True,
         )
 
@@ -166,6 +173,9 @@ class InstanceLoadWorker(QObject):
                 if kind == "progress":
                     _, text, current, total = message
                     self.progress.emit(text, current, total)
+                elif kind == "taxonomy_resolved":
+                    _, taxonomy = message
+                    self.taxonomy_resolved.emit(taxonomy)
                 elif kind == "finished":
                     _, instance, taxonomy, orphaned_count = message
                     if orphaned_count:

@@ -150,6 +150,35 @@ def test_async_instance_open_path_uses_loading_dialog(qtbot, qapp, monkeypatch) 
     assert window._open_instance_action.isEnabled()
 
 
+def test_instance_open_stages_taxonomy_before_instance_finishes(qtbot, qapp, monkeypatch) -> None:
+    staged_taxonomy = _taxonomy()
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window._on_open_instance_taxonomy_resolved(staged_taxonomy)
+
+    assert window._current_taxonomy == staged_taxonomy
+    assert window._current_instance is None
+    assert window._sidebar is not None
+    assert window._browser_splitter is not None
+
+
+def test_instance_open_passes_current_taxonomy_for_reuse(qtbot, qapp, monkeypatch) -> None:
+    current_taxonomy = _taxonomy()
+    monkeypatch.setattr("bde_xbrl_editor.ui.main_window.QThread.start", lambda self: None)
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window._on_taxonomy_loaded(current_taxonomy)
+
+    window._begin_instance_open("sample-instance.xbrl")
+
+    assert window._instance_open_worker is not None
+    assert window._instance_open_worker._preloaded_taxonomy is current_taxonomy
+    assert window._current_taxonomy is current_taxonomy
+
+
 def test_reload_to_loader_then_reopen_instance_rebuilds_browser_views(qtbot, qapp, monkeypatch) -> None:
     """Reloading back to the loader must not reuse Qt widgets deleted with the old workspace."""
     monkeypatch.setattr(TaxonomyLoaderWidget, "_on_load", lambda self: None)
