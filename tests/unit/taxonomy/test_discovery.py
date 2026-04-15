@@ -7,7 +7,15 @@ from pathlib import Path
 
 import pytest
 
-from bde_xbrl_editor.taxonomy.discovery import discover_dts
+from collections import deque
+
+from bde_xbrl_editor.taxonomy.discovery import (
+    _enqueue_if_new,
+    _should_follow_locators,
+    _should_parse_linkbase_for_discovery,
+    _should_skip_linkbase,
+    discover_dts,
+)
 from bde_xbrl_editor.taxonomy.models import (
     TaxonomyParseError,
     UnsupportedTaxonomyFormatError,
@@ -242,3 +250,117 @@ class TestCircularReferences:
         schema_names = {p.name for p in schemas}
         assert "a.xsd" in schema_names
         assert "b.xsd" in schema_names
+
+
+class TestDiscoveryQueueing:
+    def test_enqueue_if_new_skips_duplicates_and_visited_paths(self, tmp_path):
+        queue = deque()
+        pending_schemas: set[Path] = set()
+        pending_linkbases: set[Path] = set()
+        visited_schemas: set[Path] = set()
+        visited_linkbases: set[Path] = set()
+
+        schema = (tmp_path / "schema.xsd").resolve()
+        linkbase = (tmp_path / "labels.xml").resolve()
+
+        assert _enqueue_if_new(
+            queue,
+            schema,
+            is_linkbase=False,
+            pending_schemas=pending_schemas,
+            pending_linkbases=pending_linkbases,
+            visited_schemas=visited_schemas,
+            visited_linkbases=visited_linkbases,
+        )
+        assert not _enqueue_if_new(
+            queue,
+            schema,
+            is_linkbase=False,
+            pending_schemas=pending_schemas,
+            pending_linkbases=pending_linkbases,
+            visited_schemas=visited_schemas,
+            visited_linkbases=visited_linkbases,
+        )
+
+        assert _enqueue_if_new(
+            queue,
+            linkbase,
+            is_linkbase=True,
+            pending_schemas=pending_schemas,
+            pending_linkbases=pending_linkbases,
+            visited_schemas=visited_schemas,
+            visited_linkbases=visited_linkbases,
+        )
+        visited_linkbases.add(linkbase)
+        assert not _enqueue_if_new(
+            queue,
+            linkbase,
+            is_linkbase=True,
+            pending_schemas=pending_schemas,
+            pending_linkbases=pending_linkbases,
+            visited_schemas=visited_schemas,
+            visited_linkbases=visited_linkbases,
+        )
+
+        assert list(queue) == [(schema, False), (linkbase, True)]
+
+    def test_enqueue_if_new_skips_validation_message_linkbases(self, tmp_path):
+        queue = deque()
+        pending_schemas: set[Path] = set()
+        pending_linkbases: set[Path] = set()
+        visited_schemas: set[Path] = set()
+        visited_linkbases: set[Path] = set()
+
+        vr_err = (tmp_path / "mod" / "val" / "vr-b0008-err-en.xml").resolve()
+        vr_lab = (tmp_path / "val" / "vr-b0008-lab-es.xml").resolve()
+        table_label = (tmp_path / "tab" / "fi_20-4-lab-en.xml").resolve()
+
+        assert _should_skip_linkbase(vr_err)
+        assert _should_skip_linkbase(vr_lab)
+        assert not _should_skip_linkbase(table_label)
+
+        assert not _enqueue_if_new(
+            queue,
+            vr_err,
+            is_linkbase=True,
+            pending_schemas=pending_schemas,
+            pending_linkbases=pending_linkbases,
+            visited_schemas=visited_schemas,
+            visited_linkbases=visited_linkbases,
+        )
+        assert not _enqueue_if_new(
+            queue,
+            vr_lab,
+            is_linkbase=True,
+            pending_schemas=pending_schemas,
+            pending_linkbases=pending_linkbases,
+            visited_schemas=visited_schemas,
+            visited_linkbases=visited_linkbases,
+        )
+        assert _enqueue_if_new(
+            queue,
+            table_label,
+            is_linkbase=True,
+            pending_schemas=pending_schemas,
+            pending_linkbases=pending_linkbases,
+            visited_schemas=visited_schemas,
+            visited_linkbases=visited_linkbases,
+        )
+
+        assert list(queue) == [(table_label, True)]
+
+    def test_should_follow_locators_skips_label_and_error_linkbases(self, tmp_path):
+        label_linkbase = (tmp_path / "tab" / "fi_20-4-lab-en.xml").resolve()
+        error_linkbase = (tmp_path / "val" / "vr-b0008-err-en.xml").resolve()
+        rendering_linkbase = (tmp_path / "tab" / "fi_20-4-rend.xml").resolve()
+
+        assert not _should_follow_locators(label_linkbase)
+        assert not _should_follow_locators(error_linkbase)
+        assert _should_follow_locators(rendering_linkbase)
+
+    def test_should_parse_linkbase_for_discovery_skips_validation_xmls(self, tmp_path):
+        validation_formula = (tmp_path / "val" / "vr-v0930_m_0.xml").resolve()
+        rendering_linkbase = (tmp_path / "tab" / "fi_20-4-rend.xml").resolve()
+
+        assert not _should_parse_linkbase_for_discovery(validation_formula)
+        assert _should_parse_linkbase_for_discovery(rendering_linkbase)

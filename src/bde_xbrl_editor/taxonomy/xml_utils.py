@@ -18,11 +18,12 @@ def parse_xml_file(path: Path) -> etree._ElementTree:
     These are not well-formed XML, but they can be repaired safely by removing
     the stray whitespace after ``<``.
     """
+    raw = path.read_bytes()
     try:
-        return etree.parse(str(path))  # noqa: S320
-    except etree.XMLSyntaxError:
-        text = path.read_text(encoding="utf-8")
+        return etree.parse(BytesIO(raw))  # noqa: S320
+    except etree.XMLSyntaxError as exc:
+        text = raw.decode("utf-8")
         repaired = _MALFORMED_PREFIXED_START_TAG_RE.sub(r"<\1", text)
         if repaired == text:
-            raise
+            raise exc
         return etree.parse(BytesIO(repaired.encode("utf-8")))  # noqa: S320

@@ -10,6 +10,7 @@ from pathlib import Path
 
 from lxml import etree
 
+from bde_xbrl_editor.taxonomy.linkbases.label import _resolve_locator_href
 from bde_xbrl_editor.taxonomy.constants import (
     ARCROLE_ELEMENT_LABEL,
     NS_GEN,
@@ -17,6 +18,7 @@ from bde_xbrl_editor.taxonomy.constants import (
     NS_XLINK,
 )
 from bde_xbrl_editor.taxonomy.models import Label, QName, TaxonomyParseError
+from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
 
 _GEN_LINK = f"{{{NS_GEN}}}link"
 _GEN_ARC = f"{{{NS_GEN}}}arc"
@@ -33,6 +35,9 @@ _XML_LANG = "{http://www.w3.org/XML/1998/namespace}lang"
 def parse_generic_label_linkbase(
     linkbase_path: Path,
     concept_map: dict[str, QName],
+    *,
+    ns_qualified_map: dict[str, QName] | None = None,
+    schema_ns_map: dict[str, str] | None = None,
 ) -> dict[QName, list[Label]]:
     """Parse a generic label linkbase file.
 
@@ -48,7 +53,7 @@ def parse_generic_label_linkbase(
         TaxonomyParseError: If the file is not well-formed XML.
     """
     try:
-        tree = etree.parse(str(linkbase_path))  # noqa: S320
+        tree = parse_xml_file(linkbase_path)
     except etree.XMLSyntaxError as exc:
         raise TaxonomyParseError(
             file_path=str(linkbase_path),
@@ -59,6 +64,8 @@ def parse_generic_label_linkbase(
 
     root = tree.getroot()
     result: dict[QName, list[Label]] = {}
+    ns_qmap = ns_qualified_map or {}
+    schema_map = schema_ns_map or {}
 
     for link_el in root.iter(_GEN_LINK):
         # Build locator map: xlink:label → QName
@@ -66,11 +73,15 @@ def parse_generic_label_linkbase(
         for loc in link_el:
             href = loc.get(_XLINK_HREF, "")
             xlink_label = loc.get(_XLINK_LABEL, "")
-            if href and "#" in href:
-                fragment = href.rsplit("#", 1)[1]
-                qname = concept_map.get(fragment)
-                if qname:
-                    loc_map[xlink_label] = qname
+            qname = _resolve_locator_href(
+                href,
+                linkbase_path,
+                concept_map,
+                ns_qmap,
+                schema_map,
+            )
+            if qname:
+                loc_map[xlink_label] = qname
 
         # Build label element map: xlink:label → Label list
         label_map: dict[str, list[Label]] = {}

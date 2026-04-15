@@ -14,6 +14,7 @@ from bde_xbrl_editor.taxonomy.models import (
     QName,
     TaxonomyParseError,
 )
+from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
 
 _PRES_LINK = f"{{{NS_LINK}}}presentationLink"
 _LOC = f"{{{NS_LINK}}}loc"
@@ -47,7 +48,7 @@ def parse_presentation_linkbase(
         TaxonomyParseError: If the file is not well-formed XML.
     """
     try:
-        tree = etree.parse(str(linkbase_path))  # noqa: S320
+        tree = parse_xml_file(linkbase_path)
     except etree.XMLSyntaxError as exc:
         raise TaxonomyParseError(
             file_path=str(linkbase_path),

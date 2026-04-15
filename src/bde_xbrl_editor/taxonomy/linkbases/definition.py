@@ -25,6 +25,7 @@ from bde_xbrl_editor.taxonomy.models import (
     QName,
     TaxonomyParseError,
 )
+from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
 
 _DEF_LINK = f"{{{NS_LINK}}}definitionLink"
 _LOC = f"{{{NS_LINK}}}loc"
@@ -53,8 +54,14 @@ def _resolve_locator_href(
     1. Namespace-qualified lookup: derive targetNamespace from the href schema URL
        (either via schema_ns_map for absolute URLs, or by resolving relative paths
        against the linkbase directory), then look up "{namespace}#{fragment}".
-    2. Fall back to bare fragment lookup in concept_map (may collide when two
-       schemas declare elements with the same xml:id).
+    2. For fragment-only hrefs like "#concept", fall back to bare fragment lookup
+       in concept_map.
+
+    IMPORTANT: when the locator explicitly names a schema document
+    ("other.xsd#concept"), do not fall back to concept_map if that schema cannot
+    be resolved to a namespace. Bare-fragment lookup is ambiguous when two
+    schemas declare the same xml:id (for example met.xsd#eba_GXI vs dim.xsd#eba_GXI)
+    and can create false xbrldte:* validation errors.
     """
     if "#" not in href:
         return None
@@ -79,7 +86,10 @@ def _resolve_locator_href(
         if qname:
             return qname
 
-    # Attempt 2: bare fragment fallback (backward compat, may have collisions)
+    if schema_url:
+        return None
+
+    # Attempt 2: bare fragment fallback for fragment-only locators.
     return concept_map.get(fragment)
 
 
@@ -103,7 +113,7 @@ def parse_definition_linkbase(
         TaxonomyParseError: If the file is not well-formed XML.
     """
     try:
-        tree = etree.parse(str(linkbase_path))  # noqa: S320
+        tree = parse_xml_file(linkbase_path)
     except etree.XMLSyntaxError as exc:
         raise TaxonomyParseError(
             file_path=str(linkbase_path),

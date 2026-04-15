@@ -10,6 +10,7 @@ import os
 from concurrent.futures import Future, ThreadPoolExecutor
 from collections.abc import Callable
 from datetime import datetime
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
@@ -51,6 +52,7 @@ from bde_xbrl_editor.taxonomy.models import (
 )
 from bde_xbrl_editor.taxonomy.schema import XBRL_SG_ROOTS, parse_schema_raw
 from bde_xbrl_editor.taxonomy.settings import LoaderSettings
+from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
 
 ProgressCallback = Callable[[str, int, int], None]
 
@@ -91,7 +93,7 @@ def _sniff_linkbase_type(path: Path) -> str:
         "http://xbrl.org/2008/assertion/consistency",
     }
     try:
-        ctx = etree.iterparse(str(path), events=("start",))
+        ctx = etree.iterparse(BytesIO(path.read_bytes()), events=("start",))
         for _, el in ctx:
             tag = str(el.tag)
             if NS_TABLE_PWD in tag:
@@ -206,7 +208,7 @@ def _extract_metadata(entry_point: Path, declared_languages: list[str]) -> Taxon
     period_type = None
 
     try:
-        tree = etree.parse(str(entry_point))  # noqa: S320
+        tree = parse_xml_file(entry_point)
         root = tree.getroot()
         # Try to find annotation/documentation with taxonomy info
         for doc in root.iter("{http://www.w3.org/2001/XMLSchema}documentation"):
@@ -754,7 +756,11 @@ class TaxonomyLoader:
         # Step 1: DTS discovery
         progress("Discovering DTS…", 1)
         schema_paths, linkbase_paths, skipped_urls, include_ns_map, discovered_roles = discover_dts(
-            entry_point, self._settings, progress_callback=None,
+            entry_point,
+            self._settings,
+            progress_callback=(
+                lambda message, _current, _total: progress(message, 1)
+            ),
         )
         self._last_skipped_urls: list[str] = skipped_urls
         progress(
@@ -855,7 +861,12 @@ class TaxonomyLoader:
 
         parsed_label_linkbases = _run_path_jobs(
             label_linkbases,
-            lambda lb_path: parse_label_linkbase(lb_path, concept_id_map),
+            lambda lb_path: parse_label_linkbase(
+                lb_path,
+                concept_id_map,
+                ns_qualified_map=ns_qualified_map,
+                schema_ns_map=schema_ns_map,
+            ),
             workers=linkbase_workers,
         )
         for _lb_path, parsed in parsed_label_linkbases:
@@ -864,7 +875,12 @@ class TaxonomyLoader:
 
         parsed_generic_label_linkbases = _run_path_jobs(
             generic_label_linkbases,
-            lambda lb_path: parse_generic_label_linkbase(lb_path, concept_id_map),
+            lambda lb_path: parse_generic_label_linkbase(
+                lb_path,
+                concept_id_map,
+                ns_qualified_map=ns_qualified_map,
+                schema_ns_map=schema_ns_map,
+            ),
             workers=linkbase_workers,
         )
         for _lb_path, parsed in parsed_generic_label_linkbases:

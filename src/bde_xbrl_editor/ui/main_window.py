@@ -90,7 +90,7 @@ class MainWindow(QMainWindow):
     def _apply_stylesheet(self) -> None:
         self.setStyleSheet(f"""
             QMainWindow, QWidget {{
-                font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+                font-family: "Helvetica Neue", Arial, sans-serif;
                 font-size: 12px;
                 color: {theme.TEXT_MAIN};
             }}
