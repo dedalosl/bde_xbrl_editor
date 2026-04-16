@@ -40,7 +40,7 @@ class TestInstanceRoundtrip:
             ReportingEntity,
             ReportingPeriod,
         )
-        from bde_xbrl_editor.instance.constants import FILING_IND_NS, LINK_NS, XBRLI_NS
+        from bde_xbrl_editor.instance.constants import BDE_PBLO_NS, FILING_IND_NS, LINK_NS, XBRLI_NS
 
         entity = ReportingEntity(
             identifier="ES0123456789", scheme="http://www.bde.es/"
@@ -64,7 +64,9 @@ class TestInstanceRoundtrip:
         assert root.find(f"{{{LINK_NS}}}schemaRef") is not None
         assert len(root.findall(f"{{{XBRLI_NS}}}context")) >= 1
         fi_indicators = root.findall(f".//{{{FILING_IND_NS}}}filingIndicator")
-        assert len(fi_indicators) == len(table_ids)
+        estados = root.findall(f".//{{{BDE_PBLO_NS}}}CodigoEstado")
+        assert fi_indicators == []
+        assert len(estados) == len(bde_taxonomy.tables)
         assert len(root.findall(f"{{{XBRLI_NS}}}item")) == 0  # no facts yet
 
     def test_mark_saved_after_serialization(self, bde_taxonomy, tmp_path):

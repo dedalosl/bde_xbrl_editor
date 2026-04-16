@@ -18,56 +18,56 @@ def repeated_level_color(colors: tuple[str, ...], level: int) -> str:
     return colors[level]
 
 # Base surfaces
-WINDOW_BG = "#F6F1E7"
-PANEL_BG = "#F1E8D7"
-SURFACE_BG = "#FBF8F2"
-SURFACE_ALT_BG = "#F4EEDF"
-INPUT_BG = "#FFFDF9"
+WINDOW_BG = "#F3F1EC"
+PANEL_BG = "#E7E1D6"
+SURFACE_BG = "#FCFBF8"
+SURFACE_ALT_BG = "#F1ECE3"
+INPUT_BG = "#FFFEFC"
 
 # Header and navigation tones
-HEADER_BG = "#E5C99B"
-HEADER_BG_LIGHT = "#F3DFC0"
-HEADER_BG_DARK = "#D3B17D"
-HEADER_SURFACE_BG = "#F1D7AA"
+HEADER_BG = "#DCC29A"
+HEADER_BG_LIGHT = "#EEE0CA"
+HEADER_BG_DARK = "#B89160"
+HEADER_SURFACE_BG = "#E8D4B1"
 HEADER_LEVEL_BACKGROUNDS = (
-    "#E9C58D",  # level 0
-    "#F1D4A8",  # level 1
-    "#F7E6C9",  # level 2
-    "#FCF6E9",  # level 3+
+    "#E0C18F",  # level 0
+    "#EAD3AF",  # level 1
+    "#F3E4CC",  # level 2
+    "#FAF4E8",  # level 3+
 )
-NAV_BG = "#C8A978"
-NAV_BG_DARK = "#B18C5B"
-NAV_BG_DEEP = "#8F6E43"
+NAV_BG = "#BDA682"
+NAV_BG_DARK = "#9D7E59"
+NAV_BG_DEEP = "#4F5B66"
 
 # Borders and accents
-BORDER = "#B8A27F"
-BORDER_STRONG = "#8B734B"
-ACCENT = "#A8854E"
-ACCENT_SOFT = "#E8D3AF"
+BORDER = "#B7AEA1"
+BORDER_STRONG = "#7C6D5A"
+ACCENT = "#A8793F"
+ACCENT_SOFT = "#E7D7C0"
 HEADER_LEVEL_ACCENTS = (
-    "#B99863",  # level 0
-    "#CCAF7B",  # level 1
-    "#E0C89E",  # level 2
-    "#E8D3AF",  # level 3+
+    "#B58E58",  # level 0
+    "#CAA774",  # level 1
+    "#DBC09A",  # level 2
+    "#E7D7C0",  # level 3+
 )
 
 # Text
-TEXT_MAIN = "#2E261B"
-TEXT_MUTED = "#6F5C43"
+TEXT_MAIN = "#2B2620"
+TEXT_MUTED = "#665B4D"
 TEXT_INVERSE = "#FFFDF8"
-TEXT_SUBTLE = "#8E7A60"
+TEXT_SUBTLE = "#8C8377"
 
 # States
-SELECTION_BG = "#D9BC8C"
+SELECTION_BG = "#D8C6A6"
 SELECTION_FG = TEXT_MAIN
-HOVER_BG = "#EEE0C6"
-DISABLED_BG = "#E6DED1"
-DISABLED_FG = "#9F927C"
+HOVER_BG = "#ECE4D7"
+DISABLED_BG = "#E5DFD5"
+DISABLED_FG = "#9C9183"
 WARNING_BG = "#FFF2DA"
 WARNING_FG = "#7A5A22"
 
 # Table body
-CELL_BG = "#FFFDFC"
-CELL_BG_MUTED = "#F7F1E6"
+CELL_BG = "#FFFEFC"
+CELL_BG_MUTED = "#F5F0E8"
 CELL_BG_DISABLED = "#C8C3BB"
 CELL_BG_DUPLICATE = "#F6D6D0"

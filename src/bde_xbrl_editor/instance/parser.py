@@ -321,19 +321,24 @@ class InstanceParser:
         progress("Reading filing metadata…", 88)
         bde_preambulo = _parse_bde_preambulo(root)
 
-        # Stage 5b: Parse Eurofiling filing indicators
-        filing_indicators: list[FilingIndicator] = []
-        # They may be inside ef-find:fIndicators wrapper or directly as children
-        for child in root:
-            if not isinstance(child.tag, str):  # skip comments / PIs
-                continue
-            local = child.tag.split("}")[-1] if "}" in child.tag else child.tag
-            ns = child.tag.split("}")[0][1:] if "}" in child.tag else ""
-            if ns == FILING_IND_NS and local == "fIndicators":
-                for fi_el in child:
-                    _parse_filing_indicator(fi_el, filing_indicators)
-            elif child.tag == _FILING_IND:
-                _parse_filing_indicator(child, filing_indicators)
+        # Stage 5b: Parse filing indicators.
+        # BDE instances use EstadosReportados/CodigoEstado as the canonical
+        # filing-indicator source, so prefer that whenever present and fall back
+        # to Eurofiling fIndicators for non-BDE taxonomies.
+        filing_indicators = _parse_bde_filing_indicators(bde_preambulo)
+        if not filing_indicators:
+            filing_indicators = []
+            # They may be inside ef-find:fIndicators wrapper or directly as children.
+            for child in root:
+                if not isinstance(child.tag, str):  # skip comments / PIs
+                    continue
+                local = child.tag.split("}")[-1] if "}" in child.tag else child.tag
+                ns = child.tag.split("}")[0][1:] if "}" in child.tag else ""
+                if ns == FILING_IND_NS and local == "fIndicators":
+                    for fi_el in child:
+                        _parse_filing_indicator(fi_el, filing_indicators)
+                elif child.tag == _FILING_IND:
+                    _parse_filing_indicator(child, filing_indicators)
 
         # Stages 6–7: Parse facts
         progress("Reading facts…", 93)
@@ -468,6 +473,29 @@ def _parse_filing_indicator(el: etree._Element, out: list[FilingIndicator]) -> N
             filed=filed,
             context_ref=context_ref,
         ))
+
+
+def _parse_bde_filing_indicators(
+    preambulo: BdePreambulo | None,
+) -> list[FilingIndicator]:
+    """Build filing indicators from BDE EstadosReportados when present.
+
+    BDE instances encode filing-indicator semantics with 4-digit CodigoEstado
+    values. ``blanco="true"`` marks the table as empty/not filed; the default is
+    ``false`` which means the table contains data.
+    """
+    if preambulo is None or not preambulo.estados_reportados:
+        return []
+
+    return [
+        FilingIndicator(
+            template_id=estado.codigo,
+            filed=not estado.blanco,
+            context_ref=estado.context_ref or preambulo.context_ref,
+        )
+        for estado in preambulo.estados_reportados
+        if estado.codigo
+    ]
 
 
 def _parse_bde_preambulo(root: etree._Element) -> BdePreambulo | None:
