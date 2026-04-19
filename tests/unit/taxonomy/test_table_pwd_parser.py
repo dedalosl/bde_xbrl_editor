@@ -83,6 +83,171 @@ TABLE_LABEL_CODES = textwrap.dedent("""\
     </link:linkbase>
 """)
 
+TABLE_WITH_ASPECT_NODE_FILTER = textwrap.dedent("""\
+    <?xml version="1.0" encoding="UTF-8"?>
+    <link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+                   xmlns:table="http://xbrl.org/PWD/2013-05-17/table"
+                   xmlns:df="http://xbrl.org/2008/filter/dimension"
+                   xmlns:xlink="http://www.w3.org/1999/xlink"
+                   xmlns:dim="http://example.com/dim"
+                   xmlns:mem="http://example.com/mem">
+
+      <link:roleRef roleURI="http://example.com/role/filter"
+                    xlink:type="simple"
+                    xlink:href="filter.xsd#role"/>
+
+      <gen:link xmlns:gen="http://xbrl.org/2008/generic"
+                xlink:type="extended"
+                xlink:role="http://example.com/role/t1">
+        <table:table id="t1"
+                     xlink:type="resource"
+                     xlink:label="t1"/>
+
+        <table:breakdown id="bd_z"
+                         xlink:type="resource"
+                         xlink:label="bd_z"/>
+
+        <table:aspectNode id="z_root"
+                          xlink:type="resource"
+                          xlink:label="z_root">
+          <table:dimensionAspect>dim:ZDim</table:dimensionAspect>
+        </table:aspectNode>
+
+        <df:explicitDimension xlink:type="resource"
+                              xlink:label="z_root.filter"
+                              id="z_root.filter">
+          <df:dimension>
+            <df:qname>dim:ZDim</df:qname>
+          </df:dimension>
+          <df:member>
+            <df:qname>mem:RootMember</df:qname>
+            <df:linkrole>http://example.com/role/filter</df:linkrole>
+            <df:arcrole>http://xbrl.org/int/dim/arcrole/domain-member</df:arcrole>
+            <df:axis>descendant</df:axis>
+          </df:member>
+        </df:explicitDimension>
+
+        <table:breakdownTreeArc xlink:type="arc"
+                                xlink:arcrole="http://xbrl.org/arcrole/PWD/2013-05-17/breakdown-tree"
+                                xlink:from="bd_z"
+                                xlink:to="z_root"
+                                order="0"/>
+
+        <table:aspectNodeFilterArc xlink:type="arc"
+                                   xlink:arcrole="http://xbrl.org/arcrole/PWD/2013-05-17/aspect-node-filter"
+                                   xlink:from="z_root"
+                                   xlink:to="z_root.filter"
+                                   complement="false"/>
+
+        <table:tableBreakdownArc xlink:type="arc"
+                                 xlink:arcrole="http://xbrl.org/arcrole/PWD/2013-05-17/table-breakdown"
+                                 xlink:from="t1"
+                                 xlink:to="bd_z"
+                                 axis="z"
+                                 order="1"/>
+      </gen:link>
+    </link:linkbase>
+""")
+
+FILTER_HIER_XSD = textwrap.dedent("""\
+    <?xml version="1.0" encoding="UTF-8"?>
+    <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+               xmlns:link="http://www.xbrl.org/2003/linkbase"
+               xmlns:xlink="http://www.w3.org/1999/xlink"
+               targetNamespace="http://example.com/hier">
+      <xs:annotation>
+        <xs:appinfo>
+          <link:linkbaseRef xlink:type="simple"
+                            xlink:href="hier-def.xml"
+                            xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase"
+                            xlink:role="http://www.xbrl.org/2003/role/definitionLinkbaseRef"/>
+          <link:roleType roleURI="http://example.com/role/filter" id="role_filter">
+            <link:usedOn>link:definitionLink</link:usedOn>
+          </link:roleType>
+        </xs:appinfo>
+      </xs:annotation>
+    </xs:schema>
+""")
+
+FILTER_MEM_XSD = textwrap.dedent("""\
+    <?xml version="1.0" encoding="UTF-8"?>
+    <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+               targetNamespace="http://example.com/mem">
+      <xs:element id="root_member_id" name="RootMember"/>
+      <xs:element id="child_a_id" name="ChildA"/>
+      <xs:element id="child_b_id" name="ChildB"/>
+    </xs:schema>
+""")
+
+FILTER_HIER_DEF = textwrap.dedent("""\
+    <?xml version="1.0" encoding="UTF-8"?>
+    <link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+                   xmlns:xlink="http://www.w3.org/1999/xlink">
+      <link:definitionLink xlink:type="extended" xlink:role="http://example.com/role/filter">
+        <link:loc xlink:type="locator" xlink:label="root" xlink:href="mem.xsd#root_member_id"/>
+        <link:loc xlink:type="locator" xlink:label="child_a" xlink:href="mem.xsd#child_a_id"/>
+        <link:loc xlink:type="locator" xlink:label="child_b" xlink:href="mem.xsd#child_b_id"/>
+        <link:definitionArc xlink:type="arc"
+                            xlink:arcrole="http://xbrl.org/int/dim/arcrole/domain-member"
+                            xlink:from="root"
+                            xlink:to="child_a"/>
+        <link:definitionArc xlink:type="arc"
+                            xlink:arcrole="http://xbrl.org/int/dim/arcrole/domain-member"
+                            xlink:from="root"
+                            xlink:to="child_b"/>
+      </link:definitionLink>
+    </link:linkbase>
+""")
+
+FILTER_MEM_WITH_ABSTRACT_GROUPS_XSD = textwrap.dedent("""\
+    <?xml version="1.0" encoding="UTF-8"?>
+    <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+               targetNamespace="http://example.com/mem">
+      <xs:element id="root_member_id" name="RootMember" abstract="true"/>
+      <xs:element id="group_id" name="GroupMember" abstract="true"/>
+      <xs:element id="child_a_id" name="ChildA"/>
+      <xs:element id="child_b_id" name="ChildB"/>
+      <xs:element id="abstract_leaf_id" name="AbstractLeaf" abstract="true"/>
+    </xs:schema>
+""")
+
+FILTER_HIER_WITH_ABSTRACT_GROUPS_DEF = textwrap.dedent("""\
+    <?xml version="1.0" encoding="UTF-8"?>
+    <link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+                   xmlns:xlink="http://www.w3.org/1999/xlink"
+                   xmlns:xbrldt="http://xbrl.org/2005/xbrldt">
+      <link:definitionLink xlink:type="extended" xlink:role="http://example.com/role/filter">
+        <link:loc xlink:type="locator" xlink:label="root" xlink:href="mem.xsd#root_member_id"/>
+        <link:loc xlink:type="locator" xlink:label="group" xlink:href="mem.xsd#group_id"/>
+        <link:loc xlink:type="locator" xlink:label="child_a" xlink:href="mem.xsd#child_a_id"/>
+        <link:loc xlink:type="locator" xlink:label="child_b" xlink:href="mem.xsd#child_b_id"/>
+        <link:loc xlink:type="locator" xlink:label="abstract_leaf" xlink:href="mem.xsd#abstract_leaf_id"/>
+        <link:definitionArc xlink:type="arc"
+                            xlink:arcrole="http://xbrl.org/int/dim/arcrole/domain-member"
+                            xlink:from="root"
+                            xlink:to="group"/>
+        <link:definitionArc xlink:type="arc"
+                            xlink:arcrole="http://xbrl.org/int/dim/arcrole/domain-member"
+                            xlink:from="group"
+                            xlink:to="child_a"/>
+        <link:definitionArc xlink:type="arc"
+                            xlink:arcrole="http://xbrl.org/int/dim/arcrole/domain-member"
+                            xlink:from="root"
+                            xlink:to="child_b"
+                            xbrldt:usable="false"/>
+        <link:definitionArc xlink:type="arc"
+                            xlink:arcrole="http://xbrl.org/int/dim/arcrole/domain-member"
+                            xlink:from="root"
+                            xlink:to="abstract_leaf"/>
+      </link:definitionLink>
+    </link:linkbase>
+""")
+
+TABLE_WITH_MALFORMED_ASPECT_NODE_FILTER = TABLE_WITH_ASPECT_NODE_FILTER.replace(
+    "<df:linkrole>",
+    "< df:linkrole>",
+)
+
 
 class TestMinimalTableParsing:
     def test_parse_minimal_returns_empty_tables_or_one(self, tmp_path):
@@ -169,3 +334,104 @@ class TestBreakdownNodeAttributes:
     def test_merge_flag(self):
         node = BreakdownNode(node_type="rule", merge=True)
         assert node.merge is True
+
+    def test_aspect_node_filter_is_parsed_into_breakdown_constraints(self, tmp_path):
+        lb = tmp_path / "filter-table.xml"
+        lb.write_text(TABLE_WITH_ASPECT_NODE_FILTER, encoding="utf-8")
+        hier_xsd = tmp_path / "filter.xsd"
+        hier_xsd.write_text(FILTER_HIER_XSD, encoding="utf-8")
+        mem_xsd = tmp_path / "mem.xsd"
+        mem_xsd.write_text(FILTER_MEM_XSD, encoding="utf-8")
+        hier_def = tmp_path / "hier-def.xml"
+        hier_def.write_text(FILTER_HIER_DEF, encoding="utf-8")
+
+        tables = parse_table_linkbase(lb)
+
+        assert len(tables) == 1
+        assert len(tables[0].z_breakdowns) == 1
+        z_root = tables[0].z_breakdowns[0]
+        assert z_root.aspect_constraints["dimensionAspect"] == "{http://example.com/dim}ZDim"
+        assert z_root.aspect_constraints["explicitDimensionFilters"] == [
+            {
+                "dimension": "{http://example.com/dim}ZDim",
+                "members": [
+                    {
+                        "member": "{http://example.com/mem}RootMember",
+                        "linkrole": "http://example.com/role/filter",
+                        "arcrole": "http://xbrl.org/int/dim/arcrole/domain-member",
+                        "axis": "descendant",
+                        "resolved_members": [
+                            "{http://example.com/mem}ChildA",
+                            "{http://example.com/mem}ChildB",
+                        ],
+                    }
+                ],
+                "complement": False,
+            }
+        ]
+
+    def test_aspect_node_filter_keeps_only_usable_leaf_descendants(self, tmp_path):
+        lb = tmp_path / "filter-table.xml"
+        lb.write_text(TABLE_WITH_ASPECT_NODE_FILTER, encoding="utf-8")
+        hier_xsd = tmp_path / "filter.xsd"
+        hier_xsd.write_text(FILTER_HIER_XSD, encoding="utf-8")
+        mem_xsd = tmp_path / "mem.xsd"
+        mem_xsd.write_text(FILTER_MEM_WITH_ABSTRACT_GROUPS_XSD, encoding="utf-8")
+        hier_def = tmp_path / "hier-def.xml"
+        hier_def.write_text(FILTER_HIER_WITH_ABSTRACT_GROUPS_DEF, encoding="utf-8")
+
+        tables = parse_table_linkbase(lb)
+
+        assert len(tables) == 1
+        z_root = tables[0].z_breakdowns[0]
+        assert z_root.aspect_constraints["explicitDimensionFilters"] == [
+            {
+                "dimension": "{http://example.com/dim}ZDim",
+                "members": [
+                    {
+                        "member": "{http://example.com/mem}RootMember",
+                        "linkrole": "http://example.com/role/filter",
+                        "arcrole": "http://xbrl.org/int/dim/arcrole/domain-member",
+                        "axis": "descendant",
+                        "resolved_members": [
+                            "{http://example.com/mem}AbstractLeaf",
+                            "{http://example.com/mem}ChildA",
+                        ],
+                    }
+                ],
+                "complement": False,
+            }
+        ]
+
+    def test_aspect_node_filter_repairs_malformed_prefixed_start_tag(self, tmp_path):
+        lb = tmp_path / "filter-table.xml"
+        lb.write_text(TABLE_WITH_MALFORMED_ASPECT_NODE_FILTER, encoding="utf-8")
+        hier_xsd = tmp_path / "filter.xsd"
+        hier_xsd.write_text(FILTER_HIER_XSD, encoding="utf-8")
+        mem_xsd = tmp_path / "mem.xsd"
+        mem_xsd.write_text(FILTER_MEM_XSD, encoding="utf-8")
+        hier_def = tmp_path / "hier-def.xml"
+        hier_def.write_text(FILTER_HIER_DEF, encoding="utf-8")
+
+        tables = parse_table_linkbase(lb)
+
+        assert len(tables) == 1
+        z_root = tables[0].z_breakdowns[0]
+        assert z_root.aspect_constraints["explicitDimensionFilters"] == [
+            {
+                "dimension": "{http://example.com/dim}ZDim",
+                "members": [
+                    {
+                        "member": "{http://example.com/mem}RootMember",
+                        "linkrole": "http://example.com/role/filter",
+                        "arcrole": "http://xbrl.org/int/dim/arcrole/domain-member",
+                        "axis": "descendant",
+                        "resolved_members": [
+                            "{http://example.com/mem}ChildA",
+                            "{http://example.com/mem}ChildB",
+                        ],
+                    }
+                ],
+                "complement": False,
+            }
+        ]

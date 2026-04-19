@@ -24,6 +24,16 @@ class FactMapper:
     def __init__(self, taxonomy: TaxonomyStructure) -> None:
         self._taxonomy = taxonomy
 
+    def _normalize_dimensions(self, dims: dict[QName, QName]) -> dict[QName, QName]:
+        """Treat default-member dimensions as equivalent to being absent."""
+        normalized: dict[QName, QName] = {}
+        for dim_qname, member_qname in dims.items():
+            dim_model = self._taxonomy.dimensions.get(dim_qname)
+            if dim_model is not None and dim_model.default_member == member_qname:
+                continue
+            normalized[dim_qname] = member_qname
+        return normalized
+
     def match(self, coordinate: CellCoordinate, instance: XbrlInstance) -> FactMatchResult:
         """Match coordinate against instance facts.
 
@@ -52,7 +62,8 @@ class FactMapper:
                 for dim, mem in (context.dimensions if hasattr(context, "dimensions") else {}).items()
                 if dim != _AGRUPACION_DIM
             }
-            coord_dims = coordinate.explicit_dimensions or {}
+            fact_dims = self._normalize_dimensions(fact_dims)
+            coord_dims = self._normalize_dimensions(coordinate.explicit_dimensions or {})
             # Exact match: fact dimensions (after stripping Agrupacion) must equal
             # coordinate dimensions exactly — not just a subset. A fact with extra
             # dimensions would belong to a different (more specific) table cell.

@@ -5,7 +5,7 @@ from __future__ import annotations
 import contextlib
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Qt, QThread, Signal
+from PySide6.QtCore import Qt, QThread, Signal
 from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
@@ -23,8 +23,8 @@ from bde_xbrl_editor.taxonomy import (
     LoaderSettings,
     TaxonomyCache,
     TaxonomyLoader,
-    TaxonomyLoadError,
 )
+from bde_xbrl_editor.ui.loading import InstanceLoadWorker, TaxonomyLoadWorker
 from bde_xbrl_editor.ui import theme
 from bde_xbrl_editor.ui.widgets.loader_settings_dialog import (
     add_recent_file,
@@ -45,76 +45,6 @@ _TEXT_MAIN = theme.TEXT_MAIN
 _TEXT_MUTED = theme.TEXT_MUTED
 _BORDER = theme.BORDER
 _HOVER_ROW = theme.HOVER_BG
-
-
-class _LoadWorker(QObject):
-    """Worker that runs TaxonomyLoader.load() in a background QThread."""
-
-    finished = Signal(object)
-    error = Signal(str)
-    progress = Signal(str, int, int)
-
-    def __init__(self, loader: TaxonomyLoader, path: str) -> None:
-        super().__init__()
-        self._loader = loader
-        self._path = path
-
-    def run(self) -> None:
-        def on_progress(msg: str, current: int, total: int) -> None:
-            self.progress.emit(msg, current, total)
-
-        try:
-            structure = self._loader.load(self._path, progress_callback=on_progress)
-            skipped = self._loader.last_skipped_urls
-            self.finished.emit((structure, skipped))
-        except TaxonomyLoadError as exc:
-            self.error.emit(str(exc))
-        except Exception as exc:  # noqa: BLE001
-            self.error.emit(f"Unexpected error: {exc}")
-
-
-class _InstanceLoadWorker(QObject):
-    """Worker that runs InstanceParser.load() in a background QThread."""
-
-    finished = Signal(object, object)  # (XbrlInstance, TaxonomyStructure)
-    error = Signal(str)
-    orphaned = Signal(int)  # emits orphaned fact count if > 0
-    progress = Signal(str, int, int)
-
-    def __init__(self, cache: TaxonomyCache, settings: LoaderSettings, path: str) -> None:
-        super().__init__()
-        self._cache = cache
-        self._settings = settings
-        self._path = path
-
-    def run(self) -> None:
-        from bde_xbrl_editor.instance.models import (  # noqa: PLC0415
-            InstanceParseError,
-            TaxonomyResolutionError,
-        )
-        from bde_xbrl_editor.instance.parser import InstanceParser  # noqa: PLC0415
-        from bde_xbrl_editor.taxonomy.loader import TaxonomyLoader  # noqa: PLC0415
-
-        loader = TaxonomyLoader(cache=self._cache, settings=self._settings)
-        parser = InstanceParser(taxonomy_loader=loader)
-
-        def on_progress(msg: str, current: int, total: int) -> None:
-            self.progress.emit(msg, current, total)
-
-        try:
-            instance, orphaned_facts = parser.load(self._path, progress_callback=on_progress)
-            self.progress.emit("Preparing editor…", 96, 100)
-            taxonomy = loader.load(instance.taxonomy_entry_point, progress_callback=on_progress)
-            if orphaned_facts:
-                self.orphaned.emit(len(orphaned_facts))
-            self.progress.emit("Instance ready", 100, 100)
-            self.finished.emit(instance, taxonomy)
-        except TaxonomyResolutionError as exc:
-            self.error.emit(str(exc))
-        except InstanceParseError as exc:
-            self.error.emit(str(exc))
-        except Exception as exc:  # noqa: BLE001
-            self.error.emit(f"Unexpected error: {exc}")
 
 
 class _RecentFileRow(QFrame):
@@ -245,9 +175,9 @@ class TaxonomyLoaderWidget(QWidget):
         self._settings = settings or LoaderSettings()
         self._loader = TaxonomyLoader(cache=self._cache, settings=self._settings)
         self._thread: QThread | None = None
-        self._worker: _LoadWorker | None = None
+        self._worker: TaxonomyLoadWorker | None = None
         self._inst_thread: QThread | None = None
-        self._inst_worker: _InstanceLoadWorker | None = None
+        self._inst_worker: InstanceLoadWorker | None = None
         self._progress_dialog: TaxonomyProgressDialog | None = None
         self._setup_ui()
 
@@ -257,8 +187,8 @@ class TaxonomyLoaderWidget(QWidget):
         if self._progress_dialog is None:
             self._progress_dialog = TaxonomyProgressDialog(self)
         self._progress_dialog.setWindowTitle(title)
+        self._progress_dialog.reset()
         self._progress_dialog.setLabelText(initial_message)
-        self._progress_dialog.setValue(0)
         self._progress_dialog.show()
         return self._progress_dialog
 
@@ -608,8 +538,9 @@ class TaxonomyLoaderWidget(QWidget):
             "Loading Taxonomy…",
             "Initialising taxonomy load…",
         )
+        progress_dialog.set_context("Taxonomy", path)
 
-        self._worker = _LoadWorker(self._loader, path)
+        self._worker = TaxonomyLoadWorker(self._loader, path)
         self._thread = QThread(self)
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
@@ -686,11 +617,12 @@ class TaxonomyLoaderWidget(QWidget):
         self._load_inst_btn.setEnabled(False)
 
         progress_dialog = self._show_progress_dialog(
-            "Loading Taxonomy…",
+            "Loading Instance…",
             "Initialising instance load…",
         )
+        progress_dialog.set_context("Instance", path)
 
-        self._inst_worker = _InstanceLoadWorker(self._cache, self._settings, path)
+        self._inst_worker = InstanceLoadWorker(self._cache, self._settings, path)
         self._inst_thread = QThread(self)
         self._inst_worker.moveToThread(self._inst_thread)
         self._inst_thread.started.connect(self._inst_worker.run)
@@ -715,7 +647,7 @@ class TaxonomyLoaderWidget(QWidget):
         with contextlib.suppress(OSError):
             add_recent_instance(self._inst_path_edit.text().strip())
         if self._progress_dialog is not None:
-            self._progress_dialog.update_progress("Opening main window…", 100, 100)
+            self._progress_dialog.update_progress("Opening workspace…", 100, 100)
         self.instance_loaded.emit(instance, taxonomy)
         self._close_progress_dialog()
 

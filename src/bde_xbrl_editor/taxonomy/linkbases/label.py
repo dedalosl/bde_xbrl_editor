@@ -16,6 +16,7 @@ from bde_xbrl_editor.taxonomy.constants import (
     NS_XLINK,
 )
 from bde_xbrl_editor.taxonomy.models import Label, QName, TaxonomyParseError
+from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
 
 _LABEL_LINK = f"{{{NS_LINK}}}labelLink"
 _LOC = f"{{{NS_LINK}}}loc"
@@ -28,20 +29,52 @@ _XLINK_TO = f"{{{NS_XLINK}}}to"
 _XLINK_ARCROLE = f"{{{NS_XLINK}}}arcrole"
 _XLINK_ROLE = f"{{{NS_XLINK}}}role"
 
+def _resolve_locator_href(
+    href: str,
+    linkbase_path: Path,
+    concept_map: dict[str, QName],
+    ns_qualified_map: dict[str, QName],
+    schema_ns_map: dict[str, str],
+) -> QName | None:
+    """Resolve a label locator href to a QName.
 
-def _concept_qname_from_href(href: str) -> QName | None:
-    """Extract concept QName from an XLink locator href like schema.xsd#concept_id."""
+    Fragment-only hrefs such as "#concept_id" still fall back to ``concept_map``.
+    When the href explicitly names a schema document, require namespace-qualified
+    resolution so duplicate xml:id values across different namespaces cannot steal
+    each other's labels.
+    """
     if "#" not in href:
         return None
-    base, fragment = href.rsplit("#", 1)
-    # fragment is the @id attribute value — typically "prefix_localName" or just localName
-    # We return a bare QName with no namespace (namespace is resolved later against schema)
-    return QName(namespace="", local_name=fragment)
+    schema_url, fragment = href.rsplit("#", 1)
+    if not fragment:
+        return None
+
+    ns: str | None = None
+    if schema_url.startswith("http://") or schema_url.startswith("https://"):
+        ns = schema_ns_map.get(schema_url)
+    elif schema_url:
+        try:
+            ns = schema_ns_map.get(str((linkbase_path.parent / schema_url).resolve()))
+        except Exception:  # noqa: BLE001
+            ns = None
+
+    if ns:
+        qname = ns_qualified_map.get(f"{ns}#{fragment}")
+        if qname:
+            return qname
+
+    if schema_url:
+        return None
+
+    return concept_map.get(fragment)
 
 
 def parse_label_linkbase(
     linkbase_path: Path,
     concept_map: dict[str, QName],  # @id → QName (built from schema QNames)
+    *,
+    ns_qualified_map: dict[str, QName] | None = None,
+    schema_ns_map: dict[str, str] | None = None,
 ) -> dict[QName, list[Label]]:
     """Parse a standard label linkbase file.
 
@@ -57,7 +90,7 @@ def parse_label_linkbase(
         TaxonomyParseError: If the file is not well-formed XML.
     """
     try:
-        tree = etree.parse(str(linkbase_path))  # noqa: S320
+        tree = parse_xml_file(linkbase_path)
     except etree.XMLSyntaxError as exc:
         raise TaxonomyParseError(
             file_path=str(linkbase_path),
@@ -68,6 +101,8 @@ def parse_label_linkbase(
 
     root = tree.getroot()
     result: dict[QName, list[Label]] = {}
+    ns_qmap = ns_qualified_map or {}
+    schema_map = schema_ns_map or {}
 
     for link_el in root.iter(_LABEL_LINK):
         # Step 1: build locator map (xlink:label → concept QName)
@@ -75,11 +110,15 @@ def parse_label_linkbase(
         for loc in link_el.iter(_LOC):
             href = loc.get(_XLINK_HREF, "")
             xlink_label = loc.get(_XLINK_LABEL, "")
-            if "#" in href:
-                fragment = href.rsplit("#", 1)[1]
-                qname = concept_map.get(fragment)
-                if qname:
-                    loc_map[xlink_label] = qname
+            qname = _resolve_locator_href(
+                href,
+                linkbase_path,
+                concept_map,
+                ns_qmap,
+                schema_map,
+            )
+            if qname:
+                loc_map[xlink_label] = qname
 
         # Step 2: build label element map (xlink:label → Label)
         label_map: dict[str, list[Label]] = {}

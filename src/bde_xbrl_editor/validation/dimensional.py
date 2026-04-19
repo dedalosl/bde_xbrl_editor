@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from bde_xbrl_editor.instance.constants import BDE_DIM_NS
 from bde_xbrl_editor.instance.models import XbrlInstance
 from bde_xbrl_editor.taxonomy.models import HypercubeModel, QName, TaxonomyStructure
 from bde_xbrl_editor.validation.models import ValidationFinding, ValidationSeverity
+
+_AGRUPACION_DIM = QName(namespace=BDE_DIM_NS, local_name="Agrupacion")
 
 
 class DimensionalConstraintValidator:
@@ -44,6 +47,36 @@ class DimensionalConstraintValidator:
             for dim_qname, dim_model in self._taxonomy.dimensions.items():
                 if dim_model.default_member is not None:
                     dim_defaults[dim_qname] = dim_model.default_member
+
+            # --- Performance: precompute per-dimension data once (O(D × M)) ---
+            # These dictionaries are accessed on the per-fact inner loop,
+            # so precomputation changes the overall complexity from
+            # O(F × HC × D × M) to O(F × HC × D) where F = facts, HC = hypercubes,
+            # D = dimensions per fact, M = members per dimension.
+            declared_members_cache: dict[QName, set[QName]] = {}
+            members_frozenset_cache: dict[QName, frozenset] = {}
+            for dim_qname, dim_model in self._taxonomy.dimensions.items():
+                # Usable members: multiple arcs may use the override pattern
+                # (usable=False on ANY arc overrides usable=True from others).
+                member_usability: dict[QName, bool] = {}
+                for m in dim_model.members:
+                    if m.qname not in member_usability:
+                        member_usability[m.qname] = m.usable
+                    else:
+                        member_usability[m.qname] = (
+                            member_usability[m.qname] and m.usable
+                        )
+                declared_members_cache[dim_qname] = {
+                    qn for qn, u in member_usability.items() if u
+                }
+                members_frozenset_cache[dim_qname] = frozenset(
+                    m.qname for m in dim_model.members
+                )
+
+            # Cache hypercube dimensions as frozenset (hc.dimensions is a list).
+            hc_dim_frozensets: dict[HypercubeModel, frozenset[QName]] = {}
+            for hc in self._taxonomy.hypercubes:
+                hc_dim_frozensets[hc] = frozenset(hc.dimensions)
 
             # Instance-level checks on each context's explicit member declarations.
             for ctx_ref, ctx in instance.contexts.items():
@@ -166,7 +199,11 @@ class DimensionalConstraintValidator:
 
             for fact in instance.facts:
                 try:
-                    self._validate_fact(fact, instance, primary_to_hcs, findings)
+                    self._validate_fact(
+                        fact, instance, primary_to_hcs, findings,
+                        declared_members_cache, members_frozenset_cache,
+                        hc_dim_frozensets,
+                    )
                 except Exception as exc:  # noqa: BLE001
                     findings.append(
                         ValidationFinding(
@@ -205,6 +242,9 @@ class DimensionalConstraintValidator:
         instance: XbrlInstance,
         primary_to_hcs: dict[QName, list[HypercubeModel]],
         findings: list[ValidationFinding],
+        declared_members_cache: dict[QName, set[QName]],
+        members_frozenset_cache: dict[QName, frozenset],
+        hc_dim_frozensets: dict[HypercubeModel, frozenset[QName]],
     ) -> None:
         """Validate one fact against all covering hypercubes.
 
@@ -218,7 +258,15 @@ class DimensionalConstraintValidator:
             return
 
         context = instance.contexts.get(fact.context_ref)
-        context_dims: dict[QName, QName] = context.dimensions if context is not None else {}
+        raw_context_dims: dict[QName, QName] = context.dimensions if context is not None else {}
+        # BDE uses Agrupacion as a report-level segment dimension that qualifies
+        # the filing scope but is not modeled inside the FINREP table
+        # hypercubes.  It must not participate in per-fact hypercube matching.
+        context_dims = {
+            dim_qname: member_qname
+            for dim_qname, member_qname in raw_context_dims.items()
+            if dim_qname != _AGRUPACION_DIM
+        }
 
         # Separate positive and negative hypercubes.
         all_hcs = [hc for hc in covering_hcs if hc.arcrole == "all"]
@@ -227,7 +275,10 @@ class DimensionalConstraintValidator:
         # notAll: each prohibited combination is checked independently.
         for hc in not_all_hcs:
             try:
-                self._check_notall_hypercube(fact, context_dims, hc, findings, context)
+                self._check_notall_hypercube(
+                    fact, context_dims, hc, findings, context,
+                    members_frozenset_cache,
+                )
             except Exception as exc:  # noqa: BLE001
                 findings.append(
                     ValidationFinding(
@@ -245,10 +296,10 @@ class DimensionalConstraintValidator:
                     )
                 )
 
-        # all: per XBRL Dimensions §2.3.2 a fact is dimensionally valid when it
-        # satisfies the constraints in at least one ELR where its concept is a
-        # primary item.  We therefore group 'all' hypercubes by ELR and require
-        # the fact to pass at least one HC within each ELR it participates in.
+        # all: a fact is dimensionally valid when it satisfies at least one
+        # covering positive hypercube. A primary item may appear in multiple
+        # ELRs/tables, but a fact should not fail merely because it does not fit
+        # every other table network that reuses the same concept.
         #
         # BDE-specific note: the Agrupacion dimension (es-be-cm-dim:Agrupacion)
         # is encoded in xbrli:segment as a standard xbrldi:explicitMember and
@@ -257,28 +308,27 @@ class DimensionalConstraintValidator:
         # taxonomy loader is not including it in the relevant hypercubes — fix
         # the taxonomy loader, do not relax the validator here.
         if all_hcs:
-            elr_to_hcs: dict[str, list[HypercubeModel]] = {}
-            for hc in all_hcs:
-                elr_to_hcs.setdefault(hc.extended_link_role, []).append(hc)
-
-            for elr, elr_hcs in elr_to_hcs.items():
-                try:
-                    self._check_all_hypercubes_for_elr(fact, context_dims, elr_hcs, findings, context)
-                except Exception as exc:  # noqa: BLE001
-                    findings.append(
-                        ValidationFinding(
-                            rule_id="dimensional.unexpected_error",
-                            severity=ValidationSeverity.ERROR,
-                            message=(
-                                f"Unexpected error checking ELR '{elr}' hypercubes for fact "
-                                f"'{fact.concept}' in context '{fact.context_ref}': {exc}"
-                            ),
-                            source="dimensional",
-                            concept_qname=fact.concept,
-                            context_ref=fact.context_ref,
-                            constraint_type="UNEXPECTED_ERROR",
-                        )
+            try:
+                self._check_all_hypercubes_for_elr(
+                    fact, context_dims, all_hcs, findings, context,
+                    declared_members_cache,
+                    hc_dim_frozensets,
+                )
+            except Exception as exc:  # noqa: BLE001
+                findings.append(
+                    ValidationFinding(
+                        rule_id="dimensional.unexpected_error",
+                        severity=ValidationSeverity.ERROR,
+                        message=(
+                            f"Unexpected error checking positive hypercubes for fact "
+                            f"'{fact.concept}' in context '{fact.context_ref}': {exc}"
+                        ),
+                        source="dimensional",
+                        concept_qname=fact.concept,
+                        context_ref=fact.context_ref,
+                        constraint_type="UNEXPECTED_ERROR",
                     )
+                )
 
             # --- contextElement check (per XBRL Dimensions §2.3.1.1) ---
             # For each dimension in the context, if ALL covering 'all' HCs that include
@@ -332,16 +382,31 @@ class DimensionalConstraintValidator:
         hcs: list[HypercubeModel],
         findings: list[ValidationFinding],
         context=None,
+        declared_members_cache: dict[QName, set[QName]] | None = None,
+        hc_dim_frozensets: dict[HypercubeModel, frozenset[QName]] | None = None,
     ) -> None:
         """Fact is valid within an ELR if it passes at least one 'all' HC in that ELR.
 
         If no HC in this ELR accepts the fact, reports findings from the HC with
         the fewest errors (most likely the intended table's hypercube).
         """
+        # Pre-compute the union of all dimension QNames across all hypercubes
+        # in this ELR.  This allows _check_all_hypercube to skip checking
+        # dimensions that belong to OTHER hypercubes in the same ELR, which
+        # would otherwise be reported as "undeclared" — a false positive
+        # because those dimensions are expected by the other hypercube.
+        all_elr_dimensions: set[QName] = set()
+        for hc in hcs:
+            all_elr_dimensions.update(hc.dimensions)
+
         per_hc: list[tuple[HypercubeModel, list[ValidationFinding]]] = []
         for hc in hcs:
             hc_findings: list[ValidationFinding] = []
-            self._check_all_hypercube(fact, context_dims, hc, hc_findings, context)
+            self._check_all_hypercube(
+                fact, context_dims, hc, hc_findings, context,
+                declared_members_cache, hc_dim_frozensets,
+                all_elr_dimensions=all_elr_dimensions,
+            )
             if not hc_findings:
                 return  # Satisfied at least one HC in this ELR — ELR is valid.
             per_hc.append((hc, hc_findings))
@@ -358,15 +423,32 @@ class DimensionalConstraintValidator:
         hc: HypercubeModel,
         findings: list[ValidationFinding],
         context=None,
+        declared_members_cache: dict[QName, set[QName]] | None = None,
+        hc_dim_frozensets: dict[HypercubeModel, frozenset[QName]] | None = None,
+        all_elr_dimensions: set[QName] | None = None,
     ) -> None:
         """Check one positive ('all') hypercube for a fact. Appends findings on failure."""
-        hc_dim_set: set[QName] = set(hc.dimensions)
+        hc_dim_set: frozenset
+        if hc_dim_frozensets is not None:
+            hc_dim_set = hc_dim_frozensets.get(hc)
+            if hc_dim_set is None:
+                hc_dim_set = frozenset(hc.dimensions)
+        else:
+            hc_dim_set = frozenset(hc.dimensions)
 
         # --- 1. UNDECLARED_DIMENSION -----------------------------------------
         # Only closed hypercubes disallow extra (undeclared) dimensions.
+        # Skip dimensions that belong to OTHER hypercubes in the same ELR:
+        # they are "expected" by those hypercubes and must not be reported
+        # as undeclared in the current hypercube (false positive).
         if hc.closed:
             for dim_qname in context_dims:
                 if dim_qname not in hc_dim_set:
+                    if (
+                        all_elr_dimensions is not None
+                        and dim_qname in all_elr_dimensions
+                    ):
+                        continue
                     findings.append(
                         ValidationFinding(
                             rule_id="xbrldie:PrimaryItemDimensionallyInvalidError",
@@ -394,18 +476,26 @@ class DimensionalConstraintValidator:
             if dim_model is None:
                 continue
 
-            # Only usable members can appear in instance contexts (xbrldt:usable="false"
-            # marks a member as non-usable — it may still be used as a parent in the
-            # domain hierarchy but MUST NOT appear in xbrldi:explicitMember elements).
-            # Multiple arcs may exist for the same member (override pattern): usable=False
-            # on ANY arc for a member overrides usable=True from other arcs.
-            member_usability: dict[QName, bool] = {}
-            for m in dim_model.members:
-                if m.qname not in member_usability:
-                    member_usability[m.qname] = m.usable
-                else:
-                    member_usability[m.qname] = member_usability[m.qname] and m.usable
-            declared_members: set[QName] = {qn for qn, u in member_usability.items() if u}
+            # Look up precomputed declared members for this dimension (O(1)).
+            declared_members: set[QName]
+            if declared_members_cache is not None:
+                declared_members = declared_members_cache.get(dim_qname)
+                if declared_members is None:
+                    declared_members = set()
+            else:
+                # Fallback: compute on-the-fly (legacy path).
+                member_usability: dict[QName, bool] = {}
+                for m in dim_model.members:
+                    if m.qname not in member_usability:
+                        member_usability[m.qname] = m.usable
+                    else:
+                        member_usability[m.qname] = (
+                            member_usability[m.qname] and m.usable
+                        )
+                declared_members = {
+                    qn for qn, u in member_usability.items() if u
+                }
+
             if not declared_members:
                 continue
 
@@ -465,6 +555,7 @@ class DimensionalConstraintValidator:
         hc: HypercubeModel,
         findings: list[ValidationFinding],
         context=None,
+        members_frozenset_cache: dict[QName, frozenset] | None = None,
     ) -> None:
         """Check one negative ('notAll') hypercube — each is an independent prohibition.
 
@@ -489,7 +580,18 @@ class DimensionalConstraintValidator:
                 # Dimension has no model — can't evaluate membership.
                 return
 
-            declared_members: set[QName] = {m.qname for m in dim_model.members}
+            # Look up precomputed members for this dimension (O(1)).
+            declared_members: set[QName]
+            if members_frozenset_cache is not None:
+                fs = members_frozenset_cache.get(dim_qname)
+                if fs is None:
+                    declared_members = set()
+                else:
+                    declared_members = set(fs)
+            else:
+                # Fallback: compute on-the-fly (legacy path).
+                declared_members = {m.qname for m in dim_model.members}
+
             if not declared_members:
                 # No declared domain — any value satisfies the dimension but the
                 # notAll constraint requires a known member to be triggered.

@@ -5,7 +5,7 @@ from __future__ import annotations
 import textwrap
 from datetime import date, datetime
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import ANY, MagicMock
 
 import pytest
 
@@ -20,6 +20,7 @@ from bde_xbrl_editor.taxonomy.models import (
     TaxonomyMetadata,
     TaxonomyStructure,
 )
+from bde_xbrl_editor.taxonomy.settings import LoaderSettings
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -76,6 +77,7 @@ def _make_parser(taxonomy: TaxonomyStructure | None = None) -> tuple[InstancePar
         taxonomy = _make_taxonomy()
     loader = MagicMock()
     loader.load.return_value = taxonomy
+    loader.settings = LoaderSettings()
     parser = InstanceParser(taxonomy_loader=loader)
     return parser, loader
 
@@ -195,6 +197,69 @@ def test_manual_resolver_called_as_fallback(tmp_path: Path) -> None:
     instance, _ = parser.load(p)
     resolver.assert_called_once_with("remote.xsd")
     assert instance is not None
+
+
+def test_local_catalog_resolves_bde_fr_schema_ref_to_cache_path(tmp_path: Path) -> None:
+    schema_href = "http://www.bde.es/es/fr/xbrl/fws/test/entry.xsd"
+    (tmp_path / Path(schema_href)).parent.mkdir(parents=True, exist_ok=True)
+    p = _write_xbrl(tmp_path, "", schema_href=schema_href)
+    # Remove the stub written next to the instance so only the catalog path can resolve it.
+    (tmp_path / schema_href).unlink()
+
+    taxonomy = _make_taxonomy()
+    loader = MagicMock()
+    loader.load.return_value = taxonomy
+    cache_root = tmp_path / "cache"
+    resolved_path = cache_root / "es" / "xbrl" / "fws" / "test" / "entry.xsd"
+    resolved_path.parent.mkdir(parents=True, exist_ok=True)
+    resolved_path.write_text("<xs:schema xmlns:xs='http://www.w3.org/2001/XMLSchema'/>")
+    loader.settings = LoaderSettings(local_catalog={"http://www.bde.es/": cache_root})
+
+    parser = InstanceParser(taxonomy_loader=loader)
+    instance, _ = parser.load(p)
+
+    loader.load.assert_called_once_with(resolved_path.resolve(), progress_callback=ANY)
+    assert instance is not None
+
+
+def test_reuses_matching_preloaded_taxonomy(tmp_path: Path) -> None:
+    p = _write_xbrl(tmp_path, "")
+    taxonomy = _make_taxonomy()
+    taxonomy = TaxonomyStructure(
+        metadata=TaxonomyMetadata(
+            name=taxonomy.metadata.name,
+            version=taxonomy.metadata.version,
+            publisher=taxonomy.metadata.publisher,
+            entry_point_path=(tmp_path / "entry.xsd").resolve(),
+            loaded_at=taxonomy.metadata.loaded_at,
+            declared_languages=taxonomy.metadata.declared_languages,
+        ),
+        concepts=taxonomy.concepts,
+        labels=taxonomy.labels,
+        presentation=taxonomy.presentation,
+        calculation=taxonomy.calculation,
+        definition=taxonomy.definition,
+        hypercubes=taxonomy.hypercubes,
+        dimensions=taxonomy.dimensions,
+        tables=taxonomy.tables,
+        formula_linkbase_path=taxonomy.formula_linkbase_path,
+        formula_assertion_set=taxonomy.formula_assertion_set,
+        schema_files=taxonomy.schema_files,
+        linkbase_files=taxonomy.linkbase_files,
+    )
+
+    parser, loader = _make_parser(taxonomy)
+    resolved = []
+
+    instance, _ = parser.load(
+        p,
+        taxonomy_resolved_callback=resolved.append,
+        preloaded_taxonomy=taxonomy,
+    )
+
+    loader.load.assert_not_called()
+    assert resolved == [taxonomy]
+    assert instance.taxonomy_entry_point == taxonomy.metadata.entry_point_path
 
 
 # ---------------------------------------------------------------------------
@@ -548,3 +613,37 @@ def test_bde_segment_agrupacion_parsed_as_dimension(tmp_path: Path) -> None:
     )
     mem_vals = [str(v) for v in ctx.dimensions.values()]
     assert any("AgrupacionIndividual" in v for v in mem_vals)
+
+
+def test_fact_loading_reports_incremental_progress(tmp_path: Path) -> None:
+    context = textwrap.dedent("""\
+        <xbrli:context id="C1">
+          <xbrli:entity>
+            <xbrli:identifier scheme="http://bde.es">ES1234</xbrli:identifier>
+          </xbrli:entity>
+          <xbrli:period>
+            <xbrli:instant>2023-12-31</xbrli:instant>
+          </xbrli:period>
+        </xbrli:context>
+    """)
+    facts = "\n".join(
+        f'<test:Assets contextRef="C1">{100 + index}</test:Assets>'
+        for index in range(60)
+    )
+    p = _write_xbrl(tmp_path, f"{context}\n{facts}")
+    parser, _ = _make_parser()
+
+    progress_events: list[tuple[str, int, int]] = []
+    parser.load(p, progress_callback=lambda message, current, total: progress_events.append((message, current, total)))
+
+    fact_updates = [event for event in progress_events if event[0].startswith("Reading facts…")]
+    metadata_updates = [
+        event for event in progress_events if event[0].startswith("Reading filing metadata…")
+    ]
+    final_indexed = [event for event in progress_events if event[0].startswith("Facts indexed —")]
+
+    assert len(metadata_updates) >= 1
+    assert metadata_updates[0][0] == "Reading filing metadata… 0/62"
+    assert len(fact_updates) > 3
+    assert fact_updates[0][0] == "Reading facts… 1 parsed"
+    assert final_indexed[-1][0] == "Facts indexed — 60 resolved, 0 orphaned"

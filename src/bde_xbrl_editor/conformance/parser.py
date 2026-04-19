@@ -167,13 +167,25 @@ class ConformanceSuiteParser:
                     description = (child.text or "").strip()
                     break
 
+        # XBRL 2.1 marks full-conformance-only test cases with testcase@minimal="false".
+        # The default is minimal="true", so missing/other values remain mandatory for
+        # minimal conformance. Variation-level optional markers may still narrow scope.
+        testcase_mandatory = True
+        if suite_id == "xbrl21" and root.get("minimal", "").lower() == "false":
+            testcase_mandatory = False
+
         # Parse variations
         variations: list[TestVariation] = []
         for var_el in root:
             if _local(var_el.tag) != "variation":
                 continue
             try:
-                variation = self._parse_variation(var_el, tc_path, suite_id)
+                variation = self._parse_variation(
+                    var_el,
+                    tc_path,
+                    suite_id,
+                    testcase_mandatory=testcase_mandatory,
+                )
                 variations.append(variation)
             except Exception as exc:  # noqa: BLE001
                 var_id = var_el.get("id", "?")
@@ -194,13 +206,15 @@ class ConformanceSuiteParser:
         var_el: etree._Element,
         tc_path: Path,
         suite_id: str,
+        *,
+        testcase_mandatory: bool = True,
     ) -> TestVariation:
         """Parse a single <variation> element."""
         variation_id = var_el.get("id", "")
         name = var_el.get("name", "") or variation_id
 
         # Determine mandatory
-        mandatory = True
+        mandatory = testcase_mandatory
         var_type = var_el.get("type", "").lower()
         blocked = var_el.get("blocked", "").lower()
         status = var_el.get("status", "").lower()

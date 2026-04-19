@@ -12,6 +12,7 @@ from bde_xbrl_editor.taxonomy.models import (
     QName,
     TaxonomyParseError,
 )
+from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
 
 _ELEMENT = f"{{{NS_XSD}}}element"
 _COMPLEX_TYPE = f"{{{NS_XSD}}}complexType"
@@ -130,7 +131,7 @@ def parse_schema_raw(
         TaxonomyParseError: If the file is not well-formed XML.
     """
     try:
-        tree = etree.parse(str(schema_path))  # noqa: S320
+        tree = parse_xml_file(schema_path)
     except etree.XMLSyntaxError as exc:
         raise TaxonomyParseError(
             file_path=str(schema_path),

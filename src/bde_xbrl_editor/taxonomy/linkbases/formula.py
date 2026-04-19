@@ -20,6 +20,7 @@ from bde_xbrl_editor.taxonomy.models import (
     ValueAssertionDefinition,
     XPathFilterDefinition,
 )
+from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
 
 # ---------------------------------------------------------------------------
 # Namespace constants
@@ -639,7 +640,7 @@ def _parse(path: Path) -> FormulaAssertionSet:
         return FormulaAssertionSet()
 
     try:
-        tree = etree.parse(str(path))  # noqa: S320
+        tree = parse_xml_file(path)
     except etree.XMLSyntaxError:
         return FormulaAssertionSet()
 

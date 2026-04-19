@@ -164,3 +164,25 @@ class TestFactMapper:
         assert result.matched
         assert result.fact_value == "999"
         assert result.duplicate_count == 1
+
+    def test_default_member_dimension_is_treated_as_absent(self):
+        concept = _qn("Assets")
+        dim = _qn("Dim1")
+        default_mem = _qn("Default")
+
+        taxonomy = MagicMock()
+        dim_model = MagicMock()
+        dim_model.default_member = default_mem
+        taxonomy.dimensions = {dim: dim_model}
+
+        fact = _make_fact(concept, value="321", context_ref="ctx1")
+        ctx = _make_context({})
+        instance = _make_instance([fact], {"ctx1": ctx})
+
+        mapper = FactMapper(taxonomy)
+        coord = CellCoordinate(concept=concept, explicit_dimensions={dim: default_mem})
+        result = mapper.match(coord, instance)
+
+        assert result.matched
+        assert result.fact_value == "321"
+        assert result.duplicate_count == 1
