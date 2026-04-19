@@ -657,6 +657,7 @@ class TableLayoutEngine:
 
     def __init__(self, taxonomy: TaxonomyStructure) -> None:
         self._taxonomy = taxonomy
+        self._fact_mapper = None
 
     def compute(
         self,
@@ -712,9 +713,13 @@ class TableLayoutEngine:
 
             # Optionally wire fact values
             if instance is not None:
-                from bde_xbrl_editor.table_renderer.fact_mapper import FactMapper  # noqa: PLC0415
+                if self._fact_mapper is None:
+                    from bde_xbrl_editor.table_renderer.fact_mapper import (
+                        FactMapper,  # noqa: PLC0415
+                    )
 
-                mapper = FactMapper(self._taxonomy)
+                    self._fact_mapper = FactMapper(self._taxonomy)
+                mapper = self._fact_mapper
                 for row in body:
                     for cell in row:
                         result: FactMatchResult = mapper.match(cell.coordinate, instance)
@@ -755,9 +760,11 @@ class TableLayoutEngine:
                     cell.is_duplicate = False
             return layout
 
-        from bde_xbrl_editor.table_renderer.fact_mapper import FactMapper  # noqa: PLC0415
+        if self._fact_mapper is None:
+            from bde_xbrl_editor.table_renderer.fact_mapper import FactMapper  # noqa: PLC0415
 
-        mapper = FactMapper(self._taxonomy)
+            self._fact_mapper = FactMapper(self._taxonomy)
+        mapper = self._fact_mapper
         for row in layout.body:
             for cell in row:
                 result: FactMatchResult = mapper.match(cell.coordinate, instance)
