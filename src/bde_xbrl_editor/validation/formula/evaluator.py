@@ -164,13 +164,27 @@ class FormulaEvaluator:
                 None,
             )
 
-        display_message = (
-            self._render_message_resource(
+        evaluated_message = self._render_message_resource(
+            assertion,
+            message_resource,
+            binding=binding,
+            instance=instance,
+        )
+        template_message = self._resource_text(message_resource)
+        if self._message_needs_fallback(evaluated_message, template_message):
+            evaluated_message = self._build_evaluated_message_fallback(
                 assertion,
-                message_resource,
                 binding=binding,
-                instance=instance,
+                status=status,
             )
+        elif evaluated_message is not None:
+            evaluated_message = self._append_assertion_result(
+                assertion,
+                evaluated_message,
+                status=status,
+            )
+        display_message = (
+            evaluated_message
             or (self._resource_text(label_resource) if status == ValidationStatus.PASS else None)
             or default_message
         )
@@ -184,7 +198,8 @@ class FormulaEvaluator:
             context_ref=fact.context_ref if fact else None,
             rule_label=self._resource_text(label_resource),
             rule_label_role=label_resource.role if label_resource else None,
-            rule_message=self._resource_text(message_resource),
+            rule_message=template_message,
+            evaluated_rule_message=evaluated_message if message_resource is not None else None,
             rule_message_role=message_resource.role if message_resource else None,
             **self._formula_detail_kwargs(assertion),
         )
@@ -263,6 +278,72 @@ class FormulaEvaluator:
 
         return _MESSAGE_EXPR_RE.sub(replace_expr, template)
 
+    @staticmethod
+    def _message_needs_fallback(
+        evaluated_message: str | None,
+        template_message: str | None,
+    ) -> bool:
+        if template_message is None:
+            return False
+        if evaluated_message is None:
+            return True
+        normalized = evaluated_message.strip()
+        return normalized == template_message.strip() or "fmt:" in normalized
+
+    def _build_evaluated_message_fallback(
+        self,
+        assertion: FormulaAssertion,
+        *,
+        binding: dict[str, list[Fact]] | None,
+        status: ValidationStatus,
+    ) -> str | None:
+        if binding is None:
+            return None
+
+        expression = (
+            assertion.test_xpath if isinstance(assertion, ValueAssertionDefinition)
+            else assertion.formula_xpath if isinstance(assertion, ConsistencyAssertionDefinition)
+            else assertion.test_xpath if isinstance(assertion, ExistenceAssertionDefinition)
+            else None
+        )
+        if not expression:
+            return None
+
+        rendered_expression = expression
+        for var_def in assertion.variables:
+            facts = binding.get(var_def.variable_name, [])
+            if facts:
+                replacement = facts[0].value
+            elif var_def.fallback_value is not None:
+                replacement = str(_coerce_value(var_def.fallback_value))
+            else:
+                replacement = "[]"
+            rendered_expression = rendered_expression.replace(f"${var_def.variable_name}", replacement)
+
+        rendered_expression = re.sub(r"\s+", " ", rendered_expression).strip()
+        if not rendered_expression:
+            return None
+
+        if isinstance(assertion, (ValueAssertionDefinition, ExistenceAssertionDefinition)):
+            result_text = "TRUE" if status == ValidationStatus.PASS else "FALSE"
+            return f"{rendered_expression}\n{result_text}"
+        return rendered_expression
+
+    @staticmethod
+    def _append_assertion_result(
+        assertion: FormulaAssertion,
+        evaluated_message: str,
+        *,
+        status: ValidationStatus,
+    ) -> str:
+        if not isinstance(assertion, (ValueAssertionDefinition, ExistenceAssertionDefinition)):
+            return evaluated_message
+        result_text = "TRUE" if status == ValidationStatus.PASS else "FALSE"
+        stripped = evaluated_message.rstrip()
+        if stripped.endswith(result_text):
+            return evaluated_message
+        return f"{stripped}\n{result_text}"
+
     def _evaluate_message_expression(
         self,
         expr: str,
@@ -287,6 +368,7 @@ class FormulaEvaluator:
             "_context": ctx_obj,
             "_unit": unit_obj,
             "_instance": instance,
+            "_custom_functions": self._taxonomy.custom_functions,
         })
 
         context_item = next(
@@ -298,7 +380,11 @@ class FormulaEvaluator:
             True,
         )
 
-        parser = build_formula_parser(namespaces)
+        parser = build_formula_parser(
+            namespaces,
+            custom_functions=self._taxonomy.custom_functions,
+            expression_hints=(expr,),
+        )
         try:
             token = parser.parse(expr)
             ctx = elementpath.XPathContext(
@@ -326,7 +412,12 @@ class FormulaEvaluator:
 
         per_variable: list[tuple[str, list[list[Fact]]]] = []
         for var_def in assertion.variables:
-            matched = apply_filters(all_facts, var_def, instance)
+            matched = apply_filters(
+                all_facts,
+                var_def,
+                instance,
+                custom_functions=self._taxonomy.custom_functions,
+            )
             # Each fact is one binding candidate for this variable
             # We group as list[list[Fact]] where each inner list is [one_fact]
             if matched:
@@ -534,6 +625,7 @@ class FormulaEvaluator:
             "_context": ctx_obj,
             "_unit": unit_obj,
             "_instance": instance,
+            "_custom_functions": self._taxonomy.custom_functions,
         })
 
         # Use the context item as a Decimal (for arithmetic) when available;
@@ -542,7 +634,11 @@ class FormulaEvaluator:
             _coerce_value(first_fact.value) if first_fact is not None else True
         )
 
-        parser = build_formula_parser(namespaces)
+        parser = build_formula_parser(
+            namespaces,
+            custom_functions=self._taxonomy.custom_functions,
+            expression_hints=(xpath_expr,),
+        )
         try:
             token = parser.parse(xpath_expr)
             ctx = elementpath.XPathContext(

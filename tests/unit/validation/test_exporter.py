@@ -157,6 +157,23 @@ class TestExportText:
         assert "concept: ex:Amount" in content
         assert "Precondition: $a" in content
 
+    def test_formula_message_variants_appear(self, tmp_path: Path) -> None:
+        """Formula findings export both official and evaluated validation messages."""
+        f = ValidationFinding(
+            rule_id="formula:message",
+            severity=ValidationSeverity.ERROR,
+            message="1234.20 >= 0",
+            source="formula",
+            rule_message="{fmt:common(($a))} {fmt:fact($a, ($a))} >= 0 {fmt:threshold(0)}",
+            evaluated_rule_message="1234.20 >= 0",
+        )
+        out = tmp_path / "report.txt"
+        ValidationReportExporter().export_text(_report(findings=(f,)), out)
+        content = out.read_text(encoding="utf-8")
+        assert "Official Message :" in content
+        assert "{fmt:common(($a))}" in content
+        assert "Evaluated Message : 1234.20 >= 0" in content
+
     @pytest.mark.skipif(sys.platform == "win32", reason="chmod read-only not reliable on Windows")
     def test_permission_error_on_readonly_path(self, tmp_path: Path) -> None:
         """export_text raises ExportPermissionError when the path is not writable."""
@@ -266,6 +283,23 @@ class TestExportJson:
         assert jf["formula_expression"] == "$a = $b"
         assert jf["formula_operands_text"] == "$a\n\n$b"
         assert jf["formula_precondition"] == "$a"
+
+    def test_json_formula_message_variants(self, tmp_path: Path) -> None:
+        """Official and evaluated messages are preserved in JSON export."""
+        f = ValidationFinding(
+            rule_id="formula:message",
+            severity=ValidationSeverity.ERROR,
+            message="1234.20 >= 0",
+            source="formula",
+            rule_message="{fmt:common(($a))} {fmt:fact($a, ($a))} >= 0 {fmt:threshold(0)}",
+            evaluated_rule_message="1234.20 >= 0",
+        )
+        out = tmp_path / "report.json"
+        ValidationReportExporter().export_json(_report(findings=(f,)), out)
+        data = json.loads(out.read_text(encoding="utf-8"))
+        jf = data["findings"][0]
+        assert jf["rule_message"] == "{fmt:common(($a))} {fmt:fact($a, ($a))} >= 0 {fmt:threshold(0)}"
+        assert jf["evaluated_rule_message"] == "1234.20 >= 0"
 
     def test_json_pass_row_keeps_null_severity(self, tmp_path: Path) -> None:
         f = ValidationFinding(

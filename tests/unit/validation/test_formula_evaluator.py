@@ -12,9 +12,13 @@ from bde_xbrl_editor.instance.models import (
     XbrlContext,
     XbrlInstance,
 )
+from bde_xbrl_editor.taxonomy.linkbases.custom_functions import (
+    parse_custom_function_linkbase,
+)
 from bde_xbrl_editor.taxonomy.models import (
     AssertionTextResource,
     ConsistencyAssertionDefinition,
+    CustomFunctionDefinition,
     ExistenceAssertionDefinition,
     FactVariableDefinition,
     FormulaAssertionSet,
@@ -85,7 +89,10 @@ class _FakeLabels:
         return None
 
 
-def _taxonomy(assertion_set: FormulaAssertionSet) -> TaxonomyStructure:
+def _taxonomy(
+    assertion_set: FormulaAssertionSet,
+    custom_functions: tuple[CustomFunctionDefinition, ...] = (),
+) -> TaxonomyStructure:
     meta = TaxonomyMetadata(
         name="Test",
         version="1.0",
@@ -105,6 +112,7 @@ def _taxonomy(assertion_set: FormulaAssertionSet) -> TaxonomyStructure:
         dimensions={},
         tables=[],
         formula_assertion_set=assertion_set,
+        custom_functions=custom_functions,
     )
 
 
@@ -313,10 +321,48 @@ class TestValueAssertion:
         findings = FormulaEvaluator(taxonomy).evaluate(inst)
 
         assert len(findings) == 1
+        assert findings[0].rule_message is not None
+        assert findings[0].evaluated_rule_message is not None
         assert findings[0].message.startswith("Not satisfied error: Fact ")
+        assert "{ string(node-name($v)) }" in findings[0].rule_message
         assert "context ctx1" in findings[0].message
         assert "reported value 42" in findings[0].message
         assert "period starts 2024-01-01" in findings[0].message
+        assert findings[0].evaluated_rule_message == findings[0].message
+
+    def test_fmt_message_falls_back_to_operand_values_and_result(self) -> None:
+        """fmt messages use cached custom functions and still yield a readable final result."""
+        var_def = FactVariableDefinition(variable_name="a", concept_filter=_qn("Amount"))
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(assertion_id="VA_FMT", variables=(var_def,)),
+            test_xpath="$a <= 0",
+            message_resources=(
+                AssertionTextResource(
+                    text="{fmt:common(($a))} {fmt:fact($a, ($a))} <= 0 {fmt:threshold(0)}",
+                    language="en",
+                    role="http://www.xbrl.org/2010/role/message",
+                    arcrole="http://xbrl.org/arcrole/2010/assertion-unsatisfied-message",
+                    namespaces={"fmt": "http://www.bde.es/xbrl/func/error-formatting"},
+                ),
+            ),
+            namespaces={"fmt": "http://www.bde.es/xbrl/func/error-formatting"},
+        )
+        custom_functions: tuple[CustomFunctionDefinition, ...] = ()
+        func_dir = Path("cache/www.bde.es/es/xbrl/func")
+        for linkbase in sorted(func_dir.glob("*.xml")):
+            custom_functions += parse_custom_function_linkbase(linkbase)
+        taxonomy = _taxonomy(
+            FormulaAssertionSet(assertions=(assertion,)),
+            custom_functions=custom_functions,
+        )
+        inst = _instance([_fact("Amount", value="1234.43")])
+
+        findings = FormulaEvaluator(taxonomy).evaluate(inst)
+
+        assert len(findings) == 1
+        assert findings[0].rule_message == "{fmt:common(($a))} {fmt:fact($a, ($a))} <= 0 {fmt:threshold(0)}"
+        assert findings[0].evaluated_rule_message == "1234.43 <= 0\nFALSE"
+        assert findings[0].message == "1234.43 <= 0\nFALSE"
 
 
 # ---------------------------------------------------------------------------

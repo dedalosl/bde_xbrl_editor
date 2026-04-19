@@ -151,6 +151,30 @@ class AssertionTextResource:
     namespaces: dict[str, str] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class CustomFunctionStep:
+    """A single XPath step in a linkbase-defined custom function implementation."""
+
+    expression: str
+    name: str | None = None
+    is_output: bool = False
+
+
+@dataclass(frozen=True)
+class CustomFunctionDefinition:
+    """A custom function declared via variable:function + cfi:implementation."""
+
+    name: str
+    namespace: str
+    local_name: str
+    prefix: str | None
+    input_names: tuple[str, ...]
+    input_types: tuple[str, ...] = field(default_factory=tuple)
+    output_type: str | None = None
+    steps: tuple[CustomFunctionStep, ...] = field(default_factory=tuple)
+    namespaces: dict[str, str] = field(default_factory=dict)
+
+
 # ---------------------------------------------------------------------------
 # Linkbase models — presentation
 # ---------------------------------------------------------------------------
@@ -423,6 +447,7 @@ class TaxonomyStructure:
     tables: Sequence[TableDefinitionPWD]
     formula_linkbase_path: Path | None = None
     formula_assertion_set: FormulaAssertionSet = field(default_factory=FormulaAssertionSet)
+    custom_functions: tuple[CustomFunctionDefinition, ...] = field(default_factory=tuple)
     # Files discovered during DTS traversal (populated by TaxonomyLoader)
     schema_files: tuple[Path, ...] = field(default_factory=tuple)
     linkbase_files: tuple[Path, ...] = field(default_factory=tuple)

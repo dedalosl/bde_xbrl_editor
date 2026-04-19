@@ -84,6 +84,7 @@ class TestValidationFindingImmutability:
         assert f.rule_label is None
         assert f.rule_label_role is None
         assert f.rule_message is None
+        assert f.evaluated_rule_message is None
         assert f.rule_message_role is None
 
 

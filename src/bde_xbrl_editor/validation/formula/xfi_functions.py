@@ -26,8 +26,11 @@ Usage
 from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
+import re
 from types import SimpleNamespace
 from typing import Any
+
+from bde_xbrl_editor.taxonomy.models import CustomFunctionDefinition
 
 # ---------------------------------------------------------------------------
 # Namespaces
@@ -35,6 +38,7 @@ from typing import Any
 
 _XFI_NS = "http://www.xbrl.org/2008/function/instance"
 _EFN_NS = "http://www.eurofiling.info/xbrl/func/extra-functions"
+_CUSTOM_FUNCTION_CALL_RE = re.compile(r"(?<![$\w.-])([A-Za-z_][\w.-]*)\:([A-Za-z_][\w.-]*)\s*\(")
 
 # ---------------------------------------------------------------------------
 # Thread-local evaluation context
@@ -72,6 +76,10 @@ def _current_unit() -> Any:
 
 def _all_facts() -> list[Any]:
     return list(_eval_context.get("_all_facts") or [])
+
+
+def _custom_functions() -> tuple[CustomFunctionDefinition, ...]:
+    return tuple(_eval_context.get("_custom_functions") or ())
 
 
 def _period_of(context: Any) -> Any:
@@ -1346,7 +1354,143 @@ def _get_parser_class() -> type:
     return _XbrlFormulaParserClass
 
 
-def build_formula_parser(namespaces: dict[str, str] | None = None) -> Any:
+def _normalize_xpath_value(result: list[Any]) -> Any:
+    if not result:
+        return []
+    if len(result) == 1:
+        return result[0]
+    return result
+
+
+def _custom_function_groups(
+    definitions: tuple[CustomFunctionDefinition, ...],
+) -> dict[tuple[str, str], list[CustomFunctionDefinition]]:
+    groups: dict[tuple[str, str], list[CustomFunctionDefinition]] = {}
+    for definition in definitions:
+        groups.setdefault((definition.namespace, definition.local_name), []).append(definition)
+    return groups
+
+
+def _select_custom_functions(
+    definitions: tuple[CustomFunctionDefinition, ...],
+    expressions: tuple[str, ...],
+) -> tuple[CustomFunctionDefinition, ...]:
+    if not definitions or not expressions:
+        return definitions
+
+    by_name: dict[tuple[str | None, str], list[CustomFunctionDefinition]] = {}
+    for definition in definitions:
+        by_name.setdefault((definition.prefix, definition.local_name), []).append(definition)
+
+    selected_keys: set[tuple[str | None, str]] = set()
+    queue: list[tuple[str | None, str]] = []
+    for expression in expressions:
+        for prefix, local_name in _CUSTOM_FUNCTION_CALL_RE.findall(expression):
+            key = (prefix, local_name)
+            if key in by_name and key not in selected_keys:
+                selected_keys.add(key)
+                queue.append(key)
+
+    while queue:
+        key = queue.pop()
+        for definition in by_name.get(key, []):
+            for step in definition.steps:
+                for nested_prefix, nested_local in _CUSTOM_FUNCTION_CALL_RE.findall(step.expression):
+                    nested_key = (nested_prefix, nested_local)
+                    if nested_key in by_name and nested_key not in selected_keys:
+                        selected_keys.add(nested_key)
+                        queue.append(nested_key)
+
+    if not selected_keys:
+        return ()
+
+    return tuple(
+        definition
+        for definition in definitions
+        if (definition.prefix, definition.local_name) in selected_keys
+    )
+
+
+def _make_custom_function_callback(definitions: list[CustomFunctionDefinition]):
+    def callback(*args: Any) -> Any:
+        definition = next(
+            (candidate for candidate in definitions if len(candidate.input_names) == len(args)),
+            definitions[0],
+        )
+        return _evaluate_custom_function(definition, args)
+
+    return callback
+
+
+def _evaluate_custom_function(definition: CustomFunctionDefinition, args: tuple[Any, ...]) -> Any:
+    import elementpath
+
+    variables: dict[str, Any] = {}
+    for name, value in zip(definition.input_names, args, strict=False):
+        variables[name] = value
+
+    context_item: Any = True
+    for value in variables.values():
+        if isinstance(value, list):
+            if value:
+                context_item = value[0]
+                break
+        else:
+            context_item = value
+            break
+
+    parser = build_formula_parser(
+        namespaces=definition.namespaces,
+        custom_functions=_custom_functions(),
+        expression_hints=(step.expression for step in definition.steps),
+    )
+    for step in definition.steps:
+        token = parser.parse(_normalize_custom_function_expression(step.expression))
+        ctx = elementpath.XPathContext(
+            root=None,
+            item=context_item,
+            variables=variables,
+        )
+        result = list(token.select(ctx))
+        normalized = _normalize_xpath_value(result)
+        if step.is_output:
+            return normalized
+        if step.name:
+            variables[step.name] = normalized
+
+    return []
+
+
+def _normalize_custom_function_expression(expression: str) -> str:
+    """Relax schema-bound kind tests that elementpath cannot resolve without a schema."""
+    return re.sub(r"schema-element\([^)]+\)", "element()", expression)
+
+
+def _register_custom_functions(
+    parser: Any,
+    definitions: tuple[CustomFunctionDefinition, ...],
+) -> None:
+    for grouped_definitions in _custom_function_groups(definitions).values():
+        definition = grouped_definitions[0]
+        prefix = definition.prefix
+        if prefix and prefix not in parser.namespaces:
+            parser.namespaces[prefix] = definition.namespace
+        try:
+            parser.external_function(
+                _make_custom_function_callback(grouped_definitions),
+                name=definition.local_name,
+                prefix=prefix,
+                sequence_types=(),
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def build_formula_parser(
+    namespaces: dict[str, str] | None = None,
+    custom_functions: tuple[CustomFunctionDefinition, ...] = (),
+    expression_hints: tuple[str, ...] | list[str] = (),
+) -> Any:
     """Return an XPath2Parser instance with all xfi: functions registered and
     the given formula-file namespaces in scope.
 
@@ -1357,4 +1501,12 @@ def build_formula_parser(namespaces: dict[str, str] | None = None) -> Any:
     ns.setdefault("xfi", _XFI_NS)
     ns.setdefault("efn", _EFN_NS)
     ns.setdefault("iaf", _IAF_NS)
-    return cls(namespaces=ns)
+    parser = cls(namespaces=ns)
+    if custom_functions:
+        selected_functions = _select_custom_functions(
+            custom_functions,
+            tuple(expression_hints),
+        ) if expression_hints else custom_functions
+        if selected_functions:
+            _register_custom_functions(parser, selected_functions)
+    return parser

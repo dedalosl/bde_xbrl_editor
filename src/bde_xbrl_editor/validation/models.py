@@ -43,6 +43,7 @@ class ValidationFinding:
     rule_label: str | None = None
     rule_label_role: str | None = None
     rule_message: str | None = None
+    evaluated_rule_message: str | None = None
     rule_message_role: str | None = None
 
 

@@ -45,6 +45,8 @@ class ValidationReportExporter:
                     lines.append(f"  Definition : {finding.rule_label}")
                 if finding.rule_message:
                     lines.append(f"  Official Message : {finding.rule_message}")
+                if finding.evaluated_rule_message:
+                    lines.append(f"  Evaluated Message : {finding.evaluated_rule_message}")
                 if finding.table_label or finding.table_id:
                     lines.append(f"  Table   : {finding.table_label or finding.table_id}")
                 if finding.concept_qname:
@@ -110,6 +112,7 @@ class ValidationReportExporter:
                     "rule_label": f.rule_label,
                     "rule_label_role": f.rule_label_role,
                     "rule_message": f.rule_message,
+                    "evaluated_rule_message": f.evaluated_rule_message,
                     "rule_message_role": f.rule_message_role,
                     "formula_precondition": (
                         f.formula_precondition

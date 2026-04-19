@@ -39,6 +39,9 @@ from bde_xbrl_editor.taxonomy.label_resolver import LabelResolver
 from bde_xbrl_editor.taxonomy.linkbases.assertion_resources import (
     parse_assertion_resource_linkbase,
 )
+from bde_xbrl_editor.taxonomy.linkbases.custom_functions import (
+    parse_custom_function_linkbase,
+)
 from bde_xbrl_editor.taxonomy.linkbases.calculation import parse_calculation_linkbase
 from bde_xbrl_editor.taxonomy.linkbases.definition import parse_definition_linkbase
 from bde_xbrl_editor.taxonomy.linkbases.formula import (
@@ -55,6 +58,7 @@ from bde_xbrl_editor.taxonomy.linkbases.table_pwd import parse_table_linkbase
 from bde_xbrl_editor.taxonomy.models import (
     AssertionTextResource,
     Concept,
+    CustomFunctionDefinition,
     DimensionModel,
     DomainMember,
     QName,
@@ -1158,6 +1162,21 @@ class TaxonomyLoader:
         else:
             formula_assertion_set = FormulaAssertionSet()
 
+        parsed_custom_function_linkbases = _run_path_jobs(
+            linkbase_paths,
+            parse_custom_function_linkbase,
+            workers=linkbase_workers,
+        )
+        custom_functions: list[CustomFunctionDefinition] = []
+        seen_custom_functions: set[tuple[str, tuple[str, ...]]] = set()
+        for _custom_linkbase_path, definitions in parsed_custom_function_linkbases:
+            for definition in definitions:
+                key = (definition.name, definition.input_types)
+                if key in seen_custom_functions:
+                    continue
+                seen_custom_functions.add(key)
+                custom_functions.append(definition)
+
         metadata = _extract_metadata(entry_point, declared_languages)
         progress(f"Assembled {metadata.name} v{metadata.version}", 6)
 
@@ -1174,6 +1193,7 @@ class TaxonomyLoader:
             tables=tables,
             formula_linkbase_path=formula_linkbase_path,
             formula_assertion_set=formula_assertion_set,
+            custom_functions=tuple(custom_functions),
             schema_files=tuple(sorted(schema_paths)),
             linkbase_files=tuple(sorted(linkbase_paths)),
         )

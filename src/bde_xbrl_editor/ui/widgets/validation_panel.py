@@ -377,6 +377,12 @@ class ValidationPanel(QWidget):
             lines.append(f"Constraint: {finding.constraint_type}")
         if finding.formula_assertion_type:
             lines.append(f"Formula Type: {finding.formula_assertion_type}")
+        if finding.evaluated_rule_message:
+            lines.extend([
+                "",
+                "Evaluated Message:",
+                finding.evaluated_rule_message,
+            ])
         if finding.formula_expression:
             lines.extend([
                 "",
