@@ -11,6 +11,7 @@ from typing import Any
 
 from bde_xbrl_editor.instance.models import Fact, XbrlInstance
 from bde_xbrl_editor.taxonomy.models import (
+    AssertionTextResource,
     ConsistencyAssertionDefinition,
     ExistenceAssertionDefinition,
     FormulaAssertion,
@@ -26,7 +27,11 @@ from bde_xbrl_editor.validation.formula.xfi_functions import (
     clear_evaluation_context,
     set_evaluation_context,
 )
-from bde_xbrl_editor.validation.models import ValidationFinding, ValidationSeverity
+from bde_xbrl_editor.validation.models import (
+    ValidationFinding,
+    ValidationSeverity,
+    ValidationStatus,
+)
 
 ProgressCallback = Callable[[int, int, str], None]
 
@@ -88,19 +93,20 @@ class FormulaEvaluator:
                         self._evaluate_consistency_assertion(assertion, bindings, instance)
                     )
             except ValidationEngineError as exc:
-                findings.append(ValidationFinding(
-                    rule_id=assertion.assertion_id,
-                    severity=ValidationSeverity.ERROR,
-                    message=f"Evaluation error: {exc}",
-                    source="formula",
-                    **self._formula_detail_kwargs(assertion),
-                ))
+                findings.append(
+                    self._finding_for_assertion(
+                        assertion,
+                        status=ValidationStatus.FAIL,
+                        default_message=f"Evaluation error: {exc}",
+                    )
+                )
             except Exception as exc:  # noqa: BLE001
                 findings.append(ValidationFinding(
                     rule_id="internal:validator-error",
                     severity=ValidationSeverity.ERROR,
                     message=f"Unexpected error evaluating '{assertion.assertion_id}': {exc}",
                     source="formula",
+                    status=ValidationStatus.FAIL,
                     **self._formula_detail_kwargs(assertion),
                 ))
 
@@ -123,6 +129,54 @@ class FormulaEvaluator:
             "formula_operands_text": details.operands_text,
             "formula_precondition": details.precondition,
         }
+
+    @staticmethod
+    def _resource_text(resource: AssertionTextResource | None) -> str | None:
+        if resource is None:
+            return None
+        return resource.text.strip() or None
+
+    def _finding_for_assertion(
+        self,
+        assertion: FormulaAssertion,
+        *,
+        status: ValidationStatus,
+        default_message: str,
+        fact: Fact | None = None,
+    ) -> ValidationFinding:
+        label_resource = assertion.label_resources[0] if assertion.label_resources else None
+        message_candidates = assertion.message_resources
+        message_resource: AssertionTextResource | None = None
+        if status == ValidationStatus.FAIL:
+            message_resource = next(
+                (resource for resource in message_candidates if "unsatisfied-message" in resource.arcrole),
+                None,
+            )
+        else:
+            message_resource = next(
+                (resource for resource in message_candidates if "satisfied-message" in resource.arcrole),
+                None,
+            )
+
+        display_message = (
+            self._resource_text(message_resource)
+            or (self._resource_text(label_resource) if status == ValidationStatus.PASS else None)
+            or default_message
+        )
+        return ValidationFinding(
+            rule_id=assertion.assertion_id,
+            severity=None if status == ValidationStatus.PASS else _sev(assertion),
+            status=status,
+            message=display_message,
+            source="formula",
+            concept_qname=fact.concept if fact else None,
+            context_ref=fact.context_ref if fact else None,
+            rule_label=self._resource_text(label_resource),
+            rule_label_role=label_resource.role if label_resource else None,
+            rule_message=self._resource_text(message_resource),
+            rule_message_role=message_resource.role if message_resource else None,
+            **self._formula_detail_kwargs(assertion),
+        )
 
     def _bind_variables(
         self,
@@ -185,29 +239,29 @@ class FormulaEvaluator:
                 )
                 passed = _to_bool(result)
             except Exception as exc:  # noqa: BLE001
-                findings.append(ValidationFinding(
-                    rule_id=assertion.assertion_id,
-                    severity=_sev(assertion),
-                    message=f"XPath evaluation failed: {exc}",
-                    source="formula",
-                    **self._formula_detail_kwargs(assertion),
-                ))
+                findings.append(
+                    self._finding_for_assertion(
+                        assertion,
+                        status=ValidationStatus.FAIL,
+                        default_message=f"XPath evaluation failed: {exc}",
+                    )
+                )
                 continue
 
-            if not passed:
-                fact = _first_fact(binding)
-                findings.append(ValidationFinding(
-                    rule_id=assertion.assertion_id,
-                    severity=_sev(assertion),
-                    message=(
+            fact = _first_fact(binding)
+            findings.append(
+                self._finding_for_assertion(
+                    assertion,
+                    status=ValidationStatus.PASS if passed else ValidationStatus.FAIL,
+                    default_message=(
+                        f"Value assertion '{assertion.assertion_id}' passed"
+                        if passed else
                         f"Value assertion '{assertion.assertion_id}' failed: "
                         f"test expression evaluated to false"
                     ),
-                    source="formula",
-                    concept_qname=fact.concept if fact else None,
-                    context_ref=fact.context_ref if fact else None,
-                    **self._formula_detail_kwargs(assertion),
-                ))
+                    fact=fact,
+                )
+            )
         return findings
 
     def _evaluate_existence_assertion(
@@ -219,18 +273,27 @@ class FormulaEvaluator:
         for binding in bindings:
             for facts in binding.values():
                 if facts:
-                    return []  # at least one non-empty binding — passes
+                    return [
+                        self._finding_for_assertion(
+                            assertion,
+                            status=ValidationStatus.PASS,
+                            default_message=(
+                                f"Existence assertion '{assertion.assertion_id}' passed"
+                            ),
+                            fact=facts[0],
+                        )
+                    ]
 
-        return [ValidationFinding(
-            rule_id=assertion.assertion_id,
-            severity=_sev(assertion),
-            message=(
-                f"Existence assertion '{assertion.assertion_id}' failed: "
-                f"no matching facts found"
-            ),
-            source="formula",
-            **self._formula_detail_kwargs(assertion),
-        )]
+        return [
+            self._finding_for_assertion(
+                assertion,
+                status=ValidationStatus.FAIL,
+                default_message=(
+                    f"Existence assertion '{assertion.assertion_id}' failed: "
+                    f"no matching facts found"
+                ),
+            )
+        ]
 
     def _evaluate_consistency_assertion(
         self,
@@ -270,19 +333,19 @@ class FormulaEvaluator:
             else:
                 passes = difference == 0
 
-            if not passes:
-                findings.append(ValidationFinding(
-                    rule_id=assertion.assertion_id,
-                    severity=_sev(assertion),
-                    message=(
+            findings.append(
+                self._finding_for_assertion(
+                    assertion,
+                    status=ValidationStatus.PASS if passes else ValidationStatus.FAIL,
+                    default_message=(
+                        f"Consistency assertion '{assertion.assertion_id}' passed"
+                        if passes else
                         f"Consistency assertion '{assertion.assertion_id}' failed: "
                         f"computed={computed_val}, actual={actual_val}, diff={difference}"
                     ),
-                    source="formula",
-                    concept_qname=fact.concept,
-                    context_ref=fact.context_ref,
-                    **self._formula_detail_kwargs(assertion),
-                ))
+                    fact=fact,
+                )
+            )
         return findings
 
     # ------------------------------------------------------------------

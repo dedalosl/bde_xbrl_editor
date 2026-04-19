@@ -23,7 +23,7 @@ from bde_xbrl_editor.taxonomy.models import (
     ValueAssertionDefinition,
 )
 from bde_xbrl_editor.validation.formula.evaluator import FormulaEvaluator
-from bde_xbrl_editor.validation.models import ValidationSeverity
+from bde_xbrl_editor.validation.models import ValidationSeverity, ValidationStatus
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -161,8 +161,8 @@ class TestAbstractAssertionSkipped:
 
 
 class TestValueAssertion:
-    def test_true_expression_no_finding(self) -> None:
-        """A value assertion whose XPath test is 'true()' produces no finding."""
+    def test_true_expression_produces_pass_result(self) -> None:
+        """A value assertion whose XPath test is 'true()' produces a PASS result row."""
         assertion = ValueAssertionDefinition(
             **_base_assertion_kwargs(assertion_id="VA_PASS"),
             test_xpath="true()",
@@ -170,7 +170,9 @@ class TestValueAssertion:
         taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
         inst = _instance([_fact()])
         findings = FormulaEvaluator(taxonomy).evaluate(inst)
-        assert findings == []
+        assert len(findings) == 1
+        assert findings[0].status == ValidationStatus.PASS
+        assert findings[0].severity is None
 
     def test_false_expression_produces_finding(self) -> None:
         """A value assertion whose XPath test is 'false()' produces one finding."""
@@ -258,7 +260,7 @@ class TestValueAssertion:
         assert "fallback: 0" in finding.formula_operands_text
 
     def test_value_assertion_passes_for_each_binding(self) -> None:
-        """A passing assertion produces no finding even with multiple bound facts."""
+        """A passing assertion produces a PASS result row for each evaluated binding."""
         _var_def = FactVariableDefinition(variable_name="v", concept_filter=_qn("Amount"))
         assertion = ValueAssertionDefinition(
             **_base_assertion_kwargs(assertion_id="VA_MULTI"),
@@ -271,7 +273,8 @@ class TestValueAssertion:
             contexts={"ctx1": _ctx("ctx1"), "ctx2": ctx2},
         )
         findings = FormulaEvaluator(taxonomy).evaluate(inst)
-        assert findings == []
+        assert len(findings) == 1
+        assert all(f.status == ValidationStatus.PASS for f in findings)
 
 
 # ---------------------------------------------------------------------------
@@ -280,7 +283,7 @@ class TestValueAssertion:
 
 
 class TestExistenceAssertion:
-    def test_matching_facts_found_no_finding(self) -> None:
+    def test_matching_facts_found_produces_pass_result(self) -> None:
         """Existence assertion passes when at least one matching fact exists."""
         var_def = FactVariableDefinition(variable_name="v", concept_filter=_qn("Amount"))
         assertion = ExistenceAssertionDefinition(
@@ -289,7 +292,8 @@ class TestExistenceAssertion:
         taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
         inst = _instance([_fact("Amount", value="10")])
         findings = FormulaEvaluator(taxonomy).evaluate(inst)
-        assert findings == []
+        assert len(findings) == 1
+        assert findings[0].status == ValidationStatus.PASS
 
     def test_no_matching_facts_produces_finding(self) -> None:
         """Existence assertion fails when no facts match the variable filter."""
@@ -333,7 +337,7 @@ class TestExistenceAssertion:
 
 
 class TestConsistencyAssertion:
-    def test_exact_match_no_finding(self) -> None:
+    def test_exact_match_produces_pass_result(self) -> None:
         """Consistency assertion passes when computed value exactly equals actual value."""
         var_def = FactVariableDefinition(variable_name="v", concept_filter=_qn("Amount"))
         assertion = ConsistencyAssertionDefinition(
@@ -343,7 +347,8 @@ class TestConsistencyAssertion:
         taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
         inst = _instance([_fact("Amount", value="100")])
         findings = FormulaEvaluator(taxonomy).evaluate(inst)
-        assert findings == []
+        assert len(findings) == 1
+        assert findings[0].status == ValidationStatus.PASS
 
     def test_value_outside_radius_produces_finding(self) -> None:
         """Consistency assertion fails when the difference exceeds absolute_radius."""
@@ -359,7 +364,7 @@ class TestConsistencyAssertion:
         assert any(f.rule_id == "CA_FAIL" for f in findings)
 
     def test_value_within_absolute_radius_passes(self) -> None:
-        """Consistency assertion passes when difference is within absolute_radius."""
+        """Consistency assertion within tolerance produces a PASS result row."""
         var_def = FactVariableDefinition(variable_name="v", concept_filter=_qn("Amount"))
         assertion = ConsistencyAssertionDefinition(
             **_base_assertion_kwargs(assertion_id="CA_WITHIN", variables=(var_def,)),
@@ -369,7 +374,8 @@ class TestConsistencyAssertion:
         taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
         inst = _instance([_fact("Amount", value="100")])
         findings = FormulaEvaluator(taxonomy).evaluate(inst)
-        assert findings == []
+        assert len(findings) == 1
+        assert findings[0].status == ValidationStatus.PASS
 
     def test_empty_formula_xpath_skips_assertion(self) -> None:
         """A consistency assertion with empty formula_xpath produces no findings."""
@@ -434,8 +440,8 @@ class TestMultipleAssertions:
         assert "A1" in rule_ids
         assert "A2" in rule_ids
 
-    def test_mixed_pass_fail_only_failing_reported(self) -> None:
-        """Only failing assertions contribute findings; passing ones do not."""
+    def test_mixed_pass_fail_rows_are_both_reported(self) -> None:
+        """Mixed evaluations include PASS and FAIL rows so the UI can show both."""
         a_pass = ValueAssertionDefinition(
             **_base_assertion_kwargs(assertion_id="PASS"),
             test_xpath="true()",
@@ -447,6 +453,6 @@ class TestMultipleAssertions:
         taxonomy = _taxonomy(FormulaAssertionSet(assertions=(a_pass, a_fail)))
         inst = _instance([_fact()])
         findings = FormulaEvaluator(taxonomy).evaluate(inst)
-        rule_ids = {f.rule_id for f in findings}
-        assert "PASS" not in rule_ids
-        assert "FAIL" in rule_ids
+        statuses = {f.rule_id: f.status for f in findings}
+        assert statuses["PASS"] == ValidationStatus.PASS
+        assert statuses["FAIL"] == ValidationStatus.FAIL

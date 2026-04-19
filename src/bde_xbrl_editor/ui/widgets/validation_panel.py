@@ -337,16 +337,34 @@ class ValidationPanel(QWidget):
 
         lines = [
             f"Rule ID   : {finding.rule_id}",
-            f"Severity  : {finding.severity.value.upper()}",
+            f"Status    : {finding.status.value.upper()}",
             f"Source    : {finding.source}",
             f"Message   : {finding.message}",
         ]
+        if finding.severity is not None:
+            lines.append(f"Severity  : {finding.severity.value.upper()}")
         if finding.table_label or finding.table_id:
             lines.append(f"Table     : {finding.table_label or finding.table_id}")
         if finding.concept_qname:
             lines.append(f"Concept   : {finding.concept_qname}")
         if finding.context_ref:
             lines.append(f"Context   : {finding.context_ref}")
+        if finding.rule_label:
+            lines.extend([
+                "",
+                "Definition:",
+                finding.rule_label,
+            ])
+            if finding.rule_label_role:
+                lines.append(f"Definition Role: {finding.rule_label_role}")
+        if finding.rule_message:
+            lines.extend([
+                "",
+                "Official Message:",
+                finding.rule_message,
+            ])
+            if finding.rule_message_role:
+                lines.append(f"Message Role: {finding.rule_message_role}")
         if finding.constraint_type:
             lines.append(f"Constraint: {finding.constraint_type}")
         if finding.formula_assertion_type:
@@ -389,10 +407,11 @@ class ValidationPanel(QWidget):
             self._summary_label.setText("No results")
             return
         visible = self._proxy.rowCount()
+        passed = self._current_report.pass_count
         errors = self._current_report.error_count
         warnings = self._current_report.warning_count
         self._summary_label.setText(
-            f"{visible} shown | {errors} error(s), {warnings} warning(s)"
+            f"{visible} shown | {passed} pass, {errors} error(s), {warnings} warning(s)"
         )
 
     def _update_table_filter_options(self, report: ValidationReport) -> None:

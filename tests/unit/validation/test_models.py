@@ -10,6 +10,7 @@ from bde_xbrl_editor.validation.models import (
     ValidationFinding,
     ValidationReport,
     ValidationSeverity,
+    ValidationStatus,
 )
 
 # ---------------------------------------------------------------------------
@@ -80,6 +81,10 @@ class TestValidationFindingImmutability:
         assert f.formula_expression is None
         assert f.formula_operands_text is None
         assert f.formula_precondition is None
+        assert f.rule_label is None
+        assert f.rule_label_role is None
+        assert f.rule_message is None
+        assert f.rule_message_role is None
 
 
 # ---------------------------------------------------------------------------
@@ -139,6 +144,18 @@ class TestValidationReportPassed:
         findings = (_finding(severity=ValidationSeverity.WARNING),)
         report = _report(findings)
         assert report.passed is True
+
+    def test_pass_count_counts_only_pass_rows(self) -> None:
+        findings = (
+            _finding(rule_id="formula:pass-1", severity=None, source="formula"),
+            _finding(rule_id="formula:fail-1", severity=ValidationSeverity.ERROR, source="formula"),
+        )
+        findings = (
+            dataclasses.replace(findings[0], status=ValidationStatus.PASS),
+            findings[1],
+        )
+        report = _report(findings)
+        assert report.pass_count == 1
 
 
 class TestValidationReportFindingsForTable:

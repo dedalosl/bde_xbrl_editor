@@ -139,6 +139,17 @@ class Label:
     priority: int = 0
 
 
+@dataclass(frozen=True)
+class AssertionTextResource:
+    """A label or message resource attached to a formula assertion."""
+
+    text: str
+    language: str
+    role: str
+    arcrole: str
+    priority: int = 0
+
+
 # ---------------------------------------------------------------------------
 # Linkbase models — presentation
 # ---------------------------------------------------------------------------
@@ -359,6 +370,8 @@ class FormulaAssertion:
     abstract: bool
     variables: tuple[FactVariableDefinition, ...]
     precondition_xpath: str | None
+    label_resources: tuple[AssertionTextResource, ...] = field(default_factory=tuple)
+    message_resources: tuple[AssertionTextResource, ...] = field(default_factory=tuple)
     namespaces: dict[str, str] = field(default_factory=dict)
 
 

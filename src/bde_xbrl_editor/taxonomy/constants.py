@@ -12,6 +12,7 @@ NS_XBRLDT = "http://xbrl.org/2005/xbrldt"
 # Generic linkbase namespaces (XBRL 2.1 generic link spec)
 NS_GEN = "http://xbrl.org/2008/generic"
 NS_GENLAB = "http://xbrl.org/2008/label"
+NS_MSG = "http://xbrl.org/2010/message"
 
 # Eurofiling extension namespaces
 NS_EUROFILING_FI = "http://www.eurofiling.info/xbrl/ext/filing-indicators"
@@ -58,6 +59,11 @@ ARCROLE_DIMENSION_DEFAULT = "http://xbrl.org/int/dim/arcrole/dimension-default"
 
 # Generic label arcrole
 ARCROLE_ELEMENT_LABEL = "http://xbrl.org/arcrole/2008/element-label"
+ARCROLE_ASSERTION_UNSATISFIED_MESSAGE = "http://xbrl.org/arcrole/2010/assertion-unsatisfied-message"
+ARCROLE_ASSERTION_SATISFIED_MESSAGE = "http://xbrl.org/arcrole/2010/assertion-satisfied-message"
+
+GENERIC_LABEL_ROLE = "http://www.xbrl.org/2008/role/label"
+GENERIC_MESSAGE_ROLE = "http://www.xbrl.org/2010/role/message"
 
 # ---------------------------------------------------------------------------
 # LinkbaseRef role URIs (used in schemaRef annotations)

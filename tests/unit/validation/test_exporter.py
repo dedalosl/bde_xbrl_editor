@@ -15,6 +15,7 @@ from bde_xbrl_editor.validation.models import (
     ValidationFinding,
     ValidationReport,
     ValidationSeverity,
+    ValidationStatus,
 )
 
 # ---------------------------------------------------------------------------
@@ -200,6 +201,7 @@ class TestExportJson:
         assert "taxonomy" in summary
         assert "run_timestamp" in summary
         assert "passed" in summary
+        assert "pass_count" in summary
         assert "error_count" in summary
         assert "warning_count" in summary
 
@@ -236,6 +238,7 @@ class TestExportJson:
         jf = data["findings"][0]
         assert jf["rule_id"] == "structural:unresolved-context-ref"
         assert jf["severity"] == "error"
+        assert jf["status"] == "fail"
         assert jf["source"] == "structural"
         assert jf["message"] == "ctx missing"
         assert jf["formula_assertion_type"] is None
@@ -263,6 +266,20 @@ class TestExportJson:
         assert jf["formula_expression"] == "$a = $b"
         assert jf["formula_operands_text"] == "$a\n\n$b"
         assert jf["formula_precondition"] == "$a"
+
+    def test_json_pass_row_keeps_null_severity(self, tmp_path: Path) -> None:
+        f = ValidationFinding(
+            rule_id="formula:pass",
+            severity=None,
+            status=ValidationStatus.PASS,
+            message="Official definition",
+            source="formula",
+        )
+        out = tmp_path / "report.json"
+        ValidationReportExporter().export_json(_report(findings=(f,)), out)
+        data = json.loads(out.read_text(encoding="utf-8"))
+        assert data["findings"][0]["severity"] is None
+        assert data["findings"][0]["status"] == "pass"
 
     def test_json_passed_flag_matches_report(self, tmp_path: Path) -> None:
         """The 'passed' field in JSON summary matches report.passed."""

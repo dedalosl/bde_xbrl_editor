@@ -5,19 +5,25 @@ from __future__ import annotations
 from PySide6.QtCore import QSortFilterProxyModel, Qt
 from PySide6.QtGui import QColor, QStandardItem, QStandardItemModel
 
-from bde_xbrl_editor.validation.models import ValidationFinding, ValidationSeverity
+from bde_xbrl_editor.validation.models import (
+    ValidationFinding,
+    ValidationSeverity,
+    ValidationStatus,
+)
 
 # Column indices
 COL_SEVERITY = 0
+COL_STATUS = COL_SEVERITY
 COL_RULE_ID = 1
 COL_MESSAGE = 2
 COL_TABLE = 3
 COL_CONCEPT = 4
 
-_HEADERS = ["Severity", "Rule ID", "Message", "Table", "Concept"]
+_HEADERS = ["Status", "Rule ID", "Message", "Table", "Concept"]
 
 _COLOR_ERROR = QColor(200, 50, 50)
 _COLOR_WARNING = QColor(200, 150, 0)
+_COLOR_PASS = QColor(34, 139, 34)
 
 
 class ValidationResultsModel(QStandardItemModel):
@@ -38,8 +44,12 @@ class ValidationResultsModel(QStandardItemModel):
             self._append_finding(finding)
 
     def _append_finding(self, finding: ValidationFinding) -> None:
-        sev_text = finding.severity.value.upper()
-        color = _COLOR_ERROR if finding.severity == ValidationSeverity.ERROR else _COLOR_WARNING
+        if finding.status == ValidationStatus.PASS:
+            sev_text = "PASS"
+            color = _COLOR_PASS
+        else:
+            sev_text = finding.severity.value.upper() if finding.severity else "FAIL"
+            color = _COLOR_ERROR if finding.severity == ValidationSeverity.ERROR else _COLOR_WARNING
 
         sev_item = QStandardItem(sev_text)
         sev_item.setForeground(color)
@@ -97,6 +107,11 @@ class ValidationFilterProxy(QSortFilterProxyModel):
         finding: ValidationFinding | None = sev_index.data(Qt.ItemDataRole.UserRole)
         if finding is None:
             return True
+
+        if finding.status == ValidationStatus.PASS:
+            return self._severity_filter is None and (
+                self._table_filter is None or finding.table_id == self._table_filter
+            )
 
         if self._severity_filter is not None and finding.severity != self._severity_filter:
             return False

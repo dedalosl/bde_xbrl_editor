@@ -21,9 +21,12 @@ from lxml import etree
 from bde_xbrl_editor.taxonomy.cache import TaxonomyCache
 from bde_xbrl_editor.taxonomy.constants import (
     ARCROLE_ALL,
+    ARCROLE_ASSERTION_SATISFIED_MESSAGE,
+    ARCROLE_ASSERTION_UNSATISFIED_MESSAGE,
     ARCROLE_DIMENSION_DEFAULT,
     ARCROLE_DIMENSION_DOMAIN,
     ARCROLE_DOMAIN_MEMBER,
+    ARCROLE_ELEMENT_LABEL,
     ARCROLE_HYPERCUBE_DIMENSION,
     ARCROLE_NOT_ALL,
     NS_LINK,
@@ -33,6 +36,9 @@ from bde_xbrl_editor.taxonomy.constants import (
 )
 from bde_xbrl_editor.taxonomy.discovery import _should_skip_linkbase, discover_dts
 from bde_xbrl_editor.taxonomy.label_resolver import LabelResolver
+from bde_xbrl_editor.taxonomy.linkbases.assertion_resources import (
+    parse_assertion_resource_linkbase,
+)
 from bde_xbrl_editor.taxonomy.linkbases.calculation import parse_calculation_linkbase
 from bde_xbrl_editor.taxonomy.linkbases.definition import parse_definition_linkbase
 from bde_xbrl_editor.taxonomy.linkbases.formula import (
@@ -47,6 +53,7 @@ from bde_xbrl_editor.taxonomy.linkbases.presentation import (
 )
 from bde_xbrl_editor.taxonomy.linkbases.table_pwd import parse_table_linkbase
 from bde_xbrl_editor.taxonomy.models import (
+    AssertionTextResource,
     Concept,
     DimensionModel,
     DomainMember,
@@ -287,6 +294,25 @@ def _extract_metadata(entry_point: Path, declared_languages: list[str]) -> Taxon
         declared_languages=tuple(sorted(set(declared_languages))),
         period_type=period_type,
     )
+
+
+def _best_assertion_resources(
+    resources: list[AssertionTextResource],
+    *,
+    arcrole: str,
+    language_preference: list[str],
+) -> tuple[AssertionTextResource, ...]:
+    """Select the best assertion resources for one arcrole."""
+    matched = [resource for resource in resources if resource.arcrole == arcrole]
+    if not matched:
+        return ()
+
+    for language in language_preference:
+        localized = [resource for resource in matched if resource.language == language]
+        if localized:
+            return tuple(sorted(localized, key=lambda item: item.priority, reverse=True))
+
+    return tuple(sorted(matched, key=lambda item: item.priority, reverse=True))
 
 
 _SG_HYPERCUBE = QName(NS_XBRLDT, "hypercubeItem")
@@ -1091,7 +1117,44 @@ class TaxonomyLoader:
             )
             for _flp, fas in parsed_formula_linkbases:
                 all_assertions.extend(fas.assertions)
-            formula_assertion_set = FormulaAssertionSet(assertions=tuple(all_assertions))
+
+            parsed_assertion_resource_linkbases = _run_path_jobs(
+                linkbase_paths,
+                parse_assertion_resource_linkbase,
+                workers=linkbase_workers,
+            )
+            assertion_resources: dict[str, list[AssertionTextResource]] = {}
+            for _resource_path, resource_map in parsed_assertion_resource_linkbases:
+                for assertion_id, resources in resource_map.items():
+                    assertion_resources.setdefault(assertion_id, []).extend(resources)
+
+            language_preference = [*declared_languages, "es", "en"]
+            enriched_assertions: list[FormulaAssertion] = []
+            for assertion in all_assertions:
+                resources = assertion_resources.get(assertion.assertion_id, [])
+                enriched_assertions.append(
+                    replace(
+                        assertion,
+                        label_resources=_best_assertion_resources(
+                            resources,
+                            arcrole=ARCROLE_ELEMENT_LABEL,
+                            language_preference=language_preference,
+                        ),
+                        message_resources=(
+                            _best_assertion_resources(
+                                resources,
+                                arcrole=ARCROLE_ASSERTION_UNSATISFIED_MESSAGE,
+                                language_preference=language_preference,
+                            )
+                            + _best_assertion_resources(
+                                resources,
+                                arcrole=ARCROLE_ASSERTION_SATISFIED_MESSAGE,
+                                language_preference=language_preference,
+                            )
+                        ),
+                    )
+                )
+            formula_assertion_set = FormulaAssertionSet(assertions=tuple(enriched_assertions))
         else:
             formula_assertion_set = FormulaAssertionSet()
 
