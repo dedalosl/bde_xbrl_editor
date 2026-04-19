@@ -42,3 +42,4 @@ def test_parse_assertion_resource_linkbase_uses_arcroles_not_filenames(tmp_path:
     )
     assert any(resource.text == "Definicion oficial" for resource in parsed["rule-A"])
     assert any(resource.text == "Mensaje oficial" for resource in parsed["rule-A"])
+    assert any(resource.namespaces.get("msg") == "http://xbrl.org/2010/message" for resource in parsed["rule-A"])

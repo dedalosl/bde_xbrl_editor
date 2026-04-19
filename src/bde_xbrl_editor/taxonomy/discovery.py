@@ -57,23 +57,13 @@ def _is_remote(href: str) -> bool:
 
 
 def _should_skip_linkbase(path: Path) -> bool:
-    """Return True for validation-message linkbases we do not consume.
+    """Return True when a linkbase should be excluded from the DTS.
 
-    FINREP validation packages contain thousands of ``vr-*-err-*`` and
-    ``vr-*-lab-*`` XML linkbases that only carry human-readable validation
-    messages.     Formula assertions are discovered structurally (not by filename) in
-    ``TaxonomyLoader`` via ``linkbase_contains_formula_assertions``; discovery still
-    lists these linkbases when referenced from the DTS. Skipping them does not use
-    these message resources, so discovering them balloons the
-    DTS without changing the loaded taxonomy structure.
+    Validation message linkbases are now consumed by the formula loader in
+    order to render taxonomy-defined validation messages, so they must remain
+    part of the discovered DTS.
     """
-    name = path.name.lower()
-    return (
-        path.suffix.lower() == ".xml"
-        and "val" in path.parts
-        and name.startswith("vr-")
-        and ("-err-" in name or "-lab-" in name)
-    )
+    return False
 
 
 def _should_follow_locators(path: Path) -> bool:
@@ -100,7 +90,9 @@ def _should_parse_linkbase_for_discovery(path: Path) -> bool:
     and surface them as "No formula assertions in this taxonomy" in the UI.
 
     Per-rule message linkbases (``vr-*-err-*.xml`` / ``vr-*-lab-*.xml``) are
-    still excluded by ``_should_follow_locators`` to keep discovery fast.
+    still not traversed through their locators by ``_should_follow_locators``
+    to keep discovery fast, but they remain in the DTS so their resources can
+    be parsed later by the taxonomy loader.
     """
     return _should_follow_locators(path)
 

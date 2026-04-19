@@ -148,6 +148,7 @@ class AssertionTextResource:
     role: str
     arcrole: str
     priority: int = 0
+    namespaces: dict[str, str] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------

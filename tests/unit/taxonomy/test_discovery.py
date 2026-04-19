@@ -334,7 +334,7 @@ class TestDiscoveryQueueing:
 
         assert list(queue) == [(schema, False), (linkbase, True)]
 
-    def test_enqueue_if_new_skips_validation_message_linkbases(self, tmp_path):
+    def test_enqueue_if_new_keeps_validation_message_linkbases(self, tmp_path):
         queue = deque()
         pending_schemas: set[Path] = set()
         pending_linkbases: set[Path] = set()
@@ -345,11 +345,11 @@ class TestDiscoveryQueueing:
         vr_lab = (tmp_path / "val" / "vr-b0008-lab-es.xml").resolve()
         table_label = (tmp_path / "tab" / "fi_20-4-lab-en.xml").resolve()
 
-        assert _should_skip_linkbase(vr_err)
-        assert _should_skip_linkbase(vr_lab)
+        assert not _should_skip_linkbase(vr_err)
+        assert not _should_skip_linkbase(vr_lab)
         assert not _should_skip_linkbase(table_label)
 
-        assert not _enqueue_if_new(
+        assert _enqueue_if_new(
             queue,
             vr_err,
             is_linkbase=True,
@@ -358,7 +358,7 @@ class TestDiscoveryQueueing:
             visited_schemas=visited_schemas,
             visited_linkbases=visited_linkbases,
         )
-        assert not _enqueue_if_new(
+        assert _enqueue_if_new(
             queue,
             vr_lab,
             is_linkbase=True,
@@ -377,7 +377,7 @@ class TestDiscoveryQueueing:
             visited_linkbases=visited_linkbases,
         )
 
-        assert list(queue) == [(table_label, True)]
+        assert list(queue) == [(vr_err, True), (vr_lab, True), (table_label, True)]
 
     def test_should_follow_locators_skips_label_and_error_linkbases(self, tmp_path):
         label_linkbase = (tmp_path / "tab" / "fi_20-4-lab-en.xml").resolve()
@@ -391,8 +391,8 @@ class TestDiscoveryQueueing:
     def test_should_parse_linkbase_for_discovery_includes_validation_xmls(self, tmp_path):
         # Validation aset / vr rule linkbases must be parsed so their locators
         # surface the actual va:valueAssertion files (vr-*.xml). Per-rule
-        # message linkbases (-err-/-lab-) are still excluded by
-        # _should_follow_locators.
+        # message linkbases (-err-/-lab-) stay in the DTS, but their locators
+        # are still skipped by _should_follow_locators.
         validation_formula = (tmp_path / "val" / "vr-v0930_m_0.xml").resolve()
         validation_aset = (tmp_path / "val" / "aset-fi_1-1.xml").resolve()
         validation_message_lb = (tmp_path / "val" / "vr-b0008-err-en.xml").resolve()

@@ -31,6 +31,7 @@ from bde_xbrl_editor.validation.models import (
     ValidationFinding,
     ValidationReport,
     ValidationSeverity,
+    ValidationStatus,
 )
 
 # ---------------------------------------------------------------------------
@@ -145,7 +146,11 @@ class ValidationPanel(QWidget):
 
         toolbar_card_layout.addWidget(QLabel("Severity:"))
         self._sev_combo = QComboBox()
+        self._sev_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        self._sev_combo.setMinimumContentsLength(7)
+        self._sev_combo.setMinimumWidth(110)
         self._sev_combo.addItem("All", None)
+        self._sev_combo.addItem("Pass", ValidationStatus.PASS)
         self._sev_combo.addItem("Error", ValidationSeverity.ERROR)
         self._sev_combo.addItem("Warning", ValidationSeverity.WARNING)
         self._sev_combo.currentIndexChanged.connect(self._on_severity_filter_changed)
@@ -153,6 +158,9 @@ class ValidationPanel(QWidget):
 
         toolbar_card_layout.addWidget(QLabel("Table:"))
         self._table_combo = QComboBox()
+        self._table_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        self._table_combo.setMinimumContentsLength(8)
+        self._table_combo.setMinimumWidth(110)
         self._table_combo.addItem("All", None)
         self._table_combo.currentIndexChanged.connect(self._on_table_filter_changed)
         toolbar_card_layout.addWidget(self._table_combo)

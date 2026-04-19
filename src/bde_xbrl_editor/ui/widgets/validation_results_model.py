@@ -25,6 +25,8 @@ _COLOR_ERROR = QColor(200, 50, 50)
 _COLOR_WARNING = QColor(200, 150, 0)
 _COLOR_PASS = QColor(34, 139, 34)
 
+SeverityFilterValue = ValidationSeverity | ValidationStatus | None
+
 
 class ValidationResultsModel(QStandardItemModel):
     """Flat list model backing the validation results tree view.
@@ -82,10 +84,10 @@ class ValidationFilterProxy(QSortFilterProxyModel):
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self._severity_filter: ValidationSeverity | None = None
+        self._severity_filter: SeverityFilterValue = None
         self._table_filter: str | None = None
 
-    def set_severity_filter(self, severity: ValidationSeverity | None) -> None:
+    def set_severity_filter(self, severity: SeverityFilterValue) -> None:
         self._severity_filter = severity
         self.invalidateFilter()
 
@@ -109,10 +111,12 @@ class ValidationFilterProxy(QSortFilterProxyModel):
             return True
 
         if finding.status == ValidationStatus.PASS:
-            return self._severity_filter is None and (
-                self._table_filter is None or finding.table_id == self._table_filter
-            )
+            if self._severity_filter not in (None, ValidationStatus.PASS):
+                return False
+            return self._table_filter is None or finding.table_id == self._table_filter
 
+        if self._severity_filter == ValidationStatus.PASS:
+            return False
         if self._severity_filter is not None and finding.severity != self._severity_filter:
             return False
         return not (self._table_filter is not None and finding.table_id != self._table_filter)

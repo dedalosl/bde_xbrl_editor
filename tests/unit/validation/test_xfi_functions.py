@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 
 import pytest
+import elementpath
 
 from bde_xbrl_editor.instance.models import (
     Fact,
@@ -14,7 +16,10 @@ from bde_xbrl_editor.instance.models import (
 )
 from bde_xbrl_editor.taxonomy.models import QName
 from bde_xbrl_editor.validation.formula.xfi_functions import (
+    build_formula_parser,
     clear_evaluation_context,
+    iaf_numeric_add,
+    iaf_sum,
     set_evaluation_context,
     xfi_decimal,          # backward-compat alias
     xfi_decimals,
@@ -331,3 +336,37 @@ class TestContextManagement:
         set_evaluation_context({"_context": ctx2})
         p2 = xfi_period(None)
         assert isinstance(p2, ReportingPeriod) and p2.instant_date == date(2024, 6, 30)
+
+
+class TestIafFunctions:
+    def test_iaf_sum_flattens_python_sequences(self) -> None:
+        """iaf_sum handles a direct Python sequence of numeric values."""
+        assert iaf_sum([Decimal("1.5"), "2.5", 3]) == Decimal("7.0")
+
+    def test_iaf_sum_accepts_xpath_sequence_argument(self) -> None:
+        """The registered iaf:sum function accepts a multi-item XPath sequence."""
+        parser = build_formula_parser({})
+        token = parser.parse("iaf:sum($values)")
+        ctx = elementpath.XPathContext(root=None, item=Decimal("0"), variables={"values": [1, 2, 3]})
+
+        result = list(token.select(ctx))
+
+        assert result == [Decimal("6")]
+
+    def test_iaf_numeric_add_adds_two_values(self) -> None:
+        """iaf_numeric_add coerces and adds two scalar values."""
+        assert iaf_numeric_add("1.25", Decimal("2.75")) == Decimal("4.00")
+
+    def test_iaf_numeric_add_is_registered_in_xpath_parser(self) -> None:
+        """The registered iaf:numeric-add function is available to XPath evaluation."""
+        parser = build_formula_parser({})
+        token = parser.parse("iaf:numeric-add($left, $right)")
+        ctx = elementpath.XPathContext(
+            root=None,
+            item=Decimal("0"),
+            variables={"left": Decimal("10.5"), "right": "2.25"},
+        )
+
+        result = list(token.select(ctx))
+
+        assert result == [Decimal("12.75")]

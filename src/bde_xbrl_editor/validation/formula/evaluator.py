@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import contextlib
 import itertools
+import re
 import threading
 from collections.abc import Callable
 from decimal import Decimal, InvalidOperation
 from typing import Any
+
+from lxml import etree
 
 from bde_xbrl_editor.instance.models import Fact, XbrlInstance
 from bde_xbrl_editor.taxonomy.models import (
@@ -34,6 +37,7 @@ from bde_xbrl_editor.validation.models import (
 )
 
 ProgressCallback = Callable[[int, int, str], None]
+_MESSAGE_EXPR_RE = re.compile(r"\{([^{}]+)\}")
 
 
 class FormulaEvaluator:
@@ -86,7 +90,7 @@ class FormulaEvaluator:
                     )
                 elif isinstance(assertion, ExistenceAssertionDefinition):
                     findings.extend(
-                        self._evaluate_existence_assertion(assertion, bindings)
+                        self._evaluate_existence_assertion(assertion, bindings, instance)
                     )
                 elif isinstance(assertion, ConsistencyAssertionDefinition):
                     findings.extend(
@@ -143,6 +147,8 @@ class FormulaEvaluator:
         status: ValidationStatus,
         default_message: str,
         fact: Fact | None = None,
+        binding: dict[str, list[Fact]] | None = None,
+        instance: XbrlInstance | None = None,
     ) -> ValidationFinding:
         label_resource = assertion.label_resources[0] if assertion.label_resources else None
         message_candidates = assertion.message_resources
@@ -159,7 +165,12 @@ class FormulaEvaluator:
             )
 
         display_message = (
-            self._resource_text(message_resource)
+            self._render_message_resource(
+                assertion,
+                message_resource,
+                binding=binding,
+                instance=instance,
+            )
             or (self._resource_text(label_resource) if status == ValidationStatus.PASS else None)
             or default_message
         )
@@ -177,6 +188,129 @@ class FormulaEvaluator:
             rule_message_role=message_resource.role if message_resource else None,
             **self._formula_detail_kwargs(assertion),
         )
+
+    def _render_message_resource(
+        self,
+        assertion: FormulaAssertion,
+        resource: AssertionTextResource | None,
+        *,
+        binding: dict[str, list[Fact]] | None,
+        instance: XbrlInstance | None,
+    ) -> str | None:
+        template = self._resource_text(resource)
+        if template is None:
+            return None
+        if resource is None or binding is None or instance is None or "{" not in template:
+            return template
+
+        variables = self._build_message_variables(assertion, binding)
+        if not variables:
+            return template
+
+        namespaces = dict(assertion.namespaces)
+        namespaces.update(resource.namespaces)
+        first_fact = _first_fact(binding)
+        return self._render_message_template(
+            template,
+            variables=variables,
+            instance=instance,
+            namespaces=namespaces,
+            first_fact=first_fact,
+        )
+
+    @staticmethod
+    def _build_message_variables(
+        assertion: FormulaAssertion,
+        binding: dict[str, list[Fact]],
+    ) -> dict[str, Any]:
+        variables: dict[str, Any] = {}
+        for var_def in assertion.variables:
+            facts = binding.get(var_def.variable_name, [])
+            if facts:
+                fact_nodes = [_fact_to_message_element(fact) for fact in facts]
+                variables[var_def.variable_name] = (
+                    fact_nodes[0] if len(fact_nodes) == 1 else fact_nodes
+                )
+            elif var_def.fallback_value is not None:
+                variables[var_def.variable_name] = _coerce_value(var_def.fallback_value)
+            else:
+                variables[var_def.variable_name] = []
+        return variables
+
+    def _render_message_template(
+        self,
+        template: str,
+        *,
+        variables: dict[str, Any],
+        instance: XbrlInstance,
+        namespaces: dict[str, str],
+        first_fact: Fact | None,
+    ) -> str:
+        def replace_expr(match: re.Match[str]) -> str:
+            expr = match.group(1).strip()
+            if not expr:
+                return ""
+            try:
+                return self._evaluate_message_expression(
+                    expr,
+                    variables=variables,
+                    instance=instance,
+                    namespaces=namespaces,
+                    first_fact=first_fact,
+                )
+            except Exception:  # noqa: BLE001
+                return match.group(0)
+
+        return _MESSAGE_EXPR_RE.sub(replace_expr, template)
+
+    def _evaluate_message_expression(
+        self,
+        expr: str,
+        *,
+        variables: dict[str, Any],
+        instance: XbrlInstance,
+        namespaces: dict[str, str],
+        first_fact: Fact | None,
+    ) -> str:
+        import elementpath  # type: ignore[import-untyped]
+
+        ctx_obj = None
+        unit_obj = None
+        if first_fact is not None:
+            ctx_obj = instance.contexts.get(first_fact.context_ref)
+            if first_fact.unit_ref:
+                unit_obj = instance.units.get(first_fact.unit_ref)
+
+        set_evaluation_context({
+            "_all_facts": instance.facts,
+            "_current_fact": first_fact,
+            "_context": ctx_obj,
+            "_unit": unit_obj,
+            "_instance": instance,
+        })
+
+        context_item = next(
+            (
+                value
+                for value in variables.values()
+                if not isinstance(value, list) or value
+            ),
+            True,
+        )
+
+        parser = build_formula_parser(namespaces)
+        try:
+            token = parser.parse(expr)
+            ctx = elementpath.XPathContext(
+                root=None,
+                item=context_item,
+                variables=variables,
+            )
+            result = list(token.select(ctx))
+        finally:
+            clear_evaluation_context()
+
+        return _stringify_xpath_result(result)
 
     def _bind_variables(
         self,
@@ -244,6 +378,8 @@ class FormulaEvaluator:
                         assertion,
                         status=ValidationStatus.FAIL,
                         default_message=f"XPath evaluation failed: {exc}",
+                        binding=binding,
+                        instance=instance,
                     )
                 )
                 continue
@@ -260,6 +396,8 @@ class FormulaEvaluator:
                         f"test expression evaluated to false"
                     ),
                     fact=fact,
+                    binding=binding,
+                    instance=instance,
                 )
             )
         return findings
@@ -268,6 +406,7 @@ class FormulaEvaluator:
         self,
         assertion: ExistenceAssertionDefinition,
         bindings: list[dict[str, list[Fact]]],
+        instance: XbrlInstance,
     ) -> list[ValidationFinding]:
         """Pass if at least one binding has a non-empty fact set."""
         for binding in bindings:
@@ -281,6 +420,8 @@ class FormulaEvaluator:
                                 f"Existence assertion '{assertion.assertion_id}' passed"
                             ),
                             fact=facts[0],
+                            binding=binding,
+                            instance=instance,
                         )
                     ]
 
@@ -292,6 +433,8 @@ class FormulaEvaluator:
                     f"Existence assertion '{assertion.assertion_id}' failed: "
                     f"no matching facts found"
                 ),
+                binding=bindings[0] if bindings else None,
+                instance=instance,
             )
         ]
 
@@ -344,6 +487,8 @@ class FormulaEvaluator:
                         f"computed={computed_val}, actual={actual_val}, diff={difference}"
                     ),
                     fact=fact,
+                    binding=binding,
+                    instance=instance,
                 )
             )
         return findings
@@ -446,6 +591,36 @@ def _coerce_value(raw: str) -> Any:
         return Decimal(raw)
     except InvalidOperation:
         return raw
+
+
+def _fact_to_message_element(fact: Fact) -> etree._Element:
+    """Build a lightweight XML element for message XPath evaluation."""
+    prefix = fact.concept.prefix or "fact"
+    nsmap = {prefix: fact.concept.namespace} if fact.concept.namespace else None
+    if fact.concept.namespace:
+        tag = f"{{{fact.concept.namespace}}}{fact.concept.local_name}"
+    else:
+        tag = fact.concept.local_name
+
+    element = etree.Element(tag, nsmap=nsmap)
+    element.set("contextRef", fact.context_ref)
+    if fact.unit_ref:
+        element.set("unitRef", fact.unit_ref)
+    if fact.decimals is not None:
+        element.set("decimals", fact.decimals)
+    element.text = fact.value
+    return element
+
+
+def _stringify_xpath_result(result: list[Any]) -> str:
+    """Render an XPath result sequence as readable message text."""
+    parts: list[str] = []
+    for item in result:
+        value = getattr(item, "value", item)
+        text = str(value).strip()
+        if text:
+            parts.append(text)
+    return " ".join(parts)
 
 
 def _to_bool(value: Any) -> bool:

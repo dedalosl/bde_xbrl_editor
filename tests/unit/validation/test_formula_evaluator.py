@@ -13,6 +13,7 @@ from bde_xbrl_editor.instance.models import (
     XbrlInstance,
 )
 from bde_xbrl_editor.taxonomy.models import (
+    AssertionTextResource,
     ConsistencyAssertionDefinition,
     ExistenceAssertionDefinition,
     FactVariableDefinition,
@@ -275,6 +276,47 @@ class TestValueAssertion:
         findings = FormulaEvaluator(taxonomy).evaluate(inst)
         assert len(findings) == 1
         assert all(f.status == ValidationStatus.PASS for f in findings)
+
+    def test_unsatisfied_message_template_is_rendered_with_binding_values(self) -> None:
+        """Validation messages render embedded XPath expressions against bound facts."""
+        var_def = FactVariableDefinition(variable_name="v", concept_filter=_qn("Amount"))
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(assertion_id="VA_MSG", variables=(var_def,)),
+            test_xpath="false()",
+            message_resources=(
+                AssertionTextResource(
+                    text=(
+                        "Not satisfied error: Fact { string(node-name($v)) } "
+                        "in context { string($v/@contextRef) }, reported value { string($v) }, "
+                        "period starts { string(xfi:period-start(xfi:period($v))) }"
+                    ),
+                    language="en",
+                    role="http://www.xbrl.org/2010/role/message",
+                    arcrole="http://xbrl.org/arcrole/2010/assertion-unsatisfied-message",
+                    namespaces={"xfi": "http://www.xbrl.org/2008/function/instance"},
+                ),
+            ),
+            namespaces={"xfi": "http://www.xbrl.org/2008/function/instance"},
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
+        ctx = XbrlContext(
+            context_id="ctx1",
+            entity=_entity(),
+            period=ReportingPeriod(
+                period_type="duration",
+                start_date=date(2024, 1, 1),
+                end_date=date(2024, 12, 31),
+            ),
+        )
+        inst = _instance([_fact("Amount", value="42")], contexts={"ctx1": ctx})
+
+        findings = FormulaEvaluator(taxonomy).evaluate(inst)
+
+        assert len(findings) == 1
+        assert findings[0].message.startswith("Not satisfied error: Fact ")
+        assert "context ctx1" in findings[0].message
+        assert "reported value 42" in findings[0].message
+        assert "period starts 2024-01-01" in findings[0].message
 
 
 # ---------------------------------------------------------------------------

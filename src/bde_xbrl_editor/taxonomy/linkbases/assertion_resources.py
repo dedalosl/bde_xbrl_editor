@@ -57,6 +57,9 @@ def parse_assertion_resource_linkbase(
     root = tree.getroot()
     result: dict[str, list[AssertionTextResource]] = {}
 
+    def _resource_namespaces(resource_el: etree._Element) -> dict[str, str]:
+        return {prefix: uri for prefix, uri in resource_el.nsmap.items() if prefix and uri}
+
     for link_el in root.iter(_GEN_LINK):
         loc_map: dict[str, str] = {}
         for loc in link_el:
@@ -92,6 +95,7 @@ def parse_assertion_resource_linkbase(
                     ).strip(),
                     arcrole="",
                     priority=priority,
+                    namespaces=_resource_namespaces(resource_el),
                 )
             )
 
@@ -112,6 +116,7 @@ def parse_assertion_resource_linkbase(
                         role=resource.role,
                         arcrole=arcrole,
                         priority=resource.priority,
+                        namespaces=resource.namespaces,
                     )
                 )
 

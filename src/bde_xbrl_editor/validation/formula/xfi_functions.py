@@ -26,6 +26,7 @@ Usage
 from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
+from types import SimpleNamespace
 from typing import Any
 
 # ---------------------------------------------------------------------------
@@ -85,6 +86,14 @@ def _fact_from_arg(arg: Any) -> Any:
     return the current fact from the evaluation context."""
     if arg is not None and hasattr(arg, "context_ref"):
         return arg
+    if arg is not None and hasattr(arg, "get"):
+        context_ref = arg.get("contextRef")
+        if context_ref:
+            return SimpleNamespace(
+                context_ref=context_ref,
+                unit_ref=arg.get("unitRef"),
+                decimals=arg.get("decimals"),
+            )
     return _current_fact()
 
 
@@ -1183,9 +1192,9 @@ def _flatten_decimal(*args: Any) -> list[Decimal]:
     return result
 
 
-def iaf_sum(*args: Any) -> Decimal:
-    """iaf:sum — sum of a sequence of numeric values (handles single values and lists)."""
-    return sum(_flatten_decimal(*args), Decimal(0))
+def iaf_sum(values: Any) -> Decimal:
+    """iaf:sum — sum of a numeric sequence."""
+    return sum(_flatten_decimal(values), Decimal(0))
 
 
 def iaf_error_margin(*args: Any) -> Decimal:
@@ -1207,6 +1216,14 @@ def iaf_numeric_equal(*args: Any) -> bool:
     a, b = vals[0], vals[1]
     margin = _to_decimal(args[2]) if len(args) > 2 else Decimal(0)
     return abs(a - b) <= margin
+
+
+def iaf_numeric_add(*args: Any) -> Decimal:
+    """iaf:numeric-add(a, b) — add two numeric values."""
+    if len(args) < 2:
+        return Decimal(0)
+    vals = _flatten_decimal(*args[:2])
+    return vals[0] + vals[1]
 
 
 def iaf_numeric_less_equal_than(*args: Any) -> bool:
@@ -1236,13 +1253,14 @@ def iaf_numeric_unary_minus(*args: Any) -> Decimal:
     return -_to_decimal(args[0])
 
 
-_IAF_FUNCTIONS: list[tuple[str, Any]] = [
-    ("sum",                      iaf_sum),
-    ("error-margin",             iaf_error_margin),
-    ("numeric-equal",            iaf_numeric_equal),
-    ("numeric-less-equal-than",  iaf_numeric_less_equal_than),
-    ("numeric-greater-equal-than", iaf_numeric_greater_equal_than),
-    ("numeric-unary-minus",      iaf_numeric_unary_minus),
+_IAF_FUNCTIONS: list[tuple[str, Any, tuple[str, ...]]] = [
+    ("sum", iaf_sum, ("xs:anyAtomicType*", "xs:decimal")),
+    ("error-margin", iaf_error_margin, ()),
+    ("numeric-add", iaf_numeric_add, ()),
+    ("numeric-equal", iaf_numeric_equal, ()),
+    ("numeric-less-equal-than", iaf_numeric_less_equal_than, ()),
+    ("numeric-greater-equal-than", iaf_numeric_greater_equal_than, ()),
+    ("numeric-unary-minus", iaf_numeric_unary_minus, ()),
 ]
 
 
@@ -1299,9 +1317,14 @@ def _build_xbrl_parser_class() -> type:
             _temp.external_function(callback, name=local_name, prefix="efn", sequence_types=())
         except Exception:  # noqa: BLE001
             pass
-    for local_name, callback in _IAF_FUNCTIONS:
+    for local_name, callback, sequence_types in _IAF_FUNCTIONS:
         try:
-            _temp.external_function(callback, name=local_name, prefix="iaf", sequence_types=())
+            _temp.external_function(
+                callback,
+                name=local_name,
+                prefix="iaf",
+                sequence_types=sequence_types,
+            )
         except Exception:  # noqa: BLE001
             pass
 
