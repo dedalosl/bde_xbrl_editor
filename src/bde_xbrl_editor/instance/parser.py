@@ -58,6 +58,10 @@ _XBRLDI_TYPED_MEMBER = f"{{{XBRLDI_NS}}}typedMember"
 _FILING_IND = f"{{{FILING_IND_NS}}}filingIndicator"
 _XLINK_HREF = f"{{{XLINK_NS}}}href"
 _XLINK_TYPE = f"{{{XLINK_NS}}}type"
+_LINK_FOOTNOTE_LINK = f"{{{LINK_NS}}}footnoteLink"
+_LINK_LOC = f"{{{LINK_NS}}}loc"
+_LINK_FOOTNOTE = f"{{{LINK_NS}}}footnote"
+_LINK_FOOTNOTE_ARC = f"{{{LINK_NS}}}footnoteArc"
 
 # BDE IE_2008_02 preamble Clark-notation tags
 _BDE_ENTIDAD = f"{{{BDE_PBLO_NS}}}EntidadPresentadora"
@@ -67,16 +71,42 @@ _BDE_CODIGO_ESTADO = f"{{{BDE_PBLO_NS}}}CodigoEstado"
 
 # Known non-fact tags (skipped when iterating facts)
 # All es-be-cm-pblo namespace elements are BDE preamble data, not XBRL facts.
-_NON_FACT_TAGS = frozenset([
-    _LINK_SCHEMA_REF,
-    _XBRLI_CONTEXT,
-    _XBRLI_UNIT,
-    _FILING_IND,
-    f"{{{FILING_IND_NS}}}fIndicators",
-    _BDE_ENTIDAD,
-    _BDE_TIPO_ENVIO,
-    _BDE_ESTADOS_REPORTADOS,
-])
+_NON_FACT_TAGS = frozenset(
+    [
+        _LINK_SCHEMA_REF,
+        _XBRLI_CONTEXT,
+        _XBRLI_UNIT,
+        _FILING_IND,
+        f"{{{FILING_IND_NS}}}fIndicators",
+        _BDE_ENTIDAD,
+        _BDE_TIPO_ENVIO,
+        _BDE_ESTADOS_REPORTADOS,
+        _LINK_FOOTNOTE_LINK,
+        _LINK_LOC,
+        _LINK_FOOTNOTE,
+        _LINK_FOOTNOTE_ARC,
+    ]
+)
+
+
+def _catalog_path_candidates(local_root: Path, rel: str) -> list[Path]:
+    """Return local-cache candidates for a remote schemaRef suffix.
+
+    Banco de Espana schemaRef URLs can use ``/es/fr/xbrl/...`` while the local
+    cache stores the same DTS under ``/es/xbrl/...``.  Prefer the direct mapping
+    and fall back to the normalized cache path when needed.
+    """
+    rel = rel.lstrip("/")
+    candidates = [(local_root / rel).resolve()]
+
+    parts = Path(rel).parts
+    if len(parts) >= 3 and parts[1] == "fr" and parts[2] == "xbrl":
+        alt_rel = Path(parts[0], *parts[2:])
+        alt_candidate = (local_root / alt_rel).resolve()
+        if alt_candidate not in candidates:
+            candidates.append(alt_candidate)
+
+    return candidates
 
 
 def _parse_date(text: str) -> date:
@@ -323,9 +353,7 @@ class InstanceParser:
         else:
             # Fallback: minimal entity/period — will be overridden if contexts exist
             instance_entity = ReportingEntity(identifier="unknown", scheme="http://unknown")
-            instance_period = ReportingPeriod(
-                period_type="instant", instant_date=date.today()
-            )
+            instance_period = ReportingPeriod(period_type="instant", instant_date=date.today())
 
         # Stage 4: Parse units
         progress("Reading units…", 84)
@@ -334,6 +362,62 @@ class InstanceParser:
             unit = _parse_unit(unit_el)
             units[unit.unit_id] = unit
         progress(f"Units loaded — {len(units)} available", 87)
+
+        # Stage 4b: Validate footnote link references and arc from/to constraints
+        footnote_errors: list[str] = []
+        all_context_ids = set(contexts.keys())
+        all_unit_ids = set(units.keys())
+        all_fact_ids: set[str] = set()
+        for child in root:
+            if isinstance(child.tag, str) and child.get("id"):
+                all_fact_ids.add(child.get("id"))
+        for footnote_link in root.findall(_LINK_FOOTNOTE_LINK):
+            loc_labels: dict[str, str] = {}
+            footnote_resources: set[str] = set()
+            for loc_el in footnote_link.findall(_LINK_LOC):
+                label = loc_el.get("{http://www.w3.org/1999/xlink}label", "")
+                href = loc_el.get(_XLINK_HREF, "")
+                if label and href:
+                    loc_labels[label] = href
+                if href.startswith("#"):
+                    target_id = href[1:]
+                    if target_id in all_context_ids:
+                        footnote_errors.append(
+                            f"link:loc xlink:href='{href}' references context element (not allowed)"
+                        )
+                    elif target_id in all_unit_ids:
+                        footnote_errors.append(
+                            f"link:loc xlink:href='{href}' references unit element (not allowed)"
+                        )
+                elif href and "#" in href:
+                    doc_part, _ = href.split("#", 1)
+                    instance_filename = path.name
+                    if doc_part and doc_part != instance_filename:
+                        footnote_errors.append(
+                            f"link:loc xlink:href='{doc_part}#...' references external document (not allowed)"
+                        )
+            for fn_el in footnote_link.findall(_LINK_FOOTNOTE):
+                label = fn_el.get("{http://www.w3.org/1999/xlink}label", "")
+                if label:
+                    footnote_resources.add(label)
+                if fn_el.get("{http://www.w3.org/XML/1998/namespace}lang") is None:
+                    footnote_errors.append("link:footnote is missing required xml:lang attribute")
+            for arc_el in footnote_link.findall(_LINK_FOOTNOTE_ARC):
+                arc_from = arc_el.get("{http://www.w3.org/1999/xlink}from", "")
+                arc_to = arc_el.get("{http://www.w3.org/1999/xlink}to", "")
+                if arc_from and arc_from not in loc_labels:
+                    footnote_errors.append(
+                        f"link:footnoteArc xlink:from='{arc_from}' does not match any loc xlink:label in the same extended link"
+                    )
+                if arc_to:
+                    if arc_to not in footnote_resources:
+                        footnote_errors.append(
+                            f"link:footnoteArc xlink:to='{arc_to}' does not match any footnote xlink:label in the same extended link"
+                        )
+        if footnote_errors:
+            raise InstanceParseError(
+                path_str, "xbrli:InvalidFootnoteLinkReference: " + "; ".join(footnote_errors)
+            )
 
         # Stage 5: Scan top-level children once so large filings keep reporting
         # progress before fact indexing begins.
@@ -379,11 +463,13 @@ class InstanceParser:
                         continue
                     blanco_val = estado_el.get(blanco_attr, "false").lower()
                     estado_ctx = estado_el.get("contextRef", "") or preambulo_context_ref
-                    estados.append(BdeEstadoReportado(
-                        codigo=codigo,
-                        blanco=blanco_val in ("true", "1", "yes"),
-                        context_ref=estado_ctx,
-                    ))
+                    estados.append(
+                        BdeEstadoReportado(
+                            codigo=codigo,
+                            blanco=blanco_val in ("true", "1", "yes"),
+                            context_ref=estado_ctx,
+                        )
+                    )
             else:
                 local = tag.split("}")[-1] if "}" in tag else tag
                 ns = tag.split("}")[0][1:] if "}" in tag else ""
@@ -413,28 +499,31 @@ class InstanceParser:
                         concept_qname = None
 
                     if concept_qname is not None and concept_qname in known_concepts:
-                        facts.append(Fact(
-                            concept=concept_qname,
-                            context_ref=context_ref,
-                            unit_ref=unit_ref,
-                            value=value,
-                            decimals=decimals,
-                            precision=precision,
-                        ))
+                        facts.append(
+                            Fact(
+                                concept=concept_qname,
+                                context_ref=context_ref,
+                                unit_ref=unit_ref,
+                                value=value,
+                                decimals=decimals,
+                                precision=precision,
+                            )
+                        )
                     else:
                         raw_xml = etree.tostring(child, encoding="unicode").encode("utf-8")
-                        orphaned.append(OrphanedFact(
-                            concept_qname_str=concept_tag,
-                            context_ref=context_ref,
-                            unit_ref=unit_ref,
-                            value=value,
-                            decimals=decimals,
-                            raw_element_xml=raw_xml,
-                        ))
+                        orphaned.append(
+                            OrphanedFact(
+                                concept_qname_str=concept_tag,
+                                context_ref=context_ref,
+                                unit_ref=unit_ref,
+                                value=value,
+                                decimals=decimals,
+                                raw_element_xml=raw_xml,
+                            )
+                        )
 
-            if (
-                total_root_children
-                and (index == total_root_children or index == 1 or index % metadata_progress_every == 0)
+            if total_root_children and (
+                index == total_root_children or index == 1 or index % metadata_progress_every == 0
             ):
                 mapped_progress = 88 + int((index / total_root_children) * 11)
                 if facts_seen > 0:
@@ -511,10 +600,10 @@ class InstanceParser:
             if catalog:
                 for prefix, local_root in catalog.items():
                     if schema_href.startswith(prefix):
-                        rel = schema_href[len(prefix):].lstrip("/")
-                        candidate = (local_root / rel).resolve()
-                        if candidate.exists():
-                            return candidate
+                        rel = schema_href[len(prefix) :].lstrip("/")
+                        for candidate in _catalog_path_candidates(local_root, rel):
+                            if candidate.exists():
+                                return candidate
 
         if self._resolver is not None:
             resolved = self._resolver(schema_href)
@@ -551,11 +640,13 @@ def _parse_filing_indicator(el: etree._Element, out: list[FilingIndicator]) -> N
     filed = filed_str in ("true", "1", "yes")
     template_id = (el.text or "").strip()
     if template_id:
-        out.append(FilingIndicator(
-            template_id=template_id,
-            filed=filed,
-            context_ref=context_ref,
-        ))
+        out.append(
+            FilingIndicator(
+                template_id=template_id,
+                filed=filed,
+                context_ref=context_ref,
+            )
+        )
 
 
 def _parse_bde_filing_indicators(
@@ -637,11 +728,13 @@ def _parse_bde_preambulo(root: etree._Element) -> BdePreambulo | None:
                 blanco_val = estado_el.get(blanco_attr, "false").lower()
                 blanco = blanco_val in ("true", "1", "yes")
                 estado_ctx = estado_el.get("contextRef", "") or context_ref
-                estados.append(BdeEstadoReportado(
-                    codigo=codigo,
-                    blanco=blanco,
-                    context_ref=estado_ctx,
-                ))
+                estados.append(
+                    BdeEstadoReportado(
+                        codigo=codigo,
+                        blanco=blanco,
+                        context_ref=estado_ctx,
+                    )
+                )
 
     if not found_any:
         return None

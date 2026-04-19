@@ -435,6 +435,48 @@ class TestZAxis:
         assert layout.active_z_constraints == {dim: member}
         assert layout.body[0][0].coordinate.explicit_dimensions == {dim: member}
 
+    def test_default_member_dimensions_are_removed_from_cell_coordinates(self):
+        concept = QName(namespace="http://example.com", local_name="Assets", prefix="ex")
+        dim = QName(namespace="http://example.com/dim", local_name="Dim1", prefix="dim")
+        default_member = QName(
+            namespace="http://example.com/mem",
+            local_name="Default",
+            prefix="mem",
+        )
+
+        x_root = _make_node(
+            children=[
+                _make_node(
+                    label="Col",
+                    aspect_constraints={"concept": f"{{{concept.namespace}}}{concept.local_name}"},
+                )
+            ]
+        )
+        y_root = _make_node(
+            children=[
+                _make_node(
+                    "Row",
+                    aspect_constraints={
+                        "explicitDimension": {
+                            f"{{{dim.namespace}}}{dim.local_name}": (
+                                f"{{{default_member.namespace}}}{default_member.local_name}"
+                            )
+                        }
+                    },
+                )
+            ]
+        )
+
+        taxonomy = _make_taxonomy()
+        dim_model = MagicMock()
+        dim_model.default_member = default_member
+        taxonomy.dimensions = {dim: dim_model}
+
+        layout = TableLayoutEngine(taxonomy).compute(_simple_table(x_root, y_root))
+
+        assert layout.body[0][0].coordinate.concept == concept
+        assert layout.body[0][0].coordinate.explicit_dimensions == {}
+
 
 class TestLabelFallback:
     """Tests for label resolution and fallback chain."""

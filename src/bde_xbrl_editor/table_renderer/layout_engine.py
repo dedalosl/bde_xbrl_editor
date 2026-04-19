@@ -36,6 +36,25 @@ _CONCEPT_KEY = "concept"
 _EXPLICIT_DIM_KEY = "explicitDimension"
 
 
+def _strip_default_member_dimensions(
+    explicit_dims: dict[QName, QName],
+    taxonomy: TaxonomyStructure,
+) -> dict[QName, QName]:
+    """Drop dimensions whose member is the taxonomy default member.
+
+    In XBRL Dimensions, an omitted explicit dimension is semantically
+    equivalent to the default member for that dimension. Table coordinates must
+    therefore not require facts to carry explicit ``qx0``-style defaults.
+    """
+    normalized: dict[QName, QName] = {}
+    for dim_qname, member_qname in explicit_dims.items():
+        dim_model = taxonomy.dimensions.get(dim_qname)
+        if dim_model is not None and dim_model.default_member == member_qname:
+            continue
+        normalized[dim_qname] = member_qname
+    return normalized
+
+
 def _accumulate_constraints(
     parent: dict,
     node: dict,
@@ -474,7 +493,10 @@ def _build_coordinate(
     # Add Z-axis dimension constraints
     explicit_dims.update(z_constraints)
 
-    return CellCoordinate(concept=concept, explicit_dimensions=explicit_dims)
+    return CellCoordinate(
+        concept=concept,
+        explicit_dimensions=_strip_default_member_dimensions(explicit_dims, taxonomy),
+    )
 
 
 def _get_dimension_members_in_elr(

@@ -97,6 +97,27 @@ def _should_parse_linkbase_for_discovery(path: Path) -> bool:
     return "val" not in path.parts and _should_follow_locators(path)
 
 
+def _catalog_path_candidates(local_root: Path, rel: str) -> list[Path]:
+    """Return local-catalog candidate paths for a remote href suffix.
+
+    Banco de Espana instance/taxonomy URLs sometimes include an extra ``/fr/``
+    segment (for example ``/es/fr/xbrl/...``) while the local cache stores the
+    same files under ``/es/xbrl/...``.  Try the direct mapping first, then this
+    normalized variant as a fallback.
+    """
+    rel = rel.lstrip("/")
+    candidates = [(local_root / rel).resolve()]
+
+    parts = Path(rel).parts
+    if len(parts) >= 3 and parts[1] == "fr" and parts[2] == "xbrl":
+        alt_rel = Path(parts[0], *parts[2:])
+        alt_candidate = (local_root / alt_rel).resolve()
+        if alt_candidate not in candidates:
+            candidates.append(alt_candidate)
+
+    return candidates
+
+
 def _resolve_href(href: str, base_dir: Path, settings: LoaderSettings) -> Path | None:
     """Resolve an href relative to base_dir, applying local_catalog overrides.
 
@@ -114,7 +135,10 @@ def _resolve_href(href: str, base_dir: Path, settings: LoaderSettings) -> Path |
             for prefix, local_root in settings.local_catalog.items():
                 if href.startswith(prefix):
                     rel = href[len(prefix):].lstrip("/")
-                    return (local_root / rel).resolve()
+                    for candidate in _catalog_path_candidates(local_root, rel):
+                        if candidate.exists():
+                            return candidate
+                    return _catalog_path_candidates(local_root, rel)[0]
         if not settings.allow_network:
             return None  # caller will record as failing URI
         # network allowed — cannot resolve without HTTP client; skip gracefully
@@ -328,13 +352,15 @@ def discover_dts(
             if _should_follow_locators(current):
                 for loc_el in root.iter(_LOC):
                     href = loc_el.get(_XLINK_HREF)
-                    if not href or _is_remote(href.split("#")[0]):
+                    if not href:
                         continue
                     file_part = href.split("#")[0]
                     if not file_part:
                         continue
                     resolved = _resolve_href(file_part, base_dir, settings)
                     if resolved is None:
+                        if _is_remote(file_part):
+                            skipped_remote.append(file_part)
                         continue
                     suffix = resolved.suffix.lower()
                     if suffix == ".xsd":

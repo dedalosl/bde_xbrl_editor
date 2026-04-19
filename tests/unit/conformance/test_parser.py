@@ -273,6 +273,60 @@ def test_parse_optional_variation(tmp_path: Path) -> None:
     assert tc.variations[0].mandatory is False
 
 
+def test_xbrl21_testcase_minimal_false_marks_variations_non_mandatory(tmp_path: Path) -> None:
+    content = """\
+        <?xml version="1.0"?>
+        <testcase name="FullOnlyTest" minimal="false">
+          <variation id="V-01">
+            <data><xsd readMeFirst="true">schema.xsd</xsd></data>
+            <result expected="valid"/>
+          </variation>
+        </testcase>
+    """
+    tc_path = _write(tmp_path, "tc.xml", content)
+    parser = ConformanceSuiteParser(tmp_path)
+
+    tc = parser._parse_test_case(tc_path, "xbrl21")
+
+    assert tc.variations[0].mandatory is False
+
+
+def test_xbrl21_testcase_without_minimal_attribute_defaults_to_mandatory(tmp_path: Path) -> None:
+    content = """\
+        <?xml version="1.0"?>
+        <testcase name="MinimalDefaultTest">
+          <variation id="V-01">
+            <data><xsd readMeFirst="true">schema.xsd</xsd></data>
+            <result expected="valid"/>
+          </variation>
+        </testcase>
+    """
+    tc_path = _write(tmp_path, "tc.xml", content)
+    parser = ConformanceSuiteParser(tmp_path)
+
+    tc = parser._parse_test_case(tc_path, "xbrl21")
+
+    assert tc.variations[0].mandatory is True
+
+
+def test_xbrl21_variation_optional_still_overrides_minimal_default(tmp_path: Path) -> None:
+    content = """\
+        <?xml version="1.0"?>
+        <testcase name="OptionalVariationDefaultMinimal">
+          <variation id="V-01" type="optional">
+            <data><xsd readMeFirst="true">schema.xsd</xsd></data>
+            <result expected="valid"/>
+          </variation>
+        </testcase>
+    """
+    tc_path = _write(tmp_path, "tc.xml", content)
+    parser = ConformanceSuiteParser(tmp_path)
+
+    tc = parser._parse_test_case(tc_path, "xbrl21")
+
+    assert tc.variations[0].mandatory is False
+
+
 def test_skip_missing_testcase_file(tmp_path: Path) -> None:
     """load_suite should warn and skip test cases whose files don't exist."""
     index_content = """\

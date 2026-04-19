@@ -85,6 +85,16 @@ LABEL_XML = """\
 </link:linkbase>
 """
 
+LINKBASE_WITH_REMOTE_LOCATOR = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+               xmlns:xlink="http://www.w3.org/1999/xlink">
+  <link:loc xlink:type="locator"
+            xlink:label="loc_remote"
+            xlink:href="http://external.example/dicts/dim.xsd#dim"/>
+</link:linkbase>
+"""
+
 
 # ---------------------------------------------------------------------------
 # Tests
@@ -159,6 +169,26 @@ class TestNetworkBlock:
         assert any(p.name == "schema.xsd" for p in schemas)
         # Resolved via catalog → not in skipped
         assert not any("external.example" in u for u in skipped)
+
+    def test_remote_linkbase_locator_uses_local_catalog(self, tmp_path):
+        local_schema = tmp_path / "dicts" / "dim.xsd"
+        local_schema.parent.mkdir(parents=True, exist_ok=True)
+        local_schema.write_text(
+            '<?xml version="1.0"?>'
+            '<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"'
+            ' targetNamespace="http://external.example/dicts"/>',
+            encoding="utf-8",
+        )
+        (tmp_path / "labels.xml").write_text(LINKBASE_WITH_REMOTE_LOCATOR, encoding="utf-8")
+        catalog = {"http://external.example/": tmp_path}
+        settings = LoaderSettings(allow_network=False, local_catalog=catalog)
+        entry = write_xsd(tmp_path, "entry.xsd", XSD_WITH_LINKBASE)
+
+        schemas, linkbases, skipped, _, _ = discover_dts(entry, settings)
+
+        assert any(p.name == "labels.xml" for p in linkbases)
+        assert any(p.name == "dim.xsd" for p in schemas)
+        assert not any("external.example/dicts/dim.xsd" in u for u in skipped)
 
 
 class TestNegativePaths:

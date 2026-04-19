@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from pathlib import Path
 
+from bde_xbrl_editor.instance.constants import BDE_DIM_NS
 from bde_xbrl_editor.instance.models import (
     Fact,
     ReportingEntity,
@@ -98,6 +99,39 @@ def _make_taxonomy(
         calculation={},
         definition={},
         hypercubes=[hc],
+        dimensions=dims or {},
+        tables=[],
+        formula_assertion_set=FormulaAssertionSet(),
+    )
+
+
+def _make_taxonomy_with_hcs(
+    hcs: list[HypercubeModel],
+    dims: dict[QName, DimensionModel] | None = None,
+    extra_concepts: dict[QName, Concept] | None = None,
+) -> TaxonomyStructure:
+    meta = TaxonomyMetadata(
+        name="Test",
+        version="1.0",
+        publisher="Example",
+        entry_point_path=Path("tax.xsd"),
+        loaded_at=datetime(2024, 1, 1),
+        declared_languages=("en",),
+    )
+
+    class _FakeLabels:
+        def get(self, *a, **kw):
+            return None
+
+    concepts: dict[QName, Concept] = extra_concepts or {}
+    return TaxonomyStructure(
+        metadata=meta,
+        concepts=concepts,
+        labels=_FakeLabels(),
+        presentation={},
+        calculation={},
+        definition={},
+        hypercubes=hcs,
         dimensions=dims or {},
         tables=[],
         formula_assertion_set=FormulaAssertionSet(),
@@ -213,6 +247,64 @@ class TestUndeclaredDimension:
         assert match.concept_qname == CONCEPT_QN
         assert match.context_ref == "ctx1"
         assert match.dimension_qname == unknown_dim
+
+    def test_reused_hypercube_qname_in_other_elr_does_not_override_dimensions(self) -> None:
+        """Dimension caches must distinguish reused hypercube QNames across ELRs."""
+        dim_other = _qn("OtherDim", _DIM_NS)
+        shared_hc_qn = QName(
+            namespace="http://www.eurofiling.info/xbrl/ext/model",
+            local_name="hyp",
+        )
+        hc_first = HypercubeModel(
+            qname=shared_hc_qn,
+            arcrole="all",
+            closed=True,
+            context_element="scenario",
+            primary_items=(CONCEPT_QN,),
+            dimensions=(dim_other,),
+            extended_link_role="http://example.com/elr/one",
+        )
+        hc_second = HypercubeModel(
+            qname=shared_hc_qn,
+            arcrole="all",
+            closed=True,
+            context_element="scenario",
+            primary_items=(CONCEPT_QN,),
+            dimensions=(DIM_QN,),
+            extended_link_role="http://example.com/elr/two",
+        )
+        ctx = _make_context("ctx1", dims={DIM_QN: MEM_QN_ES})
+        fact = Fact(concept=CONCEPT_QN, context_ref="ctx1", unit_ref=None, value="1")
+        inst = _make_instance([fact], {"ctx1": ctx})
+        taxonomy = _make_taxonomy_with_hcs(
+            [hc_first, hc_second],
+            dims={
+                DIM_QN: _dim_model_with_members(),
+                dim_other: DimensionModel(
+                    qname=dim_other,
+                    dimension_type="explicit",
+                    default_member=None,
+                    members=(DomainMember(qname=MEM_QN_ES, parent=None, order=1.0),),
+                ),
+            },
+        )
+
+        findings = DimensionalConstraintValidator(taxonomy).validate(inst)
+
+        assert not any(f.constraint_type == "UNDECLARED_DIMENSION" for f in findings)
+
+    def test_bde_agrupacion_is_ignored_for_hypercube_undeclared_checks(self) -> None:
+        """BDE Agrupacion is a report-level dimension and must not fail closed HC checks."""
+        agrupacion_dim = QName(namespace=BDE_DIM_NS, local_name="Agrupacion")
+        agrupacion_member = QName(namespace=BDE_DIM_NS, local_name="AgrupacionIndividual")
+        ctx = _make_context("ctx1", dims={agrupacion_dim: agrupacion_member})
+        fact = Fact(concept=CONCEPT_QN, context_ref="ctx1", unit_ref=None, value="1")
+        inst = _make_instance([fact], {"ctx1": ctx})
+        taxonomy = _make_taxonomy(_all_closed_hc(), dims={})
+
+        findings = DimensionalConstraintValidator(taxonomy).validate(inst)
+
+        assert not any(f.constraint_type == "UNDECLARED_DIMENSION" for f in findings)
 
 
 # ---------------------------------------------------------------------------

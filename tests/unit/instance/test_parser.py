@@ -5,7 +5,7 @@ from __future__ import annotations
 import textwrap
 from datetime import date, datetime
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import ANY, MagicMock
 
 import pytest
 
@@ -196,6 +196,29 @@ def test_manual_resolver_called_as_fallback(tmp_path: Path) -> None:
     parser = InstanceParser(taxonomy_loader=loader, manual_taxonomy_resolver=resolver)
     instance, _ = parser.load(p)
     resolver.assert_called_once_with("remote.xsd")
+    assert instance is not None
+
+
+def test_local_catalog_resolves_bde_fr_schema_ref_to_cache_path(tmp_path: Path) -> None:
+    schema_href = "http://www.bde.es/es/fr/xbrl/fws/test/entry.xsd"
+    (tmp_path / Path(schema_href)).parent.mkdir(parents=True, exist_ok=True)
+    p = _write_xbrl(tmp_path, "", schema_href=schema_href)
+    # Remove the stub written next to the instance so only the catalog path can resolve it.
+    (tmp_path / schema_href).unlink()
+
+    taxonomy = _make_taxonomy()
+    loader = MagicMock()
+    loader.load.return_value = taxonomy
+    cache_root = tmp_path / "cache"
+    resolved_path = cache_root / "es" / "xbrl" / "fws" / "test" / "entry.xsd"
+    resolved_path.parent.mkdir(parents=True, exist_ok=True)
+    resolved_path.write_text("<xs:schema xmlns:xs='http://www.w3.org/2001/XMLSchema'/>")
+    loader.settings = LoaderSettings(local_catalog={"http://www.bde.es/": cache_root})
+
+    parser = InstanceParser(taxonomy_loader=loader)
+    instance, _ = parser.load(p)
+
+    loader.load.assert_called_once_with(resolved_path.resolve(), progress_callback=ANY)
     assert instance is not None
 
 
