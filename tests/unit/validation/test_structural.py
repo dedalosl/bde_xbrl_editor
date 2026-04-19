@@ -12,6 +12,8 @@ from bde_xbrl_editor.instance.models import (
     XbrlInstance,
     XbrlUnit,
 )
+from bde_xbrl_editor.instance.s_equal import effective_s_equal_key
+from bde_xbrl_editor.taxonomy.constants import NS_XBRLI
 from bde_xbrl_editor.taxonomy.models import (
     Concept,
     FormulaAssertionSet,
@@ -85,9 +87,13 @@ def _minimal_taxonomy(
         declared_languages=("en",),
     )
     concept_qn = _qname("MyConcept")
+    if type_local == "monetaryItemType":
+        dt = QName(namespace=NS_XBRLI, local_name="monetaryItemType")
+    else:
+        dt = QName(namespace=_XSD_NS, local_name=type_local)
     concept = Concept(
         qname=concept_qn,
-        data_type=QName(namespace=_XSD_NS, local_name=type_local),
+        data_type=dt,
         period_type=period_type,  # type: ignore[arg-type]
     )
 
@@ -356,8 +362,8 @@ class TestPeriodTypeMismatch:
 
 
 class TestDuplicateFact:
-    def test_two_identical_facts_triggers_duplicate(self) -> None:
-        """Two facts with same (concept, context_ref, unit_ref) trigger duplicate-fact."""
+    def test_conflicting_duplicate_values_triggers_duplicate(self) -> None:
+        """Same (concept, context_ref, unit_ref) with different values is duplicate-fact."""
         inst = _minimal_instance()
         concept = _qname("Revenue")
         inst.facts.append(Fact(concept=concept, context_ref="ctx1", unit_ref="EUR", value="100"))
@@ -365,15 +371,39 @@ class TestDuplicateFact:
         findings = StructuralConformanceValidator().validate(inst)
         assert any(f.rule_id == "structural:duplicate-fact" for f in findings)
 
-    def test_different_context_no_duplicate(self) -> None:
-        """Two facts with the same concept but different contexts are not duplicates."""
+    def test_redundant_identical_values_no_duplicate_finding(self) -> None:
+        """Same signature and identical values (redundant reporting) are allowed."""
         inst = _minimal_instance()
-        inst.contexts["ctx2"] = _context("ctx2")
+        concept = _qname("Revenue")
+        inst.facts.append(Fact(concept=concept, context_ref="ctx1", unit_ref="EUR", value="100"))
+        inst.facts.append(Fact(concept=concept, context_ref="ctx1", unit_ref="EUR", value="100"))
+        findings = StructuralConformanceValidator().validate(inst)
+        assert not any(f.rule_id == "structural:duplicate-fact" for f in findings)
+
+    def test_different_context_no_duplicate(self) -> None:
+        """Two facts with the same concept but non-S-equal contexts are not duplicates."""
+        inst = _minimal_instance()
+        inst.contexts["ctx2"] = _context("ctx2", period=_duration_period())
         concept = _qname("Revenue")
         inst.facts.append(Fact(concept=concept, context_ref="ctx1", unit_ref=None, value="100"))
         inst.facts.append(Fact(concept=concept, context_ref="ctx2", unit_ref=None, value="200"))
         findings = StructuralConformanceValidator().validate(inst)
         assert not any(f.rule_id == "structural:duplicate-fact" for f in findings)
+
+    def test_s_equal_context_ids_still_trigger_duplicate_fact(self) -> None:
+        """Different context @id values that are S-equal bind like one context (XBRL 2.1)."""
+        inst = _minimal_instance()
+        ctx1 = inst.contexts["ctx1"]
+        ctx2 = _context("ctx_other")
+        seq = effective_s_equal_key(ctx1)
+        ctx1.s_equal_key = seq
+        ctx2.s_equal_key = seq
+        inst.contexts["ctx_other"] = ctx2
+        concept = _qname("Revenue")
+        inst.facts.append(Fact(concept=concept, context_ref="ctx1", unit_ref=None, value="100"))
+        inst.facts.append(Fact(concept=concept, context_ref="ctx_other", unit_ref=None, value="200"))
+        findings = StructuralConformanceValidator().validate(inst)
+        assert any(f.rule_id == "structural:duplicate-fact" for f in findings)
 
     def test_different_unit_ref_no_duplicate(self) -> None:
         """Two facts with the same concept/context but different unit_refs are not duplicates."""
@@ -394,6 +424,103 @@ class TestDuplicateFact:
         for f in findings:
             if f.rule_id == "structural:duplicate-fact":
                 assert f.source == "structural"
+
+
+# ---------------------------------------------------------------------------
+# Monetary ISO 4217 unit measure (structural:monetary-unit-measure)
+# ---------------------------------------------------------------------------
+
+
+class TestMonetaryIsoUnitMeasure:
+    def test_monetary_with_pure_measure_fails(self) -> None:
+        """Monetary facts must not use xbrli:pure as the unit measure."""
+        inst = _minimal_instance()
+        inst.units["pure"] = XbrlUnit(unit_id="pure", measure_uri="http://www.xbrl.org/2003/instance:pure")
+        concept_qn = _qname("MyConcept")
+        inst.facts.append(
+            Fact(concept=concept_qn, context_ref="ctx1", unit_ref="pure", value="100")
+        )
+        taxonomy = _minimal_taxonomy(type_local="monetaryItemType")
+        findings = StructuralConformanceValidator().validate(inst, taxonomy)
+        assert any(f.rule_id == "structural:monetary-unit-measure" for f in findings)
+
+    def test_monetary_with_divide_unit_fails(self) -> None:
+        inst = _minimal_instance()
+        inst.units["u1"] = XbrlUnit(
+            unit_id="u1",
+            measure_uri="",
+            unit_form="divide",
+            simple_measure_count=0,
+        )
+        concept_qn = _qname("MyConcept")
+        inst.facts.append(
+            Fact(concept=concept_qn, context_ref="ctx1", unit_ref="u1", value="100")
+        )
+        taxonomy = _minimal_taxonomy(type_local="monetaryItemType")
+        findings = StructuralConformanceValidator().validate(inst, taxonomy)
+        assert any(
+            f.rule_id == "structural:monetary-unit-measure" and "divide" in f.message
+            for f in findings
+        )
+
+    def test_derived_monetary_flag_valid_eur(self) -> None:
+        """Concepts flagged monetary_item_type accept a standard ISO unit."""
+        inst = _minimal_instance()
+        inst.units["EUR"] = XbrlUnit(unit_id="EUR", measure_uri="iso4217:EUR")
+        concept_qn = _qname("RestrictedAssets")
+        derived = Concept(
+            qname=concept_qn,
+            data_type=_qname("assetsItemType"),
+            period_type="instant",
+            monetary_item_type=True,
+        )
+        meta = TaxonomyMetadata(
+            name="Test",
+            version="1.0",
+            publisher="Example",
+            entry_point_path=Path("tax.xsd"),
+            loaded_at=datetime(2024, 1, 1),
+            declared_languages=("en",),
+        )
+
+        class _FakeLabelResolver:
+            def get(self, *a, **kw):
+                return None
+
+        taxonomy = TaxonomyStructure(
+            metadata=meta,
+            concepts={concept_qn: derived},
+            labels=_FakeLabelResolver(),
+            presentation={},
+            calculation={},
+            definition={},
+            hypercubes=[],
+            dimensions={},
+            tables=[],
+            formula_assertion_set=FormulaAssertionSet(),
+        )
+        inst.facts.append(
+            Fact(concept=concept_qn, context_ref="ctx1", unit_ref="EUR", value="500")
+        )
+        findings = StructuralConformanceValidator().validate(inst, taxonomy)
+        assert not any(f.rule_id == "structural:monetary-unit-measure" for f in findings)
+
+    def test_invalid_currency_local_name(self) -> None:
+        inst = _minimal_instance()
+        bad = QName(namespace="http://www.xbrl.org/2003/iso4217", local_name="us_dollars")
+        inst.units["u1"] = XbrlUnit(
+            unit_id="u1",
+            measure_uri="iso4217:us_dollars",
+            measure_qname=bad,
+            simple_measure_count=1,
+        )
+        concept_qn = _qname("MyConcept")
+        inst.facts.append(
+            Fact(concept=concept_qn, context_ref="ctx1", unit_ref="u1", value="1")
+        )
+        taxonomy = _minimal_taxonomy(type_local="monetaryItemType")
+        findings = StructuralConformanceValidator().validate(inst, taxonomy)
+        assert any(f.rule_id == "structural:monetary-unit-measure" for f in findings)
 
 
 # ---------------------------------------------------------------------------

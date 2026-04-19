@@ -247,8 +247,7 @@ class DimensionalConstraintValidator:
         hc_dim_frozensets: dict[HypercubeModel, frozenset[QName]],
     ) -> None:
         """Validate one fact against all covering hypercubes.
-
-        Per XBRL Dimensions §2.3.1: within each ELR, a fact is valid if it
+        Per XBRL Dimensions 1.0 §2.3.1: within each ELR, a fact is valid if it
         satisfies **at least one** positive ("all") hypercube in that ELR.
         Negative ("notAll") hypercubes are each an independent prohibition.
         """

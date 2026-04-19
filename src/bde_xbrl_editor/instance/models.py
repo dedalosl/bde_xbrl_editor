@@ -218,6 +218,9 @@ class XbrlContext:
     dim_containers: dict[QName, Literal["segment", "scenario"]] = field(
         default_factory=dict
     )
+    # Immutable S-equal fingerprint (XBRL 2.1); set at parse time or by context_builder.
+    # When None, validation uses :func:`bde_xbrl_editor.instance.s_equal.effective_s_equal_key`.
+    s_equal_key: tuple | None = None
 
 
 @dataclass
@@ -226,6 +229,13 @@ class XbrlUnit:
 
     unit_id: UnitId
     measure_uri: str
+    # QName of the single direct xbrli:measure when unit_form is "simple"; set at
+    # parse time from element namespace scope. Optional for legacy in-memory units.
+    measure_qname: QName | None = None
+    # "simple" = only direct measures (one or more); "divide" = xbrli:divide present.
+    unit_form: Literal["simple", "divide"] = "simple"
+    # Number of direct child xbrli:measure elements when unit_form is "simple".
+    simple_measure_count: int = 0
 
 
 @dataclass

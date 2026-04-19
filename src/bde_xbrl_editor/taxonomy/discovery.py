@@ -61,8 +61,10 @@ def _should_skip_linkbase(path: Path) -> bool:
 
     FINREP validation packages contain thousands of ``vr-*-err-*`` and
     ``vr-*-lab-*`` XML linkbases that only carry human-readable validation
-    messages. The loader currently parses formula/assertion linkbases directly
-    and does not use these message resources, so discovering them balloons the
+    messages.     Formula assertions are discovered structurally (not by filename) in
+    ``TaxonomyLoader`` via ``linkbase_contains_formula_assertions``; discovery still
+    lists these linkbases when referenced from the DTS. Skipping them does not use
+    these message resources, so discovering them balloons the
     DTS without changing the loaded taxonomy structure.
     """
     name = path.name.lower()
@@ -89,27 +91,34 @@ def _should_follow_locators(path: Path) -> bool:
 def _should_parse_linkbase_for_discovery(path: Path) -> bool:
     """Return True when the linkbase may contribute more DTS edges.
 
-    Validation XML linkbases under ``.../val/...`` are already referenced
-    directly from their companion validation XSDs. We still keep them in the
-    discovered DTS, but we do not need to recursively inspect them during
-    discovery because the loader consumes them later by path.
+    Validation linkbases under ``.../val/...`` must still be inspected during
+    discovery: BDE / Eurofiling validation packages reference assertion-set
+    aggregator linkbases (``aset-*.xml``) from the entry-point XSD, and those
+    aggregators only point to the actual rule files (``vr-*.xml`` containing
+    ``va:valueAssertion`` resources) via ``link:loc`` locators. Skipping the
+    locator traversal here would leave the formula assertions out of the DTS
+    and surface them as "No formula assertions in this taxonomy" in the UI.
+
+    Per-rule message linkbases (``vr-*-err-*.xml`` / ``vr-*-lab-*.xml``) are
+    still excluded by ``_should_follow_locators`` to keep discovery fast.
     """
-    return "val" not in path.parts and _should_follow_locators(path)
+    return _should_follow_locators(path)
 
 
 def _catalog_path_candidates(local_root: Path, rel: str) -> list[Path]:
     """Return local-catalog candidate paths for a remote href suffix.
 
-    Banco de Espana instance/taxonomy URLs sometimes include an extra ``/fr/``
-    segment (for example ``/es/fr/xbrl/...``) while the local cache stores the
-    same files under ``/es/xbrl/...``.  Try the direct mapping first, then this
-    normalized variant as a fallback.
+    Banco de España taxonomy URLs sometimes include an extra ``/fr/`` segment
+    (for example ``/es/fr/xbrl/...`` or ``/es/fr/esrs/...``) while the local
+    cache stores the same files without that segment (``/es/xbrl/...`` or
+    ``/es/esrs/...``).  Try the direct mapping first, then a normalized
+    variant with the ``/fr/`` segment removed as a fallback.
     """
     rel = rel.lstrip("/")
     candidates = [(local_root / rel).resolve()]
 
     parts = Path(rel).parts
-    if len(parts) >= 3 and parts[1] == "fr" and parts[2] == "xbrl":
+    if len(parts) >= 3 and parts[1] == "fr":
         alt_rel = Path(parts[0], *parts[2:])
         alt_candidate = (local_root / alt_rel).resolve()
         if alt_candidate not in candidates:

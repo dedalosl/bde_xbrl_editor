@@ -388,9 +388,17 @@ class TestDiscoveryQueueing:
         assert not _should_follow_locators(error_linkbase)
         assert _should_follow_locators(rendering_linkbase)
 
-    def test_should_parse_linkbase_for_discovery_skips_validation_xmls(self, tmp_path):
+    def test_should_parse_linkbase_for_discovery_includes_validation_xmls(self, tmp_path):
+        # Validation aset / vr rule linkbases must be parsed so their locators
+        # surface the actual va:valueAssertion files (vr-*.xml). Per-rule
+        # message linkbases (-err-/-lab-) are still excluded by
+        # _should_follow_locators.
         validation_formula = (tmp_path / "val" / "vr-v0930_m_0.xml").resolve()
+        validation_aset = (tmp_path / "val" / "aset-fi_1-1.xml").resolve()
+        validation_message_lb = (tmp_path / "val" / "vr-b0008-err-en.xml").resolve()
         rendering_linkbase = (tmp_path / "tab" / "fi_20-4-rend.xml").resolve()
 
-        assert not _should_parse_linkbase_for_discovery(validation_formula)
+        assert _should_parse_linkbase_for_discovery(validation_formula)
+        assert _should_parse_linkbase_for_discovery(validation_aset)
+        assert not _should_parse_linkbase_for_discovery(validation_message_lb)
         assert _should_parse_linkbase_for_discovery(rendering_linkbase)

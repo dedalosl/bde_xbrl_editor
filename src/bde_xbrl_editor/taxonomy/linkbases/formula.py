@@ -8,6 +8,7 @@ from typing import Literal
 
 from lxml import etree
 
+from bde_xbrl_editor.taxonomy.constants import NS_ASSERTION_SETS_20_PWD, NS_VALIDATION_V10
 from bde_xbrl_editor.taxonomy.models import (
     BooleanFilterDefinition,
     ConsistencyAssertionDefinition,
@@ -492,6 +493,38 @@ _ASSERTION_TAGS = (
     _TAG_CONSISTENCY_ASSERTION,
 )
 
+# ``{…}assertionSet`` — only Table-1 namespace URIs from Validation 1.0 REC and Assertion Sets 2.0 PWD.
+_ASSERTION_SET_NAMESPACES = frozenset({NS_VALIDATION_V10, NS_ASSERTION_SETS_20_PWD})
+
+# QName filter for ``iterparse(..., tag=…)`` — jumps straight to matching elements so
+# huge FINREP-style linkbases (many filters/locs before the first assertion) are still found.
+_LINKBASE_FORMULA_SCAN_TAGS: tuple[str, ...] = _ASSERTION_TAGS + (
+    f"{{{NS_VALIDATION_V10}}}assertionSet",
+    f"{{{NS_ASSERTION_SETS_20_PWD}}}assertionSet",
+)
+
+
+def linkbase_contains_formula_assertions(path: Path) -> bool:
+    """Return True when *path* contains Formula 1.0 assertions or a normative ``assertionSet``.
+
+    Detection is structural (element QName), not filename-based. Uses
+    ``iterparse`` with an element ``tag`` filter so the first assertion is found
+    without scanning tens of thousands of unrelated nodes (typical FINREP
+    formula linkbases).
+
+    Only ``end`` events are used; each matched element is cleared after inspection.
+    Clearing on ``start`` events is unsafe for libxml2. Returns False on errors.
+    """
+    if not path.exists() or path.suffix.lower() not in (".xml", ".xbrl"):
+        return False
+    try:
+        for _evt, el in etree.iterparse(str(path), events=("end",), tag=_LINKBASE_FORMULA_SCAN_TAGS):
+            el.clear()
+            return True
+    except Exception:  # noqa: BLE001
+        return False
+    return False
+
 
 def _parse_assertion(
     assertion_el: etree._Element,
@@ -503,19 +536,21 @@ def _parse_assertion(
     bool_arc_map: dict[str, list[tuple[str, bool]]] | None = None,
 ) -> FormulaAssertion | None:
     """Build a typed assertion definition from an assertion element."""
-    assertion_id = assertion_el.get("id", "")
+    _id = (assertion_el.get("id") or "").strip()
+    _xlabel = (assertion_el.get(_ATTR_XLINK_LABEL) or "").strip()
+    assertion_id = _id or _xlabel
     if not assertion_id:
         return None
 
     abstract = _parse_abstract(assertion_el.get("abstract"))
     severity = _parse_severity(assertion_el.get("severity"))
-    label = assertion_el.get(f"{{{_NS_XLINK}}}label")
+    label = _xlabel or _id or None
     precondition_xpath: str | None = None  # preconditions not yet parsed
 
     # Collect bound fact variables via variable arcs (from=assertion_id or from=xlink:label)
     # variable_arc_map values are (to_label, arc_name) tuples where arc_name is the XPath
     # variable name (the ``name`` attribute on variable:variableArc).
-    assertion_label = assertion_el.get(_ATTR_XLINK_LABEL, assertion_id)
+    assertion_label = _xlabel or assertion_id
     variable_entries = (
         variable_arc_map.get(assertion_id, [])
         + (variable_arc_map.get(assertion_label, []) if assertion_label != assertion_id else [])
@@ -623,7 +658,11 @@ def _parse_assertion(
 # ---------------------------------------------------------------------------
 
 def parse_formula_linkbase(path: Path) -> FormulaAssertionSet:
-    """Parse a formula linkbase XML file and return a FormulaAssertionSet.
+    """Parse a formula / validation linkbase and return a FormulaAssertionSet.
+
+    Assertions may live directly under ``link:linkbase`` or inside generic
+    packaging (e.g. ``gen:link`` with ``{http://xbrl.org/2008/validation}assertionSet``).
+    DTS discovery uses :func:`linkbase_contains_formula_assertions` (no filename rules).
 
     Returns an empty FormulaAssertionSet if the file is missing, malformed,
     or contains no assertions. Never raises.
@@ -644,17 +683,17 @@ def _parse(path: Path) -> FormulaAssertionSet:
     except etree.XMLSyntaxError:
         return FormulaAssertionSet()
 
-    root = tree.getroot()
+    return _parse_formula_root(tree.getroot())
 
-    # Build indexes over the whole document
+
+def _parse_formula_root(root: etree._Element) -> FormulaAssertionSet:
+    """Parse assertions from a link:linkbase root (including under gen:link / assertionSet)."""
     fact_variable_index = _build_label_to_element(root, _TAG_FACT_VARIABLE)
     filter_index = _build_filter_label_index(root)
     filter_arc_map = _build_filter_arc_map(root)
     variable_set_filter_arc_map = _build_variable_set_filter_arc_map(root)
     bool_arc_map = _build_boolean_filter_arc_map(root)
 
-    # Variable arcs connect assertion labels/ids → [(variable_label, arc_name), ...]
-    # The arc ``name`` attribute IS the XPath variable name (e.g. name="a" → $a).
     variable_arc_map: dict[str, list[tuple[str, str]]] = {}
     for arc in root.iter(_TAG_VARIABLE_ARC):
         frm = arc.get(_ATTR_XLINK_FROM, "")

@@ -119,6 +119,9 @@ class Concept:
     nillable: bool = True
     substitution_group: QName | None = None
     xml_id: str | None = None  # @id attribute from the XSD element declaration
+    # True when the item type is xbrli:monetaryItemType or a restriction/extension
+    # thereof (used for ISO 4217 unit validation).
+    monetary_item_type: bool = False
 
 
 # ---------------------------------------------------------------------------

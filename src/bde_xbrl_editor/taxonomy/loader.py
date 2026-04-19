@@ -7,8 +7,10 @@ taxonomy module remains PySide6-free.
 from __future__ import annotations
 
 import os
-from concurrent.futures import Future, ThreadPoolExecutor
+import re
 from collections.abc import Callable
+from concurrent.futures import Future, ThreadPoolExecutor
+from dataclasses import replace
 from datetime import datetime
 from io import BytesIO
 from pathlib import Path
@@ -24,15 +26,19 @@ from bde_xbrl_editor.taxonomy.constants import (
     ARCROLE_DOMAIN_MEMBER,
     ARCROLE_HYPERCUBE_DIMENSION,
     ARCROLE_NOT_ALL,
-    NS_FORMULA,
+    NS_LINK,
     NS_TABLE_PWD,
     NS_XBRLDT,
+    NS_XBRLI,
 )
-from bde_xbrl_editor.taxonomy.discovery import discover_dts
+from bde_xbrl_editor.taxonomy.discovery import _should_skip_linkbase, discover_dts
 from bde_xbrl_editor.taxonomy.label_resolver import LabelResolver
 from bde_xbrl_editor.taxonomy.linkbases.calculation import parse_calculation_linkbase
 from bde_xbrl_editor.taxonomy.linkbases.definition import parse_definition_linkbase
-from bde_xbrl_editor.taxonomy.linkbases.formula import parse_formula_linkbase
+from bde_xbrl_editor.taxonomy.linkbases.formula import (
+    linkbase_contains_formula_assertions,
+    parse_formula_linkbase,
+)
 from bde_xbrl_editor.taxonomy.linkbases.generic_label import parse_generic_label_linkbase
 from bde_xbrl_editor.taxonomy.linkbases.label import parse_label_linkbase
 from bde_xbrl_editor.taxonomy.linkbases.presentation import (
@@ -50,7 +56,11 @@ from bde_xbrl_editor.taxonomy.models import (
     TaxonomyStructure,
     UnsupportedTaxonomyFormatError,
 )
-from bde_xbrl_editor.taxonomy.schema import XBRL_SG_ROOTS, parse_schema_raw
+from bde_xbrl_editor.taxonomy.schema import (
+    XBRL_SG_ROOTS,
+    extract_monetary_value_type_qnames,
+    parse_schema_raw,
+)
 from bde_xbrl_editor.taxonomy.settings import LoaderSettings
 from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
 
@@ -62,9 +72,73 @@ _TOTAL_STEPS = 7
 _NS_XLINK = "http://www.w3.org/1999/xlink"
 _XLINK_HREF = f"{{{_NS_XLINK}}}href"
 
+_XBRLI_PREFIX_COLON_RE = re.compile(r"\bxbrli\s*:")
+_XBRLI_INSTANCE_IMPORT_NS_RE = re.compile(
+    r"""namespace\s*=\s*["']http://www\.xbrl\.org/2003/instance["']""",
+    re.IGNORECASE,
+)
+
+
+def _schema_declares_xsd_model_tags(path: Path) -> bool:
+    """True when the file looks like a vocabulary/taxonomy schema (not an empty shell)."""
+    try:
+        snippet = path.read_text(encoding="utf-8", errors="ignore")[:524_288]
+    except OSError:
+        return False
+    return bool(
+        re.search(r"<\s*(?:xs:)?(?:element|simpleType|complexType)\b", snippet, re.IGNORECASE)
+    )
+
+
+def _schema_text_references_xbrl_linkbase_namespace(path: Path) -> bool:
+    """True when the XSD text references the XBRL linkbase namespace URI."""
+    try:
+        snippet = path.read_text(encoding="utf-8", errors="ignore")[:524_288]
+    except OSError:
+        return False
+    return NS_LINK in snippet
+
+
+def _schema_embeds_linkbase_or_role_declarations(path: Path) -> bool:
+    """Return True when XSD text contains XBRL link metadata from the DTS model."""
+    try:
+        snippet = path.read_text(encoding="utf-8", errors="ignore")[:524_288]
+    except OSError:
+        return False
+    return any(
+        marker in snippet
+        for marker in (
+            "link:linkbaseRef",
+            "link:roleType",
+            "link:arcroleType",
+        )
+    )
+
+
+def _schema_text_references_xbrl_instance_model(path: Path) -> bool:
+    """Return True when XSD text ties to the XBRL instance schema model.
+
+    Segment-only vocabulary schemas (XBRL conformance 302.01) often declare
+    ``xmlns:xbrli`` for documentation but do not reference ``xbrli:`` QNames or
+    import the instance namespace. Stub files such as ``Nautilus.xsd`` do, and
+    must still be rejected when they yield no item/tuple concepts.
+    """
+    try:
+        snippet = path.read_text(encoding="utf-8", errors="ignore")[:524_288]
+    except OSError:
+        return False
+    if _XBRLI_PREFIX_COLON_RE.search(snippet):
+        return True
+    return bool(_XBRLI_INSTANCE_IMPORT_NS_RE.search(snippet))
+
 
 def _sniff_linkbase_type(path: Path) -> str:
-    """Return a crude type string for a linkbase file: label/generic/pres/calc/def/table/formula/unknown."""
+    """Return a crude type string for a linkbase file: label/generic/pres/calc/def/table/unknown.
+
+    Formula / validation assertions are **not** classified here; they are detected
+    structurally via :func:`linkbase_contains_formula_assertions` on every discovered
+    ``.xml`` linkbase (see ``_do_load``).
+    """
     name = path.stem.lower()
     if "label" in name or "lab" in name:
         if "gen" in name:
@@ -78,29 +152,13 @@ def _sniff_linkbase_type(path: Path) -> str:
         return "def"
     if "table" in name or "tbl" in name or "rend" in name:
         return "table"
-    if "formula" in name or "form" in name:
-        return "formula"
 
-    # BDE places all formula linkbases under a subdirectory named "formula/"
-    if path.parent.name.lower() == "formula":
-        return "formula"
-
-    # Fallback: scan child elements for formula/assertion namespaces
-    _FORMULA_NS = {
-        "http://xbrl.org/2008/formula",
-        "http://xbrl.org/2008/assertion/value",
-        "http://xbrl.org/2008/assertion/existence",
-        "http://xbrl.org/2008/assertion/consistency",
-    }
     try:
         ctx = etree.iterparse(BytesIO(path.read_bytes()), events=("start",))
         for _, el in ctx:
             tag = str(el.tag)
             if NS_TABLE_PWD in tag:
                 return "table"
-            ns = tag[1:tag.index("}")] if tag.startswith("{") else ""
-            if ns in _FORMULA_NS or NS_FORMULA in tag:
-                return "formula"
     except Exception:  # noqa: BLE001
         pass
     return "unknown"
@@ -115,7 +173,6 @@ def _classify_linkbases(linkbase_paths: list[Path]) -> dict[str, list[Path]]:
         "calc": [],
         "def": [],
         "table": [],
-        "formula": [],
         "unknown": [],
     }
     for path in linkbase_paths:
@@ -774,7 +831,15 @@ class TaxonomyLoader:
         calculation_linkbases = classified_linkbases["calc"]
         definition_linkbases = classified_linkbases["def"]
         table_linkbases = classified_linkbases["table"]
-        formula_linkbases = classified_linkbases["formula"]
+        formula_linkbases = list(
+            dict.fromkeys(
+                p
+                for p in linkbase_paths
+                if p.suffix.lower() in (".xml", ".xbrl")
+                and not _should_skip_linkbase(p)
+                and linkbase_contains_formula_assertions(p)
+            )
+        )
         linkbase_workers = _linkbase_parse_workers(len(linkbase_paths))
 
         # Step 2: Parse schemas → concepts (with cross-schema transitive SG resolution)
@@ -819,11 +884,47 @@ class TaxonomyLoader:
             pending = still_pending
 
         if not concepts:
-            raise UnsupportedTaxonomyFormatError(
-                entry_point=str(entry_point),
-                reason="No XBRL concepts found — file may not be a valid XBRL taxonomy entry point",
+            # Allow empty item/tuple maps only for tiny segment-extension entry
+            # points (no linkbases, no xbrli QName/import wiring) — conformance
+            # 302.01.  Schemas that reference linkbases or the XBRL instance model
+            # must still surface as unsupported when nothing resolved to a concept.
+            segment_style_taxonomy = (
+                bool(schema_paths)
+                and not linkbase_paths
+                and any(_schema_declares_xsd_model_tags(p) for p in schema_paths)
+                and not any(
+                    _schema_text_references_xbrl_instance_model(p)
+                    or _schema_embeds_linkbase_or_role_declarations(p)
+                    or _schema_text_references_xbrl_linkbase_namespace(p)
+                    for p in schema_paths
+                )
             )
+            if not segment_style_taxonomy:
+                raise UnsupportedTaxonomyFormatError(
+                    entry_point=str(entry_point),
+                    reason="No XBRL concepts found — file may not be a valid XBRL taxonomy entry point",
+                )
         progress(f"Schemas parsed — {len(concepts)} concepts ready", 2)
+
+        monetary_workers = _schema_parse_workers(len(schema_paths))
+        parsed_monetary_types = _run_path_jobs(
+            schema_paths,
+            lambda p: extract_monetary_value_type_qnames(p, include_ns_map.get(p)),
+            workers=monetary_workers,
+        )
+        monetary_derived_types: set[QName] = set()
+        for _path, mt_set in parsed_monetary_types:
+            monetary_derived_types.update(mt_set)
+
+        def _concept_is_monetary_item(c: Concept) -> bool:
+            if c.data_type.namespace == NS_XBRLI and c.data_type.local_name == "monetaryItemType":
+                return True
+            return c.data_type in monetary_derived_types
+
+        concepts = {
+            qn: replace(c, monetary_item_type=_concept_is_monetary_item(c))
+            for qn, c in concepts.items()
+        }
 
         concept_id_map = _build_concept_id_map(concepts)
 

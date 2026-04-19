@@ -1,7 +1,8 @@
 """InstanceValidator — orchestrates the full XBRL validation pipeline.
 
-Runs structural checks → dimensional checks → formula assertions in sequence,
-assembling the results into an immutable ValidationReport. Never raises.
+Runs structural checks → calculation (summation-item) checks → dimensional
+checks → formula assertions in sequence, assembling the results into an
+immutable ValidationReport. Never raises.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from datetime import datetime
 
 from bde_xbrl_editor.instance.models import XbrlInstance
 from bde_xbrl_editor.taxonomy.models import TaxonomyStructure
+from bde_xbrl_editor.validation.calculation import CalculationConsistencyValidator
 from bde_xbrl_editor.validation.dimensional import DimensionalConstraintValidator
 from bde_xbrl_editor.validation.formula.evaluator import FormulaEvaluator
 from bde_xbrl_editor.validation.models import (
@@ -53,7 +55,7 @@ class InstanceValidator:
         if not (self._cancel_event and self._cancel_event.is_set()):
             if self._progress_callback:
                 with contextlib.suppress(Exception):
-                    self._progress_callback(0, 3, "Running structural checks…")
+                    self._progress_callback(0, 4, "Running structural checks…")
             try:
                 sv = StructuralConformanceValidator()
                 findings.extend(sv.validate(instance, self._taxonomy))
@@ -65,11 +67,27 @@ class InstanceValidator:
                     source="structural",
                 ))
 
-        # --- 2. Dimensional checks -------------------------------------------
+        # --- 2. Calculation (summation-item) checks -------------------------
         if not (self._cancel_event and self._cancel_event.is_set()):
             if self._progress_callback:
                 with contextlib.suppress(Exception):
-                    self._progress_callback(1, 3, "Running dimensional checks…")
+                    self._progress_callback(1, 4, "Running calculation checks…")
+            try:
+                cv = CalculationConsistencyValidator()
+                findings.extend(cv.validate(instance, self._taxonomy))
+            except Exception as exc:  # noqa: BLE001
+                findings.append(ValidationFinding(
+                    rule_id="internal:calculation-error",
+                    severity=ValidationSeverity.ERROR,
+                    message=f"Calculation validator failed unexpectedly: {exc}",
+                    source="calculation",
+                ))
+
+        # --- 3. Dimensional checks -------------------------------------------
+        if not (self._cancel_event and self._cancel_event.is_set()):
+            if self._progress_callback:
+                with contextlib.suppress(Exception):
+                    self._progress_callback(2, 4, "Running dimensional checks…")
             try:
                 dv = DimensionalConstraintValidator(self._taxonomy)
                 findings.extend(dv.validate(instance))
@@ -81,14 +99,14 @@ class InstanceValidator:
                     source="dimensional",
                 ))
 
-        # --- 3. Formula assertions ------------------------------------------
+        # --- 4. Formula assertions ------------------------------------------
         formula_available = bool(
             self._taxonomy.formula_assertion_set.assertions
         )
         if not (self._cancel_event and self._cancel_event.is_set()):
             if self._progress_callback:
                 with contextlib.suppress(Exception):
-                    self._progress_callback(2, 3, "Evaluating formula assertions…")
+                    self._progress_callback(3, 4, "Evaluating formula assertions…")
             try:
                 fe = FormulaEvaluator(
                     taxonomy=self._taxonomy,
@@ -106,7 +124,7 @@ class InstanceValidator:
 
         if self._progress_callback:
             with contextlib.suppress(Exception):
-                self._progress_callback(3, 3, "Validation complete")
+                self._progress_callback(4, 4, "Validation complete")
 
         meta = self._taxonomy.metadata
         return ValidationReport(

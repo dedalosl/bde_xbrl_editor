@@ -47,8 +47,20 @@ def unit_prepopulation(
     concept types in selected tables when BreakdownNode carries concept refs.
     """
     units: dict[UnitId, XbrlUnit] = {
-        "EUR": XbrlUnit(unit_id="EUR", measure_uri=f"{ISO4217_NS}:EUR"),
-        "pure": XbrlUnit(unit_id="pure", measure_uri=_PURE_MEASURE),
+        "EUR": XbrlUnit(
+            unit_id="EUR",
+            measure_uri=f"{ISO4217_NS}:EUR",
+            measure_qname=QName(ISO4217_NS, "EUR", prefix="iso4217"),
+            unit_form="simple",
+            simple_measure_count=1,
+        ),
+        "pure": XbrlUnit(
+            unit_id="pure",
+            measure_uri=_PURE_MEASURE,
+            measure_qname=QName(XBRLI_NS, "pure", prefix="xbrli"),
+            unit_form="simple",
+            simple_measure_count=1,
+        ),
     }
     return units
 

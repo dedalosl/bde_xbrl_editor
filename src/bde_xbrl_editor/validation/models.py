@@ -22,7 +22,7 @@ class ValidationFinding:
     rule_id: str
     severity: ValidationSeverity
     message: str
-    source: Literal["structural", "formula", "dimensional"]
+    source: Literal["structural", "formula", "dimensional", "calculation"]
     table_id: str | None = None
     table_label: str | None = None
     concept_qname: QName | None = None

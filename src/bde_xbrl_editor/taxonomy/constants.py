@@ -19,6 +19,12 @@ NS_EUROFILING_FI = "http://www.eurofiling.info/xbrl/ext/filing-indicators"
 # PWD Table Linkbase namespace (BDE uses the PWD draft version)
 NS_TABLE_PWD = "http://xbrl.org/PWD/2013-05-17/table"
 NS_FORMULA = "http://xbrl.org/2008/formula"
+# Validation 1.0 REC — ``validation`` prefix (assertionSet, etc.):
+# https://www.xbrl.org/specification/validation/REC-2009-06-22/validation-REC-2009-06-22.html#sec-namespaces
+NS_VALIDATION_V10 = "http://xbrl.org/2008/validation"
+# Assertion Sets 2.0 PWD — ``as`` prefix:
+# https://www.xbrl.org/Specification/assertion-sets-2.0/PWD-2017-05-04/assertion-sets-2.0-PWD-2017-05-04.html
+NS_ASSERTION_SETS_20_PWD = "http://xbrl.org/PWD/2017-05-04/assertion-sets-2.0"
 
 # ---------------------------------------------------------------------------
 # Standard label role URIs (XBRL 2.1, all 8 roles)
