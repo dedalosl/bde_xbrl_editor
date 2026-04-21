@@ -448,11 +448,23 @@ def xfi_measure_name(measure_arg: Any) -> str:
 # ── Dimension functions ───────────────────────────────────────────────────
 
 def _get_context_dimensions(fact_arg: Any) -> dict:
-    """Return the dimensions dict for the relevant context."""
+    """Return explicit dimensions for the relevant context."""
     ctx = _context_from_arg(fact_arg)
     if ctx is None:
         return {}
-    return getattr(ctx, "dimensions", {}) or {}
+    typed_keys = set((getattr(ctx, "typed_dimensions", {}) or {}).keys())
+    return {
+        dim_qname: member_qname
+        for dim_qname, member_qname in (getattr(ctx, "dimensions", {}) or {}).items()
+        if dim_qname not in typed_keys
+    }
+
+
+def _get_context_typed_dimensions(fact_arg: Any) -> dict:
+    ctx = _context_from_arg(fact_arg)
+    if ctx is None:
+        return {}
+    return getattr(ctx, "typed_dimensions", {}) or {}
 
 
 def _qname_from_arg(qname_arg: Any) -> Any:
@@ -483,9 +495,12 @@ def xfi_fact_has_explicit_dimension(fact_arg: Any, dim_qname_arg: Any) -> bool:
 
 
 def xfi_fact_has_typed_dimension(fact_arg: Any, dim_qname_arg: Any) -> bool:
-    """xfi:fact-has-typed-dimension($fact, $dimension) → boolean.
-    We model typed dimensions the same as explicit ones for now."""
-    return xfi_fact_has_explicit_dimension(fact_arg, dim_qname_arg)
+    """xfi:fact-has-typed-dimension($fact, $dimension) → boolean."""
+    dims = _get_context_typed_dimensions(fact_arg)
+    qn = _qname_from_arg(dim_qname_arg)
+    if qn is None:
+        return False
+    return qn in dims
 
 
 def xfi_fact_has_explicit_dimension_value(
@@ -517,12 +532,17 @@ def xfi_fact_explicit_dimension_value(fact_arg: Any, dim_qname_arg: Any) -> str:
 
 def xfi_fact_typed_dimension_value(fact_arg: Any, dim_qname_arg: Any) -> str:
     """xfi:fact-typed-dimension-value($fact, $dimension) → typed value string."""
-    return xfi_fact_explicit_dimension_value(fact_arg, dim_qname_arg)
+    dims = _get_context_typed_dimensions(fact_arg)
+    qn = _qname_from_arg(dim_qname_arg)
+    if qn is None:
+        return ""
+    value = dims.get(qn)
+    return str(value) if value is not None else ""
 
 
 def xfi_fact_typed_dimension_simple_value(fact_arg: Any, dim_qname_arg: Any) -> str:
     """xfi:fact-typed-dimension-simple-value($fact, $dim) → xs:string."""
-    return xfi_fact_explicit_dimension_value(fact_arg, dim_qname_arg)
+    return xfi_fact_typed_dimension_value(fact_arg, dim_qname_arg)
 
 
 def xfi_fact_explicit_dimensions(fact_arg: Any) -> list[str]:
@@ -533,7 +553,8 @@ def xfi_fact_explicit_dimensions(fact_arg: Any) -> list[str]:
 
 def xfi_fact_typed_dimensions(fact_arg: Any) -> list[str]:
     """xfi:fact-typed-dimensions($fact) → sequence of typed dimension QName strings."""
-    return xfi_fact_explicit_dimensions(fact_arg)
+    dims = _get_context_typed_dimensions(fact_arg)
+    return [str(k) for k in dims]
 
 
 def xfi_fact_dimension_s_equal(
@@ -546,10 +567,12 @@ def xfi_fact_dimension_s_equal(
 def xfi_fact_dimension_s_equal2(fact1_arg: Any, fact2_arg: Any) -> bool:
     """xfi:fact-dimension-s-equal2($fact1, $fact2) → dimensional context equality."""
     dims1 = _get_context_dimensions(fact1_arg)
+    typed_dims1 = _get_context_typed_dimensions(fact1_arg)
     # For fact2, temporarily swap context
     ctx2 = _context_from_arg(fact2_arg)
-    dims2 = getattr(ctx2, "dimensions", {}) or {} if ctx2 else {}
-    return dims1 == dims2
+    dims2 = _get_context_dimensions(fact2_arg) if ctx2 else {}
+    typed_dims2 = _get_context_typed_dimensions(fact2_arg) if ctx2 else {}
+    return dims1 == dims2 and typed_dims1 == typed_dims2
 
 
 def xfi_fact_segment_remainder(fact_arg: Any) -> list:

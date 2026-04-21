@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 from collections.abc import Iterable
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 from lxml import etree
@@ -167,11 +168,39 @@ def _typed_dimension_text_from_xml(fragment: bytes | None, dim_qname: QName) -> 
 
 
 def _context_typed_dimension_text(context: object, dim_qname: QName) -> str | None:
+    typed_value = (getattr(context, "typed_dimensions", {}) or {}).get(dim_qname)
+    if isinstance(typed_value, str) and typed_value.strip():
+        return typed_value.strip()
     scenario_xml = getattr(context, "scenario_xml", None)
     segment_xml = getattr(context, "segment_xml", None)
     return _typed_dimension_text_from_xml(scenario_xml, dim_qname) or _typed_dimension_text_from_xml(
         segment_xml, dim_qname
     )
+
+
+def _resolve_typed_dimension_element(
+    taxonomy: TaxonomyStructure,
+    dim_qname: QName,
+) -> QName:
+    concept = taxonomy.concepts.get(dim_qname)
+    if concept is None or not concept.typed_domain_ref or not concept.schema_path:
+        return dim_qname
+    typed_domain_ref = concept.typed_domain_ref
+    if "#" not in typed_domain_ref:
+        return dim_qname
+    rel_path, fragment = typed_domain_ref.split("#", 1)
+    schema_path = Path(concept.schema_path)
+    target_path = (schema_path.parent / rel_path).resolve()
+    try:
+        root = etree.parse(str(target_path)).getroot()
+    except Exception:  # noqa: BLE001
+        return dim_qname
+    target_ns = root.get("targetNamespace", "")
+    for element in root.findall(".//{http://www.w3.org/2001/XMLSchema}element"):
+        if element.get("id") == fragment or element.get("name") == fragment:
+            local_name = element.get("name") or fragment.split("_", 1)[-1]
+            return QName(namespace=target_ns, local_name=local_name)
+    return dim_qname
 
 
 def _fact_options_for_cell(table_id: str | None, concept: QName | None) -> tuple[str, ...]:
@@ -499,6 +528,11 @@ def _find_fact_indexes(
         return []
 
     coord_dims = coordinate.explicit_dimensions or {}
+    coord_typed_dims = {
+        dim_qname: value.strip()
+        for dim_qname, value in (coordinate.typed_dimensions or {}).items()
+        if value.strip()
+    }
     matches: list[int] = []
     for idx, fact in enumerate(instance.facts):
         if fact.concept != coordinate.concept:
@@ -506,10 +540,24 @@ def _find_fact_indexes(
         context = instance.contexts.get(fact.context_ref)
         if context is None:
             continue
-        fact_dims = getattr(context, "dimensions", {}) or {}
+        typed_dim_keys = set((getattr(context, "typed_dimensions", {}) or {}).keys())
+        fact_dims = {
+            dim_qname: member_qname
+            for dim_qname, member_qname in (getattr(context, "dimensions", {}) or {}).items()
+            if dim_qname not in typed_dim_keys
+        }
+        fact_typed_dims = {
+            dim_qname: value.strip()
+            for dim_qname, value in (getattr(context, "typed_dimensions", {}) or {}).items()
+            if value.strip()
+        }
         if any(fact_dims.get(dim) != member for dim, member in coord_dims.items()):
             continue
+        if any(fact_typed_dims.get(dim) != value for dim, value in coord_typed_dims.items()):
+            continue
         if any(dim not in coord_dims for dim in fact_dims):
+            continue
+        if any(dim not in coord_typed_dims for dim in fact_typed_dims):
             continue
         matches.append(idx)
     return matches
@@ -519,6 +567,8 @@ def _ensure_context_ref_for_dimensions(
     instance: XbrlInstance,
     *,
     dimensions: dict[QName, QName],
+    typed_dimensions: dict[QName, str] | None = None,
+    typed_dimension_elements: dict[QName, QName] | None = None,
     context_element: str = "scenario",
 ) -> str:
     from bde_xbrl_editor.instance.context_builder import (  # noqa: PLC0415
@@ -526,12 +576,14 @@ def _ensure_context_ref_for_dimensions(
         generate_context_id,
     )
 
-    ctx_id = generate_context_id(instance.entity, instance.period, dimensions)
+    ctx_id = generate_context_id(instance.entity, instance.period, dimensions, typed_dimensions)
     if ctx_id not in instance.contexts:
         ctx = build_dimensional_context(
             instance.entity,
             instance.period,
             dimensions,
+            typed_dimensions=typed_dimensions,
+            typed_dimension_elements=typed_dimension_elements,
             context_element="segment" if context_element == "segment" else "scenario",
         )
         instance.contexts[ctx_id] = ctx
@@ -965,6 +1017,8 @@ def _append_open_aspect_rows_to_layout(
 
     for row_idx, row_map in enumerate(row_maps):
         selected_dims: dict[QName, QName] = {}
+        selected_typed_dims: dict[QName, str] = {}
+        selected_typed_elements: dict[QName, QName] = {}
         row_label = _OPEN_ROW_PLACEHOLDER_LABEL
         is_placeholder = True
         for candidate in aspect_dimensions:
@@ -984,6 +1038,8 @@ def _append_open_aspect_rows_to_layout(
                         row_label = _display_qname(member_qname, taxonomy, ["es", "en"])
                     is_placeholder = False
             else:
+                selected_typed_dims[dim_qname] = member_clark
+                selected_typed_elements[dim_qname] = _resolve_typed_dimension_element(taxonomy, dim_qname)
                 if row_label == _OPEN_ROW_PLACEHOLDER_LABEL:
                     row_label = member_clark
                 is_placeholder = False
@@ -1056,6 +1112,8 @@ def _append_open_aspect_rows_to_layout(
                 layout.active_z_constraints,
                 taxonomy,
             )
+            coord.typed_dimensions = dict(selected_typed_dims)
+            coord.typed_dimension_elements = dict(selected_typed_elements)
             cell = BodyCell(
                 row_index=row_idx,
                 col_index=col_idx,
@@ -2233,21 +2291,39 @@ class XbrlTableView(QFrame):
             existing_fact_indexes: list[int] = []
             target_context_ref: str | None = None
             target_dimensions: dict[QName, QName] | None = None
+            target_typed_dimensions: dict[QName, str] | None = None
+            target_typed_elements: dict[QName, QName] | None = None
             for row_cell in self._layout.body[row]:
                 if row_cell.cell_kind != "fact" or row_cell.coordinate.concept is None:
                     continue
                 if target_dimensions is None:
                     target_dimensions = dict(row_cell.coordinate.explicit_dimensions or {})
+                    target_typed_dimensions = dict(row_cell.coordinate.typed_dimensions or {})
+                    target_typed_elements = dict(row_cell.coordinate.typed_dimension_elements or {})
                     for dim_clark, selected_clark in row_map.items():
                         with contextlib.suppress(Exception):
-                            target_dimensions[QName.from_clark(dim_clark)] = QName.from_clark(selected_clark)
+                            dim_qname = QName.from_clark(dim_clark)
+                            if selected_clark.startswith("{"):
+                                target_dimensions[dim_qname] = QName.from_clark(selected_clark)
+                                continue
+                            target_typed_dimensions[dim_qname] = selected_clark
+                            if dim_qname not in target_typed_elements:
+                                target_typed_elements[dim_qname] = _resolve_typed_dimension_element(
+                                    self._taxonomy,
+                                    dim_qname,
+                                )
                     old_context = None
                     matches = _find_fact_indexes(self._instance, row_cell.coordinate)
                     if matches:
                         old_context = self._instance.contexts.get(self._instance.facts[matches[0]].context_ref)
+                    if old_context is not None:
+                        for dim_qname, element_qname in (getattr(old_context, "typed_dimension_elements", {}) or {}).items():
+                            target_typed_elements.setdefault(dim_qname, element_qname)
                     target_context_ref = _ensure_context_ref_for_dimensions(
                         self._instance,
                         dimensions=target_dimensions,
+                        typed_dimensions=target_typed_dimensions,
+                        typed_dimension_elements=target_typed_elements,
                         context_element=getattr(old_context, "context_element", "scenario"),
                     )
                 existing_fact_indexes.extend(_find_fact_indexes(self._instance, row_cell.coordinate))

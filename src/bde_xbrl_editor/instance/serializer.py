@@ -179,8 +179,14 @@ def _build_context_el(ctx: XbrlContext, ns_to_prefix: dict[str, str]) -> etree._
     period_el = etree.SubElement(ctx_el, f"{{{XBRLI_NS}}}period")
     _fill_period(period_el, ctx.period)
 
-    # <xbrli:scenario> or <xbrli:segment> with xbrldi:explicitMember children
-    if ctx.dimensions:
+    explicit_dimensions = {
+        dim_qname: member_qname
+        for dim_qname, member_qname in ctx.dimensions.items()
+        if dim_qname not in (ctx.typed_dimensions or {})
+    }
+
+    # <xbrli:scenario> or <xbrli:segment> with dimensional children
+    if explicit_dimensions or ctx.typed_dimensions:
         container_tag = (
             f"{{{XBRLI_NS}}}scenario"
             if ctx.context_element == "scenario"
@@ -188,7 +194,7 @@ def _build_context_el(ctx: XbrlContext, ns_to_prefix: dict[str, str]) -> etree._
         )
         container_el = etree.SubElement(ctx_el, container_tag)
         for dim_qname, member_qname in sorted(
-            ctx.dimensions.items(), key=lambda kv: str(kv[0])
+            explicit_dimensions.items(), key=lambda kv: str(kv[0])
         ):
             em = etree.SubElement(
                 container_el,
@@ -196,6 +202,17 @@ def _build_context_el(ctx: XbrlContext, ns_to_prefix: dict[str, str]) -> etree._
                 attrib={"dimension": _qname_str(dim_qname, ns_to_prefix)},
             )
             em.text = _qname_str(member_qname, ns_to_prefix)
+        for dim_qname, typed_value in sorted(
+            (ctx.typed_dimensions or {}).items(), key=lambda kv: str(kv[0])
+        ):
+            tm = etree.SubElement(
+                container_el,
+                f"{{{XBRLDI_NS}}}typedMember",
+                attrib={"dimension": _qname_str(dim_qname, ns_to_prefix)},
+            )
+            typed_element_qname = (ctx.typed_dimension_elements or {}).get(dim_qname, dim_qname)
+            typed_el = etree.SubElement(tm, etree.QName(typed_element_qname.namespace, typed_element_qname.local_name))
+            typed_el.text = typed_value
 
     return ctx_el
 

@@ -48,6 +48,8 @@ class CellCoordinate:
 
     concept: QName | None = None
     explicit_dimensions: dict[QName, QName] = field(default_factory=dict)
+    typed_dimensions: dict[QName, str] = field(default_factory=dict)
+    typed_dimension_elements: dict[QName, QName] = field(default_factory=dict)
     period_override: ReportingPeriod | None = None
     entity_override: ReportingEntity | None = None
 

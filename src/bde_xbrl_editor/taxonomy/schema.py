@@ -101,6 +101,7 @@ def _build_concept(
     abstract = el.get("abstract", "false").lower() == "true"
     nillable = el.get("nillable", "false").lower() == "true"
     xml_id = el.get("id") or None
+    typed_domain_ref = el.get(f"{{{NS_XBRLDT}}}typedDomainRef") or None
 
     concept = Concept(
         qname=qname,
@@ -111,6 +112,8 @@ def _build_concept(
         nillable=nillable,
         substitution_group=sg,
         xml_id=xml_id,
+        typed_domain_ref=typed_domain_ref,
+        schema_path=schema_path_str,
     )
     return qname, concept, sg
 

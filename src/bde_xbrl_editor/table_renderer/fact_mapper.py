@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 # so it must be stripped from fact contexts before dimension matching.
 _AGRUPACION_DIM = QName(namespace=BDE_DIM_NS, local_name="Agrupacion")
 _DimsKey = frozenset[tuple[QName, QName]]
+_TypedDimsKey = frozenset[tuple[QName, str]]
 
 
 class FactMapper:
@@ -26,7 +27,7 @@ class FactMapper:
     def __init__(self, taxonomy: TaxonomyStructure) -> None:
         self._taxonomy = taxonomy
         self._indexed_instance_id: int | None = None
-        self._fact_index: dict[QName, dict[_DimsKey, list[Fact]]] = {}
+        self._fact_index: dict[QName, dict[tuple[_DimsKey, _TypedDimsKey], list[Fact]]] = {}
 
     def _normalize_dimensions(self, dims: dict[QName, QName]) -> dict[QName, QName]:
         """Treat default-member dimensions as equivalent to being absent."""
@@ -47,20 +48,35 @@ class FactMapper:
         """Build a hashable key for exact-dimension matching."""
         return frozenset(self._normalize_dimensions(dims).items())
 
+    @staticmethod
+    def _typed_dims_key(typed_dims: dict[QName, str]) -> _TypedDimsKey:
+        return frozenset(
+            (dim_qname, value.strip())
+            for dim_qname, value in typed_dims.items()
+            if value.strip()
+        )
+
     def _ensure_index(self, instance: XbrlInstance) -> None:
         """Build a concept+dimension index once per instance for fast cell lookups."""
         current_instance_id = id(instance)
         if self._indexed_instance_id == current_instance_id:
             return
 
-        index: dict[QName, dict[_DimsKey, list[Fact]]] = defaultdict(lambda: defaultdict(list))
+        index: dict[QName, dict[tuple[_DimsKey, _TypedDimsKey], list[Fact]]] = defaultdict(lambda: defaultdict(list))
         for fact in instance.facts:
             context = instance.contexts.get(fact.context_ref)
             if context is None:
                 continue
             raw_dims = context.dimensions if hasattr(context, "dimensions") else {}
-            dims_key = self._dims_key(self._strip_agrupacion(raw_dims or {}))
-            index[fact.concept][dims_key].append(fact)
+            typed_keys = set((getattr(context, "typed_dimensions", {}) or {}).keys())
+            explicit_dims = {
+                dim: member
+                for dim, member in (raw_dims or {}).items()
+                if dim not in typed_keys
+            }
+            dims_key = self._dims_key(self._strip_agrupacion(explicit_dims))
+            typed_dims_key = self._typed_dims_key(getattr(context, "typed_dimensions", {}) or {})
+            index[fact.concept][(dims_key, typed_dims_key)].append(fact)
 
         self._fact_index = {
             concept: {dims_key: list(facts) for dims_key, facts in by_dims.items()}
@@ -85,7 +101,8 @@ class FactMapper:
 
         self._ensure_index(instance)
         coord_key = self._dims_key(coordinate.explicit_dimensions or {})
-        matching = self._fact_index.get(coordinate.concept, {}).get(coord_key, [])
+        coord_typed_key = self._typed_dims_key(coordinate.typed_dimensions or {})
+        matching = self._fact_index.get(coordinate.concept, {}).get((coord_key, coord_typed_key), [])
 
         count = len(matching)
         if count == 0:

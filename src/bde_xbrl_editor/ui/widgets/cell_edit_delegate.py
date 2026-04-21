@@ -64,18 +64,37 @@ def _find_fact_index(
     if coordinate.concept is None:
         return None
     coord_dims = coordinate.explicit_dimensions or {}
+    coord_typed_dims = {
+        dim_qname: value.strip()
+        for dim_qname, value in (coordinate.typed_dimensions or {}).items()
+        if value.strip()
+    }
     for i, fact in enumerate(instance.facts):
         if fact.concept != coordinate.concept:
             continue
         context = instance.contexts.get(fact.context_ref)
         if context is None:
             continue
-        fact_dims = context.dimensions
+        typed_dim_keys = set((getattr(context, "typed_dimensions", {}) or {}).keys())
+        fact_dims = {
+            dim_qname: member_qname
+            for dim_qname, member_qname in context.dimensions.items()
+            if dim_qname not in typed_dim_keys
+        }
+        fact_typed_dims = {
+            dim_qname: value.strip()
+            for dim_qname, value in (getattr(context, "typed_dimensions", {}) or {}).items()
+            if value.strip()
+        }
         # All coordinate dims must match
         if any(fact_dims.get(d) != m for d, m in coord_dims.items()):
             continue
+        if any(fact_typed_dims.get(d) != v for d, v in coord_typed_dims.items()):
+            continue
         # Fact must not have extra dims the coordinate doesn't specify
         if any(d not in coord_dims for d in fact_dims):
+            continue
+        if any(d not in coord_typed_dims for d in fact_typed_dims):
             continue
         return i
     return None
@@ -89,9 +108,17 @@ def _ensure_context_ref(instance: XbrlInstance, coordinate: CellCoordinate) -> s
     )
 
     dims = coordinate.explicit_dimensions or {}
-    ctx_id = generate_context_id(instance.entity, instance.period, dims)
+    typed_dims = coordinate.typed_dimensions or {}
+    typed_dimension_elements = coordinate.typed_dimension_elements or {}
+    ctx_id = generate_context_id(instance.entity, instance.period, dims, typed_dims)
     if ctx_id not in instance.contexts:
-        ctx = build_dimensional_context(instance.entity, instance.period, dims)
+        ctx = build_dimensional_context(
+            instance.entity,
+            instance.period,
+            dims,
+            typed_dimensions=typed_dims,
+            typed_dimension_elements=typed_dimension_elements,
+        )
         instance.contexts[ctx_id] = ctx
     return ctx_id
 

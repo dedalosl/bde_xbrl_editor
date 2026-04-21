@@ -19,6 +19,7 @@ def generate_context_id(
     entity: ReportingEntity,
     period: ReportingPeriod,
     dimensions: dict[QName, QName] | None = None,
+    typed_dimensions: dict[QName, str] | None = None,
 ) -> ContextId:
     """Generate a deterministic, stable context ID from its components.
 
@@ -29,10 +30,15 @@ def generate_context_id(
     Same inputs always produce the same ID.
     """
     dims = dimensions or {}
+    typed_dims = typed_dimensions or {}
     # Canonical representation — sort dimension pairs for determinism
     dim_str = "|".join(
         f"{str(k)}={str(v)}"
         for k, v in sorted(dims.items(), key=lambda kv: str(kv[0]))
+    )
+    typed_dim_str = "|".join(
+        f"{str(k)}={str(v)}"
+        for k, v in sorted(typed_dims.items(), key=lambda kv: str(kv[0]))
     )
     period_str = (
         str(period.instant_date)
@@ -40,7 +46,7 @@ def generate_context_id(
         else f"{period.start_date}/{period.end_date}"
     )
     canonical = (
-        f"{entity.scheme}|{entity.identifier}|{period.period_type}|{period_str}|{dim_str}"
+        f"{entity.scheme}|{entity.identifier}|{period.period_type}|{period_str}|{dim_str}|{typed_dim_str}"
     )
     digest = hashlib.sha256(canonical.encode()).hexdigest()[:8]
     return f"ctx_{digest}"
@@ -69,14 +75,25 @@ def build_dimensional_context(
     period: ReportingPeriod,
     dimensions: dict[QName, QName],
     context_element: Literal["scenario", "segment"] = "scenario",
+    typed_dimensions: dict[QName, str] | None = None,
+    typed_dimension_elements: dict[QName, QName] | None = None,
 ) -> XbrlContext:
     """Build a context for a specific dimensional combination."""
-    ctx_id = generate_context_id(entity, period, dimensions)
+    explicit_dimensions = dict(dimensions)
+    typed_dims = dict(typed_dimensions or {})
+    typed_elements = dict(typed_dimension_elements or {})
+    merged_dimensions = dict(explicit_dimensions)
+    for dim_qname in typed_dims:
+        merged_dimensions.setdefault(dim_qname, dim_qname)
+
+    ctx_id = generate_context_id(entity, period, explicit_dimensions, typed_dims)
     ctx = XbrlContext(
         context_id=ctx_id,
         entity=entity,
         period=period,
-        dimensions=dict(dimensions),
+        dimensions=merged_dimensions,
+        typed_dimensions=typed_dims,
+        typed_dimension_elements=typed_elements,
         context_element=context_element,
     )
     ctx.s_equal_key = build_s_equal_key_from_model(ctx)

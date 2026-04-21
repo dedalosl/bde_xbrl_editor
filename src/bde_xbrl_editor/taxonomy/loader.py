@@ -627,7 +627,10 @@ def _check_dimensional_constraints(
 
 
 
-def _rebuild_dimensions(definition_arcs: dict[str, list]) -> dict[QName, DimensionModel]:
+def _rebuild_dimensions(
+    definition_arcs: dict[str, list],
+    concepts: dict[QName, Concept],
+) -> dict[QName, DimensionModel]:
     """Build DimensionModel objects by BFS-walking the complete merged definition arc set.
 
     The per-file approach in parse_definition_linkbase cannot associate domain-member
@@ -691,7 +694,7 @@ def _rebuild_dimensions(definition_arcs: dict[str, list]) -> dict[QName, Dimensi
 
         dimensions[dim_q] = DimensionModel(
             qname=dim_q,
-            dimension_type="explicit",
+            dimension_type="typed" if concepts.get(dim_q, None) and concepts[dim_q].typed_domain_ref else "explicit",
             default_member=dim_defaults.get(dim_q),
             domain=domain_q,
             members=tuple(all_members),
@@ -1076,7 +1079,7 @@ class TaxonomyLoader:
         # Build dimensions once from the complete merged arc set so that
         # domain-member arcs in extension linkbases are correctly associated
         # with their parent dimensions (which may be declared in a different file).
-        dimensions = _rebuild_dimensions(definition_arcs)
+        dimensions = _rebuild_dimensions(definition_arcs, concepts)
 
         # Step 4b: XBRL Dimensions 1.0 taxonomy constraint checks (xbrldte:* errors)
         declared_roles = set(_PREDEFINED_XBRL_ROLES)

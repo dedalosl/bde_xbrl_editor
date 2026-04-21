@@ -23,9 +23,11 @@ from bde_xbrl_editor.instance.constants import (
     BDE_PBLO_NS,
     FILING_IND_NS,
     LINK_NS,
+    XBRLDI_NS,
     XBRLI_NS,
 )
 from bde_xbrl_editor.instance.context_builder import generate_context_id
+from bde_xbrl_editor.taxonomy.models import QName
 
 
 def _make_minimal_instance() -> XbrlInstance:
@@ -158,6 +160,37 @@ class TestToXml:
     def test_xml_declaration_present(self):
         result = InstanceSerializer().to_xml(_make_minimal_instance())
         assert result.startswith(b"<?xml")
+
+    def test_typed_dimensions_are_serialised_as_typed_member(self):
+        entity = ReportingEntity(identifier="ES123", scheme="http://www.bde.es/")
+        period = ReportingPeriod(period_type="instant", instant_date=date(2024, 12, 31))
+        dim_qname = QName("http://example.com/dim", "qLIN")
+        typed_el = QName("http://example.com/dom", "qLE")
+        ctx_id = generate_context_id(entity, period, {}, {dim_qname: "Entidad A"})
+        ctx = XbrlContext(
+            context_id=ctx_id,
+            entity=entity,
+            period=period,
+            dimensions={dim_qname: dim_qname},
+            typed_dimensions={dim_qname: "Entidad A"},
+            typed_dimension_elements={dim_qname: typed_el},
+        )
+        inst = XbrlInstance(
+            taxonomy_entry_point=Path("/tmp/entry.xsd"),
+            schema_ref_href="/tmp/entry.xsd",
+            entity=entity,
+            period=period,
+            contexts={ctx_id: ctx},
+            _dirty=True,
+        )
+
+        root = etree.fromstring(InstanceSerializer().to_xml(inst))
+        typed_member = root.find(f".//{{{XBRLDI_NS}}}typedMember")
+        assert typed_member is not None
+        assert typed_member.get("dimension") is not None
+        typed_child = next(iter(typed_member))
+        assert typed_child.tag == "{http://example.com/dom}qLE"
+        assert typed_child.text == "Entidad A"
 
 
 class TestSave:
