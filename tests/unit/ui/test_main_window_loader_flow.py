@@ -26,6 +26,7 @@ from bde_xbrl_editor.taxonomy.models import (
 )
 from bde_xbrl_editor.ui.main_window import MainWindow
 from bde_xbrl_editor.ui.widgets.activity_sidebar import _ValidationsPanel
+from bde_xbrl_editor.ui.widgets.progress_dialog import TaxonomyProgressDialog
 from bde_xbrl_editor.ui.widgets.taxonomy_loader_widget import TaxonomyLoaderWidget
 
 
@@ -112,6 +113,70 @@ def test_loader_instance_handoff_survives_recent_file_write_error(qtbot, qapp, m
     assert window._current_instance is not None
     assert window._sidebar is not None
     assert not isinstance(window.centralWidget(), TaxonomyLoaderWidget)
+
+
+def test_progress_dialog_keeps_recent_milestones(qtbot, qapp) -> None:
+    dialog = TaxonomyProgressDialog()
+    qtbot.addWidget(dialog)
+
+    dialog.reset()
+    dialog.set_context("Taxonomy", "/tmp/sample-taxonomy.xsd")
+    dialog.update_progress("DTS discovered — 4 schemas, 3 linkbases", 1, 7)
+    dialog.update_progress("Tables prepared — 12 available", 5, 7)
+    dialog.update_progress("Tables prepared — 12 available", 5, 7)
+
+    assert dialog._context_label.text().startswith("sample-taxonomy.xsd")
+    assert dialog._activity_list.count() == 2
+    assert dialog._activity_list.item(0).text() == "Tables prepared — 12 available"
+    assert dialog._activity_count.text() == "2 updates"
+
+
+def test_async_instance_open_path_uses_loading_dialog(qtbot, qapp, monkeypatch) -> None:
+    def fake_run(self) -> None:
+        self.progress.emit("Taxonomy ready — 0 tables, 0 concepts", 72, 100)
+        self.finished.emit(_instance(), _taxonomy())
+
+    monkeypatch.setattr("bde_xbrl_editor.ui.main_window.InstanceLoadWorker.run", fake_run)
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window._begin_instance_open("sample-instance.xbrl")
+    qtbot.waitUntil(lambda: window._current_instance is not None, timeout=1000)
+
+    assert window._loading_dialog is not None
+    assert window._loading_dialog._activity_list.count() >= 1
+    assert window._instance_open_thread is None
+    assert window._open_instance_action.isEnabled()
+
+
+def test_instance_open_stages_taxonomy_before_instance_finishes(qtbot, qapp, monkeypatch) -> None:
+    staged_taxonomy = _taxonomy()
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window._on_open_instance_taxonomy_resolved(staged_taxonomy)
+
+    assert window._current_taxonomy == staged_taxonomy
+    assert window._current_instance is None
+    assert window._sidebar is not None
+    assert window._browser_splitter is not None
+
+
+def test_instance_open_passes_current_taxonomy_for_reuse(qtbot, qapp, monkeypatch) -> None:
+    current_taxonomy = _taxonomy()
+    monkeypatch.setattr("bde_xbrl_editor.ui.main_window.QThread.start", lambda self: None)
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window._on_taxonomy_loaded(current_taxonomy)
+
+    window._begin_instance_open("sample-instance.xbrl")
+
+    assert window._instance_open_worker is not None
+    assert window._instance_open_worker._preloaded_taxonomy is current_taxonomy
+    assert window._current_taxonomy is current_taxonomy
 
 
 def test_reload_to_loader_then_reopen_instance_rebuilds_browser_views(qtbot, qapp, monkeypatch) -> None:

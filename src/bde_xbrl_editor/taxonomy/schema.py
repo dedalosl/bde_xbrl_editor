@@ -12,9 +12,14 @@ from bde_xbrl_editor.taxonomy.models import (
     QName,
     TaxonomyParseError,
 )
+from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
 
 _ELEMENT = f"{{{NS_XSD}}}element"
+_SIMPLE_TYPE = f"{{{NS_XSD}}}simpleType"
 _COMPLEX_TYPE = f"{{{NS_XSD}}}complexType"
+_SIMPLE_CONTENT = f"{{{NS_XSD}}}simpleContent"
+_RESTRICTION = f"{{{NS_XSD}}}restriction"
+_EXTENSION = f"{{{NS_XSD}}}extension"
 
 # XBRL substitution groups that mark items and tuples
 _SG_ITEM = QName(NS_XBRLI, "item", prefix="xbrli")
@@ -130,7 +135,7 @@ def parse_schema_raw(
         TaxonomyParseError: If the file is not well-formed XML.
     """
     try:
-        tree = etree.parse(str(schema_path))  # noqa: S320
+        tree = parse_xml_file(schema_path)
     except etree.XMLSyntaxError as exc:
         raise TaxonomyParseError(
             file_path=str(schema_path),
@@ -200,3 +205,81 @@ def parse_schema(
         pending = still_pending
 
     return resolved
+
+
+_MONETARY_ITEM_TYPE = QName(NS_XBRLI, "monetaryItemType")
+
+
+def _type_def_bases_monetary(
+    type_el: etree._Element,
+    ns_map: dict[str, str],
+    schema_path_str: str,
+) -> bool:
+    """True when *type_el* (xs:simpleType or xs:complexType) derives from monetaryItemType."""
+    for child in type_el:
+        if child.tag == _RESTRICTION:
+            base_raw = child.get("base")
+            if base_raw:
+                base_qn = _resolve_qname(base_raw, ns_map, schema_path_str)
+                if base_qn == _MONETARY_ITEM_TYPE:
+                    return True
+        elif child.tag == _SIMPLE_CONTENT:
+            for sc_child in child:
+                if sc_child.tag != _RESTRICTION:
+                    continue
+                base_raw = sc_child.get("base")
+                if base_raw:
+                    base_qn = _resolve_qname(base_raw, ns_map, schema_path_str)
+                    if base_qn == _MONETARY_ITEM_TYPE:
+                        return True
+        elif child.tag == _EXTENSION:
+            base_raw = child.get("base")
+            if base_raw:
+                base_qn = _resolve_qname(base_raw, ns_map, schema_path_str)
+                if base_qn == _MONETARY_ITEM_TYPE:
+                    return True
+    return False
+
+
+def extract_monetary_value_type_qnames(
+    schema_path: Path,
+    namespace_override: str | None = None,
+) -> frozenset[QName]:
+    """Return QNames of XSD types (in *targetNamespace*) that derive from monetaryItemType.
+
+    Covers xs:simpleType restrictions and xs:complexType/xs:simpleContent restrictions
+    as used by XBRL 2.1 conformance (e.g. ``assetsItemType`` in 304-03).
+    """
+    try:
+        tree = parse_xml_file(schema_path)
+    except etree.XMLSyntaxError as exc:
+        raise TaxonomyParseError(
+            file_path=str(schema_path),
+            message=str(exc),
+            line=exc.lineno,
+            column=exc.offset,
+        ) from exc
+
+    root = tree.getroot()
+    target_ns = (
+        namespace_override if namespace_override is not None else root.get("targetNamespace", "")
+    )
+    ns_map: dict[str, str] = {k or "": v for k, v in root.nsmap.items()}
+
+    out: set[QName] = set()
+    path_str = str(schema_path)
+    for el in root.iter(_SIMPLE_TYPE):
+        name = el.get("name")
+        if not name or not target_ns:
+            continue
+        if _type_def_bases_monetary(el, ns_map, path_str):
+            out.add(QName(namespace=target_ns, local_name=name))
+
+    for el in root.iter(_COMPLEX_TYPE):
+        name = el.get("name")
+        if not name or not target_ns:
+            continue
+        if _type_def_bases_monetary(el, ns_map, path_str):
+            out.add(QName(namespace=target_ns, local_name=name))
+
+    return frozenset(out)

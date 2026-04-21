@@ -164,3 +164,41 @@ class TestFactMapper:
         assert result.matched
         assert result.fact_value == "999"
         assert result.duplicate_count == 1
+
+    def test_default_member_dimension_is_treated_as_absent(self):
+        concept = _qn("Assets")
+        dim = _qn("Dim1")
+        default_mem = _qn("Default")
+
+        taxonomy = MagicMock()
+        dim_model = MagicMock()
+        dim_model.default_member = default_mem
+        taxonomy.dimensions = {dim: dim_model}
+
+        fact = _make_fact(concept, value="321", context_ref="ctx1")
+        ctx = _make_context({})
+        instance = _make_instance([fact], {"ctx1": ctx})
+
+        mapper = FactMapper(taxonomy)
+        coord = CellCoordinate(concept=concept, explicit_dimensions={dim: default_mem})
+        result = mapper.match(coord, instance)
+
+        assert result.matched
+        assert result.fact_value == "321"
+        assert result.duplicate_count == 1
+
+    def test_rebuilds_index_when_instance_object_changes(self):
+        concept = _qn("Assets")
+        coord = CellCoordinate(concept=concept)
+
+        taxonomy = MagicMock()
+        mapper = FactMapper(taxonomy)
+
+        instance_a = _make_instance([_make_fact(concept, value="100")], {"ctx1": _make_context()})
+        instance_b = _make_instance([_make_fact(concept, value="200")], {"ctx1": _make_context()})
+
+        result_a = mapper.match(coord, instance_a)
+        result_b = mapper.match(coord, instance_b)
+
+        assert result_a.matched and result_a.fact_value == "100"
+        assert result_b.matched and result_b.fact_value == "200"

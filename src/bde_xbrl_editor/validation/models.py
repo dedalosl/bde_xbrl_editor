@@ -15,14 +15,20 @@ class ValidationSeverity(StrEnum):
     WARNING = "warning"
 
 
+class ValidationStatus(StrEnum):
+    PASS = "pass"
+    FAIL = "fail"
+
+
 @dataclass(frozen=True)
 class ValidationFinding:
     """A single identified issue from a validation run. Immutable."""
 
     rule_id: str
-    severity: ValidationSeverity
+    severity: ValidationSeverity | None
     message: str
-    source: Literal["structural", "formula", "dimensional"]
+    source: Literal["structural", "formula", "dimensional", "calculation"]
+    status: ValidationStatus = ValidationStatus.FAIL
     table_id: str | None = None
     table_label: str | None = None
     concept_qname: QName | None = None
@@ -34,6 +40,11 @@ class ValidationFinding:
     formula_expression: str | None = None
     formula_operands_text: str | None = None
     formula_precondition: str | None = None
+    rule_label: str | None = None
+    rule_label_role: str | None = None
+    rule_message: str | None = None
+    evaluated_rule_message: str | None = None
+    rule_message_role: str | None = None
 
 
 @dataclass(frozen=True)
@@ -59,6 +70,10 @@ class ValidationReport:
     @property
     def passed(self) -> bool:
         return self.error_count == 0
+
+    @property
+    def pass_count(self) -> int:
+        return sum(1 for f in self.findings if f.status == ValidationStatus.PASS)
 
     def findings_for_table(self, table_id: str) -> tuple[ValidationFinding, ...]:
         return tuple(f for f in self.findings if f.table_id == table_id)

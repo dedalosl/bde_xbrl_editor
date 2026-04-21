@@ -25,8 +25,10 @@ from shiboken6 import isValid
 
 from bde_xbrl_editor.taxonomy import TaxonomyCache, TaxonomyStructure
 from bde_xbrl_editor.ui import theme
+from bde_xbrl_editor.ui.loading import InstanceLoadWorker
 from bde_xbrl_editor.ui.widgets.activity_sidebar import ActivitySidebar
 from bde_xbrl_editor.ui.widgets.loader_settings_dialog import load_saved_settings
+from bde_xbrl_editor.ui.widgets.progress_dialog import TaxonomyProgressDialog
 from bde_xbrl_editor.ui.widgets.taxonomy_loader_widget import TaxonomyLoaderWidget
 
 
@@ -52,6 +54,9 @@ class MainWindow(QMainWindow):
         self._table_chip_label: QLabel | None = None
         self._context_title_label: QLabel | None = None
         self._context_meta_label: QLabel | None = None
+        self._loading_dialog: TaxonomyProgressDialog | None = None
+        self._instance_open_thread: QThread | None = None
+        self._instance_open_worker: InstanceLoadWorker | None = None
 
         # Validation
         self._validation_thread: QThread | None = None
@@ -62,10 +67,30 @@ class MainWindow(QMainWindow):
         self._setup_central()
         self._setup_statusbar()
 
+    @staticmethod
+    def _table_identity(table: object | None) -> str:
+        if table is None:
+            return ""
+        table_code = getattr(table, "table_code", None)
+        table_id = getattr(table, "table_id", "")
+        parts = [part for part in (table_code, table_id) if part]
+        return "  |  ".join(parts)
+
+    @staticmethod
+    def _taxonomy_entry_point(taxonomy: TaxonomyStructure | None) -> Path | None:
+        if taxonomy is None:
+            return None
+        return taxonomy.metadata.entry_point_path.resolve()
+
+    def _same_taxonomy(self, taxonomy: TaxonomyStructure) -> bool:
+        current_entry = self._taxonomy_entry_point(self._current_taxonomy)
+        incoming_entry = self._taxonomy_entry_point(taxonomy)
+        return current_entry is not None and current_entry == incoming_entry
+
     def _apply_stylesheet(self) -> None:
         self.setStyleSheet(f"""
             QMainWindow, QWidget {{
-                font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+                font-family: "Helvetica Neue", Arial, sans-serif;
                 font-size: 12px;
                 color: {theme.TEXT_MAIN};
             }}
@@ -251,6 +276,7 @@ class MainWindow(QMainWindow):
         if self._editor is not None:
             with contextlib.suppress(RuntimeError, TypeError):
                 self._editor.changes_made.disconnect(self._on_changes_made)
+                self._editor.filing_indicators_changed.disconnect(self._on_filing_indicators_changed)
         self._editor = None
         self._current_instance = None
         self._clear_browser_view_refs()
@@ -323,6 +349,8 @@ class MainWindow(QMainWindow):
         self._sidebar.width_changed.connect(self._on_sidebar_width_changed)
 
         self._table_view = XbrlTableView(parent=self)
+        self._table_view.editing_mode_changed.connect(self._on_table_editing_mode_changed)
+        self._table_view.layout_ready.connect(self._on_table_layout_ready)
 
         splitter = QSplitter(self)
         splitter.addWidget(self._sidebar)
@@ -361,12 +389,6 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(14, 10, 14, 10)
         layout.setSpacing(14)
 
-        pill_style = (
-            f"QLabel {{ color: {theme.TEXT_MUTED}; font-size: 10px; font-weight: bold;"
-            f" background: {theme.SURFACE_BG}; border: 1px solid {theme.BORDER};"
-            " border-radius: 8px; padding: 3px 8px; }"
-        )
-
         context_block = QWidget(bar)
         context_layout = QVBoxLayout(context_block)
         context_layout.setContentsMargins(0, 0, 0, 0)
@@ -403,29 +425,25 @@ class MainWindow(QMainWindow):
         info_group = QWidget(bar)
         info_layout = QHBoxLayout(info_group)
         info_layout.setContentsMargins(0, 0, 0, 0)
-        info_layout.setSpacing(8)
+        info_layout.setSpacing(14)
+
+        context_note_style = (
+            f"color: {theme.TEXT_MUTED}; font-size: 10px; font-weight: 600; background: transparent;"
+        )
 
         if self._current_taxonomy:
             meta = self._current_taxonomy.metadata
-            tax_pill = QLabel(f"Taxonomy {meta.name} v{meta.version}")
-            tax_pill.setStyleSheet(pill_style)
-            info_layout.addWidget(tax_pill)
+            tax_label = QLabel(f"Taxonomy {meta.name}  |  Version {meta.version}")
+            tax_label.setStyleSheet(context_note_style)
+            info_layout.addWidget(tax_label)
 
         if instance is not None:
             fname = Path(instance.source_path).name if instance.source_path else "Unsaved instance"
-            inst_pill = QLabel(f"Instance {fname}")
-            inst_pill.setStyleSheet(pill_style)
-            info_layout.addWidget(inst_pill)
+            inst_label = QLabel(f"Instance {fname}")
+            inst_label.setStyleSheet(context_note_style)
+            info_layout.addWidget(inst_label)
 
-        table_chip = QLabel()
-        table_chip.setStyleSheet(
-            f"QLabel {{ color: {theme.TEXT_MAIN}; font-size: 10px; font-weight: bold;"
-            f" background: {theme.HEADER_BG_LIGHT}; border: 1px solid {theme.BORDER};"
-            " border-radius: 8px; padding: 3px 8px; }}"
-        )
-        table_chip.setVisible(False)
-        info_layout.addWidget(table_chip)
-        self._table_chip_label = table_chip
+        self._table_chip_label = None
         self._table_chip_sep = None
 
         layout.addWidget(info_group, stretch=0)
@@ -537,6 +555,7 @@ class MainWindow(QMainWindow):
         if self._editor is not None:
             with contextlib.suppress(RuntimeError):
                 self._editor.changes_made.disconnect(self._on_changes_made)
+                self._editor.filing_indicators_changed.disconnect(self._on_filing_indicators_changed)
 
         self._current_taxonomy = None
         self._current_instance = None
@@ -572,6 +591,7 @@ class MainWindow(QMainWindow):
         if self._editor is not None:
             with contextlib.suppress(RuntimeError):
                 self._editor.changes_made.disconnect(self._on_changes_made)
+                self._editor.filing_indicators_changed.disconnect(self._on_filing_indicators_changed)
 
         self._current_instance = None
         self._editor = None
@@ -638,49 +658,100 @@ class MainWindow(QMainWindow):
         if not path_str:
             return
 
-        from bde_xbrl_editor.instance.models import InstanceParseError, TaxonomyResolutionError
-        from bde_xbrl_editor.instance.parser import InstanceParser
-        from bde_xbrl_editor.taxonomy.loader import TaxonomyLoader
+        self._begin_instance_open(path_str)
 
-        loader = TaxonomyLoader(cache=self._cache, settings=self._settings)
-        parser = InstanceParser(taxonomy_loader=loader)
-        try:
-            instance, orphaned = parser.load(path_str)
-        except TaxonomyResolutionError as exc:
-            QMessageBox.critical(self, "Taxonomy Error", str(exc))
-            return
-        except InstanceParseError as exc:
-            QMessageBox.critical(self, "Parse Error", str(exc))
+    def _begin_instance_open(self, path_str: str) -> None:
+        if self._instance_open_thread is not None:
             return
 
-        # Resolve the taxonomy from the instance (may be newly loaded or already in cache)
-        if instance.taxonomy_entry_point:
-            with contextlib.suppress(Exception):
-                self._current_taxonomy = loader.load(instance.taxonomy_entry_point)
+        dialog = self._show_loading_dialog("Loading Instance…", "Initialising instance load…")
+        dialog.set_context("Instance", path_str)
 
-        if self._current_taxonomy is None:
-            QMessageBox.critical(
-                self,
-                "Taxonomy Error",
-                "Could not resolve the taxonomy for this instance. "
-                "Please open the taxonomy first via File → Open Taxonomy.",
-            )
-            return
+        self._status.showMessage("Opening instance…")
+        self._open_instance_action.setEnabled(False)
+        self._instance_open_worker = InstanceLoadWorker(self._cache, self._settings, path_str)
+        self._instance_open_worker.set_preloaded_taxonomy(self._current_taxonomy)
+        self._instance_open_thread = QThread(self)
+        self._instance_open_worker.moveToThread(self._instance_open_thread)
+        self._instance_open_thread.started.connect(self._instance_open_worker.run)
+        self._instance_open_worker.progress.connect(
+            dialog.update_progress,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self._instance_open_worker.finished.connect(
+            self._on_open_instance_finished,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self._instance_open_worker.taxonomy_resolved.connect(
+            self._on_open_instance_taxonomy_resolved,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self._instance_open_worker.error.connect(
+            self._on_open_instance_error,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self._instance_open_worker.orphaned.connect(
+            self._on_instance_orphaned,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self._instance_open_thread.start()
 
-        # Enable taxonomy-level actions now that a taxonomy is loaded
+    def _show_loading_dialog(self, title: str, message: str) -> TaxonomyProgressDialog:
+        if self._loading_dialog is None:
+            self._loading_dialog = TaxonomyProgressDialog(self)
+        self._loading_dialog.setWindowTitle(title)
+        self._loading_dialog.reset()
+        self._loading_dialog.setLabelText(message)
+        self._loading_dialog.show()
+        return self._loading_dialog
+
+    def _close_loading_dialog(self) -> None:
+        if self._loading_dialog is not None:
+            self._loading_dialog.close()
+
+    def _cleanup_instance_open_thread(self) -> None:
+        if self._instance_open_thread is not None:
+            self._instance_open_thread.quit()
+            self._instance_open_thread.wait()
+            self._instance_open_thread = None
+            self._instance_open_worker = None
+        self._open_instance_action.setEnabled(True)
+
+    def _on_open_instance_finished(self, instance, taxonomy: TaxonomyStructure) -> None:
+        self._cleanup_instance_open_thread()
+        if self._loading_dialog is not None:
+            self._loading_dialog.update_progress("Opening workspace…", 100, 100)
+        self._close_loading_dialog()
+        self._current_taxonomy = taxonomy
         self._reload_action.setEnabled(True)
         self._new_instance_action.setEnabled(True)
         self._close_taxonomy_action.setEnabled(True)
-
-        if orphaned:
-            QMessageBox.information(
-                self,
-                "Orphaned Facts",
-                f"{len(orphaned)} fact(s) in this instance have concepts not found in the "
-                f"taxonomy and will be preserved verbatim on save.",
-            )
-
         self._load_instance(instance)
+
+    def _on_open_instance_taxonomy_resolved(self, taxonomy: TaxonomyStructure) -> None:
+        """Surface taxonomy readiness before instance parsing completes."""
+        if (
+            self._current_taxonomy is not None
+            and self._same_taxonomy(taxonomy)
+            and self._sidebar is not None
+            and isValid(self._sidebar)
+        ):
+            return
+        self._on_taxonomy_loaded(taxonomy)
+
+    def _on_open_instance_error(self, message: str) -> None:
+        self._cleanup_instance_open_thread()
+        self._close_loading_dialog()
+        self._status.showMessage("Instance load failed")
+        QMessageBox.critical(self, "Instance Load Error", message)
+
+    def _on_instance_orphaned(self, count: int) -> None:
+        QMessageBox.information(
+            self,
+            "Orphaned Facts",
+            f"{count} fact(s) in this instance have concepts not found in the "
+            f"taxonomy and will be preserved verbatim on save.",
+        )
 
     def _load_instance(self, instance) -> None:
         from bde_xbrl_editor.instance.editor import InstanceEditor  # noqa: PLC0415
@@ -689,12 +760,16 @@ class MainWindow(QMainWindow):
         # Disconnect old editor signals
         if self._editor is not None:
             self._editor.changes_made.disconnect(self._on_changes_made)
+            self._editor.filing_indicators_changed.disconnect(self._on_filing_indicators_changed)
 
         self._current_instance = instance
         self._editor = InstanceEditor(instance, parent=self)
         self._editor.changes_made.connect(self._on_changes_made)
+        self._editor.filing_indicators_changed.connect(self._on_filing_indicators_changed)
 
         self._table_view = XbrlTableView(parent=self)
+        self._table_view.editing_mode_changed.connect(self._on_table_editing_mode_changed)
+        self._table_view.layout_ready.connect(self._on_table_layout_ready)
 
         # Ensure the sidebar exists (may be absent when loading directly from welcome screen)
         if self._sidebar is None or not isValid(self._sidebar):
@@ -702,8 +777,9 @@ class MainWindow(QMainWindow):
             self._sidebar.table_selected.connect(self._on_table_selected)
             self._sidebar.width_changed.connect(self._on_sidebar_width_changed)
 
-        # Switch the sidebar to instance mode (6th panel: entity, period, FI, filed tables)
-        self._sidebar.set_instance(instance, self._current_taxonomy)
+        # Switch the sidebar to instance mode and use it as the single table browser.
+        self._sidebar.set_instance(instance, self._current_taxonomy, self._editor)
+        self._sidebar.set_instance_editing_enabled(self._table_view.editing_enabled)
 
         splitter = QSplitter(self)
         splitter.addWidget(self._sidebar)
@@ -736,10 +812,6 @@ class MainWindow(QMainWindow):
             f"{len(instance.facts)} facts, {len(instance.contexts)} contexts"
         )
 
-        # Auto-render the first filed table immediately
-        self._sidebar.select_first_instance_table()
-
-        # Show validation panel (cleared) so user sees it's ready
         self._ensure_validation_panel()
         dock = self._find_validation_dock()
         if dock:
@@ -747,6 +819,9 @@ class MainWindow(QMainWindow):
         if self._validation_panel:
             self._validation_panel.clear()
         self._show_validation_panel_action.setEnabled(True)
+
+        # Let the workspace shell paint first, then render the initial table.
+        QTimer.singleShot(0, self._select_initial_instance_table)
 
     def _on_sidebar_width_changed(self, width: int) -> None:
         splitter = self._browser_splitter
@@ -764,6 +839,18 @@ class MainWindow(QMainWindow):
 
         QTimer.singleShot(0, _apply)
 
+    def _select_initial_instance_table(self) -> None:
+        if (
+            self._sidebar is None
+            or not isValid(self._sidebar)
+            or self._table_view is None
+            or not isValid(self._table_view)
+            or self._current_instance is None
+            or self._table_view.active_table_id is not None
+        ):
+            return
+        self._sidebar.select_first_instance_table()
+
     # ------------------------------------------------------------------
     # Table selection → XbrlTableView (T017)
     # ------------------------------------------------------------------
@@ -771,49 +858,52 @@ class MainWindow(QMainWindow):
     def _on_table_selected(self, table) -> None:
         if self._table_view is None or self._current_taxonomy is None:
             return
-        # Update the selected-table chip in the context bar
-        if self._table_chip_label is not None:
-            label = getattr(table, "label", None) or ""
-            table_id = getattr(table, "table_id", "")
-            chip_text = f"Table {table_id}" + (f"  |  {label}" if label else "")
-            self._table_chip_label.setText(chip_text)
-            self._table_chip_label.setVisible(True)
         if self._context_title_label is not None:
             table_label = getattr(table, "label", None) or getattr(table, "table_id", "")
             self._context_title_label.setText(table_label)
         if self._context_meta_label is not None and self._current_taxonomy is not None:
             meta = self._current_taxonomy.metadata
-            table_id = getattr(table, "table_id", "")
-            meta_parts = [meta.name, f"Version {meta.version}", table_id]
+            meta_parts = [meta.name, f"Version {meta.version}"]
+            table_identity = self._table_identity(table)
+            if table_identity:
+                meta_parts.append(table_identity)
             if self._current_instance is not None:
                 fname = Path(self._current_instance.source_path).name if self._current_instance.source_path else "Unsaved instance"
                 meta_parts.append(fname)
             self._context_meta_label.setText("  |  ".join(meta_parts))
-        self._table_view.set_table(
+        self._table_view.request_table(
             table=table,
             taxonomy=self._current_taxonomy,
             instance=self._current_instance,
         )
-        # Wire delegate (T025)
-        if self._editor is not None and self._table_view._layout is not None:
-            from bde_xbrl_editor.ui.widgets.cell_edit_delegate import (
-                CellEditDelegate,  # noqa: PLC0415
-            )
 
-            delegate = CellEditDelegate(
-                taxonomy=self._current_taxonomy,
-                editor=self._editor,
-                table_layout=self._table_view._layout,
-                table_view_widget=self._table_view._body_view,
-            )
-            self._table_view._body_view.setItemDelegate(delegate)
+    def _on_table_layout_ready(self, layout) -> None:
+        if (
+            self._editor is None
+            or self._table_view is None
+            or self._current_taxonomy is None
+            or layout is None
+        ):
+            return
+        from bde_xbrl_editor.ui.widgets.cell_edit_delegate import (
+            CellEditDelegate,  # noqa: PLC0415
+        )
 
-    # ------------------------------------------------------------------
-    # Dirty-state tracking (T033)
-    # ------------------------------------------------------------------
+        delegate = CellEditDelegate(
+            taxonomy=self._current_taxonomy,
+            editor=self._editor,
+            table_layout=layout,
+            table_view_widget=self._table_view._body_view,
+        )
+        self._table_view._body_view.setItemDelegate(delegate)
 
     def _on_changes_made(self) -> None:
         self.setWindowModified(True)
+        if self._sidebar is not None and isValid(self._sidebar) and self._current_instance is not None and self._current_taxonomy is not None:
+            self._sidebar.refresh_instance_panel(self._current_instance, self._current_taxonomy, self._editor)
+            self._sidebar.set_instance_editing_enabled(
+                bool(self._table_view is not None and isValid(self._table_view) and self._table_view.editing_enabled)
+            )
         table_view = self._table_view
         if table_view is not None and isValid(table_view):
             # Defer refresh so the editor widget is fully closed before the model is replaced.
@@ -865,6 +955,20 @@ class MainWindow(QMainWindow):
     def _do_save(self, path: Path) -> None:
         from bde_xbrl_editor.instance.models import InstanceSaveError  # noqa: PLC0415
         from bde_xbrl_editor.instance.serializer import InstanceSerializer  # noqa: PLC0415
+        from bde_xbrl_editor.instance.constants import is_bde_schema_ref  # noqa: PLC0415
+
+        if self._current_instance is not None and (
+            is_bde_schema_ref(self._current_instance.schema_ref_href)
+            or self._current_instance.bde_preambulo is not None
+        ):
+            reply = QMessageBox.question(
+                self,
+                "Check Filing Indicators",
+                "Please confirm the Filing Indicators / Estados Reportados are set correctly before saving. Continue?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
 
         serializer = InstanceSerializer()
         try:
@@ -877,6 +981,18 @@ class MainWindow(QMainWindow):
 
         self.setWindowModified(False)
         self._status.showMessage(f"Saved: {path}")
+
+    def _on_table_editing_mode_changed(self, enabled: bool) -> None:
+        if self._sidebar is not None and isValid(self._sidebar):
+            self._sidebar.set_instance_editing_enabled(enabled)
+
+    def _on_filing_indicators_changed(self) -> None:
+        self.setWindowModified(True)
+        if self._sidebar is not None and isValid(self._sidebar) and self._current_instance is not None and self._current_taxonomy is not None:
+            self._sidebar.refresh_instance_panel(self._current_instance, self._current_taxonomy, self._editor)
+            self._sidebar.set_instance_editing_enabled(
+                bool(self._table_view is not None and isValid(self._table_view) and self._table_view.editing_enabled)
+            )
 
     # ------------------------------------------------------------------
     # Unsaved-changes guard (T034, T035)
@@ -950,6 +1066,7 @@ class MainWindow(QMainWindow):
         from bde_xbrl_editor.ui.widgets.validation_panel import ValidationWorker  # noqa: PLC0415
 
         self._validate_action.setEnabled(False)
+        self._validation_panel.clear()
         self._validation_panel.show_progress(0, 1, "Starting validation…")
 
         self._validation_worker = ValidationWorker(
@@ -963,6 +1080,9 @@ class MainWindow(QMainWindow):
         self._validation_worker.progress_changed.connect(
             self._on_validation_progress, Qt.ConnectionType.QueuedConnection
         )
+        self._validation_worker.findings_ready.connect(
+            self._on_validation_findings_ready, Qt.ConnectionType.QueuedConnection
+        )
         self._validation_worker.validation_completed.connect(
             self._on_validation_done, Qt.ConnectionType.QueuedConnection
         )
@@ -974,6 +1094,10 @@ class MainWindow(QMainWindow):
     def _on_validation_progress(self, current: int, total: int, message: str) -> None:
         if self._validation_panel:
             self._validation_panel.show_progress(current, total, message)
+
+    def _on_validation_findings_ready(self, findings) -> None:
+        if self._validation_panel:
+            self._validation_panel.append_findings(tuple(findings))
 
     def _on_validation_done(self, report) -> None:
         self._cleanup_validation_thread()

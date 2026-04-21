@@ -9,6 +9,7 @@ Network resolution is blocked by default (LoaderSettings.allow_network=False).
 
 from __future__ import annotations
 
+from collections import deque
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -21,6 +22,7 @@ from bde_xbrl_editor.taxonomy.models import (
     UnsupportedTaxonomyFormatError,
 )
 from bde_xbrl_editor.taxonomy.settings import LoaderSettings
+from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
 
 # Linkbase reference element QName
 _LINKBASE_REF = f"{{{NS_LINK}}}linkbaseRef"
@@ -32,6 +34,7 @@ _APPINFO = f"{{{NS_XSD}}}appinfo"
 _IMPORT = f"{{{NS_XSD}}}import"
 _INCLUDE = f"{{{NS_XSD}}}include"
 _XLINK_HREF = f"{{{NS_XLINK}}}href"
+_DISCOVERY_PROGRESS_EVERY = 50
 
 # Known XBRL / XSD namespace imports to skip (standard schemaLocation URLs)
 _SKIP_NS = {
@@ -53,6 +56,69 @@ def _is_remote(href: str) -> bool:
     return scheme in ("http", "https", "ftp")
 
 
+def _should_skip_linkbase(path: Path) -> bool:
+    """Return True when a linkbase should be excluded from the DTS.
+
+    Validation message linkbases are now consumed by the formula loader in
+    order to render taxonomy-defined validation messages, so they must remain
+    part of the discovered DTS.
+    """
+    return False
+
+
+def _should_follow_locators(path: Path) -> bool:
+    """Return True when link:loc traversal is useful for discovery.
+
+    Label/error linkbases can contain hundreds of locators that only point back
+    to resources already linked directly from their owning XSD or validation
+    schema. Expanding those locators makes discovery dramatically slower
+    without surfacing additional files we consume later.
+    """
+    name = path.name.lower()
+    return "-lab-" not in name and "-err-" not in name
+
+
+def _should_parse_linkbase_for_discovery(path: Path) -> bool:
+    """Return True when the linkbase may contribute more DTS edges.
+
+    Validation linkbases under ``.../val/...`` must still be inspected during
+    discovery: BDE / Eurofiling validation packages reference assertion-set
+    aggregator linkbases (``aset-*.xml``) from the entry-point XSD, and those
+    aggregators only point to the actual rule files (``vr-*.xml`` containing
+    ``va:valueAssertion`` resources) via ``link:loc`` locators. Skipping the
+    locator traversal here would leave the formula assertions out of the DTS
+    and surface them as "No formula assertions in this taxonomy" in the UI.
+
+    Per-rule message linkbases (``vr-*-err-*.xml`` / ``vr-*-lab-*.xml``) are
+    still not traversed through their locators by ``_should_follow_locators``
+    to keep discovery fast, but they remain in the DTS so their resources can
+    be parsed later by the taxonomy loader.
+    """
+    return _should_follow_locators(path)
+
+
+def _catalog_path_candidates(local_root: Path, rel: str) -> list[Path]:
+    """Return local-catalog candidate paths for a remote href suffix.
+
+    Banco de España taxonomy URLs sometimes include an extra ``/fr/`` segment
+    (for example ``/es/fr/xbrl/...`` or ``/es/fr/esrs/...``) while the local
+    cache stores the same files without that segment (``/es/xbrl/...`` or
+    ``/es/esrs/...``).  Try the direct mapping first, then a normalized
+    variant with the ``/fr/`` segment removed as a fallback.
+    """
+    rel = rel.lstrip("/")
+    candidates = [(local_root / rel).resolve()]
+
+    parts = Path(rel).parts
+    if len(parts) >= 3 and parts[1] == "fr":
+        alt_rel = Path(parts[0], *parts[2:])
+        alt_candidate = (local_root / alt_rel).resolve()
+        if alt_candidate not in candidates:
+            candidates.append(alt_candidate)
+
+    return candidates
+
+
 def _resolve_href(href: str, base_dir: Path, settings: LoaderSettings) -> Path | None:
     """Resolve an href relative to base_dir, applying local_catalog overrides.
 
@@ -60,13 +126,20 @@ def _resolve_href(href: str, base_dir: Path, settings: LoaderSettings) -> Path |
     (e.g. it points to a known standard schema URL with no local override).
     Raises TaxonomyDiscoveryError if network is blocked and no local mapping exists.
     """
+    href = href.split("#", 1)[0]
+    if not href:
+        return None
+
     if _is_remote(href):
         # Try local_catalog override first
         if settings.local_catalog:
             for prefix, local_root in settings.local_catalog.items():
                 if href.startswith(prefix):
                     rel = href[len(prefix):].lstrip("/")
-                    return (local_root / rel).resolve()
+                    for candidate in _catalog_path_candidates(local_root, rel):
+                        if candidate.exists():
+                            return candidate
+                    return _catalog_path_candidates(local_root, rel)[0]
         if not settings.allow_network:
             return None  # caller will record as failing URI
         # network allowed — cannot resolve without HTTP client; skip gracefully
@@ -77,12 +150,37 @@ def _resolve_href(href: str, base_dir: Path, settings: LoaderSettings) -> Path |
     return resolved
 
 
+def _enqueue_if_new(
+    queue: deque[tuple[Path, bool]],
+    path: Path,
+    *,
+    is_linkbase: bool,
+    pending_schemas: set[Path],
+    pending_linkbases: set[Path],
+    visited_schemas: set[Path],
+    visited_linkbases: set[Path],
+) -> bool:
+    """Add a discovery target only if it isn't already queued or visited."""
+    if is_linkbase and _should_skip_linkbase(path):
+        return False
+    if is_linkbase:
+        if path in visited_linkbases or path in pending_linkbases:
+            return False
+        pending_linkbases.add(path)
+    else:
+        if path in visited_schemas or path in pending_schemas:
+            return False
+        pending_schemas.add(path)
+    queue.append((path, is_linkbase))
+    return True
+
+
 def discover_dts(
     entry_point: Path,
     settings: LoaderSettings,
     progress_callback=None,
     extra_entry_points: list[Path] | None = None,
-) -> tuple[list[Path], list[Path], list[str], dict[Path, str]]:
+) -> tuple[list[Path], list[Path], list[str], dict[Path, str], set[str]]:
     """Discover all schema and linkbase files reachable from entry_point.
 
     Args:
@@ -95,12 +193,14 @@ def discover_dts(
             module schemas (mod/pc_con1.xsd, etc.) and both need to be seeded.
 
     Returns:
-        (schema_paths, linkbase_paths, skipped_remote_urls, include_ns_map)
+        (schema_paths, linkbase_paths, skipped_remote_urls, include_ns_map, declared_roles)
         - schema_paths / linkbase_paths: deduplicated lists of absolute Paths
         - skipped_remote_urls: remote URLs skipped (informational, not an error)
         - include_ns_map: maps xs:include'd schema Path → the parent schema's
           targetNamespace.  Used by the loader to supply the correct namespace
           when parsing schemas that have no targetNamespace of their own.
+        - declared_roles: role URI values collected from link:roleRef elements
+          encountered while traversing linkbase files.
 
     Raises:
         UnsupportedTaxonomyFormatError — entry_point is not a valid XBRL XSD.
@@ -126,22 +226,44 @@ def discover_dts(
     skipped_remote: list[str] = []  # informational only
     # xs:include'd schema path → parent's targetNamespace
     include_ns_map: dict[Path, str] = {}
+    declared_roles: set[str] = set()
 
     # Queue: (file_path, is_linkbase)
-    queue: list[tuple[Path, bool]] = [(entry_point, False)]
+    queue: deque[tuple[Path, bool]] = deque()
+    pending_schemas: set[Path] = set()
+    pending_linkbases: set[Path] = set()
+    _enqueue_if_new(
+        queue,
+        entry_point,
+        is_linkbase=False,
+        pending_schemas=pending_schemas,
+        pending_linkbases=pending_linkbases,
+        visited_schemas=visited_schemas,
+        visited_linkbases=visited_linkbases,
+    )
     for ep in (extra_entry_points or []):
         ep = ep.resolve()
         if ep.exists() and ep.suffix.lower() in (".xsd", ".xml"):
-            queue.append((ep, False))
+            _enqueue_if_new(
+                queue,
+                ep,
+                is_linkbase=False,
+                pending_schemas=pending_schemas,
+                pending_linkbases=pending_linkbases,
+                visited_schemas=visited_schemas,
+                visited_linkbases=visited_linkbases,
+            )
 
     while queue:
-        current, is_linkbase = queue.pop(0)
+        current, is_linkbase = queue.popleft()
 
         if is_linkbase:
+            pending_linkbases.discard(current)
             if current in visited_linkbases:
                 continue
             visited_linkbases.add(current)
         else:
+            pending_schemas.discard(current)
             if current in visited_schemas:
                 continue
             visited_schemas.add(current)
@@ -150,8 +272,14 @@ def discover_dts(
             failing_uris.append((str(current), "File not found on local filesystem"))
             continue
 
+        # Label/error linkbases are terminal for our discovery purposes:
+        # we do not follow their locators, and they do not contribute extra
+        # schema/linkbase edges needed by the loader.
+        if is_linkbase and not _should_parse_linkbase_for_discovery(current):
+            continue
+
         try:
-            tree = etree.parse(str(current))  # noqa: S320
+            tree = parse_xml_file(current)
         except etree.XMLSyntaxError as exc:
             raise TaxonomyParseError(
                 file_path=str(current),
@@ -170,6 +298,10 @@ def discover_dts(
             # linkbaseRef (e.g. a master linkbase that aggregates others).
             for ref_el in root.iter(_ROLE_REF, _ARCROLE_REF):
                 href = ref_el.get(_XLINK_HREF)
+                if ref_el.tag == _ROLE_REF:
+                    role_uri = ref_el.get("roleURI")
+                    if role_uri:
+                        declared_roles.add(role_uri)
                 if not href:
                     continue
                 href = href.split("#")[0]
@@ -180,7 +312,15 @@ def discover_dts(
                     if _is_remote(href):
                         skipped_remote.append(href)
                     continue
-                queue.append((resolved, False))
+                _enqueue_if_new(
+                    queue,
+                    resolved,
+                    is_linkbase=False,
+                    pending_schemas=pending_schemas,
+                    pending_linkbases=pending_linkbases,
+                    visited_schemas=visited_schemas,
+                    visited_linkbases=visited_linkbases,
+                )
 
             for lb_ref in root.iter(_LINKBASE_REF):
                 href = lb_ref.get(_XLINK_HREF)
@@ -194,7 +334,15 @@ def discover_dts(
                     if _is_remote(href):
                         skipped_remote.append(href)
                     continue
-                queue.append((resolved, True))
+                _enqueue_if_new(
+                    queue,
+                    resolved,
+                    is_linkbase=True,
+                    pending_schemas=pending_schemas,
+                    pending_linkbases=pending_linkbases,
+                    visited_schemas=visited_schemas,
+                    visited_linkbases=visited_linkbases,
+                )
 
             # loc elements reference resources in the DTS by href.
             # In standard XBRL those resources are already discoverable via
@@ -202,21 +350,40 @@ def discover_dts(
             # rendering linkbases (.xml) and schemas (.xsd) in sibling
             # directories that have no xs:import path.  Follow them so we get
             # the complete file set.
-            for loc_el in root.iter(_LOC):
-                href = loc_el.get(_XLINK_HREF)
-                if not href or _is_remote(href.split("#")[0]):
-                    continue
-                file_part = href.split("#")[0]
-                if not file_part:
-                    continue
-                resolved = _resolve_href(file_part, base_dir, settings)
-                if resolved is None:
-                    continue
-                suffix = resolved.suffix.lower()
-                if suffix == ".xsd":
-                    queue.append((resolved, False))
-                elif suffix == ".xml":
-                    queue.append((resolved, True))
+            if _should_follow_locators(current):
+                for loc_el in root.iter(_LOC):
+                    href = loc_el.get(_XLINK_HREF)
+                    if not href:
+                        continue
+                    file_part = href.split("#")[0]
+                    if not file_part:
+                        continue
+                    resolved = _resolve_href(file_part, base_dir, settings)
+                    if resolved is None:
+                        if _is_remote(file_part):
+                            skipped_remote.append(file_part)
+                        continue
+                    suffix = resolved.suffix.lower()
+                    if suffix == ".xsd":
+                        _enqueue_if_new(
+                            queue,
+                            resolved,
+                            is_linkbase=False,
+                            pending_schemas=pending_schemas,
+                            pending_linkbases=pending_linkbases,
+                            visited_schemas=visited_schemas,
+                            visited_linkbases=visited_linkbases,
+                        )
+                    elif suffix == ".xml":
+                        _enqueue_if_new(
+                            queue,
+                            resolved,
+                            is_linkbase=True,
+                            pending_schemas=pending_schemas,
+                            pending_linkbases=pending_linkbases,
+                            visited_schemas=visited_schemas,
+                            visited_linkbases=visited_linkbases,
+                        )
             continue
 
         # --- xs:import ---
@@ -232,7 +399,15 @@ def discover_dts(
                 if _is_remote(schema_loc):
                     skipped_remote.append(schema_loc)
                 continue
-            queue.append((resolved, False))
+            _enqueue_if_new(
+                queue,
+                resolved,
+                is_linkbase=False,
+                pending_schemas=pending_schemas,
+                pending_linkbases=pending_linkbases,
+                visited_schemas=visited_schemas,
+                visited_linkbases=visited_linkbases,
+            )
 
         # --- xs:include (shares parent's targetNamespace) ---
         for el in root.iter(_INCLUDE):
@@ -247,7 +422,15 @@ def discover_dts(
             # Record the parent's namespace so the schema parser can use it
             if current_target_ns and resolved not in include_ns_map:
                 include_ns_map[resolved] = current_target_ns
-            queue.append((resolved, False))
+            _enqueue_if_new(
+                queue,
+                resolved,
+                is_linkbase=False,
+                pending_schemas=pending_schemas,
+                pending_linkbases=pending_linkbases,
+                visited_schemas=visited_schemas,
+                visited_linkbases=visited_linkbases,
+            )
 
         # --- Annotation/appinfo linkbaseRef ---
         for appinfo in root.iter(_APPINFO):
@@ -264,7 +447,15 @@ def discover_dts(
                     if _is_remote(href):
                         skipped_remote.append(href)
                     continue
-                queue.append((resolved, True))
+                _enqueue_if_new(
+                    queue,
+                    resolved,
+                    is_linkbase=True,
+                    pending_schemas=pending_schemas,
+                    pending_linkbases=pending_linkbases,
+                    visited_schemas=visited_schemas,
+                    visited_linkbases=visited_linkbases,
+                )
 
         # --- linkbase elements directly in the XSD (e.g. embedded) ---
         for lb_ref in root.iter(_LINKBASE_REF):
@@ -282,7 +473,26 @@ def discover_dts(
                 if _is_remote(href):
                     skipped_remote.append(href)
                 continue
-            queue.append((resolved, True))
+            _enqueue_if_new(
+                queue,
+                resolved,
+                is_linkbase=True,
+                pending_schemas=pending_schemas,
+                pending_linkbases=pending_linkbases,
+                visited_schemas=visited_schemas,
+                visited_linkbases=visited_linkbases,
+            )
+
+        if (
+            progress_callback
+            and (len(visited_schemas) + len(visited_linkbases)) % _DISCOVERY_PROGRESS_EVERY == 0
+        ):
+            progress_callback(
+                f"Discovering DTS… {len(visited_schemas)} schemas, "
+                f"{len(visited_linkbases)} linkbases",
+                1,
+                6,
+            )
 
     if failing_uris:
         raise TaxonomyDiscoveryError(
@@ -302,4 +512,10 @@ def discover_dts(
     seen: set[str] = set()
     unique_skipped = [u for u in skipped_remote if not (u in seen or seen.add(u))]  # type: ignore[func-returns-value]
 
-    return list(visited_schemas), list(visited_linkbases), unique_skipped, include_ns_map
+    return (
+        list(visited_schemas),
+        list(visited_linkbases),
+        unique_skipped,
+        include_ns_map,
+        declared_roles,
+    )

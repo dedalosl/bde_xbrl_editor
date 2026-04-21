@@ -2,11 +2,113 @@
 
 from __future__ import annotations
 
-from bde_xbrl_editor.instance.models import XbrlInstance
-from bde_xbrl_editor.taxonomy.models import TaxonomyStructure
+from collections import defaultdict
+
+from lxml import etree
+
+from bde_xbrl_editor.instance.constants import ISO4217_NS
+from bde_xbrl_editor.instance.models import XbrlInstance, XbrlUnit
+from bde_xbrl_editor.instance.s_equal import canonical_context_refs_by_s_equal
+from bde_xbrl_editor.taxonomy.constants import NS_XBRLI
+from bde_xbrl_editor.taxonomy.models import Concept, QName, TaxonomyStructure
+from bde_xbrl_editor.taxonomy.schema import parse_schema_raw
 from bde_xbrl_editor.validation.models import ValidationFinding, ValidationSeverity
 
 _NUMERIC_TYPE_KEYWORDS = ("monetary", "decimal", "integer", "float", "double")
+_XBRLI_ITEM = QName(NS_XBRLI, "item")
+_XBRLI_TUPLE = QName(NS_XBRLI, "tuple")
+
+
+def _is_iso4217_currency_code(local_name: str) -> bool:
+    """ISO 4217 alphabetic codes are three letters (case-insensitive)."""
+    code = local_name.strip().upper()
+    return len(code) == 3 and code.isalpha()
+
+
+def _measure_text_to_qname(measure_uri: str) -> QName | None:
+    """Best-effort QName from stored measure text (no in-scope XML namespaces)."""
+    raw = (measure_uri or "").strip()
+    if not raw:
+        return None
+    if raw.startswith("{"):
+        return QName.from_clark(raw)
+    if raw.startswith(ISO4217_NS + ":"):
+        return QName(namespace=ISO4217_NS, local_name=raw[len(ISO4217_NS) + 1 :])
+    if raw.startswith(f"{NS_XBRLI}:"):
+        return QName(namespace=NS_XBRLI, local_name=raw[len(NS_XBRLI) + 1 :])
+    if ":" in raw:
+        prefix, local = raw.split(":", 1)
+        if prefix.lower() == "iso4217":
+            return QName(namespace=ISO4217_NS, local_name=local)
+        if prefix == "ISO4217":
+            return QName(namespace=ISO4217_NS, local_name=local)
+        if prefix.lower() == "xbrli":
+            return QName(namespace=NS_XBRLI, local_name=local)
+    return QName(namespace="", local_name=raw)
+
+
+def _resolved_unit_measure_qname(unit: XbrlUnit) -> QName | None:
+    if unit.measure_qname is not None:
+        return unit.measure_qname
+    return _measure_text_to_qname(unit.measure_uri)
+
+
+def _effective_simple_measure_count(unit: XbrlUnit) -> int:
+    """Direct measure count, or 1 when a legacy unit clearly carries a single measure."""
+    if unit.unit_form == "divide":
+        return 0
+    if unit.simple_measure_count != 0:
+        return unit.simple_measure_count
+    if _resolved_unit_measure_qname(unit) is not None or (unit.measure_uri or "").strip():
+        return 1
+    return 0
+
+
+def _concept_requires_iso4217_unit(concept: Concept) -> bool:
+    """True when *concept* is a monetary item (explicit flag or xbrli:monetaryItemType)."""
+    if concept.monetary_item_type:
+        return True
+    return (
+        concept.data_type.namespace == NS_XBRLI
+        and concept.data_type.local_name == "monetaryItemType"
+    )
+
+
+def _iter_descendant_qnames(container_xml: bytes) -> list[QName]:
+    """Return descendant element QNames from serialized segment/scenario XML."""
+    root = etree.fromstring(container_xml)  # noqa: S320
+    qnames: list[QName] = []
+    for child in root.iterdescendants():
+        if not isinstance(child.tag, str):
+            continue
+        qnames.append(QName.from_clark(child.tag))
+    return qnames
+
+
+def _substitution_root_for_concept(
+    concept_qname: QName,
+    taxonomy: TaxonomyStructure,
+    schema_substitution_groups: dict[QName, QName] | None = None,
+) -> QName | None:
+    """Return xbrli:item or xbrli:tuple when the SG chain reaches one."""
+    if schema_substitution_groups is None:
+        schema_substitution_groups = {}
+    concept = taxonomy.concepts.get(concept_qname)
+    seen: set[QName] = set()
+    if concept is not None:
+        sg = concept.substitution_group
+    else:
+        sg = schema_substitution_groups.get(concept_qname)
+    while sg is not None and sg not in seen:
+        if sg in (_XBRLI_ITEM, _XBRLI_TUPLE):
+            return sg
+        seen.add(sg)
+        sg_concept = taxonomy.concepts.get(sg)
+        if sg_concept is not None:
+            sg = sg_concept.substitution_group
+            continue
+        sg = schema_substitution_groups.get(sg)
+    return None
 
 
 class StructuralConformanceValidator:
@@ -39,6 +141,11 @@ class StructuralConformanceValidator:
             findings.append(self._internal_error("structural:unresolved-unit-ref", exc))
 
         try:
+            findings.extend(self._check_monetary_iso_units(instance, taxonomy))
+        except Exception as exc:  # noqa: BLE001
+            findings.append(self._internal_error("structural:monetary-unit-measure", exc))
+
+        try:
             findings.extend(self._check_incomplete_contexts(instance))
         except Exception as exc:  # noqa: BLE001
             findings.append(self._internal_error("structural:incomplete-context", exc))
@@ -52,6 +159,13 @@ class StructuralConformanceValidator:
             findings.extend(self._check_duplicate_facts(instance))
         except Exception as exc:  # noqa: BLE001
             findings.append(self._internal_error("structural:duplicate-fact", exc))
+
+        try:
+            findings.extend(self._check_segment_scenario_substitutions(instance, taxonomy))
+        except Exception as exc:  # noqa: BLE001
+            findings.append(
+                self._internal_error("structural:segment-scenario-substitution", exc)
+            )
 
         # Check 7 (structural:missing-namespace) is skipped — namespace info not
         # available on the in-memory instance model.
@@ -140,6 +254,80 @@ class StructuralConformanceValidator:
                 )
         return findings
 
+    def _check_monetary_iso_units(
+        self,
+        instance: XbrlInstance,
+        taxonomy: TaxonomyStructure | None,
+    ) -> list[ValidationFinding]:
+        """Monetary facts must use a single ISO 4217 currency measure (XBRL 2.1 §4.8)."""
+        if taxonomy is None:
+            return []
+
+        findings: list[ValidationFinding] = []
+        for fact in instance.facts:
+            concept = taxonomy.concepts.get(fact.concept)
+            if concept is None or not _concept_requires_iso4217_unit(concept):
+                continue
+            if fact.unit_ref is None or fact.unit_ref not in instance.units:
+                continue
+
+            unit = instance.units[fact.unit_ref]
+            if unit.unit_form == "divide":
+                findings.append(
+                    ValidationFinding(
+                        rule_id="structural:monetary-unit-measure",
+                        severity=ValidationSeverity.ERROR,
+                        message=(
+                            f"Fact for monetary concept '{fact.concept}' uses unit "
+                            f"'{fact.unit_ref}' with xbrli:divide; monetary items require "
+                            "a single ISO 4217 currency measure."
+                        ),
+                        source="structural",
+                        concept_qname=fact.concept,
+                        context_ref=fact.context_ref,
+                    )
+                )
+                continue
+
+            eff_measures = _effective_simple_measure_count(unit)
+            if eff_measures != 1:
+                findings.append(
+                    ValidationFinding(
+                        rule_id="structural:monetary-unit-measure",
+                        severity=ValidationSeverity.ERROR,
+                        message=(
+                            f"Fact for monetary concept '{fact.concept}' uses unit "
+                            f"'{fact.unit_ref}' with {eff_measures} measure "
+                            "element(s); exactly one ISO 4217 measure is required."
+                        ),
+                        source="structural",
+                        concept_qname=fact.concept,
+                        context_ref=fact.context_ref,
+                    )
+                )
+                continue
+
+            mq = _resolved_unit_measure_qname(unit)
+            if mq is None or mq.namespace != ISO4217_NS or not _is_iso4217_currency_code(
+                mq.local_name
+            ):
+                got = str(mq) if mq is not None else repr(unit.measure_uri)
+                findings.append(
+                    ValidationFinding(
+                        rule_id="structural:monetary-unit-measure",
+                        severity=ValidationSeverity.ERROR,
+                        message=(
+                            f"Fact for monetary concept '{fact.concept}' must use an "
+                            f"ISO 4217 currency measure in namespace '{ISO4217_NS}' "
+                            f"with a 3-letter currency code; got measure {got!r}."
+                        ),
+                        source="structural",
+                        concept_qname=fact.concept,
+                        context_ref=fact.context_ref,
+                    )
+                )
+        return findings
+
     def _check_incomplete_contexts(
         self, instance: XbrlInstance
     ) -> list[ValidationFinding]:
@@ -204,34 +392,124 @@ class StructuralConformanceValidator:
     def _check_duplicate_facts(
         self, instance: XbrlInstance
     ) -> list[ValidationFinding]:
-        """Check 6: no two facts may share the same (concept, context_ref, unit_ref) triple."""
-        seen: dict[tuple, int] = {}  # key -> first occurrence index
+        """Check 6: conflicting duplicate facts (same concept/context/unit, unequal values).
+
+        XBRL 2.1 allows multiple facts with the same dimension signature when the
+        reported values are identical (redundant reporting); inconsistent values
+        are an error.
+        """
+        canon_ctx = canonical_context_refs_by_s_equal(instance)
+        key_values: dict[tuple, list[str]] = defaultdict(list)
+        for fact in instance.facts:
+            if fact.context_ref not in instance.contexts:
+                continue
+            ctx_bind = canon_ctx.get(fact.context_ref, fact.context_ref)
+            key = (fact.concept, ctx_bind, fact.unit_ref)
+            key_values[key].append(fact.value)
+
         findings: list[ValidationFinding] = []
-        for idx, fact in enumerate(instance.facts):
-            key = (fact.concept, fact.context_ref, fact.unit_ref)
-            if key in seen:
+        for key, vals in key_values.items():
+            if len(set(vals)) <= 1:
+                continue
+            concept, ctx_bind, unit_ref = key
+            findings.append(
+                ValidationFinding(
+                    rule_id="structural:duplicate-fact",
+                    severity=ValidationSeverity.ERROR,
+                    message=(
+                        f"Inconsistent duplicate facts for concept '{concept}' "
+                        f"in context '{ctx_bind}'"
+                        + (
+                            f" with unit '{unit_ref}'"
+                            if unit_ref is not None
+                            else ""
+                        )
+                        + f": values {sorted(set(vals))!r}."
+                    ),
+                    source="structural",
+                    concept_qname=concept,
+                    context_ref=ctx_bind,
+                )
+            )
+        return findings
+
+    def _check_segment_scenario_substitutions(
+        self,
+        instance: XbrlInstance,
+        taxonomy: TaxonomyStructure | None,
+    ) -> list[ValidationFinding]:
+        """Reject item/tuple-substituting elements inside context segment/scenario."""
+        if taxonomy is None:
+            return []
+
+        findings: list[ValidationFinding] = []
+        schema_substitution_groups: dict[QName, QName] = {}
+        for schema_path in taxonomy.schema_files:
+            try:
+                raw_candidates, _target_ns = parse_schema_raw(schema_path)
+            except Exception as exc:  # noqa: BLE001
                 findings.append(
                     ValidationFinding(
-                        rule_id="structural:duplicate-fact",
+                        rule_id="structural:segment-scenario-substitution",
                         severity=ValidationSeverity.ERROR,
                         message=(
-                            f"Duplicate fact detected for concept '{fact.concept}' "
-                            f"in context '{fact.context_ref}'"
-                            + (
-                                f" with unit '{fact.unit_ref}'"
-                                if fact.unit_ref is not None
-                                else ""
-                            )
-                            + f" (first occurrence at index {seen[key]}, "
-                            f"duplicate at index {idx})."
+                            "Unable to load substitution-group declarations from "
+                            f"schema '{schema_path}' while validating segment/scenario "
+                            f"contents: {exc}"
                         ),
                         source="structural",
-                        concept_qname=fact.concept,
-                        context_ref=fact.context_ref,
                     )
                 )
-            else:
-                seen[key] = idx
+                continue
+            for qname, (_concept, substitution_group) in raw_candidates.items():
+                schema_substitution_groups[qname] = substitution_group
+
+        for ctx_id, ctx in instance.contexts.items():
+            for container_name, container_xml in (
+                ("scenario", getattr(ctx, "scenario_xml", None)),
+                ("segment", getattr(ctx, "segment_xml", None)),
+            ):
+                if not container_xml:
+                    continue
+                try:
+                    descendant_qnames = _iter_descendant_qnames(container_xml)
+                except Exception as exc:  # noqa: BLE001
+                    findings.append(
+                        ValidationFinding(
+                            rule_id="structural:segment-scenario-substitution",
+                            severity=ValidationSeverity.ERROR,
+                            message=(
+                                f"Context '{ctx_id}' has invalid serialized {container_name} "
+                                f"content that could not be analyzed for substitution groups: {exc}"
+                            ),
+                            source="structural",
+                            context_ref=ctx_id,
+                        )
+                    )
+                    continue
+
+                for element_qname in descendant_qnames:
+                    sg_root = _substitution_root_for_concept(
+                        element_qname,
+                        taxonomy,
+                        schema_substitution_groups=schema_substitution_groups,
+                    )
+                    if sg_root is None:
+                        continue
+                    findings.append(
+                        ValidationFinding(
+                            rule_id="structural:segment-scenario-substitution",
+                            severity=ValidationSeverity.ERROR,
+                            message=(
+                                f"Context '{ctx_id}' contains element '{element_qname}' in "
+                                f"xbrli:{container_name}. Its substitution-group chain reaches "
+                                f"'{sg_root}', which is forbidden in segment/scenario."
+                            ),
+                            source="structural",
+                            context_ref=ctx_id,
+                            concept_qname=element_qname,
+                        )
+                    )
         return findings
 
     # ------------------------------------------------------------------

@@ -11,6 +11,7 @@ from bde_xbrl_editor.instance.models import (
     ReportingPeriod,
     XbrlContext,
 )
+from bde_xbrl_editor.instance.s_equal import build_s_equal_key_from_model
 from bde_xbrl_editor.taxonomy.models import QName
 
 
@@ -52,13 +53,15 @@ def build_filing_indicator_context(
 ) -> XbrlContext:
     """Build the base filing-indicator context (entity + period, no dimensions)."""
     ctx_id = generate_context_id(entity, period, {})
-    return XbrlContext(
+    ctx = XbrlContext(
         context_id=ctx_id,
         entity=entity,
         period=period,
         dimensions={},
         context_element=context_element,
     )
+    ctx.s_equal_key = build_s_equal_key_from_model(ctx)
+    return ctx
 
 
 def build_dimensional_context(
@@ -69,13 +72,15 @@ def build_dimensional_context(
 ) -> XbrlContext:
     """Build a context for a specific dimensional combination."""
     ctx_id = generate_context_id(entity, period, dimensions)
-    return XbrlContext(
+    ctx = XbrlContext(
         context_id=ctx_id,
         entity=entity,
         period=period,
         dimensions=dict(dimensions),
         context_element=context_element,
     )
+    ctx.s_equal_key = build_s_equal_key_from_model(ctx)
+    return ctx
 
 
 def deduplicate_contexts(contexts: list[XbrlContext]) -> dict[ContextId, XbrlContext]:

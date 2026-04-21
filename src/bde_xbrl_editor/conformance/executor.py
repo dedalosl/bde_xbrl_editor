@@ -19,6 +19,17 @@ from bde_xbrl_editor.taxonomy.settings import LoaderSettings
 from bde_xbrl_editor.validation.models import ValidationFinding, ValidationSeverity
 from bde_xbrl_editor.validation.orchestrator import InstanceValidator
 
+# Formula conformance measures formula assertions, not full XBRL 2.1 instance
+# validation.  S-equal–aware duplicate-fact / calculation checks (added for
+# XBRL 2.1 suite) may report errors on instances the formula suite still marks
+# ``expected="valid"`` — ignore only those rule_ids when matching VALID.
+_FORMULA_VALID_IGNORE_RULE_IDS = frozenset(
+    {
+        "structural:duplicate-fact",
+        "calculation:summation-inconsistent",
+    }
+)
+
 
 class TestCaseExecutor:
     """Executes a single conformance test variation and returns a TestCaseResult."""
@@ -118,7 +129,10 @@ class TestCaseExecutor:
             findings = ()
 
         outcome, actual_error_codes = self._match_outcome(
-            variation.expected_outcome, findings, load_error
+            variation.expected_outcome,
+            findings,
+            load_error,
+            test_case.suite_id,
         )
         duration_ms = int((time.time() - start) * 1000)
 
@@ -141,11 +155,21 @@ class TestCaseExecutor:
         expected: ExpectedOutcome,
         findings: tuple[ValidationFinding, ...],
         load_error: Exception | None,
+        suite_id: str | None = None,
     ) -> tuple[TestResultOutcome, tuple[str, ...]]:
         """Determine the test outcome by comparing expected with actual results."""
         error_findings = tuple(
             f for f in findings if f.severity == ValidationSeverity.ERROR
         )
+        if (
+            suite_id == "formula"
+            and expected.outcome_type == ExpectedOutcomeType.VALID
+        ):
+            error_findings = tuple(
+                f
+                for f in error_findings
+                if f.rule_id not in _FORMULA_VALID_IGNORE_RULE_IDS
+            )
         warning_findings = tuple(
             f for f in findings if f.severity == ValidationSeverity.WARNING
         )

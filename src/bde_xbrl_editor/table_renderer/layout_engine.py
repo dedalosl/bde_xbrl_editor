@@ -36,6 +36,25 @@ _CONCEPT_KEY = "concept"
 _EXPLICIT_DIM_KEY = "explicitDimension"
 
 
+def _strip_default_member_dimensions(
+    explicit_dims: dict[QName, QName],
+    taxonomy: TaxonomyStructure,
+) -> dict[QName, QName]:
+    """Drop dimensions whose member is the taxonomy default member.
+
+    In XBRL Dimensions, an omitted explicit dimension is semantically
+    equivalent to the default member for that dimension. Table coordinates must
+    therefore not require facts to carry explicit ``qx0``-style defaults.
+    """
+    normalized: dict[QName, QName] = {}
+    for dim_qname, member_qname in explicit_dims.items():
+        dim_model = taxonomy.dimensions.get(dim_qname)
+        if dim_model is not None and dim_model.default_member == member_qname:
+            continue
+        normalized[dim_qname] = member_qname
+    return normalized
+
+
 def _accumulate_constraints(
     parent: dict,
     node: dict,
@@ -474,7 +493,10 @@ def _build_coordinate(
     # Add Z-axis dimension constraints
     explicit_dims.update(z_constraints)
 
-    return CellCoordinate(concept=concept, explicit_dimensions=explicit_dims)
+    return CellCoordinate(
+        concept=concept,
+        explicit_dimensions=_strip_default_member_dimensions(explicit_dims, taxonomy),
+    )
 
 
 def _get_dimension_members_in_elr(
@@ -635,12 +657,14 @@ class TableLayoutEngine:
 
     def __init__(self, taxonomy: TaxonomyStructure) -> None:
         self._taxonomy = taxonomy
+        self._fact_mapper = None
 
     def compute(
         self,
         table: TableDefinitionPWD,
         instance: XbrlInstance | None = None,
         z_index: int = 0,
+        z_constraints: dict[QName, QName] | None = None,
         language_preference: list[str] | None = None,
     ) -> ComputedTableLayout:
         """Compute the full grid layout for the given table and Z-axis selection.
@@ -655,15 +679,27 @@ class TableLayoutEngine:
             # Build Z-axis members
             z_members = _extract_z_members(table.z_breakdowns, self._taxonomy, lang_pref)
 
-            # Validate z_index
-            if z_index < 0 or z_index >= len(z_members):
-                raise ZIndexOutOfRangeError(
-                    table_id=table.table_id,
-                    requested_z=z_index,
-                    max_z=len(z_members) - 1,
+            # Validate z_index when explicit z_constraints are not provided.
+            if z_constraints is None:
+                if z_index < 0 or z_index >= len(z_members):
+                    raise ZIndexOutOfRangeError(
+                        table_id=table.table_id,
+                        requested_z=z_index,
+                        max_z=len(z_members) - 1,
+                    )
+                active_z = z_members[z_index]
+                active_constraints = dict(active_z.dimension_constraints)
+                active_index = z_index
+            else:
+                active_constraints = dict(z_constraints)
+                active_index = next(
+                    (
+                        idx
+                        for idx, opt in enumerate(z_members)
+                        if opt.dimension_constraints == active_constraints
+                    ),
+                    0,
                 )
-
-            active_z = z_members[z_index]
 
             # Build X-axis (column) and Y-axis (row) header grids
             col_header = _build_axis_grid(table.x_breakdown, self._taxonomy, lang_pref)
@@ -671,15 +707,19 @@ class TableLayoutEngine:
 
             # Build body cell grid
             body = _build_body(
-                row_header, col_header, active_z.dimension_constraints, self._taxonomy,
+                row_header, col_header, active_constraints, self._taxonomy,
                 table_elr=table.extended_link_role,
             )
 
             # Optionally wire fact values
             if instance is not None:
-                from bde_xbrl_editor.table_renderer.fact_mapper import FactMapper  # noqa: PLC0415
+                if self._fact_mapper is None:
+                    from bde_xbrl_editor.table_renderer.fact_mapper import (
+                        FactMapper,  # noqa: PLC0415
+                    )
 
-                mapper = FactMapper(self._taxonomy)
+                    self._fact_mapper = FactMapper(self._taxonomy)
+                mapper = self._fact_mapper
                 for row in body:
                     for cell in row:
                         result: FactMatchResult = mapper.match(cell.coordinate, instance)
@@ -701,6 +741,39 @@ class TableLayoutEngine:
             column_header=col_header,
             row_header=row_header,
             z_members=z_members,
-            active_z_index=z_index,
+            active_z_index=active_index,
+            active_z_constraints=active_constraints,
             body=body,
         )
+
+    def populate_facts(
+        self,
+        layout: ComputedTableLayout,
+        instance: XbrlInstance | None,
+    ) -> ComputedTableLayout:
+        """Return a copy of layout with fact values refreshed from instance."""
+        if instance is None:
+            for row in layout.body:
+                for cell in row:
+                    cell.fact_value = None
+                    cell.fact_decimals = None
+                    cell.is_duplicate = False
+            return layout
+
+        if self._fact_mapper is None:
+            from bde_xbrl_editor.table_renderer.fact_mapper import FactMapper  # noqa: PLC0415
+
+            self._fact_mapper = FactMapper(self._taxonomy)
+        mapper = self._fact_mapper
+        for row in layout.body:
+            for cell in row:
+                result: FactMatchResult = mapper.match(cell.coordinate, instance)
+                if result.matched or result.duplicate_count > 0:
+                    cell.fact_value = result.fact_value
+                    cell.fact_decimals = result.fact_decimals
+                    cell.is_duplicate = result.duplicate_count > 1
+                else:
+                    cell.fact_value = None
+                    cell.fact_decimals = None
+                    cell.is_duplicate = False
+        return layout

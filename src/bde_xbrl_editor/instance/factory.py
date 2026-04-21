@@ -12,6 +12,8 @@ from bde_xbrl_editor.instance.context_builder import (
     deduplicate_contexts,
 )
 from bde_xbrl_editor.instance.models import (
+    BdeEstadoReportado,
+    BdePreambulo,
     DimensionalConfiguration,
     FilingIndicator,
     InstanceCreationError,
@@ -30,6 +32,10 @@ _PURE_MEASURE = f"{XBRLI_NS}:pure"
 _SHARES_MEASURE = f"{XBRLI_NS}:shares"
 
 
+def _is_bde_taxonomy(taxonomy: TaxonomyStructure) -> bool:
+    return any(getattr(table, "table_code", None) for table in taxonomy.tables)
+
+
 def unit_prepopulation(
     taxonomy: TaxonomyStructure,
     table_ids: list[str],
@@ -41,8 +47,20 @@ def unit_prepopulation(
     concept types in selected tables when BreakdownNode carries concept refs.
     """
     units: dict[UnitId, XbrlUnit] = {
-        "EUR": XbrlUnit(unit_id="EUR", measure_uri=f"{ISO4217_NS}:EUR"),
-        "pure": XbrlUnit(unit_id="pure", measure_uri=_PURE_MEASURE),
+        "EUR": XbrlUnit(
+            unit_id="EUR",
+            measure_uri=f"{ISO4217_NS}:EUR",
+            measure_qname=QName(ISO4217_NS, "EUR", prefix="iso4217"),
+            unit_form="simple",
+            simple_measure_count=1,
+        ),
+        "pure": XbrlUnit(
+            unit_id="pure",
+            measure_uri=_PURE_MEASURE,
+            measure_qname=QName(XBRLI_NS, "pure", prefix="xbrli"),
+            unit_form="simple",
+            simple_measure_count=1,
+        ),
     }
     return units
 
@@ -150,11 +168,34 @@ class InstanceFactory:
 
         contexts = deduplicate_contexts(all_contexts)
 
-        # Build filing indicators
-        filing_indicators: list[FilingIndicator] = [
-            FilingIndicator(template_id=tid, filed=True, context_ref=fi_ctx.context_id)
-            for tid in included_table_ids
-        ]
+        is_bde_taxonomy = _is_bde_taxonomy(taxonomy)
+        if is_bde_taxonomy:
+            filing_indicators = [
+                FilingIndicator(
+                    template_id=table.table_code or table.table_id,
+                    filed=table.table_id in included_table_ids,
+                    context_ref=fi_ctx.context_id,
+                )
+                for table in taxonomy.tables
+            ]
+            bde_preambulo = BdePreambulo(
+                context_ref=fi_ctx.context_id,
+                estados_reportados=[
+                    BdeEstadoReportado(
+                        codigo=table.table_code or table.table_id,
+                        blanco=table.table_id not in included_table_ids,
+                        context_ref=fi_ctx.context_id,
+                    )
+                    for table in taxonomy.tables
+                    if table.table_code or table.table_id
+                ],
+            )
+        else:
+            filing_indicators = [
+                FilingIndicator(template_id=tid, filed=True, context_ref=fi_ctx.context_id)
+                for tid in included_table_ids
+            ]
+            bde_preambulo = None
 
         # Pre-populate units
         units = unit_prepopulation(taxonomy, included_table_ids)
@@ -170,6 +211,7 @@ class InstanceFactory:
             contexts=contexts,
             units=units,
             facts=[],
+            bde_preambulo=bde_preambulo,
             source_path=None,
             _dirty=True,
         )

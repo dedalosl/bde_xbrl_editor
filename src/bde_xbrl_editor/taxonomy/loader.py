@@ -6,8 +6,13 @@ taxonomy module remains PySide6-free.
 
 from __future__ import annotations
 
+import os
+import re
 from collections.abc import Callable
+from concurrent.futures import Future, ThreadPoolExecutor
+from dataclasses import replace
 from datetime import datetime
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
@@ -16,26 +21,45 @@ from lxml import etree
 from bde_xbrl_editor.taxonomy.cache import TaxonomyCache
 from bde_xbrl_editor.taxonomy.constants import (
     ARCROLE_ALL,
+    ARCROLE_ASSERTION_SATISFIED_MESSAGE,
+    ARCROLE_ASSERTION_UNSATISFIED_MESSAGE,
     ARCROLE_DIMENSION_DEFAULT,
     ARCROLE_DIMENSION_DOMAIN,
     ARCROLE_DOMAIN_MEMBER,
+    ARCROLE_ELEMENT_LABEL,
     ARCROLE_HYPERCUBE_DIMENSION,
     ARCROLE_NOT_ALL,
-    NS_FORMULA,
+    NS_LINK,
     NS_TABLE_PWD,
     NS_XBRLDT,
+    NS_XBRLI,
 )
-from bde_xbrl_editor.taxonomy.discovery import discover_dts
+from bde_xbrl_editor.taxonomy.discovery import _should_skip_linkbase, discover_dts
 from bde_xbrl_editor.taxonomy.label_resolver import LabelResolver
+from bde_xbrl_editor.taxonomy.linkbases.assertion_resources import (
+    parse_assertion_resource_linkbase,
+)
+from bde_xbrl_editor.taxonomy.linkbases.custom_functions import (
+    parse_custom_function_linkbase,
+)
 from bde_xbrl_editor.taxonomy.linkbases.calculation import parse_calculation_linkbase
 from bde_xbrl_editor.taxonomy.linkbases.definition import parse_definition_linkbase
-from bde_xbrl_editor.taxonomy.linkbases.formula import parse_formula_linkbase
+from bde_xbrl_editor.taxonomy.linkbases.formula import (
+    linkbase_contains_formula_assertions,
+    parse_assertion_table_mappings,
+    parse_formula_linkbase,
+)
 from bde_xbrl_editor.taxonomy.linkbases.generic_label import parse_generic_label_linkbase
 from bde_xbrl_editor.taxonomy.linkbases.label import parse_label_linkbase
-from bde_xbrl_editor.taxonomy.linkbases.presentation import parse_presentation_linkbase
+from bde_xbrl_editor.taxonomy.linkbases.presentation import (
+    PresentationLinkbaseParseResult,
+    parse_presentation_linkbase,
+)
 from bde_xbrl_editor.taxonomy.linkbases.table_pwd import parse_table_linkbase
 from bde_xbrl_editor.taxonomy.models import (
+    AssertionTextResource,
     Concept,
+    CustomFunctionDefinition,
     DimensionModel,
     DomainMember,
     QName,
@@ -44,8 +68,13 @@ from bde_xbrl_editor.taxonomy.models import (
     TaxonomyStructure,
     UnsupportedTaxonomyFormatError,
 )
-from bde_xbrl_editor.taxonomy.schema import XBRL_SG_ROOTS, parse_schema_raw
+from bde_xbrl_editor.taxonomy.schema import (
+    XBRL_SG_ROOTS,
+    extract_monetary_value_type_qnames,
+    parse_schema_raw,
+)
 from bde_xbrl_editor.taxonomy.settings import LoaderSettings
+from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
 
 ProgressCallback = Callable[[str, int, int], None]
 
@@ -55,9 +84,73 @@ _TOTAL_STEPS = 7
 _NS_XLINK = "http://www.w3.org/1999/xlink"
 _XLINK_HREF = f"{{{_NS_XLINK}}}href"
 
+_XBRLI_PREFIX_COLON_RE = re.compile(r"\bxbrli\s*:")
+_XBRLI_INSTANCE_IMPORT_NS_RE = re.compile(
+    r"""namespace\s*=\s*["']http://www\.xbrl\.org/2003/instance["']""",
+    re.IGNORECASE,
+)
+
+
+def _schema_declares_xsd_model_tags(path: Path) -> bool:
+    """True when the file looks like a vocabulary/taxonomy schema (not an empty shell)."""
+    try:
+        snippet = path.read_text(encoding="utf-8", errors="ignore")[:524_288]
+    except OSError:
+        return False
+    return bool(
+        re.search(r"<\s*(?:xs:)?(?:element|simpleType|complexType)\b", snippet, re.IGNORECASE)
+    )
+
+
+def _schema_text_references_xbrl_linkbase_namespace(path: Path) -> bool:
+    """True when the XSD text references the XBRL linkbase namespace URI."""
+    try:
+        snippet = path.read_text(encoding="utf-8", errors="ignore")[:524_288]
+    except OSError:
+        return False
+    return NS_LINK in snippet
+
+
+def _schema_embeds_linkbase_or_role_declarations(path: Path) -> bool:
+    """Return True when XSD text contains XBRL link metadata from the DTS model."""
+    try:
+        snippet = path.read_text(encoding="utf-8", errors="ignore")[:524_288]
+    except OSError:
+        return False
+    return any(
+        marker in snippet
+        for marker in (
+            "link:linkbaseRef",
+            "link:roleType",
+            "link:arcroleType",
+        )
+    )
+
+
+def _schema_text_references_xbrl_instance_model(path: Path) -> bool:
+    """Return True when XSD text ties to the XBRL instance schema model.
+
+    Segment-only vocabulary schemas (XBRL conformance 302.01) often declare
+    ``xmlns:xbrli`` for documentation but do not reference ``xbrli:`` QNames or
+    import the instance namespace. Stub files such as ``Nautilus.xsd`` do, and
+    must still be rejected when they yield no item/tuple concepts.
+    """
+    try:
+        snippet = path.read_text(encoding="utf-8", errors="ignore")[:524_288]
+    except OSError:
+        return False
+    if _XBRLI_PREFIX_COLON_RE.search(snippet):
+        return True
+    return bool(_XBRLI_INSTANCE_IMPORT_NS_RE.search(snippet))
+
 
 def _sniff_linkbase_type(path: Path) -> str:
-    """Return a crude type string for a linkbase file: label/generic/pres/calc/def/table/formula/unknown."""
+    """Return a crude type string for a linkbase file: label/generic/pres/calc/def/table/unknown.
+
+    Formula / validation assertions are **not** classified here; they are detected
+    structurally via :func:`linkbase_contains_formula_assertions` on every discovered
+    ``.xml`` linkbase (see ``_do_load``).
+    """
     name = path.stem.lower()
     if "label" in name or "lab" in name:
         if "gen" in name:
@@ -71,137 +164,69 @@ def _sniff_linkbase_type(path: Path) -> str:
         return "def"
     if "table" in name or "tbl" in name or "rend" in name:
         return "table"
-    if "formula" in name or "form" in name:
-        return "formula"
 
-    # BDE places all formula linkbases under a subdirectory named "formula/"
-    if path.parent.name.lower() == "formula":
-        return "formula"
-
-    # Fallback: scan child elements for formula/assertion namespaces
-    _FORMULA_NS = {
-        "http://xbrl.org/2008/formula",
-        "http://xbrl.org/2008/assertion/value",
-        "http://xbrl.org/2008/assertion/existence",
-        "http://xbrl.org/2008/assertion/consistency",
-    }
     try:
-        ctx = etree.iterparse(str(path), events=("start",))
+        ctx = etree.iterparse(BytesIO(path.read_bytes()), events=("start",))
         for _, el in ctx:
             tag = str(el.tag)
             if NS_TABLE_PWD in tag:
                 return "table"
-            ns = tag[1:tag.index("}")] if tag.startswith("{") else ""
-            if ns in _FORMULA_NS or NS_FORMULA in tag:
-                return "formula"
     except Exception:  # noqa: BLE001
         pass
     return "unknown"
 
 
-_ARCROLE_GROUP_TABLE = "http://www.eurofiling.info/xbrl/arcrole/group-table"
-_NS_XLINK_FULL = "http://www.w3.org/1999/xlink"
+def _classify_linkbases(linkbase_paths: list[Path]) -> dict[str, list[Path]]:
+    """Group linkbase paths by type while preserving the original order."""
+    classified = {
+        "label": [],
+        "generic": [],
+        "pres": [],
+        "calc": [],
+        "def": [],
+        "table": [],
+        "unknown": [],
+    }
+    for path in linkbase_paths:
+        lb_type = _sniff_linkbase_type(path)
+        classified.setdefault(lb_type, []).append(path)
+    return classified
 
 
-def _parse_group_table_order(linkbase_paths: list[Path]) -> dict[str, int]:
-    """Parse presentation linkbases for group-table arcrole arcs.
-
-    The BDE taxonomy uses a two-level tree in the presentation linkbase:
-      root_concept --[order=N]--> table_group --[order=M]--> table
-    or directly:
-      root_concept --[order=N]--> table
-
-    This function performs a DFS traversal of that tree (ordered by arc order)
-    and assigns each leaf table a flat sequential position (0, 1, 2, ...).
-
-    Returns a mapping of table XML id (fragment) → flat display position.
-    Used to sort TaxonomyStructure.tables in the intended display order.
-    Tables not referenced in any presentation linkbase are placed last.
-    """
-    # children[parent_fragment] = [(order, child_fragment)]
+def _build_group_table_order(
+    presentation_results: list[PresentationLinkbaseParseResult],
+) -> dict[str, int]:
+    """Compute flat table order from already-parsed presentation metadata."""
     children: dict[str, list[tuple[float, str]]] = {}
-    # label_to_href_fragment: xlink:label → href#fragment (only for *-rend.xml locs)
-    label_to_fragment: dict[str, str] = {}
-    # label_to_is_rend: whether the locator points to a *-rend.xml (i.e., a real table)
-    label_is_rend: set[str] = set()
-    # Root concept fragment (the "from" side of root→group/table arcs)
+    rend_fragments: set[str] = set()
     root_fragment: str | None = None
 
-    for lb_path in linkbase_paths:
-        lb_type = _sniff_linkbase_type(lb_path)
-        if lb_type not in ("pres", "unknown"):
-            continue
-        try:
-            tree = etree.parse(str(lb_path))  # noqa: S320
-        except Exception:  # noqa: BLE001
-            continue
-        root_el = tree.getroot()
-        # Build label → href-fragment map from all loc elements
-        local_label_to_fragment: dict[str, str] = {}
-        local_label_is_rend: set[str] = set()
-        for loc in root_el.iter():
-            if not isinstance(loc.tag, str):
-                continue
-            if loc.tag.split("}")[-1] != "loc":
-                continue
-            label = loc.get(f"{{{_NS_XLINK_FULL}}}label") or ""
-            href = loc.get(f"{{{_NS_XLINK_FULL}}}href") or ""
-            if label and "#" in href:
-                fragment = href.split("#", 1)[1]
-                local_label_to_fragment[label] = fragment
-                if "-rend.xml" in href:
-                    local_label_is_rend.add(label)
-        label_to_fragment.update(local_label_to_fragment)
-        label_is_rend.update(local_label_is_rend)
-        # Collect group-table arcs
-        for arc in root_el.iter():
-            if not isinstance(arc.tag, str):
-                continue
-            if arc.tag.split("}")[-1] != "arc":
-                continue
-            if arc.get(f"{{{_NS_XLINK_FULL}}}arcrole") != _ARCROLE_GROUP_TABLE:
-                continue
-            from_label = arc.get(f"{{{_NS_XLINK_FULL}}}from") or ""
-            to_label = arc.get(f"{{{_NS_XLINK_FULL}}}to") or ""
-            from_frag = local_label_to_fragment.get(from_label, from_label)
-            to_frag = local_label_to_fragment.get(to_label)
-            if not to_frag:
-                continue
-            try:
-                arc_order = float(arc.get("order", "1"))
-            except (TypeError, ValueError):
-                arc_order = 1.0
-            children.setdefault(from_frag, []).append((arc_order, to_frag))
-            # The first "from" side that is NOT a rend table is the root
-            if root_fragment is None and from_label not in local_label_is_rend:
-                root_fragment = from_frag
+    for result in presentation_results:
+        for parent, child_entries in result.group_table_children.items():
+            children.setdefault(parent, []).extend(child_entries)
+        rend_fragments.update(result.group_table_rend_fragments)
+        if root_fragment is None and result.group_table_root_fragment is not None:
+            root_fragment = result.group_table_root_fragment
 
     if not children or root_fragment is None:
         return {}
 
-    # Sort children by arc order
     for parent in children:
-        children[parent].sort(key=lambda x: x[0])
+        children[parent].sort(key=lambda item: item[0])
 
-    # Pre-order DFS traversal to assign flat positions to leaf tables.
-    # Stack holds items in LIFO order; push children in reverse so the first
-    # child (lowest order) is processed next.
-    rend_fragments = set(label_to_fragment[lbl] for lbl in label_is_rend)
     flat_order: dict[str, int] = {}
     counter = 0
     stack: list[str] = [root_fragment]
     visited: set[str] = set()
     while stack:
-        node = stack.pop()  # LIFO
+        node = stack.pop()
         if node in visited:
             continue
         visited.add(node)
         if node in rend_fragments:
             flat_order[node] = counter
             counter += 1
-        # Push children in REVERSE order so first child (lowest arc order) is on top
-        node_children = children.get(node, [])
-        for _, child_frag in reversed(node_children):
+        for _, child_frag in reversed(children.get(node, [])):
             if child_frag not in visited:
                 stack.append(child_frag)
     return flat_order
@@ -252,7 +277,7 @@ def _extract_metadata(entry_point: Path, declared_languages: list[str]) -> Taxon
     period_type = None
 
     try:
-        tree = etree.parse(str(entry_point))  # noqa: S320
+        tree = parse_xml_file(entry_point)
         root = tree.getroot()
         # Try to find annotation/documentation with taxonomy info
         for doc in root.iter("{http://www.w3.org/2001/XMLSchema}documentation"):
@@ -276,12 +301,27 @@ def _extract_metadata(entry_point: Path, declared_languages: list[str]) -> Taxon
     )
 
 
+def _best_assertion_resources(
+    resources: list[AssertionTextResource],
+    *,
+    arcrole: str,
+    language_preference: list[str],
+) -> tuple[AssertionTextResource, ...]:
+    """Select the best assertion resources for one arcrole."""
+    matched = [resource for resource in resources if resource.arcrole == arcrole]
+    if not matched:
+        return ()
+
+    for language in language_preference:
+        localized = [resource for resource in matched if resource.language == language]
+        if localized:
+            return tuple(sorted(localized, key=lambda item: item.priority, reverse=True))
+
+    return tuple(sorted(matched, key=lambda item: item.priority, reverse=True))
+
+
 _SG_HYPERCUBE = QName(NS_XBRLDT, "hypercubeItem")
 _SG_DIMENSION = QName(NS_XBRLDT, "dimensionItem")
-
-_NS_LINK = "http://www.xbrl.org/2003/linkbase"
-_ROLE_REF_TAG = f"{{{_NS_LINK}}}roleRef"
-
 
 # XBRL 2.1 §5.1.3 — predefined roles that are always resolved without needing a roleRef.
 _PREDEFINED_XBRL_ROLES: frozenset[str] = frozenset({
@@ -319,25 +359,6 @@ _PREDEFINED_XBRL_ROLES: frozenset[str] = frozenset({
     "http://www.xbrl.org/2003/role/commentaryRef",
     "http://www.xbrl.org/2003/role/exampleRef",
 })
-
-
-def _collect_declared_roles(linkbase_paths: list[Path]) -> set[str]:
-    """Scan all linkbases for roleRef elements and return declared role URIs.
-
-    Always includes the predefined XBRL 2.1 roles which never need a roleRef.
-    Used by _check_dimensional_constraints to validate xbrldt:targetRole values.
-    """
-    declared: set[str] = set(_PREDEFINED_XBRL_ROLES)
-    for lb_path in linkbase_paths:
-        try:
-            tree = etree.parse(str(lb_path))  # noqa: S320
-            for el in tree.getroot().iter(_ROLE_REF_TAG):
-                uri = el.get("roleURI")
-                if uri:
-                    declared.add(uri)
-        except Exception:  # noqa: BLE001
-            pass
-    return declared
 
 
 def _check_dimensional_constraints(
@@ -679,6 +700,66 @@ def _rebuild_dimensions(definition_arcs: dict[str, list]) -> dict[QName, Dimensi
     return dimensions
 
 
+def _schema_parse_workers(schema_count: int) -> int:
+    """Return a bounded worker count for concurrent schema parsing."""
+    if schema_count <= 1:
+        return 1
+    cpu_count = os.cpu_count() or 1
+    return max(1, min(schema_count, cpu_count, 8))
+
+
+def _linkbase_parse_workers(linkbase_count: int) -> int:
+    """Return a bounded worker count for concurrent linkbase parsing."""
+    if linkbase_count <= 1:
+        return 1
+    cpu_count = os.cpu_count() or 1
+    return max(1, min(linkbase_count, cpu_count, 8))
+
+
+def _run_path_jobs(
+    paths: list[Path],
+    parse_fn: Callable[[Path], Any],
+    *,
+    workers: int,
+    error_message_factory: Callable[[Exception], str] | None = None,
+) -> list[tuple[Path, Any]]:
+    """Run independent file parses concurrently while preserving input order."""
+    if not paths:
+        return []
+    if workers <= 1 or len(paths) <= 1:
+        results: list[tuple[Path, Any]] = []
+        for path in paths:
+            try:
+                results.append((path, parse_fn(path)))
+            except TaxonomyParseError:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                message = (
+                    error_message_factory(exc)
+                    if error_message_factory is not None
+                    else f"Unexpected error: {exc}"
+                )
+                raise TaxonomyParseError(file_path=str(path), message=message) from exc
+        return results
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures: list[Future[Any]] = [executor.submit(parse_fn, path) for path in paths]
+        results = []
+        for path, future in zip(paths, futures, strict=False):
+            try:
+                results.append((path, future.result()))
+            except TaxonomyParseError:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                message = (
+                    error_message_factory(exc)
+                    if error_message_factory is not None
+                    else f"Unexpected error: {exc}"
+                )
+                raise TaxonomyParseError(file_path=str(path), message=message) from exc
+        return results
+
+
 class TaxonomyLoader:
     """Orchestrates taxonomy loading from a local filesystem path.
 
@@ -724,7 +805,14 @@ class TaxonomyLoader:
         cached = self._cache.get(cache_key)
         if cached is not None:
             if progress_callback:
-                progress_callback("Loaded from cache", _TOTAL_STEPS, _TOTAL_STEPS)
+                progress_callback(
+                    (
+                        "Loaded from cache — "
+                        f"{len(cached.tables)} tables, {len(cached.concepts)} concepts"
+                    ),
+                    _TOTAL_STEPS,
+                    _TOTAL_STEPS,
+                )
             return cached
 
         structure = self._do_load(entry_point, progress_callback)
@@ -755,10 +843,35 @@ class TaxonomyLoader:
 
         # Step 1: DTS discovery
         progress("Discovering DTS…", 1)
-        schema_paths, linkbase_paths, skipped_urls, include_ns_map = discover_dts(
-            entry_point, self._settings, progress_callback=None,
+        schema_paths, linkbase_paths, skipped_urls, include_ns_map, discovered_roles = discover_dts(
+            entry_point,
+            self._settings,
+            progress_callback=(
+                lambda message, _current, _total: progress(message, 1)
+            ),
         )
         self._last_skipped_urls: list[str] = skipped_urls
+        progress(
+            f"DTS discovered — {len(schema_paths)} schemas, {len(linkbase_paths)} linkbases",
+            1,
+        )
+        classified_linkbases = _classify_linkbases(linkbase_paths)
+        label_linkbases = classified_linkbases["label"]
+        generic_label_linkbases = classified_linkbases["generic"]
+        presentation_linkbases = classified_linkbases["pres"]
+        calculation_linkbases = classified_linkbases["calc"]
+        definition_linkbases = classified_linkbases["def"]
+        table_linkbases = classified_linkbases["table"]
+        formula_linkbases = list(
+            dict.fromkeys(
+                p
+                for p in linkbase_paths
+                if p.suffix.lower() in (".xml", ".xbrl")
+                and not _should_skip_linkbase(p)
+                and linkbase_contains_formula_assertions(p)
+            )
+        )
+        linkbase_workers = _linkbase_parse_workers(len(linkbase_paths))
 
         # Step 2: Parse schemas → concepts (with cross-schema transitive SG resolution)
         progress("Parsing schemas…", 2)
@@ -770,20 +883,17 @@ class TaxonomyLoader:
         # schema_path_to_ns: local abs path → targetNamespace (used to build the
         # namespace-qualified concept map for unambiguous locator resolution).
         schema_path_to_ns: dict[str, str] = {}
-        for schema_path in schema_paths:
-            ns_override = include_ns_map.get(schema_path)
-            try:
-                raw, target_ns = parse_schema_raw(schema_path, ns_override)
-                all_candidates.update(raw)
-                if target_ns:
-                    schema_path_to_ns[str(schema_path)] = target_ns
-            except TaxonomyParseError:
-                raise
-            except Exception as exc:  # noqa: BLE001
-                raise TaxonomyParseError(
-                    file_path=str(schema_path),
-                    message=f"Unexpected error: {exc}",
-                ) from exc
+        schema_workers = _schema_parse_workers(len(schema_paths))
+        parsed_schemas = _run_path_jobs(
+            schema_paths,
+            lambda schema_path: parse_schema_raw(schema_path, include_ns_map.get(schema_path)),
+            workers=schema_workers,
+        )
+
+        for schema_path, (raw, target_ns) in parsed_schemas:
+            all_candidates.update(raw)
+            if target_ns:
+                schema_path_to_ns[str(schema_path)] = target_ns
 
         # Transitive closure: start with concepts whose SG is a known XBRL root,
         # then iteratively promote candidates whose SG is already resolved.
@@ -805,10 +915,47 @@ class TaxonomyLoader:
             pending = still_pending
 
         if not concepts:
-            raise UnsupportedTaxonomyFormatError(
-                entry_point=str(entry_point),
-                reason="No XBRL concepts found — file may not be a valid XBRL taxonomy entry point",
+            # Allow empty item/tuple maps only for tiny segment-extension entry
+            # points (no linkbases, no xbrli QName/import wiring) — conformance
+            # 302.01.  Schemas that reference linkbases or the XBRL instance model
+            # must still surface as unsupported when nothing resolved to a concept.
+            segment_style_taxonomy = (
+                bool(schema_paths)
+                and not linkbase_paths
+                and any(_schema_declares_xsd_model_tags(p) for p in schema_paths)
+                and not any(
+                    _schema_text_references_xbrl_instance_model(p)
+                    or _schema_embeds_linkbase_or_role_declarations(p)
+                    or _schema_text_references_xbrl_linkbase_namespace(p)
+                    for p in schema_paths
+                )
             )
+            if not segment_style_taxonomy:
+                raise UnsupportedTaxonomyFormatError(
+                    entry_point=str(entry_point),
+                    reason="No XBRL concepts found — file may not be a valid XBRL taxonomy entry point",
+                )
+        progress(f"Schemas parsed — {len(concepts)} concepts ready", 2)
+
+        monetary_workers = _schema_parse_workers(len(schema_paths))
+        parsed_monetary_types = _run_path_jobs(
+            schema_paths,
+            lambda p: extract_monetary_value_type_qnames(p, include_ns_map.get(p)),
+            workers=monetary_workers,
+        )
+        monetary_derived_types: set[QName] = set()
+        for _path, mt_set in parsed_monetary_types:
+            monetary_derived_types.update(mt_set)
+
+        def _concept_is_monetary_item(c: Concept) -> bool:
+            if c.data_type.namespace == NS_XBRLI and c.data_type.local_name == "monetaryItemType":
+                return True
+            return c.data_type in monetary_derived_types
+
+        concepts = {
+            qn: replace(c, monetary_item_type=_concept_is_monetary_item(c))
+            for qn, c in concepts.items()
+        }
 
         concept_id_map = _build_concept_id_map(concepts)
 
@@ -840,23 +987,37 @@ class TaxonomyLoader:
         standard_labels: dict[QName, list] = {}
         generic_labels: dict[QName, list] = {}
         formula_linkbase_path: Path | None = None
-        formula_linkbase_paths: list[Path] = []
 
-        for lb_path in linkbase_paths:
-            lb_type = _sniff_linkbase_type(lb_path)
-            if lb_type == "formula":
-                formula_linkbase_paths.append(lb_path)
-                if formula_linkbase_path is None:
-                    formula_linkbase_path = lb_path
-                continue
-            if lb_type == "label":
-                parsed = parse_label_linkbase(lb_path, concept_id_map)
-                for qname, labels in parsed.items():
-                    standard_labels.setdefault(qname, []).extend(labels)
-            elif lb_type == "generic":
-                parsed = parse_generic_label_linkbase(lb_path, concept_id_map)
-                for qname, labels in parsed.items():
-                    generic_labels.setdefault(qname, []).extend(labels)
+        if formula_linkbases:
+            formula_linkbase_path = formula_linkbases[0]
+
+        parsed_label_linkbases = _run_path_jobs(
+            label_linkbases,
+            lambda lb_path: parse_label_linkbase(
+                lb_path,
+                concept_id_map,
+                ns_qualified_map=ns_qualified_map,
+                schema_ns_map=schema_ns_map,
+            ),
+            workers=linkbase_workers,
+        )
+        for _lb_path, parsed in parsed_label_linkbases:
+            for qname, labels in parsed.items():
+                standard_labels.setdefault(qname, []).extend(labels)
+
+        parsed_generic_label_linkbases = _run_path_jobs(
+            generic_label_linkbases,
+            lambda lb_path: parse_generic_label_linkbase(
+                lb_path,
+                concept_id_map,
+                ns_qualified_map=ns_qualified_map,
+                schema_ns_map=schema_ns_map,
+            ),
+            workers=linkbase_workers,
+        )
+        for _lb_path, parsed in parsed_generic_label_linkbases:
+            for qname, labels in parsed.items():
+                generic_labels.setdefault(qname, []).extend(labels)
 
         declared_languages: list[str] = list({
             lb.language
@@ -869,6 +1030,7 @@ class TaxonomyLoader:
             standard_labels, generic_labels,
             self._settings.language_preference,
         )
+        progress(f"Labels resolved — {len(declared_languages)} language set(s) available", 3)
 
         # Step 4: Parse structural linkbases
         progress("Parsing structural linkbases…", 4)
@@ -877,32 +1039,39 @@ class TaxonomyLoader:
         definition_arcs: dict[str, Any] = {}
         hypercubes: list[Any] = []
 
-        for lb_path in linkbase_paths:
-            lb_type = _sniff_linkbase_type(lb_path)
-            try:
-                if lb_type == "pres":
-                    nets = parse_presentation_linkbase(lb_path, concept_id_map)
-                    presentation.update(nets)
-                elif lb_type == "calc":
-                    arcs = parse_calculation_linkbase(lb_path, concept_id_map)
-                    for elr, arc_list in arcs.items():
-                        calculation.setdefault(elr, []).extend(arc_list)
-                elif lb_type == "def":
-                    arcs_by_elr, hcs, _dims = parse_definition_linkbase(
-                        lb_path, concept_id_map,
-                        ns_qualified_map=ns_qualified_map,
-                        schema_ns_map=schema_ns_map,
-                    )
-                    for elr, arc_list in arcs_by_elr.items():
-                        definition_arcs.setdefault(elr, []).extend(arc_list)
-                    hypercubes.extend(hcs)
-            except TaxonomyParseError:
-                raise
-            except Exception as exc:  # noqa: BLE001
-                raise TaxonomyParseError(
-                    file_path=str(lb_path),
-                    message=f"Unexpected error: {exc}",
-                ) from exc
+        parsed_presentation_linkbases = _run_path_jobs(
+            presentation_linkbases,
+            lambda lb_path: parse_presentation_linkbase(lb_path, concept_id_map),
+            workers=linkbase_workers,
+        )
+        presentation_parse_results: list[PresentationLinkbaseParseResult] = []
+        for _lb_path, result in parsed_presentation_linkbases:
+            presentation.update(result.networks)
+            presentation_parse_results.append(result)
+
+        parsed_calculation_linkbases = _run_path_jobs(
+            calculation_linkbases,
+            lambda lb_path: parse_calculation_linkbase(lb_path, concept_id_map),
+            workers=linkbase_workers,
+        )
+        for _lb_path, arcs in parsed_calculation_linkbases:
+            for elr, arc_list in arcs.items():
+                calculation.setdefault(elr, []).extend(arc_list)
+
+        parsed_definition_linkbases = _run_path_jobs(
+            definition_linkbases,
+            lambda lb_path: parse_definition_linkbase(
+                lb_path,
+                concept_id_map,
+                ns_qualified_map=ns_qualified_map,
+                schema_ns_map=schema_ns_map,
+            ),
+            workers=linkbase_workers,
+        )
+        for _lb_path, (arcs_by_elr, hcs, _dims) in parsed_definition_linkbases:
+            for elr, arc_list in arcs_by_elr.items():
+                definition_arcs.setdefault(elr, []).extend(arc_list)
+            hypercubes.extend(hcs)
 
         # Build dimensions once from the complete merged arc set so that
         # domain-member arcs in extension linkbases are correctly associated
@@ -910,30 +1079,31 @@ class TaxonomyLoader:
         dimensions = _rebuild_dimensions(definition_arcs)
 
         # Step 4b: XBRL Dimensions 1.0 taxonomy constraint checks (xbrldte:* errors)
-        declared_roles = _collect_declared_roles(list(linkbase_paths))
+        declared_roles = set(_PREDEFINED_XBRL_ROLES)
+        declared_roles.update(discovered_roles)
         _check_dimensional_constraints(concepts, definition_arcs, declared_roles=declared_roles)
+        progress(
+            f"Structure mapped — {len(dimensions)} dimensions, {len(hypercubes)} hypercubes",
+            4,
+        )
 
         # Step 5: Parse table linkbases
         progress("Parsing table linkbases…", 5)
         tables: list[Any] = []
-        for lb_path in linkbase_paths:
-            lb_type = _sniff_linkbase_type(lb_path)
-            if lb_type == "table":
-                try:
-                    parsed_tables = parse_table_linkbase(lb_path)
-                    tables.extend(parsed_tables)
-                except TaxonomyParseError:
-                    raise
-                except Exception as exc:  # noqa: BLE001
-                    raise TaxonomyParseError(
-                        file_path=str(lb_path),
-                        message=f"Unexpected error parsing table linkbase: {exc}",
-                    ) from exc
+        parsed_table_linkbases = _run_path_jobs(
+            table_linkbases,
+            parse_table_linkbase,
+            workers=linkbase_workers,
+            error_message_factory=lambda exc: f"Unexpected error parsing table linkbase: {exc}",
+        )
+        for _lb_path, parsed_tables in parsed_table_linkbases:
+            tables.extend(parsed_tables)
 
         # Sort tables by the order attribute on group-table arcs in presentation linkbases.
-        group_table_order = _parse_group_table_order(list(linkbase_paths))
+        group_table_order = _build_group_table_order(presentation_parse_results)
         if group_table_order:
             tables.sort(key=lambda t: group_table_order.get(t.table_id, float("inf")))
+        progress(f"Tables prepared — {len(tables)} available", 5)
 
         # Step 6: Parse formula linkbase (if present)
         progress("Assembling taxonomy structure…", 6)
@@ -943,16 +1113,91 @@ class TaxonomyLoader:
         )
 
         formula_assertion_set: FormulaAssertionSet
-        if formula_linkbase_paths:
+        if formula_linkbases:
             all_assertions: list[FormulaAssertion] = []
-            for flp in formula_linkbase_paths:
-                fas = parse_formula_linkbase(flp)
+            parsed_formula_linkbases = _run_path_jobs(
+                formula_linkbases,
+                parse_formula_linkbase,
+                workers=linkbase_workers,
+            )
+            for _flp, fas in parsed_formula_linkbases:
                 all_assertions.extend(fas.assertions)
-            formula_assertion_set = FormulaAssertionSet(assertions=tuple(all_assertions))
+
+            parsed_assertion_resource_linkbases = _run_path_jobs(
+                linkbase_paths,
+                parse_assertion_resource_linkbase,
+                workers=linkbase_workers,
+            )
+            assertion_resources: dict[str, list[AssertionTextResource]] = {}
+            for _resource_path, resource_map in parsed_assertion_resource_linkbases:
+                for assertion_id, resources in resource_map.items():
+                    assertion_resources.setdefault(assertion_id, []).extend(resources)
+
+            parsed_assertion_table_linkbases = _run_path_jobs(
+                linkbase_paths,
+                parse_assertion_table_mappings,
+                workers=linkbase_workers,
+            )
+            assertion_table_ids: dict[str, str] = {}
+            for _mapping_path, table_map in parsed_assertion_table_linkbases:
+                for assertion_id, table_id in table_map.items():
+                    assertion_table_ids.setdefault(assertion_id, table_id)
+
+            table_labels = {
+                table.table_id: (table.display_code or table.table_id)
+                for table in tables
+            }
+
+            language_preference = [*declared_languages, "es", "en"]
+            enriched_assertions: list[FormulaAssertion] = []
+            for assertion in all_assertions:
+                resources = assertion_resources.get(assertion.assertion_id, [])
+                table_id = assertion_table_ids.get(assertion.assertion_id)
+                enriched_assertions.append(
+                    replace(
+                        assertion,
+                        table_id=table_id,
+                        table_label=table_labels.get(table_id) if table_id else None,
+                        label_resources=_best_assertion_resources(
+                            resources,
+                            arcrole=ARCROLE_ELEMENT_LABEL,
+                            language_preference=language_preference,
+                        ),
+                        message_resources=(
+                            _best_assertion_resources(
+                                resources,
+                                arcrole=ARCROLE_ASSERTION_UNSATISFIED_MESSAGE,
+                                language_preference=language_preference,
+                            )
+                            + _best_assertion_resources(
+                                resources,
+                                arcrole=ARCROLE_ASSERTION_SATISFIED_MESSAGE,
+                                language_preference=language_preference,
+                            )
+                        ),
+                    )
+                )
+            formula_assertion_set = FormulaAssertionSet(assertions=tuple(enriched_assertions))
         else:
             formula_assertion_set = FormulaAssertionSet()
 
+        parsed_custom_function_linkbases = _run_path_jobs(
+            linkbase_paths,
+            parse_custom_function_linkbase,
+            workers=linkbase_workers,
+        )
+        custom_functions: list[CustomFunctionDefinition] = []
+        seen_custom_functions: set[tuple[str, tuple[str, ...]]] = set()
+        for _custom_linkbase_path, definitions in parsed_custom_function_linkbases:
+            for definition in definitions:
+                key = (definition.name, definition.input_types)
+                if key in seen_custom_functions:
+                    continue
+                seen_custom_functions.add(key)
+                custom_functions.append(definition)
+
         metadata = _extract_metadata(entry_point, declared_languages)
+        progress(f"Assembled {metadata.name} v{metadata.version}", 6)
 
         # Step 7: Assemble TaxonomyStructure
         structure = TaxonomyStructure(
@@ -967,6 +1212,7 @@ class TaxonomyLoader:
             tables=tables,
             formula_linkbase_path=formula_linkbase_path,
             formula_assertion_set=formula_assertion_set,
+            custom_functions=tuple(custom_functions),
             schema_files=tuple(sorted(schema_paths)),
             linkbase_files=tuple(sorted(linkbase_paths)),
         )

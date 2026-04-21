@@ -1,0 +1,225 @@
+{
+  "main": {
+    "id": "ab317f3d44ecf0b6",
+    "type": "split",
+    "children": [
+      {
+        "id": "6a61c0f2f058dead",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "80710794a4d22926",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "schema.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "schema"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "6312e49c343d0ae2",
+    "type": "split",
+    "children": [
+      {
+        "id": "a4c7ca61acd27ca7",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "7535378ed8b27116",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Explorador de archivos"
+            }
+          },
+          {
+            "id": "4fbb5601d6c422ff",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Buscar"
+            }
+          },
+          {
+            "id": "a02d14a1b8e44731",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Marcadores"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "6f211f72b6db2336",
+    "type": "split",
+    "children": [
+      {
+        "id": "e9c10d33b2781572",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "63452d43cac29203",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "schema.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Enlaces entrantes de schema"
+            }
+          },
+          {
+            "id": "015b5f19bb54aec2",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "schema.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Enlaces salientes de schema"
+            }
+          },
+          {
+            "id": "fd0dd08ff1b30434",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Etiquetas"
+            }
+          },
+          {
+            "id": "5f019297c8b1e1d7",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "Todas las propiedades"
+            }
+          },
+          {
+            "id": "bdf75a4338caf7a0",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "schema.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Esquema de schema"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Abrir selector rápido": false,
+      "graph:Abrir vista gráfica": false,
+      "canvas:Crear nuevo lienzo": false,
+      "daily-notes:Abrir la nota de hoy": false,
+      "templates:Insertar plantilla": false,
+      "command-palette:Abrir paleta de comandos": false,
+      "bases:Crear nueva base": false
+    }
+  },
+  "active": "80710794a4d22926",
+  "lastOpenFiles": [
+    "log.md",
+    "index.md",
+    "concepts/xbrl-overview.md",
+    "concepts/xbrl-formula.md",
+    "concepts/xbrl-2.1.md",
+    "concepts/table-linkbase-overview.md",
+    "concepts/table-linkbase.md",
+    "concepts/generic-references.md",
+    "concepts/generic-links.md",
+    "concepts/generic-labels.md",
+    "concepts/bde-xbrl-editor-overview.md",
+    "schema.md",
+    "concepts",
+    "raw/CLAUDE.md",
+    "raw/pyproject.toml",
+    "raw/Generic references 1.0.md",
+    "raw/XBRL Generic Links 1.0.md",
+    "raw/Generic labels 1.0.md",
+    "raw/Table Linkbase Overview 1.0.md",
+    "raw/assets/example-tableset-y.png",
+    "raw/assets/example-tableset.png",
+    "raw/assets/example-2-breakdown-pivoted.png",
+    "raw/assets/example-2-breakdown-x.png",
+    "raw/assets/example-2-breakdown.png",
+    "raw/assets/example-simple-table-y.png",
+    "raw/assets/example-simple-table-x.png",
+    "raw/assets/example-simple-table.png",
+    "raw/assets/projection-result.png",
+    "raw/assets/structural-model-projection.png",
+    "raw/Table Linkbase 1.0.md",
+    "raw/Extensible Business Reporting Language (XBRL) 2.1.md",
+    "raw/XBRL Formula Overview 1.0.md",
+    "Clippings",
+    "raw/assets",
+    "raw/t",
+    "raw/assers"
+  ]
+}

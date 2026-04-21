@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 from pathlib import Path
 
 from lxml import etree
@@ -25,6 +26,7 @@ from bde_xbrl_editor.taxonomy.models import (
     QName,
     TaxonomyParseError,
 )
+from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
 
 _DEF_LINK = f"{{{NS_LINK}}}definitionLink"
 _LOC = f"{{{NS_LINK}}}loc"
@@ -53,8 +55,14 @@ def _resolve_locator_href(
     1. Namespace-qualified lookup: derive targetNamespace from the href schema URL
        (either via schema_ns_map for absolute URLs, or by resolving relative paths
        against the linkbase directory), then look up "{namespace}#{fragment}".
-    2. Fall back to bare fragment lookup in concept_map (may collide when two
-       schemas declare elements with the same xml:id).
+    2. For fragment-only hrefs like "#concept", fall back to bare fragment lookup
+       in concept_map.
+
+    IMPORTANT: when the locator explicitly names a schema document
+    ("other.xsd#concept"), do not fall back to concept_map if that schema cannot
+    be resolved to a namespace. Bare-fragment lookup is ambiguous when two
+    schemas declare the same xml:id (for example met.xsd#eba_GXI vs dim.xsd#eba_GXI)
+    and can create false xbrldte:* validation errors.
     """
     if "#" not in href:
         return None
@@ -79,7 +87,10 @@ def _resolve_locator_href(
         if qname:
             return qname
 
-    # Attempt 2: bare fragment fallback (backward compat, may have collisions)
+    if schema_url:
+        return None
+
+    # Attempt 2: bare fragment fallback for fragment-only locators.
     return concept_map.get(fragment)
 
 
@@ -103,7 +114,7 @@ def parse_definition_linkbase(
         TaxonomyParseError: If the file is not well-formed XML.
     """
     try:
-        tree = etree.parse(str(linkbase_path))  # noqa: S320
+        tree = parse_xml_file(linkbase_path)
     except etree.XMLSyntaxError as exc:
         raise TaxonomyParseError(
             file_path=str(linkbase_path),
@@ -224,22 +235,15 @@ def parse_definition_linkbase(
     # Build HypercubeModel objects
     hypercubes: list[HypercubeModel] = []
     for elr, prim_list in hc_primary.items():
-        # Expand primary items through domain-member arcs within this ELR.
-        #
-        # In EBA/BDE taxonomy a "concept group" pattern is used: one concept
-        # is the explicit source of the all-arc, and the remaining primary
-        # items of that table are declared as domain-members of that source
-        # concept within the SAME ELR.  We BFS-expand so every such concept
-        # is also recorded as a primary item of the same hypercube.
-        dm_children_in_elr: dict[QName, list[QName]] = {}
-        for arc in arcs_by_elr.get(elr, []):
-            if arc.arcrole == ARCROLE_DOMAIN_MEMBER:
-                dm_children_in_elr.setdefault(arc.source, []).append(arc.target)
-
         expanded_primaries: set[QName] = {p for p, *_ in prim_list}
         bfs_queue: list[tuple[QName, QName, str, bool, str, str | None]] = list(prim_list)
         for primary, hc, arcrole, closed, ctx, tgt_role in bfs_queue:
-            for child in dm_children_in_elr.get(primary, []):
+            start_elr = tgt_role or elr
+            for child in _collect_domain_member_descendants(
+                primary,
+                start_elr,
+                arcs_by_elr,
+            ):
                 if child not in expanded_primaries:
                     expanded_primaries.add(child)
                     new_entry = (child, hc, arcrole, closed, ctx, tgt_role)
@@ -300,3 +304,39 @@ def parse_definition_linkbase(
         )
 
     return arcs_by_elr, hypercubes, dimensions
+
+
+def _collect_domain_member_descendants(
+    source: QName,
+    start_elr: str,
+    arcs_by_elr: dict[str, list[DefinitionArc]],
+) -> list[QName]:
+    """Follow domain-member relationships across targetRole boundaries.
+
+    XBRL Dimensions allows a dimensional relationship set to continue in the
+    base set named by ``xbrldt:targetRole``. For primary-item inheritance we
+    therefore cannot limit the traversal to the ELR that contains the
+    has-hypercube arc.
+    """
+    descendants: list[QName] = []
+    queue: deque[tuple[QName, str]] = deque([(source, start_elr)])
+    seen_states: set[tuple[QName, str]] = {(source, start_elr)}
+    seen_targets: set[QName] = set()
+
+    while queue:
+        current, current_elr = queue.popleft()
+        for arc in arcs_by_elr.get(current_elr, []):
+            if arc.arcrole != ARCROLE_DOMAIN_MEMBER or arc.source != current:
+                continue
+
+            if arc.target not in seen_targets:
+                seen_targets.add(arc.target)
+                descendants.append(arc.target)
+
+            next_elr = arc.target_role or current_elr
+            state = (arc.target, next_elr)
+            if state not in seen_states:
+                seen_states.add(state)
+                queue.append(state)
+
+    return descendants

@@ -43,3 +43,6 @@ Thumbs.db
 .claude/
 conformance/
 cache/
+
+#Excluding files:
+!conformance/*.py

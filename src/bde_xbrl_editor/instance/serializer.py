@@ -20,8 +20,10 @@ from bde_xbrl_editor.instance.constants import (
     XBRLDI_NS,
     XBRLI_NS,
     XLINK_NS,
+    is_bde_schema_ref,
 )
 from bde_xbrl_editor.instance.models import (
+    BdeEstadoReportado,
     BdePreambulo,
     InstanceSaveError,
     ReportingPeriod,
@@ -214,6 +216,16 @@ def _build_unit_el(unit: XbrlUnit) -> etree._Element:
     unit_el = etree.Element(f"{{{XBRLI_NS}}}unit", attrib={"id": unit.unit_id})
     measure_el = etree.SubElement(unit_el, f"{{{XBRLI_NS}}}measure")
 
+    mq = unit.measure_qname
+    if mq is not None:
+        if mq.namespace == ISO4217_NS:
+            measure_el.text = f"iso4217:{mq.local_name}"
+        elif mq.namespace == XBRLI_NS:
+            measure_el.text = f"xbrli:{mq.local_name}"
+        else:
+            measure_el.text = str(mq) if mq.namespace else mq.local_name
+        return unit_el
+
     # Normalise measure URI to prefixed form if possible
     measure_uri = unit.measure_uri
     if measure_uri.startswith(ISO4217_NS + ":"):
@@ -257,6 +269,42 @@ def _build_bde_preambulo_els(preambulo: BdePreambulo, root: etree._Element) -> N
             estado_el.text = estado.codigo
 
 
+def _build_bde_preambulo_from_filing_indicators(instance: XbrlInstance) -> BdePreambulo | None:
+    """Derive BDE preamble state from filing indicators when needed for save."""
+    if not instance.filing_indicators:
+        return None
+
+    context_ref = (
+        (instance.bde_preambulo.context_ref if instance.bde_preambulo is not None else "")
+        or instance.filing_indicators[0].context_ref
+        or next(iter(instance.contexts), "")
+    )
+    entidad_presentadora = (
+        instance.bde_preambulo.entidad_presentadora
+        if instance.bde_preambulo is not None
+        else ""
+    )
+    tipo_envio = (
+        instance.bde_preambulo.tipo_envio
+        if instance.bde_preambulo is not None
+        else ""
+    )
+    estados = [
+        BdeEstadoReportado(
+            codigo=fi.template_id,
+            blanco=not fi.filed,
+            context_ref=fi.context_ref or context_ref,
+        )
+        for fi in instance.filing_indicators
+    ]
+    return BdePreambulo(
+        entidad_presentadora=entidad_presentadora,
+        tipo_envio=tipo_envio,
+        estados_reportados=estados,
+        context_ref=context_ref,
+    )
+
+
 class InstanceSerializer:
     """Serialises an XbrlInstance to XBRL 2.1 XML bytes or writes to disk."""
 
@@ -265,11 +313,15 @@ class InstanceSerializer:
 
         The output is always deterministic for the same instance state.
         """
+        bde_preambulo_for_save = instance.bde_preambulo
+        if bde_preambulo_for_save is None and is_bde_schema_ref(instance.schema_ref_href):
+            bde_preambulo_for_save = _build_bde_preambulo_from_filing_indicators(instance)
+
         # Build namespace map: base namespaces + BDE namespaces (when needed) +
         # every other namespace used in this instance.
         # All prefixes are declared on the root element so the output is self-contained
         # and validators can resolve every QName without relying on default namespaces.
-        bde_nsmap = _BDE_NSMAP if instance.bde_preambulo is not None else {}
+        bde_nsmap = _BDE_NSMAP if bde_preambulo_for_save is not None else {}
         extra_nsmap = _collect_extra_nsmap(instance)
         full_nsmap: dict[str, str] = {**_BASE_NSMAP, **bde_nsmap, **extra_nsmap}
         ns_to_prefix: dict[str, str] = {ns: pfx for pfx, ns in full_nsmap.items()}
@@ -287,8 +339,8 @@ class InstanceSerializer:
         )
 
         # 2. BDE preamble elements (before contexts — per IE_2008_02 convention)
-        if instance.bde_preambulo is not None:
-            _build_bde_preambulo_els(instance.bde_preambulo, root)
+        if bde_preambulo_for_save is not None:
+            _build_bde_preambulo_els(bde_preambulo_for_save, root)
 
         # 3. Contexts — sorted by context_id for determinism
         for ctx in sorted(instance.contexts.values(), key=lambda c: c.context_id):
@@ -299,7 +351,13 @@ class InstanceSerializer:
             root.append(_build_unit_el(unit))
 
         # 5. Filing indicators wrapper
-        if instance.filing_indicators:
+        # BDE instances encode filing-indicator semantics in EstadosReportados,
+        # so avoid writing a second Eurofiling wrapper during round-trip.
+        use_eurofiling_indicators = not (
+            (bde_preambulo_for_save is not None and bde_preambulo_for_save.estados_reportados)
+            or is_bde_schema_ref(instance.schema_ref_href)
+        )
+        if use_eurofiling_indicators and instance.filing_indicators:
             fi_wrapper = etree.SubElement(
                 root, f"{{{FILING_IND_NS}}}fIndicators"
             )
