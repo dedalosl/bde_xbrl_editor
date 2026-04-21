@@ -57,21 +57,13 @@ def _is_remote(href: str) -> bool:
 
 
 def _should_skip_linkbase(path: Path) -> bool:
-    """Return True for validation-message linkbases we do not consume.
+    """Return True when a linkbase should be excluded from the DTS.
 
-    FINREP validation packages contain thousands of ``vr-*-err-*`` and
-    ``vr-*-lab-*`` XML linkbases that only carry human-readable validation
-    messages. The loader currently parses formula/assertion linkbases directly
-    and does not use these message resources, so discovering them balloons the
-    DTS without changing the loaded taxonomy structure.
+    Validation message linkbases are now consumed by the formula loader in
+    order to render taxonomy-defined validation messages, so they must remain
+    part of the discovered DTS.
     """
-    name = path.name.lower()
-    return (
-        path.suffix.lower() == ".xml"
-        and "val" in path.parts
-        and name.startswith("vr-")
-        and ("-err-" in name or "-lab-" in name)
-    )
+    return False
 
 
 def _should_follow_locators(path: Path) -> bool:
@@ -89,27 +81,36 @@ def _should_follow_locators(path: Path) -> bool:
 def _should_parse_linkbase_for_discovery(path: Path) -> bool:
     """Return True when the linkbase may contribute more DTS edges.
 
-    Validation XML linkbases under ``.../val/...`` are already referenced
-    directly from their companion validation XSDs. We still keep them in the
-    discovered DTS, but we do not need to recursively inspect them during
-    discovery because the loader consumes them later by path.
+    Validation linkbases under ``.../val/...`` must still be inspected during
+    discovery: BDE / Eurofiling validation packages reference assertion-set
+    aggregator linkbases (``aset-*.xml``) from the entry-point XSD, and those
+    aggregators only point to the actual rule files (``vr-*.xml`` containing
+    ``va:valueAssertion`` resources) via ``link:loc`` locators. Skipping the
+    locator traversal here would leave the formula assertions out of the DTS
+    and surface them as "No formula assertions in this taxonomy" in the UI.
+
+    Per-rule message linkbases (``vr-*-err-*.xml`` / ``vr-*-lab-*.xml``) are
+    still not traversed through their locators by ``_should_follow_locators``
+    to keep discovery fast, but they remain in the DTS so their resources can
+    be parsed later by the taxonomy loader.
     """
-    return "val" not in path.parts and _should_follow_locators(path)
+    return _should_follow_locators(path)
 
 
 def _catalog_path_candidates(local_root: Path, rel: str) -> list[Path]:
     """Return local-catalog candidate paths for a remote href suffix.
 
-    Banco de Espana instance/taxonomy URLs sometimes include an extra ``/fr/``
-    segment (for example ``/es/fr/xbrl/...``) while the local cache stores the
-    same files under ``/es/xbrl/...``.  Try the direct mapping first, then this
-    normalized variant as a fallback.
+    Banco de España taxonomy URLs sometimes include an extra ``/fr/`` segment
+    (for example ``/es/fr/xbrl/...`` or ``/es/fr/esrs/...``) while the local
+    cache stores the same files without that segment (``/es/xbrl/...`` or
+    ``/es/esrs/...``).  Try the direct mapping first, then a normalized
+    variant with the ``/fr/`` segment removed as a fallback.
     """
     rel = rel.lstrip("/")
     candidates = [(local_root / rel).resolve()]
 
     parts = Path(rel).parts
-    if len(parts) >= 3 and parts[1] == "fr" and parts[2] == "xbrl":
+    if len(parts) >= 3 and parts[1] == "fr":
         alt_rel = Path(parts[0], *parts[2:])
         alt_candidate = (local_root / alt_rel).resolve()
         if alt_candidate not in candidates:

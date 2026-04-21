@@ -30,6 +30,7 @@ from bde_xbrl_editor.taxonomy.models import (
     ValueAssertionDefinition,
 )
 from bde_xbrl_editor.validation import InstanceValidator, ValidationSeverity
+from bde_xbrl_editor.validation.models import ValidationStatus
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -122,8 +123,8 @@ class TestValueAssertionIntegration:
             test_xpath=test_xpath,
         )
 
-    def test_passing_value_assertion_produces_no_findings(self):
-        """true() expression always passes — no findings expected."""
+    def test_passing_value_assertion_produces_pass_result(self):
+        """true() expression always passes — a PASS result is recorded."""
         assertion = self._make_assertion("true()")
         taxonomy = _make_taxonomy((assertion,))
         ctx = _make_context()
@@ -133,7 +134,8 @@ class TestValueAssertionIntegration:
         report = InstanceValidator(taxonomy=taxonomy).validate_sync(instance)
 
         formula_findings = [f for f in report.findings if f.source == "formula"]
-        assert len(formula_findings) == 0
+        assert len(formula_findings) == 1
+        assert formula_findings[0].status == ValidationStatus.PASS
 
     def test_failing_value_assertion_produces_finding(self):
         """false() expression always fails — one finding with the assertion's rule_id."""
@@ -227,7 +229,7 @@ class TestExistenceAssertionIntegration:
         )
 
     def test_fact_present_passes(self):
-        """When matching fact exists, existence assertion passes — no findings."""
+        """When matching fact exists, existence assertion records a PASS result."""
         assertion = self._make_assertion()
         taxonomy = _make_taxonomy((assertion,))
         ctx = _make_context()
@@ -236,7 +238,9 @@ class TestExistenceAssertionIntegration:
 
         report = InstanceValidator(taxonomy=taxonomy).validate_sync(instance)
 
-        assert not any(f.rule_id == "ea:revenue-must-exist" for f in report.findings)
+        matching = [f for f in report.findings if f.rule_id == "ea:revenue-must-exist"]
+        assert len(matching) == 1
+        assert matching[0].status == ValidationStatus.PASS
 
     def test_no_matching_fact_fails(self):
         """When no matching fact exists, existence assertion produces a finding."""
@@ -316,8 +320,8 @@ class TestConsistencyAssertionIntegration:
             absolute_radius=absolute_radius,
         )
 
-    def test_matching_values_produces_no_findings(self):
-        """When formula result matches fact value exactly, no finding."""
+    def test_matching_values_produces_pass_result(self):
+        """When formula result matches fact value exactly, a PASS result is recorded."""
         # total = 1000 + 500 = 1500 and fact.total = 1500 → passes
         assertion = self._make_assertion("$revenue + $cost")
         taxonomy = _make_taxonomy((assertion,))
@@ -331,7 +335,9 @@ class TestConsistencyAssertionIntegration:
 
         report = InstanceValidator(taxonomy=taxonomy).validate_sync(instance)
 
-        assert not any(f.rule_id == "ca:total-equals-revenue-plus-cost" for f in report.findings)
+        matching = [f for f in report.findings if f.rule_id == "ca:total-equals-revenue-plus-cost"]
+        assert len(matching) == 1
+        assert matching[0].status == ValidationStatus.PASS
 
     def test_mismatched_values_produces_finding(self):
         """When formula result differs from fact value, a finding is produced."""
@@ -366,7 +372,9 @@ class TestConsistencyAssertionIntegration:
 
         report = InstanceValidator(taxonomy=taxonomy).validate_sync(instance)
 
-        assert not any(f.rule_id == "ca:total-equals-revenue-plus-cost" for f in report.findings)
+        matching = [f for f in report.findings if f.rule_id == "ca:total-equals-revenue-plus-cost"]
+        assert len(matching) == 1
+        assert matching[0].status == ValidationStatus.PASS
 
     def test_outside_absolute_radius_fails(self):
         """Difference outside absolute_radius → finding."""
@@ -418,7 +426,7 @@ class TestMixedAssertions:
     """Multiple assertions of different types evaluated together."""
 
     def test_mixed_pass_and_fail(self):
-        """Value assertion passes while existence assertion fails → only ea finding."""
+        """Value assertion passes while existence assertion fails → PASS and FAIL rows exist."""
         va = ValueAssertionDefinition(
             assertion_id="va:always-pass",
             label=None,
@@ -444,9 +452,9 @@ class TestMixedAssertions:
 
         report = InstanceValidator(taxonomy=taxonomy).validate_sync(instance)
 
-        rule_ids = {f.rule_id for f in report.findings}
-        assert "va:always-pass" not in rule_ids
-        assert "ea:missing-concept" in rule_ids
+        statuses = {f.rule_id: f.status for f in report.findings}
+        assert statuses["va:always-pass"] == ValidationStatus.PASS
+        assert statuses["ea:missing-concept"] == ValidationStatus.FAIL
 
     def test_no_assertions_always_passes(self):
         """Empty FormulaAssertionSet → formula engine returns no findings."""

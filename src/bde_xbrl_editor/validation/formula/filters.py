@@ -8,6 +8,7 @@ from decimal import Decimal, InvalidOperation
 from bde_xbrl_editor.instance.models import Fact, XbrlInstance
 from bde_xbrl_editor.taxonomy.models import (
     BooleanFilterDefinition,
+    CustomFunctionDefinition,
     DimensionFilter,
     FactVariableDefinition,
     XPathFilterDefinition,
@@ -18,6 +19,7 @@ def apply_filters(
     facts: list[Fact],
     variable_def: FactVariableDefinition,
     instance: XbrlInstance,
+    custom_functions: tuple[CustomFunctionDefinition, ...] = (),
 ) -> list[Fact]:
     """Return the subset of facts that satisfy all filters in variable_def.
 
@@ -80,11 +82,19 @@ def apply_filters(
 
     # Boolean filters (bf:andFilter / bf:orFilter)
     for bf in variable_def.boolean_filters:
-        result = [f for f in result if _passes_boolean_filter(f, bf, instance)]
+        result = [
+            f for f in result
+            if _passes_boolean_filter(f, bf, instance, custom_functions)
+        ]
 
     # XPath filters (gf:general test=, pf:period test=)
     if variable_def.xpath_filters:
-        result = _apply_xpath_filters(result, variable_def.xpath_filters, instance)
+        result = _apply_xpath_filters(
+            result,
+            variable_def.xpath_filters,
+            instance,
+            custom_functions=custom_functions,
+        )
 
     return result
 
@@ -109,6 +119,7 @@ def _passes_boolean_filter(
     fact: Fact,
     bf: BooleanFilterDefinition,
     instance: XbrlInstance,
+    custom_functions: tuple[CustomFunctionDefinition, ...] = (),
 ) -> bool:
     """Return True if *fact* satisfies the boolean filter tree rooted at *bf*."""
     child_results: list[bool] = []
@@ -116,9 +127,14 @@ def _passes_boolean_filter(
         if isinstance(child, DimensionFilter):
             child_results.append(_passes_dim_filter(fact, child, instance))
         elif isinstance(child, BooleanFilterDefinition):
-            child_results.append(_passes_boolean_filter(fact, child, instance))
+            child_results.append(_passes_boolean_filter(fact, child, instance, custom_functions))
         elif isinstance(child, XPathFilterDefinition):
-            passed_list = _apply_xpath_filters([fact], (child,), instance)  # type: ignore[arg-type]
+            passed_list = _apply_xpath_filters(
+                [fact],
+                (child,),
+                instance,
+                custom_functions=custom_functions,
+            )  # type: ignore[arg-type]
             child_results.append(bool(passed_list))
 
     if not child_results:
@@ -135,6 +151,7 @@ def _apply_xpath_filters(
     facts: list[Fact],
     xpath_filters: tuple,
     instance: XbrlInstance,
+    custom_functions: tuple[CustomFunctionDefinition, ...] = (),
 ) -> list[Fact]:
     """Apply each XPath filter expression to every candidate fact.
 
@@ -170,13 +187,18 @@ def _apply_xpath_filters(
             "_context": ctx_obj,
             "_unit": unit_obj,
             "_instance": instance,
+            "_custom_functions": custom_functions,
         })
 
         try:
             fact_passes = True
             for xf in xpath_filters:
                 with contextlib.suppress(Exception):
-                    parser = build_formula_parser(xf.namespaces)
+                    parser = build_formula_parser(
+                        xf.namespaces,
+                        custom_functions=custom_functions,
+                        expression_hints=(xf.xpath_expr,),
+                    )
                     token = parser.parse(xf.xpath_expr)
                     xp_ctx = elementpath.XPathContext(root=None, item=item_value)
                     result = list(token.select(xp_ctx))

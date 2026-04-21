@@ -203,6 +203,26 @@ def _instance_with_tables(*table_ids: str) -> SimpleNamespace:
     )
 
 
+def _instance_with_filing_indicators(*template_ids: str) -> SimpleNamespace:
+    return SimpleNamespace(
+        schema_ref_href="http://www.bde.es/example.xsd",
+        entity=SimpleNamespace(identifier="ES0001", scheme="http://example.com/entity"),
+        period=SimpleNamespace(period_type="instant", instant_date=date(2024, 12, 31)),
+        filing_indicators=[SimpleNamespace(template_id=template_id, filed=True) for template_id in template_ids],
+        included_table_ids=list(template_ids),
+        facts=[],
+        contexts={},
+        bde_preambulo=BdePreambulo(
+            context_ref="cBasico",
+            estados_reportados=[
+                BdeEstadoReportado(codigo=template_id, blanco=False, context_ref="cBasico")
+                for template_id in template_ids
+            ],
+        ),
+        dimensional_configs={},
+    )
+
+
 def _instance_with_z_usage(
     table_id: str,
     dimension_qname: QName,
@@ -226,6 +246,44 @@ def _instance_with_z_usage(
         },
         bde_preambulo=None,
     )
+
+
+@pytest.mark.qt
+def test_instance_panel_data_presence_checks_only_active_z_slice(qtbot, monkeypatch) -> None:
+    table = _table("es_tFI_20-4", "Geo assets", table_code="4530")
+    taxonomy = _taxonomy_with_tables(table)
+    dim_qname = QName(namespace="http://example.com/dim", local_name="qOOR", prefix="dim")
+    member_qname = QName(namespace="http://example.com/mem", local_name="ES", prefix="mem")
+    instance = _instance_with_z_usage(table.table_id, dim_qname, member_qname)
+
+    calls: list[tuple[int, dict[QName, QName] | None]] = []
+
+    class _FakeEngine:
+        def __init__(self, _taxonomy) -> None:
+            pass
+
+        def compute(self, _table, instance=None, z_index=0, z_constraints=None):
+            calls.append((z_index, z_constraints))
+            return SimpleNamespace(
+                body=[[SimpleNamespace(fact_value="1")]],
+                z_members=[object(), object(), object()],
+            )
+
+    monkeypatch.setattr(
+        "bde_xbrl_editor.table_renderer.layout_engine.TableLayoutEngine",
+        _FakeEngine,
+    )
+    monkeypatch.setattr(
+        "bde_xbrl_editor.ui.widgets.xbrl_table_view._derive_initial_z_constraints",
+        lambda _table, _taxonomy, _instance, layout=None: {dim_qname: member_qname},
+    )
+
+    panel = _InstancePanel()
+    qtbot.addWidget(panel)
+    presence = panel._compute_table_data_presence(instance, taxonomy, [table])
+
+    assert presence == {table.table_id: True}
+    assert calls == [(0, {dim_qname: member_qname})]
 
 
 @pytest.mark.qt
@@ -257,6 +315,55 @@ def test_instance_panel_shows_table_codes_status_and_search(qtbot, monkeypatch) 
     panel._table_search.setText("0011")
     qtbot.waitUntil(lambda: panel._table_list.count() == 1, timeout=1000)
     assert "Coberturas" in panel._table_list.item(0).text()
+
+
+@pytest.mark.qt
+def test_instance_panel_matches_b_table_indicator_to_t_table(qtbot, monkeypatch) -> None:
+    table = _table("es_tFI_20-4", "Geo assets", table_code="4530")
+    taxonomy = _taxonomy_with_tables(table)
+    instance = _instance_with_filing_indicators("es_bFI_20-4")
+
+    monkeypatch.setattr(
+        _InstancePanel,
+        "_compute_table_data_presence",
+        staticmethod(lambda _instance, _taxonomy, _tables: {table.table_id: False}),
+    )
+
+    panel = _InstancePanel()
+    qtbot.addWidget(panel)
+    panel.show()
+    panel.populate(instance, taxonomy)
+
+    assert panel._table_list.count() == 1
+    assert "es_tFI_20-4" in panel._table_list.item(0).text()
+    assert "Geo assets" in panel._table_list.item(0).text()
+
+
+@pytest.mark.qt
+def test_instance_panel_shows_non_filed_taxonomy_tables(qtbot, monkeypatch) -> None:
+    filed_table = _table("es_tF1_10", "Derivados", table_code="0010")
+    non_filed_table = _table("es_tF1_11", "Coberturas", table_code="0011")
+    taxonomy = _taxonomy_with_tables(filed_table, non_filed_table)
+    instance = _instance_with_filing_indicators("0010")
+
+    monkeypatch.setattr(
+        _InstancePanel,
+        "_compute_table_data_presence",
+        staticmethod(lambda _instance, _taxonomy, _tables: {
+            filed_table.table_id: True,
+            non_filed_table.table_id: False,
+        }),
+    )
+
+    panel = _InstancePanel()
+    qtbot.addWidget(panel)
+    panel.show()
+    panel.populate(instance, taxonomy)
+
+    assert panel._table_list.count() == 2
+    table_texts = [panel._table_list.item(i).text() for i in range(panel._table_list.count())]
+    assert any("es_tF1_10" in text for text in table_texts)
+    assert any("es_tF1_11" in text for text in table_texts)
 
 
 @pytest.mark.qt

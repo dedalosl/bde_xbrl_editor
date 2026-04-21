@@ -186,3 +186,19 @@ class TestFactMapper:
         assert result.matched
         assert result.fact_value == "321"
         assert result.duplicate_count == 1
+
+    def test_rebuilds_index_when_instance_object_changes(self):
+        concept = _qn("Assets")
+        coord = CellCoordinate(concept=concept)
+
+        taxonomy = MagicMock()
+        mapper = FactMapper(taxonomy)
+
+        instance_a = _make_instance([_make_fact(concept, value="100")], {"ctx1": _make_context()})
+        instance_b = _make_instance([_make_fact(concept, value="200")], {"ctx1": _make_context()})
+
+        result_a = mapper.match(coord, instance_a)
+        result_b = mapper.match(coord, instance_b)
+
+        assert result_a.matched and result_a.fact_value == "100"
+        assert result_b.matched and result_b.fact_value == "200"

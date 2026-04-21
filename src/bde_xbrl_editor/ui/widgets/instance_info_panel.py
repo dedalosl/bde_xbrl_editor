@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+
 from bde_xbrl_editor.ui import theme
 
 if TYPE_CHECKING:
@@ -159,15 +160,12 @@ class InstanceInfoPanel(QFrame):
             fi_texts.append(f"{status} {fi.template_id}")
         self._fi_label.setText("\n".join(fi_texts) if fi_texts else "None")
 
-        # Tables — show only filed tables that exist in the taxonomy
-        filed_ids = {fi.template_id for fi in instance.filing_indicators if fi.filed}
+        # Tables — show the taxonomy table list for the loaded instance
         for table in taxonomy.tables:
-            table_code = getattr(table, "table_code", None) or ""
-            if table.table_id in filed_ids or table_code in filed_ids or not filed_ids:
-                item = QListWidgetItem(f"{table.table_id}\n{table.label}")
-                item.setData(0x0100, table.table_id)  # Qt.UserRole = 0x0100
-                self._table_list.addItem(item)
-                self._table_map[table.table_id] = table
+            item = QListWidgetItem(f"{table.table_id}\n{table.label}")
+            item.setData(0x0100, table.table_id)  # Qt.UserRole = 0x0100
+            self._table_list.addItem(item)
+            self._table_map[table.table_id] = table
 
     def select_first_table(self) -> None:
         """Select and emit the first table in the list, if any."""

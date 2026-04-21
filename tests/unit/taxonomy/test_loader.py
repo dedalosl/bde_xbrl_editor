@@ -6,12 +6,155 @@ from pathlib import Path
 
 import pytest
 
+from bde_xbrl_editor.taxonomy.linkbases.formula import (
+    linkbase_contains_formula_assertions,
+    parse_assertion_table_mappings,
+    parse_formula_linkbase,
+)
 from bde_xbrl_editor.taxonomy.loader import (
     _classify_linkbases,
     _run_path_jobs,
     _schema_parse_workers,
+    _sniff_linkbase_type,
 )
 from bde_xbrl_editor.taxonomy.models import TaxonomyParseError
+
+
+def test_sniff_linkbase_calculation_stem_does_not_use_formula_bucket() -> None:
+    """Filename heuristics no longer expose a ``formula`` bucket — only structural detection."""
+    assert _sniff_linkbase_type(Path("/dts/my-formula-calculation.xml")) == "calc"
+
+
+def test_linkbase_contains_formula_assertions_detects_validation_assertion_set(
+    tmp_path: Path,
+) -> None:
+    """Generic linkbase with ``validation:assertionSet`` (XBRL Formula / Validation packaging)."""
+    lb = tmp_path / "arbitrary-name.xml"
+    lb.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:gen="http://xbrl.org/2008/generic"
+  xmlns:validation="http://xbrl.org/2008/validation"
+  xmlns:xlink="http://www.w3.org/1999/xlink">
+  <gen:link xlink:type="extended" xlink:role="http://www.xbrl.org/2008/role/link">
+    <validation:assertionSet xlink:type="resource" xlink:label="aset" id="set1"/>
+  </gen:link>
+</link:linkbase>
+""",
+        encoding="utf-8",
+    )
+    assert linkbase_contains_formula_assertions(lb) is True
+
+
+def test_linkbase_contains_formula_assertions_detects_assertion_sets_2_0_pwd(
+    tmp_path: Path,
+) -> None:
+    """Assertion Sets 2.0 PWD — Table 1 ``as`` namespace (assertionSet resource)."""
+    lb = tmp_path / "assertion-sets-packaging.xml"
+    lb.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:gen="http://xbrl.org/2008/generic"
+  xmlns:as="http://xbrl.org/PWD/2017-05-04/assertion-sets-2.0"
+  xmlns:xlink="http://www.w3.org/1999/xlink">
+  <gen:link xlink:type="extended" xlink:role="http://www.xbrl.org/2008/role/link">
+    <as:assertionSet name="eg:Example" xlink:type="resource" xlink:label="s1"/>
+  </gen:link>
+</link:linkbase>
+""",
+        encoding="utf-8",
+    )
+    assert linkbase_contains_formula_assertions(lb) is True
+
+
+def test_linkbase_contains_formula_assertions_finds_assertion_after_many_nodes(
+    tmp_path: Path,
+) -> None:
+    """Tag-filtered iterparse must not miss assertions buried after many other elements."""
+    lb = tmp_path / "heavy-preamble.xml"
+    locs = "\n".join(f'  <link:loc xlink:type="locator" xlink:href="x.xsd#c{i}" xlink:label="l{i}"/>' for i in range(4000))
+    lb.write_text(
+        f'''<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:gen="http://xbrl.org/2008/generic"
+  xmlns:va="http://xbrl.org/2008/assertion/value"
+  xmlns:xlink="http://www.w3.org/1999/xlink">
+  <gen:link xlink:type="extended" xlink:role="http://www.xbrl.org/2008/role/link">
+{locs}
+    <va:valueAssertion xlink:type="resource" xlink:label="a1" id="a1" test="true()"/>
+  </gen:link>
+</link:linkbase>
+''',
+        encoding="utf-8",
+    )
+    assert linkbase_contains_formula_assertions(lb) is True
+
+
+def test_parse_value_assertion_uses_xlink_label_when_id_absent(tmp_path: Path) -> None:
+    lb = tmp_path / "label-only-assertion.xml"
+    lb.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:gen="http://xbrl.org/2008/generic"
+  xmlns:va="http://xbrl.org/2008/assertion/value"
+  xmlns:xlink="http://www.w3.org/1999/xlink">
+  <gen:link xlink:type="extended" xlink:role="http://www.xbrl.org/2008/role/link">
+    <va:valueAssertion xlink:type="resource" xlink:label="rule-A" test="true()"/>
+  </gen:link>
+</link:linkbase>
+""",
+        encoding="utf-8",
+    )
+    fas = parse_formula_linkbase(lb)
+    assert len(fas.assertions) == 1
+    assert fas.assertions[0].assertion_id == "rule-A"
+
+
+def test_parse_assertion_table_mappings_resolves_applies_to_table(tmp_path: Path) -> None:
+    lb = tmp_path / "assertion-set.xml"
+    lb.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:gen="http://xbrl.org/2008/generic"
+  xmlns:validation="http://xbrl.org/2008/validation"
+  xmlns:xlink="http://www.w3.org/1999/xlink">
+  <gen:link xlink:type="extended" xlink:role="http://www.xbrl.org/2003/role/link">
+    <validation:assertionSet xlink:type="resource" xlink:label="assertionSet" id="assertionSet1"/>
+    <link:loc xlink:type="locator" xlink:href="../../tab/fi_40-1-rend.xml#es_tFI_40-1" xlink:label="table_loc"/>
+    <link:loc xlink:type="locator" xlink:href="vr-v4019_a.xml#es_v4019_a" xlink:label="assertion_loc"/>
+    <gen:arc xlink:type="arc"
+      xlink:arcrole="http://www.eurofiling.info/xbrl/arcrole/applies-to-table"
+      xlink:from="assertionSet"
+      xlink:to="table_loc"/>
+    <gen:arc xlink:type="arc"
+      xlink:arcrole="http://xbrl.org/arcrole/2008/assertion-set"
+      xlink:from="assertionSet"
+      xlink:to="assertion_loc"/>
+  </gen:link>
+</link:linkbase>
+""",
+        encoding="utf-8",
+    )
+
+    assert parse_assertion_table_mappings(lb) == {"es_v4019_a": "es_tFI_40-1"}
+
+
+def test_linkbase_contains_formula_assertions_detects_value_assertion(tmp_path: Path) -> None:
+    lb = tmp_path / "nested-packaging.xml"
+    lb.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:gen="http://xbrl.org/2008/generic"
+  xmlns:va="http://xbrl.org/2008/assertion/value"
+  xmlns:xlink="http://www.w3.org/1999/xlink">
+  <gen:link xlink:type="extended" xlink:role="http://www.xbrl.org/2008/role/link">
+    <va:valueAssertion xlink:type="resource" xlink:label="v1" id="a1" test="true()"/>
+  </gen:link>
+</link:linkbase>
+""",
+        encoding="utf-8",
+    )
+    assert linkbase_contains_formula_assertions(lb) is True
 
 
 def test_classify_linkbases_preserves_order_within_each_type() -> None:
@@ -22,7 +165,7 @@ def test_classify_linkbases_preserves_order_within_each_type() -> None:
         Path("/tmp/definition.xml"),
         Path("/tmp/labels-gen.xml"),
         Path("/tmp/rendering-rend.xml"),
-        Path("/tmp/formula/formula.xml"),
+        Path("/tmp/formula/value-assertions.xml"),
     ]
 
     classified = _classify_linkbases(linkbases)
@@ -33,7 +176,7 @@ def test_classify_linkbases_preserves_order_within_each_type() -> None:
     assert classified["def"] == [Path("/tmp/definition.xml")]
     assert classified["generic"] == [Path("/tmp/labels-gen.xml")]
     assert classified["table"] == [Path("/tmp/rendering-rend.xml")]
-    assert classified["formula"] == [Path("/tmp/formula/formula.xml")]
+    assert classified["unknown"] == [Path("/tmp/formula/value-assertions.xml")]
 
 
 def test_schema_parse_workers_is_bounded() -> None:

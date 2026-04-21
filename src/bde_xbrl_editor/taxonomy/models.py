@@ -119,6 +119,9 @@ class Concept:
     nillable: bool = True
     substitution_group: QName | None = None
     xml_id: str | None = None  # @id attribute from the XSD element declaration
+    # True when the item type is xbrli:monetaryItemType or a restriction/extension
+    # thereof (used for ISO 4217 unit validation).
+    monetary_item_type: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -134,6 +137,42 @@ class Label:
     role: str
     source: Literal["standard", "generic"] = "standard"
     priority: int = 0
+
+
+@dataclass(frozen=True)
+class AssertionTextResource:
+    """A label or message resource attached to a formula assertion."""
+
+    text: str
+    language: str
+    role: str
+    arcrole: str
+    priority: int = 0
+    namespaces: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class CustomFunctionStep:
+    """A single XPath step in a linkbase-defined custom function implementation."""
+
+    expression: str
+    name: str | None = None
+    is_output: bool = False
+
+
+@dataclass(frozen=True)
+class CustomFunctionDefinition:
+    """A custom function declared via variable:function + cfi:implementation."""
+
+    name: str
+    namespace: str
+    local_name: str
+    prefix: str | None
+    input_names: tuple[str, ...]
+    input_types: tuple[str, ...] = field(default_factory=tuple)
+    output_type: str | None = None
+    steps: tuple[CustomFunctionStep, ...] = field(default_factory=tuple)
+    namespaces: dict[str, str] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------
@@ -356,6 +395,10 @@ class FormulaAssertion:
     abstract: bool
     variables: tuple[FactVariableDefinition, ...]
     precondition_xpath: str | None
+    table_id: str | None = None
+    table_label: str | None = None
+    label_resources: tuple[AssertionTextResource, ...] = field(default_factory=tuple)
+    message_resources: tuple[AssertionTextResource, ...] = field(default_factory=tuple)
     namespaces: dict[str, str] = field(default_factory=dict)
 
 
@@ -406,6 +449,7 @@ class TaxonomyStructure:
     tables: Sequence[TableDefinitionPWD]
     formula_linkbase_path: Path | None = None
     formula_assertion_set: FormulaAssertionSet = field(default_factory=FormulaAssertionSet)
+    custom_functions: tuple[CustomFunctionDefinition, ...] = field(default_factory=tuple)
     # Files discovered during DTS traversal (populated by TaxonomyLoader)
     schema_files: tuple[Path, ...] = field(default_factory=tuple)
     linkbase_files: tuple[Path, ...] = field(default_factory=tuple)

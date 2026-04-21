@@ -1066,6 +1066,7 @@ class MainWindow(QMainWindow):
         from bde_xbrl_editor.ui.widgets.validation_panel import ValidationWorker  # noqa: PLC0415
 
         self._validate_action.setEnabled(False)
+        self._validation_panel.clear()
         self._validation_panel.show_progress(0, 1, "Starting validation…")
 
         self._validation_worker = ValidationWorker(
@@ -1079,6 +1080,9 @@ class MainWindow(QMainWindow):
         self._validation_worker.progress_changed.connect(
             self._on_validation_progress, Qt.ConnectionType.QueuedConnection
         )
+        self._validation_worker.findings_ready.connect(
+            self._on_validation_findings_ready, Qt.ConnectionType.QueuedConnection
+        )
         self._validation_worker.validation_completed.connect(
             self._on_validation_done, Qt.ConnectionType.QueuedConnection
         )
@@ -1090,6 +1094,10 @@ class MainWindow(QMainWindow):
     def _on_validation_progress(self, current: int, total: int, message: str) -> None:
         if self._validation_panel:
             self._validation_panel.show_progress(current, total, message)
+
+    def _on_validation_findings_ready(self, findings) -> None:
+        if self._validation_panel:
+            self._validation_panel.append_findings(tuple(findings))
 
     def _on_validation_done(self, report) -> None:
         self._cleanup_validation_thread()

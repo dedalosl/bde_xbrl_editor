@@ -58,9 +58,41 @@ def test_valid_with_error_findings_fails() -> None:
     executor = _make_executor()
     expected = ExpectedOutcome(outcome_type=ExpectedOutcomeType.VALID)
     findings = (_error_finding("xbrl:someError"),)
-    outcome, codes = executor._match_outcome(expected, findings, None)
+    outcome, codes = executor._match_outcome(expected, findings, None, None)
     assert outcome == TestResultOutcome.FAIL
     assert "xbrl:someError" in codes
+
+
+def test_formula_valid_ignores_s_equal_structural_and_calc_errors() -> None:
+    """Formula suite VALID: duplicate-fact / summation-inconsistent are out of scope."""
+    executor = _make_executor()
+    expected = ExpectedOutcome(outcome_type=ExpectedOutcomeType.VALID)
+    findings = (
+        ValidationFinding(
+            rule_id="structural:duplicate-fact",
+            severity=ValidationSeverity.ERROR,
+            message="dup",
+            source="structural",
+        ),
+        ValidationFinding(
+            rule_id="calculation:summation-inconsistent",
+            severity=ValidationSeverity.ERROR,
+            message="calc",
+            source="calculation",
+        ),
+    )
+    outcome, codes = executor._match_outcome(expected, findings, None, "formula")
+    assert outcome == TestResultOutcome.PASS
+    assert codes == ()
+
+
+def test_formula_valid_still_fails_on_other_structural_errors() -> None:
+    executor = _make_executor()
+    expected = ExpectedOutcome(outcome_type=ExpectedOutcomeType.VALID)
+    findings = (_error_finding("structural:unresolved-context-ref"),)
+    outcome, codes = executor._match_outcome(expected, findings, None, "formula")
+    assert outcome == TestResultOutcome.FAIL
+    assert "structural:unresolved-context-ref" in codes
 
 
 def test_valid_with_load_error_fails() -> None:

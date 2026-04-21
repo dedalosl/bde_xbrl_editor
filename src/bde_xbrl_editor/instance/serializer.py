@@ -216,6 +216,16 @@ def _build_unit_el(unit: XbrlUnit) -> etree._Element:
     unit_el = etree.Element(f"{{{XBRLI_NS}}}unit", attrib={"id": unit.unit_id})
     measure_el = etree.SubElement(unit_el, f"{{{XBRLI_NS}}}measure")
 
+    mq = unit.measure_qname
+    if mq is not None:
+        if mq.namespace == ISO4217_NS:
+            measure_el.text = f"iso4217:{mq.local_name}"
+        elif mq.namespace == XBRLI_NS:
+            measure_el.text = f"xbrli:{mq.local_name}"
+        else:
+            measure_el.text = str(mq) if mq.namespace else mq.local_name
+        return unit_el
+
     # Normalise measure URI to prefixed form if possible
     measure_uri = unit.measure_uri
     if measure_uri.startswith(ISO4217_NS + ":"):

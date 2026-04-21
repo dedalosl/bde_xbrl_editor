@@ -25,6 +25,7 @@ class ValidationReportExporter:
             f"Taxonomy  : {report.taxonomy_name} {report.taxonomy_version}",
             f"Timestamp : {report.run_timestamp.isoformat()}",
             f"Result    : {'PASSED' if report.passed else 'FAILED'}",
+            f"Passed    : {report.pass_count}",
             f"Errors    : {report.error_count}",
             f"Warnings  : {report.warning_count}",
             f"Formula   : {'available' if report.formula_linkbase_available else 'not available'}",
@@ -36,8 +37,16 @@ class ValidationReportExporter:
             lines.append("-" * 72)
             for finding in report.findings:
                 lines.append(
-                    f"[{finding.severity.value.upper()}] {finding.rule_id}: {finding.message}"
+                    f"[{finding.status.value.upper() if finding.status else 'FAIL'}"
+                    f"{'/' + finding.severity.value.upper() if finding.severity else ''}] "
+                    f"{finding.rule_id}: {finding.message}"
                 )
+                if finding.rule_label:
+                    lines.append(f"  Definition : {finding.rule_label}")
+                if finding.rule_message:
+                    lines.append(f"  Official Message : {finding.rule_message}")
+                if finding.evaluated_rule_message:
+                    lines.append(f"  Evaluated Message : {finding.evaluated_rule_message}")
                 if finding.table_label or finding.table_id:
                     lines.append(f"  Table   : {finding.table_label or finding.table_id}")
                 if finding.concept_qname:
@@ -81,13 +90,15 @@ class ValidationReportExporter:
                 "taxonomy": f"{report.taxonomy_name} {report.taxonomy_version}",
                 "run_timestamp": report.run_timestamp.isoformat(),
                 "passed": report.passed,
+                "pass_count": report.pass_count,
                 "error_count": report.error_count,
                 "warning_count": report.warning_count,
             },
             "findings": [
                 {
                     "rule_id": f.rule_id,
-                    "severity": f.severity.value,
+                    "severity": f.severity.value if f.severity is not None else None,
+                    "status": f.status.value,
                     "source": f.source,
                     "message": f.message,
                     "table_id": f.table_id,
@@ -98,6 +109,11 @@ class ValidationReportExporter:
                     "formula_assertion_type": f.formula_assertion_type,
                     "formula_expression": f.formula_expression,
                     "formula_operands_text": f.formula_operands_text,
+                    "rule_label": f.rule_label,
+                    "rule_label_role": f.rule_label_role,
+                    "rule_message": f.rule_message,
+                    "evaluated_rule_message": f.evaluated_rule_message,
+                    "rule_message_role": f.rule_message_role,
                     "formula_precondition": (
                         f.formula_precondition
                         if f.formula_precondition != "—"

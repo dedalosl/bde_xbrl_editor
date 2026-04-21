@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QEasingCurve, QVariantAnimation, Qt, Signal
+from PySide6.QtCore import QEasingCurve, Qt, QVariantAnimation, Signal
 from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
     QGraphicsOpacityEffect,
@@ -144,6 +144,23 @@ _TABLE_HAS_DATA_FG = QColor(theme.TEXT_MAIN)
 _TABLE_EMPTY_FG = QColor(theme.TEXT_SUBTLE)
 
 
+def _indicator_aliases(value: str) -> set[str]:
+    """Return equivalent filing-indicator spellings used by BDE/Eurofiling tables."""
+    if not value:
+        return set()
+
+    aliases = {value}
+    if value.startswith("es_t"):
+        aliases.add("es_b" + value[4:])
+    elif value.startswith("es_b"):
+        aliases.add("es_t" + value[4:])
+    elif value.startswith("t"):
+        aliases.add("b" + value[1:])
+    elif value.startswith("b"):
+        aliases.add("t" + value[1:])
+    return aliases
+
+
 def _table_identity(table: object) -> str:
     table_code = getattr(table, "table_code", None)
     table_id = getattr(table, "table_id", "")
@@ -165,13 +182,19 @@ def _table_matches_query(table: object, query: str) -> bool:
 def _table_is_filed(table: object, filed_ids: set[str]) -> bool:
     table_id = getattr(table, "table_id", "") or ""
     table_code = getattr(table, "table_code", None) or ""
-    return table_id in filed_ids or table_code in filed_ids
+    candidate_ids = _indicator_aliases(table_id)
+    if table_code:
+        candidate_ids.update(_indicator_aliases(table_code))
+    return bool(candidate_ids & filed_ids)
 
 
 def _table_matches_indicator(table: object, template_id: str) -> bool:
     table_id = getattr(table, "table_id", "") or ""
     table_code = getattr(table, "table_code", None) or ""
-    return template_id in {table_id, table_code}
+    table_ids = _indicator_aliases(table_id)
+    if table_code:
+        table_ids.update(_indicator_aliases(table_code))
+    return template_id in table_ids
 
 
 class _CollapsibleSection(QWidget):
@@ -722,12 +745,12 @@ class _DefinitionPanel(QWidget):
 
 class _InstancePanel(QWidget):
     """Panel showing instance metadata (entity, period, filing indicators) and
-    a table list filtered to the filed templates.
+    the taxonomy table list for the loaded instance.
 
     All three sections are collapsible via ``_CollapsibleSection``:
     - INSTANCE   — entity + period, expanded by default
     - FILING INDICATORS — template list, collapsed by default to save space
-    - TABLES     — filed-table list, expanded + stretchy (takes all remaining height)
+    - TABLES     — taxonomy table list, expanded + stretchy (takes all remaining height)
     """
 
     table_selected = Signal(object)  # TableDefinitionPWD
@@ -845,20 +868,11 @@ class _InstancePanel(QWidget):
         # Filing indicators
         self._populate_filing_indicators(instance, taxonomy)
 
-        # Tables — only filed ones (fall back to all if no indicators)
+        # Tables — show the full taxonomy list in instance mode, ordered by data presence.
         self._table_list.clear()
         self._table_map.clear()
         self._table_entries.clear()
-        filed_ids = {
-            fi.template_id
-            for fi in instance.filing_indicators  # type: ignore[union-attr]
-            if fi.filed
-        }
-        visible_tables = [
-            table
-            for table in taxonomy.tables  # type: ignore[union-attr]
-            if _table_is_filed(table, filed_ids) or not filed_ids
-        ]
+        visible_tables = list(taxonomy.tables)  # type: ignore[union-attr]
         data_presence = self._compute_table_data_presence(instance, taxonomy, visible_tables)
         self._table_entries = sorted(
             ((table, data_presence.get(table.table_id, False)) for table in visible_tables),
@@ -931,6 +945,7 @@ class _InstancePanel(QWidget):
 
         from bde_xbrl_editor.table_renderer.errors import TableLayoutError, ZIndexOutOfRangeError
         from bde_xbrl_editor.table_renderer.layout_engine import TableLayoutEngine
+        from bde_xbrl_editor.ui.widgets.xbrl_table_view import _derive_initial_z_constraints
 
         engine = TableLayoutEngine(taxonomy)  # type: ignore[arg-type]
         presence: dict[str, bool] = {}
@@ -938,14 +953,15 @@ class _InstancePanel(QWidget):
         for table in tables:
             has_data = False
             try:
-                layout = engine.compute(table, instance=instance)
-                layouts = [layout]
-                for z_index in range(1, len(layout.z_members)):
-                    layouts.append(engine.compute(table, instance=instance, z_index=z_index))
+                z_constraints = _derive_initial_z_constraints(table, taxonomy, instance)
+                layout = engine.compute(
+                    table,
+                    instance=instance,
+                    z_constraints=z_constraints or None,
+                )
                 has_data = any(
                     cell.fact_value is not None
-                    for computed in layouts
-                    for row in computed.body
+                    for row in layout.body
                     for cell in row
                 )
             except (TableLayoutError, ZIndexOutOfRangeError):

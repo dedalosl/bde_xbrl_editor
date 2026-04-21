@@ -33,6 +33,7 @@ from bde_xbrl_editor.instance.models import (
     XbrlInstance,
     XbrlUnit,
 )
+from bde_xbrl_editor.instance.s_equal import build_s_equal_key_from_xml_fragments
 from bde_xbrl_editor.taxonomy.models import QName
 
 if TYPE_CHECKING:
@@ -51,6 +52,7 @@ _XBRLI_INSTANT = f"{{{XBRLI_NS}}}instant"
 _XBRLI_START = f"{{{XBRLI_NS}}}startDate"
 _XBRLI_END = f"{{{XBRLI_NS}}}endDate"
 _XBRLI_MEASURE = f"{{{XBRLI_NS}}}measure"
+_XBRLI_DIVIDE = f"{{{XBRLI_NS}}}divide"
 _XBRLI_SCENARIO = f"{{{XBRLI_NS}}}scenario"
 _XBRLI_SEGMENT = f"{{{XBRLI_NS}}}segment"
 _XBRLDI_MEMBER = f"{{{XBRLDI_NS}}}explicitMember"
@@ -62,6 +64,20 @@ _LINK_FOOTNOTE_LINK = f"{{{LINK_NS}}}footnoteLink"
 _LINK_LOC = f"{{{LINK_NS}}}loc"
 _LINK_FOOTNOTE = f"{{{LINK_NS}}}footnote"
 _LINK_FOOTNOTE_ARC = f"{{{LINK_NS}}}footnoteArc"
+_LINK_DOCUMENTATION = f"{{{LINK_NS}}}documentation"
+_ARCROLE_FACT_FOOTNOTE = "http://www.xbrl.org/2003/arcrole/fact-footnote"
+_XLINK_LABEL = f"{{{XLINK_NS}}}label"
+_XLINK_FROM = f"{{{XLINK_NS}}}from"
+_XLINK_TO = f"{{{XLINK_NS}}}to"
+_XLINK_ARCROLE = f"{{{XLINK_NS}}}arcrole"
+_FOOTNOTE_LINK_ALLOWED_CHILD = frozenset(
+    {
+        _LINK_LOC,
+        _LINK_FOOTNOTE,
+        _LINK_FOOTNOTE_ARC,
+        _LINK_DOCUMENTATION,
+    }
+)
 
 # BDE IE_2008_02 preamble Clark-notation tags
 _BDE_ENTIDAD = f"{{{BDE_PBLO_NS}}}EntidadPresentadora"
@@ -107,6 +123,21 @@ def _catalog_path_candidates(local_root: Path, rel: str) -> list[Path]:
             candidates.append(alt_candidate)
 
     return candidates
+
+
+def _reject_xbrli_in_segment_or_scenario(
+    container: etree._Element, context_id: ContextId
+) -> None:
+    """XBRL 2.1: segment and scenario open content must not use xbrli:* elements."""
+    for el in container.iter():
+        if el is container:
+            continue
+        if isinstance(el.tag, str) and el.tag.startswith(f"{{{XBRLI_NS}}}"):
+            raise InstanceParseError(
+                "",
+                f"Illegal element in xbrli namespace inside segment or scenario "
+                f"of context '{context_id}' ({el.tag})",
+            )
 
 
 def _parse_date(text: str) -> date:
@@ -165,6 +196,7 @@ def _parse_context(el: etree._Element) -> XbrlContext:
     for container, _ce in _containers:
         if _ce == "segment":
             context_element = "segment"
+        _reject_xbrli_in_segment_or_scenario(container, context_id)
         # Explicit dimensions
         for member_el in container.findall(_XBRLDI_MEMBER):
             dim_str = member_el.get("dimension", "")
@@ -209,6 +241,22 @@ def _parse_context(el: etree._Element) -> XbrlContext:
                 except Exception:  # noqa: BLE001
                     pass
 
+    scenario_el = el.find(_XBRLI_SCENARIO)
+    segment_el = entity_el.find(_XBRLI_SEGMENT) if entity_el is not None else None
+    scenario_xml = (
+        etree.tostring(scenario_el, encoding="utf-8", with_tail=False)
+        if scenario_el is not None
+        else None
+    )
+    segment_xml = (
+        etree.tostring(segment_el, encoding="utf-8", with_tail=False)
+        if segment_el is not None
+        else None
+    )
+    s_equal_key = build_s_equal_key_from_xml_fragments(
+        entity, period, scenario_el, segment_el
+    )
+
     return XbrlContext(
         context_id=context_id,
         entity=entity,
@@ -216,15 +264,59 @@ def _parse_context(el: etree._Element) -> XbrlContext:
         dimensions=dimensions,
         context_element=context_element,  # type: ignore[arg-type]
         dim_containers=dim_containers,  # type: ignore[arg-type]
+        s_equal_key=s_equal_key,
+        scenario_xml=scenario_xml,
+        segment_xml=segment_xml,
     )
+
+
+def _parse_measure_qname(measure_el: etree._Element, measure_text: str) -> QName | None:
+    """Resolve the QName of an xbrli:measure element (prefix or Clark notation)."""
+    if not measure_text:
+        return None
+    if measure_text.startswith("{"):
+        return QName.from_clark(measure_text)
+    if ":" in measure_text:
+        return QName.from_clark(_resolve_prefixed_qname(measure_el, measure_text))
+    return QName(namespace="", local_name=measure_text)
 
 
 def _parse_unit(el: etree._Element) -> XbrlUnit:
     """Parse a single xbrli:unit element into an XbrlUnit."""
     unit_id: UnitId = el.get("id", "")
-    measure_el = el.find(_XBRLI_MEASURE)
-    measure_uri = (measure_el.text or "").strip() if measure_el is not None else ""
-    return XbrlUnit(unit_id=unit_id, measure_uri=measure_uri)
+    children = [c for c in el if isinstance(c.tag, str)]
+    has_divide = any(c.tag == _XBRLI_DIVIDE for c in children)
+    if has_divide:
+        return XbrlUnit(
+            unit_id=unit_id,
+            measure_uri="",
+            measure_qname=None,
+            unit_form="divide",
+            simple_measure_count=0,
+        )
+
+    direct_measures = [c for c in children if c.tag == _XBRLI_MEASURE]
+    count = len(direct_measures)
+    if count != 1:
+        joined = " ".join((m.text or "").strip() for m in direct_measures if (m.text or "").strip())
+        return XbrlUnit(
+            unit_id=unit_id,
+            measure_uri=joined,
+            measure_qname=None,
+            unit_form="simple",
+            simple_measure_count=count,
+        )
+
+    measure_el = direct_measures[0]
+    measure_uri = (measure_el.text or "").strip()
+    mq = _parse_measure_qname(measure_el, measure_uri)
+    return XbrlUnit(
+        unit_id=unit_id,
+        measure_uri=measure_uri,
+        measure_qname=mq,
+        unit_form="simple",
+        simple_measure_count=1,
+    )
 
 
 def _resolve_prefixed_qname(el: etree._Element, prefixed: str) -> str:
@@ -374,8 +466,19 @@ class InstanceParser:
         for footnote_link in root.findall(_LINK_FOOTNOTE_LINK):
             loc_labels: dict[str, str] = {}
             footnote_resources: set[str] = set()
+            for child_el in footnote_link:
+                if not isinstance(child_el.tag, str):
+                    continue
+                if (
+                    child_el.tag not in _FOOTNOTE_LINK_ALLOWED_CHILD
+                    and child_el.get(_XLINK_TYPE, "") == "locator"
+                ):
+                    footnote_errors.append(
+                        "Invalid locator in footnote extended link: only link:loc may "
+                        f"be used as an xlink:type='locator' child (found '{child_el.tag}')"
+                    )
             for loc_el in footnote_link.findall(_LINK_LOC):
-                label = loc_el.get("{http://www.w3.org/1999/xlink}label", "")
+                label = loc_el.get(_XLINK_LABEL, "")
                 href = loc_el.get(_XLINK_HREF, "")
                 if label and href:
                     loc_labels[label] = href
@@ -397,22 +500,35 @@ class InstanceParser:
                             f"link:loc xlink:href='{doc_part}#...' references external document (not allowed)"
                         )
             for fn_el in footnote_link.findall(_LINK_FOOTNOTE):
-                label = fn_el.get("{http://www.w3.org/1999/xlink}label", "")
+                label = fn_el.get(_XLINK_LABEL, "")
                 if label:
                     footnote_resources.add(label)
                 if fn_el.get("{http://www.w3.org/XML/1998/namespace}lang") is None:
                     footnote_errors.append("link:footnote is missing required xml:lang attribute")
+            endpoint_labels = set(loc_labels) | footnote_resources
             for arc_el in footnote_link.findall(_LINK_FOOTNOTE_ARC):
-                arc_from = arc_el.get("{http://www.w3.org/1999/xlink}from", "")
-                arc_to = arc_el.get("{http://www.w3.org/1999/xlink}to", "")
-                if arc_from and arc_from not in loc_labels:
-                    footnote_errors.append(
-                        f"link:footnoteArc xlink:from='{arc_from}' does not match any loc xlink:label in the same extended link"
-                    )
-                if arc_to:
-                    if arc_to not in footnote_resources:
+                arcrole = arc_el.get(_XLINK_ARCROLE, "")
+                arc_from = arc_el.get(_XLINK_FROM, "")
+                arc_to = arc_el.get(_XLINK_TO, "")
+                if arcrole == _ARCROLE_FACT_FOOTNOTE:
+                    if arc_from and arc_from not in loc_labels:
+                        footnote_errors.append(
+                            f"link:footnoteArc xlink:from='{arc_from}' does not match any loc xlink:label in the same extended link"
+                        )
+                    if arc_to and arc_to not in footnote_resources:
                         footnote_errors.append(
                             f"link:footnoteArc xlink:to='{arc_to}' does not match any footnote xlink:label in the same extended link"
+                        )
+                else:
+                    if arc_from and arc_from not in endpoint_labels:
+                        footnote_errors.append(
+                            f"link:footnoteArc xlink:from='{arc_from}' does not match any "
+                            "loc or footnote xlink:label in the same extended link"
+                        )
+                    if arc_to and arc_to not in endpoint_labels:
+                        footnote_errors.append(
+                            f"link:footnoteArc xlink:to='{arc_to}' does not match any "
+                            "loc or footnote xlink:label in the same extended link"
                         )
         if footnote_errors:
             raise InstanceParseError(
