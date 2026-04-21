@@ -875,10 +875,9 @@ class _InstancePanel(QWidget):
         self._table_entries.clear()
         visible_tables = list(taxonomy.tables)  # type: ignore[union-attr]
         data_presence = self._compute_table_data_presence(instance, taxonomy, visible_tables)
-        self._table_entries = sorted(
-            ((table, data_presence.get(table.table_id, False)) for table in visible_tables),
-            key=lambda entry: (not entry[1], (getattr(entry[0], "table_code", "") or ""), entry[0].table_id),
-        )
+        self._table_entries = [
+            (table, data_presence.get(table.table_id, False)) for table in visible_tables
+        ]
         self._table_search.blockSignals(True)
         self._table_search.clear()
         self._table_search.blockSignals(False)

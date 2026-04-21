@@ -1647,7 +1647,6 @@ class XbrlTableView(QFrame):
         self._add_open_row_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self._add_open_row_button.hide()
         self._add_open_row_button.clicked.connect(self._add_open_row)
-        status_col.addWidget(self._add_open_row_button, alignment=Qt.AlignmentFlag.AlignRight)
         header_layout.addLayout(status_col, stretch=0)
 
         self._outer_layout.addWidget(self._table_header)
@@ -2156,9 +2155,10 @@ class XbrlTableView(QFrame):
         self._editing_switch.setText(
             "Editing mode on" if self._editing_enabled and self._instance is not None else "Editing mode off"
         )
-        can_add_open_rows = self._instance is not None and self._editing_enabled and bool(self._open_row_candidates)
-        self._add_open_row_button.setVisible(can_add_open_rows)
-        self._add_open_row_button.setEnabled(can_add_open_rows)
+        # Open rows are added directly from the grid's placeholder cells; the
+        # header shortcut is intentionally removed from the editor chrome.
+        self._add_open_row_button.hide()
+        self._add_open_row_button.setEnabled(False)
 
     def _set_editing_enabled(self, enabled: bool) -> None:
         self._editing_enabled = bool(enabled) and self._instance is not None

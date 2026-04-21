@@ -661,6 +661,34 @@ def test_instance_panel_shows_non_filed_taxonomy_tables(qtbot, monkeypatch) -> N
 
 
 @pytest.mark.qt
+def test_instance_panel_preserves_taxonomy_table_order(qtbot, monkeypatch) -> None:
+    first_table = _table("es_tF1_11", "Coberturas", table_code="0011")
+    second_table = _table("es_tF1_10", "Derivados", table_code="0010")
+    taxonomy = _taxonomy_with_tables(first_table, second_table)
+    instance = _instance_with_filing_indicators("0010")
+
+    monkeypatch.setattr(
+        _InstancePanel,
+        "_compute_table_data_presence",
+        staticmethod(lambda _instance, _taxonomy, _tables: {
+            first_table.table_id: False,
+            second_table.table_id: True,
+        }),
+    )
+
+    panel = _InstancePanel()
+    qtbot.addWidget(panel)
+    panel.show()
+    panel.populate(instance, taxonomy)
+
+    assert panel._table_list.count() == 2
+    assert "es_tF1_11" in panel._table_list.item(0).text()
+    assert "Empty" in panel._table_list.item(0).text()
+    assert "es_tF1_10" in panel._table_list.item(1).text()
+    assert "Contains data" in panel._table_list.item(1).text()
+
+
+@pytest.mark.qt
 def test_instance_panel_edits_bde_filing_indicators_with_checkboxes(qtbot, monkeypatch) -> None:
     table_with_data = _table("es_tF1_10", "Derivados", table_code="0010")
     empty_table = _table("es_tF1_11", "Coberturas", table_code="0011")
@@ -937,16 +965,21 @@ def test_instance_view_can_add_dynamic_open_row(qtbot, monkeypatch) -> None:
     view.set_table(table, taxonomy, instance)
 
     qtbot.mouseClick(view._editing_switch, Qt.MouseButton.LeftButton)
-    assert view._add_open_row_button.isVisible()
+    assert view._add_open_row_button.isHidden()
 
-    qtbot.mouseClick(view._add_open_row_button, Qt.MouseButton.LeftButton)
+    model = view._body_view.model()
+    assert model.setData(
+        model.index(3, 0),
+        "{http://example.com/mem}MemberC",
+        Qt.ItemDataRole.EditRole,
+    )
 
     assert view._layout is not None
     labels = [row[0].label for row in view._layout.row_header.levels]
     assert labels[:3] == ["Dynamic section", "Member A row", "Member B row"]
     assert labels[3] in {"Member C", "mem:MemberC"}
     assert (
-        str(member_c)
+        "{http://example.com/mem}MemberC"
         in view._open_row_members_by_table[table.table_id][view._open_row_candidates[0]["signature"]]
     )
 

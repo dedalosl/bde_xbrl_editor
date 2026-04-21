@@ -11,7 +11,9 @@ from bde_xbrl_editor.taxonomy.linkbases.formula import (
     parse_assertion_table_mappings,
     parse_formula_linkbase,
 )
+from bde_xbrl_editor.taxonomy.linkbases.presentation import PresentationLinkbaseParseResult
 from bde_xbrl_editor.taxonomy.loader import (
+    _build_group_table_order,
     _classify_linkbases,
     _run_path_jobs,
     _schema_parse_workers,
@@ -177,6 +179,25 @@ def test_classify_linkbases_preserves_order_within_each_type() -> None:
     assert classified["generic"] == [Path("/tmp/labels-gen.xml")]
     assert classified["table"] == [Path("/tmp/rendering-rend.xml")]
     assert classified["unknown"] == [Path("/tmp/formula/value-assertions.xml")]
+
+
+def test_build_group_table_order_uses_arc_order_depth_first() -> None:
+    result = PresentationLinkbaseParseResult(
+        networks={},
+        group_table_children={
+            "group-root": [(2.0, "table_b"), (1.0, "table_a"), (3.0, "table_c")],
+            "table_b": [(1.0, "table_b_child")],
+        },
+        group_table_rend_fragments={"table_a", "table_b", "table_b_child", "table_c"},
+        group_table_root_fragment="group-root",
+    )
+
+    assert _build_group_table_order([result]) == {
+        "table_a": 0,
+        "table_b": 1,
+        "table_b_child": 2,
+        "table_c": 3,
+    }
 
 
 def test_schema_parse_workers_is_bounded() -> None:
