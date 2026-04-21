@@ -19,7 +19,7 @@ COL_MESSAGE = 2
 COL_TABLE = 3
 COL_CONCEPT = 4
 
-_HEADERS = ["Status", "Rule ID", "Message", "Table", "Concept"]
+_HEADERS = ["Status", "Rule ID", "Table", "Concept", "Message"]
 
 _COLOR_ERROR = QColor(200, 50, 50)
 _COLOR_WARNING = QColor(200, 150, 0)
@@ -91,7 +91,7 @@ class ValidationResultsModel(QStandardItemModel):
         concept_item = QStandardItem(concept_text)
         concept_item.setEditable(False)
 
-        self.appendRow([sev_item, rule_item, msg_item, table_item, concept_item])
+        self.appendRow([sev_item, rule_item, table_item, concept_item, msg_item])
 
 
 class ValidationFilterProxy(QSortFilterProxyModel):
