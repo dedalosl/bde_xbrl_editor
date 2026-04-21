@@ -28,6 +28,17 @@ _COLOR_PASS = QColor(34, 139, 34)
 SeverityFilterValue = ValidationSeverity | ValidationStatus | None
 
 
+def _format_table_text(finding: ValidationFinding) -> str:
+    """Return the display text for the table column."""
+    table_id = (finding.table_id or "").strip()
+    table_label = (finding.table_label or "").strip()
+    if table_label and (not table_id or table_label == table_id or table_id in table_label):
+        return table_label
+    if table_id and table_label:
+        return f"{table_label} ({table_id})"
+    return table_label or table_id
+
+
 class ValidationResultsModel(QStandardItemModel):
     """Flat list model backing the validation results tree view.
 
@@ -41,7 +52,15 @@ class ValidationResultsModel(QStandardItemModel):
 
     def populate(self, findings: tuple[ValidationFinding, ...]) -> None:
         """Replace all rows with findings from a ValidationReport."""
+        self.clear_findings()
+        self.append_findings(findings)
+
+    def clear_findings(self) -> None:
+        """Remove all result rows while keeping the header labels."""
         self.removeRows(0, self.rowCount())
+
+    def append_findings(self, findings: tuple[ValidationFinding, ...]) -> None:
+        """Append a batch of findings without replacing existing rows."""
         for finding in findings:
             self._append_finding(finding)
 
@@ -64,7 +83,7 @@ class ValidationResultsModel(QStandardItemModel):
         msg_item = QStandardItem(finding.message)
         msg_item.setEditable(False)
 
-        table_text = finding.table_label or finding.table_id or ""
+        table_text = _format_table_text(finding)
         table_item = QStandardItem(table_text)
         table_item.setEditable(False)
 

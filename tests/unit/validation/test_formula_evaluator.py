@@ -174,12 +174,16 @@ class TestValueAssertion:
         """A value assertion whose XPath test is 'true()' produces a PASS result row."""
         assertion = ValueAssertionDefinition(
             **_base_assertion_kwargs(assertion_id="VA_PASS"),
+            table_id="es_tFI_40-1",
+            table_label="0010  |  es_tFI_40-1",
             test_xpath="true()",
         )
         taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
         inst = _instance([_fact()])
         findings = FormulaEvaluator(taxonomy).evaluate(inst)
         assert len(findings) == 1
+        assert findings[0].table_id == "es_tFI_40-1"
+        assert findings[0].table_label == "0010  |  es_tFI_40-1"
         assert findings[0].status == ValidationStatus.PASS
         assert findings[0].severity is None
 

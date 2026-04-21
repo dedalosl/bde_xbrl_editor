@@ -4,14 +4,19 @@ from __future__ import annotations
 
 from collections import defaultdict
 
+from lxml import etree
+
 from bde_xbrl_editor.instance.constants import ISO4217_NS
 from bde_xbrl_editor.instance.models import XbrlInstance, XbrlUnit
 from bde_xbrl_editor.instance.s_equal import canonical_context_refs_by_s_equal
 from bde_xbrl_editor.taxonomy.constants import NS_XBRLI
 from bde_xbrl_editor.taxonomy.models import Concept, QName, TaxonomyStructure
+from bde_xbrl_editor.taxonomy.schema import parse_schema_raw
 from bde_xbrl_editor.validation.models import ValidationFinding, ValidationSeverity
 
 _NUMERIC_TYPE_KEYWORDS = ("monetary", "decimal", "integer", "float", "double")
+_XBRLI_ITEM = QName(NS_XBRLI, "item")
+_XBRLI_TUPLE = QName(NS_XBRLI, "tuple")
 
 
 def _is_iso4217_currency_code(local_name: str) -> bool:
@@ -69,6 +74,43 @@ def _concept_requires_iso4217_unit(concept: Concept) -> bool:
     )
 
 
+def _iter_descendant_qnames(container_xml: bytes) -> list[QName]:
+    """Return descendant element QNames from serialized segment/scenario XML."""
+    root = etree.fromstring(container_xml)  # noqa: S320
+    qnames: list[QName] = []
+    for child in root.iterdescendants():
+        if not isinstance(child.tag, str):
+            continue
+        qnames.append(QName.from_clark(child.tag))
+    return qnames
+
+
+def _substitution_root_for_concept(
+    concept_qname: QName,
+    taxonomy: TaxonomyStructure,
+    schema_substitution_groups: dict[QName, QName] | None = None,
+) -> QName | None:
+    """Return xbrli:item or xbrli:tuple when the SG chain reaches one."""
+    if schema_substitution_groups is None:
+        schema_substitution_groups = {}
+    concept = taxonomy.concepts.get(concept_qname)
+    seen: set[QName] = set()
+    if concept is not None:
+        sg = concept.substitution_group
+    else:
+        sg = schema_substitution_groups.get(concept_qname)
+    while sg is not None and sg not in seen:
+        if sg in (_XBRLI_ITEM, _XBRLI_TUPLE):
+            return sg
+        seen.add(sg)
+        sg_concept = taxonomy.concepts.get(sg)
+        if sg_concept is not None:
+            sg = sg_concept.substitution_group
+            continue
+        sg = schema_substitution_groups.get(sg)
+    return None
+
+
 class StructuralConformanceValidator:
     """Run XBRL 2.1 structural checks against an in-memory instance.
 
@@ -117,6 +159,13 @@ class StructuralConformanceValidator:
             findings.extend(self._check_duplicate_facts(instance))
         except Exception as exc:  # noqa: BLE001
             findings.append(self._internal_error("structural:duplicate-fact", exc))
+
+        try:
+            findings.extend(self._check_segment_scenario_substitutions(instance, taxonomy))
+        except Exception as exc:  # noqa: BLE001
+            findings.append(
+                self._internal_error("structural:segment-scenario-substitution", exc)
+            )
 
         # Check 7 (structural:missing-namespace) is skipped — namespace info not
         # available on the in-memory instance model.
@@ -382,6 +431,85 @@ class StructuralConformanceValidator:
                     context_ref=ctx_bind,
                 )
             )
+        return findings
+
+    def _check_segment_scenario_substitutions(
+        self,
+        instance: XbrlInstance,
+        taxonomy: TaxonomyStructure | None,
+    ) -> list[ValidationFinding]:
+        """Reject item/tuple-substituting elements inside context segment/scenario."""
+        if taxonomy is None:
+            return []
+
+        findings: list[ValidationFinding] = []
+        schema_substitution_groups: dict[QName, QName] = {}
+        for schema_path in taxonomy.schema_files:
+            try:
+                raw_candidates, _target_ns = parse_schema_raw(schema_path)
+            except Exception as exc:  # noqa: BLE001
+                findings.append(
+                    ValidationFinding(
+                        rule_id="structural:segment-scenario-substitution",
+                        severity=ValidationSeverity.ERROR,
+                        message=(
+                            "Unable to load substitution-group declarations from "
+                            f"schema '{schema_path}' while validating segment/scenario "
+                            f"contents: {exc}"
+                        ),
+                        source="structural",
+                    )
+                )
+                continue
+            for qname, (_concept, substitution_group) in raw_candidates.items():
+                schema_substitution_groups[qname] = substitution_group
+
+        for ctx_id, ctx in instance.contexts.items():
+            for container_name, container_xml in (
+                ("scenario", getattr(ctx, "scenario_xml", None)),
+                ("segment", getattr(ctx, "segment_xml", None)),
+            ):
+                if not container_xml:
+                    continue
+                try:
+                    descendant_qnames = _iter_descendant_qnames(container_xml)
+                except Exception as exc:  # noqa: BLE001
+                    findings.append(
+                        ValidationFinding(
+                            rule_id="structural:segment-scenario-substitution",
+                            severity=ValidationSeverity.ERROR,
+                            message=(
+                                f"Context '{ctx_id}' has invalid serialized {container_name} "
+                                f"content that could not be analyzed for substitution groups: {exc}"
+                            ),
+                            source="structural",
+                            context_ref=ctx_id,
+                        )
+                    )
+                    continue
+
+                for element_qname in descendant_qnames:
+                    sg_root = _substitution_root_for_concept(
+                        element_qname,
+                        taxonomy,
+                        schema_substitution_groups=schema_substitution_groups,
+                    )
+                    if sg_root is None:
+                        continue
+                    findings.append(
+                        ValidationFinding(
+                            rule_id="structural:segment-scenario-substitution",
+                            severity=ValidationSeverity.ERROR,
+                            message=(
+                                f"Context '{ctx_id}' contains element '{element_qname}' in "
+                                f"xbrli:{container_name}. Its substitution-group chain reaches "
+                                f"'{sg_root}', which is forbidden in segment/scenario."
+                            ),
+                            source="structural",
+                            context_ref=ctx_id,
+                            concept_qname=element_qname,
+                        )
+                    )
         return findings
 
     # ------------------------------------------------------------------

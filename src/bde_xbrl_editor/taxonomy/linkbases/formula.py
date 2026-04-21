@@ -5,6 +5,7 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Literal
+from urllib.parse import urldefrag
 
 from lxml import etree
 
@@ -77,8 +78,11 @@ _ARCROLE_VARIABLE_SET = "http://xbrl.org/arcrole/2008/variable-set"
 _ARCROLE_VARIABLE_FILTER = "http://xbrl.org/arcrole/2008/variable-filter"
 _ARCROLE_VARIABLE_SET_FILTER = "http://xbrl.org/arcrole/2008/variable-set-filter"
 _ARCROLE_BOOLEAN_FILTER = "http://xbrl.org/arcrole/2008/boolean-filter"
+_ARCROLE_ASSERTION_SET = "http://xbrl.org/arcrole/2008/assertion-set"
+_ARCROLE_APPLIES_TO_TABLE = "http://www.eurofiling.info/xbrl/arcrole/applies-to-table"
 
 _TAG_VARIABLE_SET_FILTER_ARC = f"{{{_NS_VARIABLE}}}variableSetFilterArc"
+_TAG_LINK_LOC = f"{{{_NS_LINK}}}loc"
 
 
 # ---------------------------------------------------------------------------
@@ -495,13 +499,14 @@ _ASSERTION_TAGS = (
 
 # ``{…}assertionSet`` — only Table-1 namespace URIs from Validation 1.0 REC and Assertion Sets 2.0 PWD.
 _ASSERTION_SET_NAMESPACES = frozenset({NS_VALIDATION_V10, NS_ASSERTION_SETS_20_PWD})
-
-# QName filter for ``iterparse(..., tag=…)`` — jumps straight to matching elements so
-# huge FINREP-style linkbases (many filters/locs before the first assertion) are still found.
-_LINKBASE_FORMULA_SCAN_TAGS: tuple[str, ...] = _ASSERTION_TAGS + (
+_ASSERTION_SET_TAGS: tuple[str, ...] = (
     f"{{{NS_VALIDATION_V10}}}assertionSet",
     f"{{{NS_ASSERTION_SETS_20_PWD}}}assertionSet",
 )
+
+# QName filter for ``iterparse(..., tag=…)`` — jumps straight to matching elements so
+# huge FINREP-style linkbases (many filters/locs before the first assertion) are still found.
+_LINKBASE_FORMULA_SCAN_TAGS: tuple[str, ...] = _ASSERTION_TAGS + _ASSERTION_SET_TAGS
 
 
 def linkbase_contains_formula_assertions(path: Path) -> bool:
@@ -673,6 +678,20 @@ def parse_formula_linkbase(path: Path) -> FormulaAssertionSet:
         return FormulaAssertionSet()
 
 
+def parse_assertion_table_mappings(path: Path) -> dict[str, str]:
+    """Return assertion-id -> table-id mappings from assertion-set linkbases.
+
+    BDE taxonomies relate a group of assertions to a table through
+    ``applies-to-table`` arcs on ``validation:assertionSet`` resources. This
+    helper resolves those arcs plus the downstream ``assertion-set`` arcs to
+    recover the table associated with each assertion.
+    """
+    try:
+        return _parse_assertion_table_mappings(path)
+    except Exception:  # noqa: BLE001
+        return {}
+
+
 def _parse(path: Path) -> FormulaAssertionSet:
     """Internal parser — may raise; callers must wrap in try/except."""
     if not path.exists():
@@ -684,6 +703,71 @@ def _parse(path: Path) -> FormulaAssertionSet:
         return FormulaAssertionSet()
 
     return _parse_formula_root(tree.getroot())
+
+
+def _parse_assertion_table_mappings(path: Path) -> dict[str, str]:
+    if not path.exists():
+        return {}
+
+    try:
+        tree = parse_xml_file(path)
+    except etree.XMLSyntaxError:
+        return {}
+
+    return _parse_assertion_table_mappings_root(tree.getroot())
+
+
+def _parse_assertion_table_mappings_root(root: etree._Element) -> dict[str, str]:
+    locator_targets: dict[str, str] = {}
+    for locator in root.iter(_TAG_LINK_LOC):
+        label = (locator.get(_ATTR_XLINK_LABEL) or "").strip()
+        href = (locator.get(f"{{{_NS_XLINK}}}href") or "").strip()
+        fragment = _href_fragment(href)
+        if label and fragment:
+            locator_targets[label] = fragment
+
+    assertion_set_labels: set[str] = set()
+    for tag in _ASSERTION_SET_TAGS:
+        for assertion_set in root.iter(tag):
+            label = (assertion_set.get(_ATTR_XLINK_LABEL) or "").strip()
+            if label:
+                assertion_set_labels.add(label)
+
+    table_by_assertion_set: dict[str, str] = {}
+    assertions_by_set: dict[str, list[str]] = {}
+    for generic_arc in root.iter():
+        if generic_arc.get(_ATTR_XLINK_TYPE) != "arc":
+            continue
+        arcrole = (generic_arc.get(_ATTR_XLINK_ARCROLE) or "").strip()
+        frm = (generic_arc.get(_ATTR_XLINK_FROM) or "").strip()
+        to = (generic_arc.get(_ATTR_XLINK_TO) or "").strip()
+        if not frm or not to or frm not in assertion_set_labels:
+            continue
+
+        target_fragment = locator_targets.get(to)
+        if not target_fragment:
+            continue
+
+        if arcrole == _ARCROLE_APPLIES_TO_TABLE:
+            table_by_assertion_set[frm] = target_fragment
+        elif arcrole == _ARCROLE_ASSERTION_SET:
+            assertions_by_set.setdefault(frm, []).append(target_fragment)
+
+    assertion_table_map: dict[str, str] = {}
+    for assertion_set_label, assertion_ids in assertions_by_set.items():
+        table_id = table_by_assertion_set.get(assertion_set_label)
+        if not table_id:
+            continue
+        for assertion_id in assertion_ids:
+            assertion_table_map.setdefault(assertion_id, table_id)
+
+    return assertion_table_map
+
+
+def _href_fragment(href: str) -> str:
+    """Return the fragment identifier from an xlink:href, if any."""
+    _path, fragment = urldefrag(href)
+    return fragment.strip()
 
 
 def _parse_formula_root(root: etree._Element) -> FormulaAssertionSet:

@@ -524,6 +524,146 @@ class TestMonetaryIsoUnitMeasure:
 
 
 # ---------------------------------------------------------------------------
+# Segment/scenario substitution checks (structural:segment-scenario-substitution)
+# ---------------------------------------------------------------------------
+
+
+class TestSegmentScenarioSubstitutionChecks:
+    def test_scenario_with_item_substitution_is_flagged(self) -> None:
+        inst = _minimal_instance()
+        ctx = inst.contexts["ctx1"]
+        ctx.scenario_xml = (
+            b'<xbrli:scenario xmlns:xbrli="http://www.xbrl.org/2003/instance" '
+            b'xmlns:ex="http://example.com/taxonomy"><ex:BadItem/></xbrli:scenario>'
+        )
+
+        bad_qn = _qname("BadItem")
+        taxonomy = _minimal_taxonomy(type_local="stringItemType")
+        base = taxonomy.concepts[_qname("MyConcept")]
+        taxonomy = TaxonomyStructure(
+            metadata=taxonomy.metadata,
+            concepts={
+                **taxonomy.concepts,
+                bad_qn: Concept(
+                    qname=bad_qn,
+                    data_type=base.data_type,
+                    period_type=base.period_type,
+                    substitution_group=QName(namespace=NS_XBRLI, local_name="item"),
+                ),
+            },
+            labels=taxonomy.labels,
+            presentation=taxonomy.presentation,
+            calculation=taxonomy.calculation,
+            definition=taxonomy.definition,
+            hypercubes=taxonomy.hypercubes,
+            dimensions=taxonomy.dimensions,
+            tables=taxonomy.tables,
+            formula_assertion_set=taxonomy.formula_assertion_set,
+        )
+
+        findings = StructuralConformanceValidator().validate(inst, taxonomy)
+        assert any(
+            f.rule_id == "structural:segment-scenario-substitution"
+            and f.context_ref == "ctx1"
+            and f.concept_qname == bad_qn
+            for f in findings
+        )
+
+    def test_segment_with_dimension_member_is_not_flagged(self) -> None:
+        inst = _minimal_instance()
+        ctx = inst.contexts["ctx1"]
+        ctx.segment_xml = (
+            b'<xbrli:segment xmlns:xbrli="http://www.xbrl.org/2003/instance" '
+            b'xmlns:ex="http://example.com/taxonomy"><ex:SomeDomainMember/></xbrli:segment>'
+        )
+
+        member_qn = _qname("SomeDomainMember")
+        taxonomy = _minimal_taxonomy(type_local="stringItemType")
+        base = taxonomy.concepts[_qname("MyConcept")]
+        taxonomy = TaxonomyStructure(
+            metadata=taxonomy.metadata,
+            concepts={
+                **taxonomy.concepts,
+                member_qn: Concept(
+                    qname=member_qn,
+                    data_type=base.data_type,
+                    period_type=base.period_type,
+                    substitution_group=QName(
+                        namespace="http://xbrl.org/2005/xbrldt",
+                        local_name="dimensionItem",
+                    ),
+                ),
+            },
+            labels=taxonomy.labels,
+            presentation=taxonomy.presentation,
+            calculation=taxonomy.calculation,
+            definition=taxonomy.definition,
+            hypercubes=taxonomy.hypercubes,
+            dimensions=taxonomy.dimensions,
+            tables=taxonomy.tables,
+            formula_assertion_set=taxonomy.formula_assertion_set,
+        )
+
+        findings = StructuralConformanceValidator().validate(inst, taxonomy)
+        assert not any(
+            f.rule_id == "structural:segment-scenario-substitution" for f in findings
+        )
+
+    def test_schema_based_substitution_check_flags_element_not_in_concepts(
+        self, tmp_path: Path
+    ) -> None:
+        inst = _minimal_instance()
+        ctx = inst.contexts["ctx1"]
+        ctx.segment_xml = (
+            b'<xbrli:segment xmlns:xbrli="http://www.xbrl.org/2003/instance" '
+            b'xmlns:ex="http://example.com/taxonomy"><ex:BadFromSchemaOnly/></xbrli:segment>'
+        )
+
+        schema_path = tmp_path / "segment-substitution.xsd"
+        schema_path.write_text(
+            """<?xml version="1.0"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:xbrli="http://www.xbrl.org/2003/instance"
+           targetNamespace="http://example.com/taxonomy"
+           xmlns:ex="http://example.com/taxonomy"
+           elementFormDefault="qualified">
+  <xs:import namespace="http://www.xbrl.org/2003/instance"
+             schemaLocation="http://www.xbrl.org/2003/xbrl-instance-2003-12-31.xsd"/>
+  <xs:element name="BadFromSchemaOnly"
+              type="xbrli:stringItemType"
+              substitutionGroup="xbrli:item"
+              nillable="true"
+              xbrli:periodType="duration"/>
+</xs:schema>
+""",
+            encoding="utf-8",
+        )
+
+        taxonomy = _minimal_taxonomy(type_local="stringItemType")
+        taxonomy = TaxonomyStructure(
+            metadata=taxonomy.metadata,
+            concepts=taxonomy.concepts,
+            labels=taxonomy.labels,
+            presentation=taxonomy.presentation,
+            calculation=taxonomy.calculation,
+            definition=taxonomy.definition,
+            hypercubes=taxonomy.hypercubes,
+            dimensions=taxonomy.dimensions,
+            tables=taxonomy.tables,
+            formula_assertion_set=taxonomy.formula_assertion_set,
+            schema_files=(schema_path,),
+        )
+
+        findings = StructuralConformanceValidator().validate(inst, taxonomy)
+        assert any(
+            f.rule_id == "structural:segment-scenario-substitution"
+            and f.context_ref == "ctx1"
+            and f.concept_qname == QName("http://example.com/taxonomy", "BadFromSchemaOnly")
+            for f in findings
+        )
+
+
+# ---------------------------------------------------------------------------
 # Clean instance: all checks pass
 # ---------------------------------------------------------------------------
 

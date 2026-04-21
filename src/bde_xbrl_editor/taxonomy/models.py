@@ -395,6 +395,8 @@ class FormulaAssertion:
     abstract: bool
     variables: tuple[FactVariableDefinition, ...]
     precondition_xpath: str | None
+    table_id: str | None = None
+    table_label: str | None = None
     label_resources: tuple[AssertionTextResource, ...] = field(default_factory=tuple)
     message_resources: tuple[AssertionTextResource, ...] = field(default_factory=tuple)
     namespaces: dict[str, str] = field(default_factory=dict)

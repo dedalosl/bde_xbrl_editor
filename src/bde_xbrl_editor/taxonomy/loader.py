@@ -46,6 +46,7 @@ from bde_xbrl_editor.taxonomy.linkbases.calculation import parse_calculation_lin
 from bde_xbrl_editor.taxonomy.linkbases.definition import parse_definition_linkbase
 from bde_xbrl_editor.taxonomy.linkbases.formula import (
     linkbase_contains_formula_assertions,
+    parse_assertion_table_mappings,
     parse_formula_linkbase,
 )
 from bde_xbrl_editor.taxonomy.linkbases.generic_label import parse_generic_label_linkbase
@@ -1132,13 +1133,31 @@ class TaxonomyLoader:
                 for assertion_id, resources in resource_map.items():
                     assertion_resources.setdefault(assertion_id, []).extend(resources)
 
+            parsed_assertion_table_linkbases = _run_path_jobs(
+                linkbase_paths,
+                parse_assertion_table_mappings,
+                workers=linkbase_workers,
+            )
+            assertion_table_ids: dict[str, str] = {}
+            for _mapping_path, table_map in parsed_assertion_table_linkbases:
+                for assertion_id, table_id in table_map.items():
+                    assertion_table_ids.setdefault(assertion_id, table_id)
+
+            table_labels = {
+                table.table_id: (table.display_code or table.table_id)
+                for table in tables
+            }
+
             language_preference = [*declared_languages, "es", "en"]
             enriched_assertions: list[FormulaAssertion] = []
             for assertion in all_assertions:
                 resources = assertion_resources.get(assertion.assertion_id, [])
+                table_id = assertion_table_ids.get(assertion.assertion_id)
                 enriched_assertions.append(
                     replace(
                         assertion,
+                        table_id=table_id,
+                        table_label=table_labels.get(table_id) if table_id else None,
                         label_resources=_best_assertion_resources(
                             resources,
                             arcrole=ARCROLE_ELEMENT_LABEL,

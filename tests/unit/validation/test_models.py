@@ -318,3 +318,35 @@ class TestValidationFilterProxy:
         proxy.set_severity_filter(ValidationSeverity.ERROR)
         proxy.clear_filters()
         assert proxy.rowCount() == 2
+
+    def test_table_column_reuses_compact_table_identity_without_duplication(self) -> None:
+        """Table column should reuse the compact table identity string as-is."""
+        from bde_xbrl_editor.ui.widgets.validation_results_model import ValidationResultsModel
+
+        finding = ValidationFinding(
+            rule_id="r1",
+            severity=ValidationSeverity.ERROR,
+            message="Test finding",
+            source="formula",
+            table_id="es_tFI_40-1",
+            table_label="0010  |  es_tFI_40-1",
+        )
+        model = ValidationResultsModel()
+        model.populate((finding,))
+
+        assert model.item(0, 3).text() == "0010  |  es_tFI_40-1"
+
+    def test_append_findings_adds_rows_without_replacing_existing_ones(self) -> None:
+        """append_findings keeps previously streamed results visible."""
+        from bde_xbrl_editor.ui.widgets.validation_results_model import ValidationResultsModel
+
+        initial = _finding("r1", ValidationSeverity.ERROR, table_id="T01")
+        streamed = _finding("r2", ValidationSeverity.WARNING, table_id="T02")
+
+        model = ValidationResultsModel()
+        model.populate((initial,))
+        model.append_findings((streamed,))
+
+        assert model.rowCount() == 2
+        assert model.item(0, 1).text() == "r1"
+        assert model.item(1, 1).text() == "r2"

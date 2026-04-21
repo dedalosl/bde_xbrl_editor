@@ -49,6 +49,7 @@ class ValidationWorker(QObject):
     """
 
     progress_changed = Signal(int, int, str)
+    findings_ready = Signal(object)  # tuple[ValidationFinding, ...]
     validation_completed = Signal(object)  # ValidationReport
     validation_failed = Signal(str)
 
@@ -66,10 +67,14 @@ class ValidationWorker(QObject):
         def _progress(current: int, total: int, message: str) -> None:
             self.progress_changed.emit(current, total, message)
 
+        def _findings_ready(findings: tuple[ValidationFinding, ...]) -> None:
+            self.findings_ready.emit(findings)
+
         try:
             validator = InstanceValidator(
                 taxonomy=self._taxonomy,
                 progress_callback=_progress,
+                finding_callback=_findings_ready,
                 cancel_event=self._cancel_event,
             )
             report = validator.validate_sync(self._instance)
@@ -106,6 +111,7 @@ class ValidationPanel(QWidget):
         self._proxy.setSourceModel(self._model)
 
         self._current_report: ValidationReport | None = None
+        self._current_findings: list[ValidationFinding] = []
         self._worker: ValidationWorker | None = None
         self._thread: QThread | None = None
 
@@ -243,13 +249,27 @@ class ValidationPanel(QWidget):
     def show_report(self, report: ValidationReport) -> None:
         """Populate the panel with the findings from a completed validation run."""
         self._current_report = report
-        self._model.populate(report.findings)
+        self._current_findings = list(report.findings)
+
+        if self._model.rowCount() != len(report.findings):
+            self._model.populate(report.findings)
+
         self._update_summary()
-        self._update_table_filter_options(report)
+        self._update_table_filter_options(report.findings)
         self._export_btn.setEnabled(True)
         self._progress_bar.setVisible(False)
         self._detail_text.clear()
         self._goto_btn.setEnabled(False)
+
+    def append_findings(self, findings: tuple[ValidationFinding, ...]) -> None:
+        """Append streamed findings from the active validation run."""
+        if not findings:
+            return
+
+        self._current_findings.extend(findings)
+        self._model.append_findings(findings)
+        self._update_summary()
+        self._update_table_filter_options(tuple(self._current_findings))
 
     def show_progress(self, current: int, total: int, message: str) -> None:
         """Update the progress bar without clearing the current results."""
@@ -260,12 +280,21 @@ class ValidationPanel(QWidget):
 
     def clear(self) -> None:
         self._current_report = None
-        self._model.removeRows(0, self._model.rowCount())
+        self._current_findings.clear()
+        self._model.clear_findings()
         self._summary_label.setText("No results")
         self._detail_text.clear()
         self._goto_btn.setEnabled(False)
         self._export_btn.setEnabled(False)
         self._progress_bar.setVisible(False)
+        self._sev_combo.blockSignals(True)
+        self._sev_combo.setCurrentIndex(0)
+        self._sev_combo.blockSignals(False)
+        self._table_combo.blockSignals(True)
+        self._table_combo.clear()
+        self._table_combo.addItem("All", None)
+        self._table_combo.blockSignals(False)
+        self._proxy.clear_filters()
 
     def set_available_tables(self, tables: list[tuple[str, str]]) -> None:
         """Populate the table filter combobox. tables = list of (table_id, label)."""
@@ -417,28 +446,37 @@ class ValidationPanel(QWidget):
             self.navigate_to_cell.emit(finding.context_ref, finding)
 
     def _update_summary(self) -> None:
-        if self._current_report is None:
+        findings = self._current_report.findings if self._current_report is not None else tuple(self._current_findings)
+        if not findings:
             self._summary_label.setText("No results")
             return
         visible = self._proxy.rowCount()
-        passed = self._current_report.pass_count
-        errors = self._current_report.error_count
-        warnings = self._current_report.warning_count
+        passed = sum(1 for finding in findings if finding.status == ValidationStatus.PASS)
+        errors = sum(1 for finding in findings if finding.severity == ValidationSeverity.ERROR)
+        warnings = sum(1 for finding in findings if finding.severity == ValidationSeverity.WARNING)
         self._summary_label.setText(
             f"{visible} shown | {passed} pass, {errors} error(s), {warnings} warning(s)"
         )
 
-    def _update_table_filter_options(self, report: ValidationReport) -> None:
+    def _update_table_filter_options(
+        self,
+        findings: tuple[ValidationFinding, ...],
+    ) -> None:
+        current_table_filter = self._table_combo.currentData()
         table_ids: list[str] = sorted({
-            f.table_id for f in report.findings if f.table_id
+            f.table_id for f in findings if f.table_id
         })
         self._table_combo.blockSignals(True)
         self._table_combo.clear()
         self._table_combo.addItem("All", None)
         for tid in table_ids:
             label = next(
-                (f.table_label for f in report.findings if f.table_id == tid and f.table_label),
+                (f.table_label for f in findings if f.table_id == tid and f.table_label),
                 tid,
             )
             self._table_combo.addItem(label, tid)
+        if current_table_filter is not None:
+            index = self._table_combo.findData(current_table_filter)
+            self._table_combo.setCurrentIndex(index if index >= 0 else 0)
         self._table_combo.blockSignals(False)
+        self._proxy.set_table_filter(self._table_combo.currentData())

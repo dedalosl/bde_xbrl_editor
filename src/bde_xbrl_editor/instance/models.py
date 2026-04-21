@@ -221,6 +221,10 @@ class XbrlContext:
     # Immutable S-equal fingerprint (XBRL 2.1); set at parse time or by context_builder.
     # When None, validation uses :func:`bde_xbrl_editor.instance.s_equal.effective_s_equal_key`.
     s_equal_key: tuple | None = None
+    # Serialized XML fragments for schema-based context-content validation.
+    # Stored as UTF-8 bytes without tail text.
+    scenario_xml: bytes | None = None
+    segment_xml: bytes | None = None
 
 
 @dataclass

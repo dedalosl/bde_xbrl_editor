@@ -8,6 +8,7 @@ import pytest
 
 from bde_xbrl_editor.taxonomy.linkbases.formula import (
     linkbase_contains_formula_assertions,
+    parse_assertion_table_mappings,
     parse_formula_linkbase,
 )
 from bde_xbrl_editor.taxonomy.loader import (
@@ -107,6 +108,35 @@ def test_parse_value_assertion_uses_xlink_label_when_id_absent(tmp_path: Path) -
     fas = parse_formula_linkbase(lb)
     assert len(fas.assertions) == 1
     assert fas.assertions[0].assertion_id == "rule-A"
+
+
+def test_parse_assertion_table_mappings_resolves_applies_to_table(tmp_path: Path) -> None:
+    lb = tmp_path / "assertion-set.xml"
+    lb.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:gen="http://xbrl.org/2008/generic"
+  xmlns:validation="http://xbrl.org/2008/validation"
+  xmlns:xlink="http://www.w3.org/1999/xlink">
+  <gen:link xlink:type="extended" xlink:role="http://www.xbrl.org/2003/role/link">
+    <validation:assertionSet xlink:type="resource" xlink:label="assertionSet" id="assertionSet1"/>
+    <link:loc xlink:type="locator" xlink:href="../../tab/fi_40-1-rend.xml#es_tFI_40-1" xlink:label="table_loc"/>
+    <link:loc xlink:type="locator" xlink:href="vr-v4019_a.xml#es_v4019_a" xlink:label="assertion_loc"/>
+    <gen:arc xlink:type="arc"
+      xlink:arcrole="http://www.eurofiling.info/xbrl/arcrole/applies-to-table"
+      xlink:from="assertionSet"
+      xlink:to="table_loc"/>
+    <gen:arc xlink:type="arc"
+      xlink:arcrole="http://xbrl.org/arcrole/2008/assertion-set"
+      xlink:from="assertionSet"
+      xlink:to="assertion_loc"/>
+  </gen:link>
+</link:linkbase>
+""",
+        encoding="utf-8",
+    )
+
+    assert parse_assertion_table_mappings(lb) == {"es_v4019_a": "es_tFI_40-1"}
 
 
 def test_linkbase_contains_formula_assertions_detects_value_assertion(tmp_path: Path) -> None:

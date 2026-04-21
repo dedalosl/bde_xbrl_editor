@@ -37,6 +37,7 @@ from bde_xbrl_editor.validation.models import (
 )
 
 ProgressCallback = Callable[[int, int, str], None]
+FindingCallback = Callable[[tuple[ValidationFinding, ...]], None]
 _MESSAGE_EXPR_RE = re.compile(r"\{([^{}]+)\}")
 
 
@@ -50,10 +51,12 @@ class FormulaEvaluator:
         self,
         taxonomy: TaxonomyStructure,
         progress_callback: ProgressCallback | None = None,
+        finding_callback: FindingCallback | None = None,
         cancel_event: threading.Event | None = None,
     ) -> None:
         self._taxonomy = taxonomy
         self._progress_callback = progress_callback
+        self._finding_callback = finding_callback
         self._cancel_event = cancel_event
 
     # ------------------------------------------------------------------
@@ -85,40 +88,56 @@ class FormulaEvaluator:
             try:
                 bindings = self._bind_variables(assertion, instance)
                 if isinstance(assertion, ValueAssertionDefinition):
-                    findings.extend(
+                    assertion_findings = tuple(
                         self._evaluate_value_assertion(assertion, bindings, instance)
                     )
                 elif isinstance(assertion, ExistenceAssertionDefinition):
-                    findings.extend(
+                    assertion_findings = tuple(
                         self._evaluate_existence_assertion(assertion, bindings, instance)
                     )
                 elif isinstance(assertion, ConsistencyAssertionDefinition):
-                    findings.extend(
+                    assertion_findings = tuple(
                         self._evaluate_consistency_assertion(assertion, bindings, instance)
                     )
+                else:
+                    assertion_findings = ()
+                findings.extend(assertion_findings)
+                self._publish_findings(assertion_findings)
             except ValidationEngineError as exc:
-                findings.append(
+                assertion_findings = (
                     self._finding_for_assertion(
                         assertion,
                         status=ValidationStatus.FAIL,
                         default_message=f"Evaluation error: {exc}",
                     )
                 )
+                findings.extend(assertion_findings)
+                self._publish_findings(assertion_findings)
             except Exception as exc:  # noqa: BLE001
-                findings.append(ValidationFinding(
+                assertion_findings = (ValidationFinding(
                     rule_id="internal:validator-error",
                     severity=ValidationSeverity.ERROR,
                     message=f"Unexpected error evaluating '{assertion.assertion_id}': {exc}",
                     source="formula",
                     status=ValidationStatus.FAIL,
+                    table_id=assertion.table_id,
+                    table_label=assertion.table_label,
                     **self._formula_detail_kwargs(assertion),
-                ))
+                ),)
+                findings.extend(assertion_findings)
+                self._publish_findings(assertion_findings)
 
         if self._progress_callback:
             with contextlib.suppress(Exception):
                 self._progress_callback(total, total, "Formula evaluation complete")
 
         return findings
+
+    def _publish_findings(self, findings: tuple[ValidationFinding, ...]) -> None:
+        if not findings or self._finding_callback is None:
+            return
+        with contextlib.suppress(Exception):
+            self._finding_callback(findings)
 
     # ------------------------------------------------------------------
     # Variable binding
@@ -194,6 +213,8 @@ class FormulaEvaluator:
             status=status,
             message=display_message,
             source="formula",
+            table_id=assertion.table_id,
+            table_label=assertion.table_label,
             concept_qname=fact.concept if fact else None,
             context_ref=fact.context_ref if fact else None,
             rule_label=self._resource_text(label_resource),

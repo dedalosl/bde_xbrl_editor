@@ -243,6 +243,16 @@ def _parse_context(el: etree._Element) -> XbrlContext:
 
     scenario_el = el.find(_XBRLI_SCENARIO)
     segment_el = entity_el.find(_XBRLI_SEGMENT) if entity_el is not None else None
+    scenario_xml = (
+        etree.tostring(scenario_el, encoding="utf-8", with_tail=False)
+        if scenario_el is not None
+        else None
+    )
+    segment_xml = (
+        etree.tostring(segment_el, encoding="utf-8", with_tail=False)
+        if segment_el is not None
+        else None
+    )
     s_equal_key = build_s_equal_key_from_xml_fragments(
         entity, period, scenario_el, segment_el
     )
@@ -255,6 +265,8 @@ def _parse_context(el: etree._Element) -> XbrlContext:
         context_element=context_element,  # type: ignore[arg-type]
         dim_containers=dim_containers,  # type: ignore[arg-type]
         s_equal_key=s_equal_key,
+        scenario_xml=scenario_xml,
+        segment_xml=segment_xml,
     )
 
 

@@ -25,6 +25,7 @@ from bde_xbrl_editor.validation.models import (
 from bde_xbrl_editor.validation.structural import StructuralConformanceValidator
 
 ProgressCallback = Callable[[int, int, str], None]
+FindingCallback = Callable[[tuple[ValidationFinding, ...]], None]
 
 
 class InstanceValidator:
@@ -37,10 +38,12 @@ class InstanceValidator:
         self,
         taxonomy: TaxonomyStructure,
         progress_callback: ProgressCallback | None = None,
+        finding_callback: FindingCallback | None = None,
         cancel_event: threading.Event | None = None,
     ) -> None:
         self._taxonomy = taxonomy
         self._progress_callback = progress_callback
+        self._finding_callback = finding_callback
         self._cancel_event = cancel_event
 
     def validate_sync(self, instance: XbrlInstance) -> ValidationReport:
@@ -58,14 +61,18 @@ class InstanceValidator:
                     self._progress_callback(0, 4, "Running structural checks…")
             try:
                 sv = StructuralConformanceValidator()
-                findings.extend(sv.validate(instance, self._taxonomy))
+                stage_findings = tuple(sv.validate(instance, self._taxonomy))
+                findings.extend(stage_findings)
+                self._publish_findings(stage_findings)
             except Exception as exc:  # noqa: BLE001
-                findings.append(ValidationFinding(
+                stage_findings = (ValidationFinding(
                     rule_id="internal:structural-error",
                     severity=ValidationSeverity.ERROR,
                     message=f"Structural validator failed unexpectedly: {exc}",
                     source="structural",
-                ))
+                ),)
+                findings.extend(stage_findings)
+                self._publish_findings(stage_findings)
 
         # --- 2. Calculation (summation-item) checks -------------------------
         if not (self._cancel_event and self._cancel_event.is_set()):
@@ -74,14 +81,18 @@ class InstanceValidator:
                     self._progress_callback(1, 4, "Running calculation checks…")
             try:
                 cv = CalculationConsistencyValidator()
-                findings.extend(cv.validate(instance, self._taxonomy))
+                stage_findings = tuple(cv.validate(instance, self._taxonomy))
+                findings.extend(stage_findings)
+                self._publish_findings(stage_findings)
             except Exception as exc:  # noqa: BLE001
-                findings.append(ValidationFinding(
+                stage_findings = (ValidationFinding(
                     rule_id="internal:calculation-error",
                     severity=ValidationSeverity.ERROR,
                     message=f"Calculation validator failed unexpectedly: {exc}",
                     source="calculation",
-                ))
+                ),)
+                findings.extend(stage_findings)
+                self._publish_findings(stage_findings)
 
         # --- 3. Dimensional checks -------------------------------------------
         if not (self._cancel_event and self._cancel_event.is_set()):
@@ -90,14 +101,18 @@ class InstanceValidator:
                     self._progress_callback(2, 4, "Running dimensional checks…")
             try:
                 dv = DimensionalConstraintValidator(self._taxonomy)
-                findings.extend(dv.validate(instance))
+                stage_findings = tuple(dv.validate(instance))
+                findings.extend(stage_findings)
+                self._publish_findings(stage_findings)
             except Exception as exc:  # noqa: BLE001
-                findings.append(ValidationFinding(
+                stage_findings = (ValidationFinding(
                     rule_id="internal:dimensional-error",
                     severity=ValidationSeverity.ERROR,
                     message=f"Dimensional validator failed unexpectedly: {exc}",
                     source="dimensional",
-                ))
+                ),)
+                findings.extend(stage_findings)
+                self._publish_findings(stage_findings)
 
         # --- 4. Formula assertions ------------------------------------------
         formula_available = bool(
@@ -111,16 +126,19 @@ class InstanceValidator:
                 fe = FormulaEvaluator(
                     taxonomy=self._taxonomy,
                     progress_callback=self._progress_callback,
+                    finding_callback=self._publish_findings,
                     cancel_event=self._cancel_event,
                 )
                 findings.extend(fe.evaluate(instance))
             except Exception as exc:  # noqa: BLE001
-                findings.append(ValidationFinding(
+                stage_findings = (ValidationFinding(
                     rule_id="internal:formula-error",
                     severity=ValidationSeverity.ERROR,
                     message=f"Formula evaluator failed unexpectedly: {exc}",
                     source="formula",
-                ))
+                ),)
+                findings.extend(stage_findings)
+                self._publish_findings(stage_findings)
 
         if self._progress_callback:
             with contextlib.suppress(Exception):
@@ -138,3 +156,10 @@ class InstanceValidator:
             ),
             structural_checks_run=True,
         )
+
+    def _publish_findings(self, findings: tuple[ValidationFinding, ...]) -> None:
+        """Push completed findings to the caller as soon as they are ready."""
+        if not findings or self._finding_callback is None:
+            return
+        with contextlib.suppress(Exception):
+            self._finding_callback(findings)
