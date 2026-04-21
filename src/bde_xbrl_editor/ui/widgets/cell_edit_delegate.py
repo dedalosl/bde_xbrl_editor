@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 from bde_xbrl_editor.instance.models import DuplicateFactError
 from bde_xbrl_editor.ui import theme
 from bde_xbrl_editor.instance.validator import XbrlTypeValidator
-from bde_xbrl_editor.ui.widgets.table_body_model import CELL_CODE_ROLE
+from bde_xbrl_editor.ui.widgets.table_body_model import CELL_CODE_ROLE, FACT_OPTIONS_ROLE, OPEN_KEY_ROLE
 
 if TYPE_CHECKING:
     from bde_xbrl_editor.instance.editor import InstanceEditor
@@ -32,6 +32,18 @@ _CELL_CODE_FG = QColor(theme.TEXT_MAIN)
 _CELL_CODE_CORNER = QColor("#8B7355")  # dark triangle corner marker
 _CELL_CODE_BG = QColor("#E4EEF9")
 _CELL_CODE_BORDER = QColor("#9EB6D4")
+
+
+def _qname_to_clark(concept: QName) -> str:
+    return f"{{{concept.namespace}}}{concept.local_name}"
+
+
+def _display_option_value(raw_value: str) -> str:
+    if raw_value.startswith("{") and "}" in raw_value:
+        return raw_value.split("}", 1)[1]
+    if ":" in raw_value:
+        return raw_value.split(":", 1)[1]
+    return raw_value
 
 
 def _get_type_category(taxonomy: TaxonomyStructure, concept: QName) -> str:
@@ -179,6 +191,34 @@ class CellEditDelegate(QStyledItemDelegate):
     def createEditor(
         self, parent: QWidget, option: QStyleOptionViewItem, index: QModelIndex
     ) -> QWidget | None:
+        open_key = index.data(OPEN_KEY_ROLE)
+        if isinstance(open_key, dict):
+            options = open_key.get("options") or ()
+            if options:
+                ed = QComboBox(parent)
+                for option_qname in options:
+                    if hasattr(option_qname, "namespace") and hasattr(option_qname, "local_name"):
+                        label = (
+                            self._taxonomy.labels.resolve(option_qname)
+                            if self._taxonomy is not None
+                            else str(option_qname)
+                        )
+                        if label == str(option_qname):
+                            label = getattr(option_qname, "local_name", label)
+                        ed.addItem(label, _qname_to_clark(option_qname))
+                    else:
+                        text = str(option_qname)
+                        ed.addItem(text, text)
+                return ed
+            return QLineEdit(parent)
+
+        fact_options = index.data(FACT_OPTIONS_ROLE)
+        if isinstance(fact_options, tuple) and fact_options:
+            ed = QComboBox(parent)
+            for option in fact_options:
+                option_text = str(option)
+                ed.addItem(_display_option_value(option_text), option_text)
+            return ed
         if self._editor is None or self._taxonomy is None:
             return None
         coordinate = self._get_coordinate(index)
@@ -225,7 +265,9 @@ class CellEditDelegate(QStyledItemDelegate):
             if d.isValid():
                 editor_widget.setDate(d)
         elif isinstance(editor_widget, QComboBox):
-            idx = editor_widget.findText(raw_value)
+            idx = editor_widget.findData(raw_value)
+            if idx < 0:
+                idx = editor_widget.findText(raw_value)
             if idx >= 0:
                 editor_widget.setCurrentIndex(idx)
         elif isinstance(editor_widget, QLineEdit):
@@ -247,14 +289,36 @@ class CellEditDelegate(QStyledItemDelegate):
     def setModelData(
         self, editor_widget: QWidget, model, index: QModelIndex
     ) -> None:
-        if self._editor is None or self._taxonomy is None or self._validator is None:
+        open_key = index.data(OPEN_KEY_ROLE)
+        if isinstance(open_key, dict):
+            if isinstance(editor_widget, QComboBox):
+                selected = editor_widget.currentData()
+                if isinstance(selected, str):
+                    model.setData(index, selected, Qt.ItemDataRole.EditRole)
+            elif isinstance(editor_widget, QLineEdit):
+                model.setData(index, editor_widget.text(), Qt.ItemDataRole.EditRole)
+            return
+
+        fact_options = index.data(FACT_OPTIONS_ROLE)
+        if isinstance(fact_options, tuple) and fact_options:
+            if isinstance(editor_widget, QComboBox):
+                selected = editor_widget.currentData()
+                if isinstance(selected, str):
+                    submitted = selected
+                else:
+                    submitted = editor_widget.currentText()
+            else:
+                submitted = ""
+        elif self._editor is None or self._taxonomy is None or self._validator is None:
             return
         coordinate = self._get_coordinate(index)
         if coordinate is None or coordinate.concept is None:
             return
 
         # Read submitted value from widget
-        if isinstance(editor_widget, QDateEdit):
+        if isinstance(fact_options, tuple) and fact_options:
+            pass
+        elif isinstance(editor_widget, QDateEdit):
             submitted = editor_widget.date().toString("yyyy-MM-dd")
         elif isinstance(editor_widget, QComboBox):
             submitted = editor_widget.currentText()

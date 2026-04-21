@@ -18,7 +18,16 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QTableView
 
 from bde_xbrl_editor.instance.editor import InstanceEditor
-from bde_xbrl_editor.instance.models import BdeEstadoReportado, BdePreambulo
+from bde_xbrl_editor.instance.constants import BDE_DIM_NS
+from bde_xbrl_editor.instance.context_builder import build_dimensional_context
+from bde_xbrl_editor.instance.models import (
+    BdeEstadoReportado,
+    BdePreambulo,
+    Fact,
+    ReportingEntity,
+    ReportingPeriod,
+    XbrlInstance,
+)
 from bde_xbrl_editor.taxonomy.constants import ARCROLE_DOMAIN_MEMBER
 from bde_xbrl_editor.taxonomy.models import (
     BreakdownNode,
@@ -32,6 +41,7 @@ from bde_xbrl_editor.taxonomy.models import (
     TaxonomyStructure,
 )
 from bde_xbrl_editor.ui.widgets.activity_sidebar import _InstancePanel
+from bde_xbrl_editor.ui.widgets.table_body_model import FACT_OPTIONS_ROLE, OPEN_KEY_ROLE
 from bde_xbrl_editor.ui.widgets.xbrl_table_view import XbrlTableView
 
 
@@ -183,6 +193,52 @@ def _taxonomy_with_filter_only_z_axis(table: TableDefinitionPWD) -> TaxonomyStru
     )
 
 
+def _taxonomy_with_open_row_dimension(table: TableDefinitionPWD) -> tuple[TaxonomyStructure, QName, QName]:
+    dim_qname = QName(namespace="http://example.com/dim", local_name="OpenDim", prefix="dim")
+    member_a = QName(namespace="http://example.com/mem", local_name="MemberA", prefix="mem")
+    member_b = QName(namespace="http://example.com/mem", local_name="MemberB", prefix="mem")
+    member_c = QName(namespace="http://example.com/mem", local_name="MemberC", prefix="mem")
+    concept_qname = QName(namespace="http://example.com/met", local_name="OpenConcept", prefix="met")
+    labels = _LabelResolverStub({
+        member_a: "Member A",
+        member_b: "Member B",
+        member_c: "Member C",
+        dim_qname: "Open dimension",
+        concept_qname: "Open concept",
+    })
+    taxonomy = TaxonomyStructure(
+        metadata=TaxonomyMetadata(
+            name="OpenRowsTax",
+            version="1.0",
+            publisher="Test",
+            entry_point_path=Path("tax.xsd"),
+            loaded_at=datetime(2024, 1, 1),
+            declared_languages=("es", "en"),
+        ),
+        concepts={},
+        labels=labels,
+        presentation={},
+        calculation={},
+        definition={},
+        hypercubes=[],
+        dimensions={
+            dim_qname: DimensionModel(
+                qname=dim_qname,
+                dimension_type="explicit",
+                default_member=None,
+                domain=None,
+                members=(
+                    DomainMember(qname=member_a, parent=None, order=1.0),
+                    DomainMember(qname=member_b, parent=None, order=2.0),
+                    DomainMember(qname=member_c, parent=None, order=3.0),
+                ),
+            )
+        },
+        tables=[table],
+    )
+    return taxonomy, dim_qname, member_c
+
+
 def _instance_with_tables(*table_ids: str) -> SimpleNamespace:
     return SimpleNamespace(
         schema_ref_href="http://www.bde.es/example.xsd",
@@ -246,6 +302,218 @@ def _instance_with_z_usage(
         },
         bde_preambulo=None,
     )
+
+
+def _instance_for_open_rows() -> SimpleNamespace:
+    return SimpleNamespace(
+        schema_ref_href="http://www.bde.es/example.xsd",
+        entity=SimpleNamespace(identifier="ES0001", scheme="http://example.com/entity"),
+        period=SimpleNamespace(period_type="instant", instant_date=date(2024, 12, 31)),
+        filing_indicators=[],
+        included_table_ids=[],
+        facts=[],
+        contexts={},
+        dimensional_configs={},
+        bde_preambulo=None,
+    )
+
+
+def _instance_with_open_row_fact(member_qname: QName) -> SimpleNamespace:
+    concept_qname = QName(namespace="http://example.com/met", local_name="OpenConcept", prefix="met")
+    row_dim_qname = QName(namespace="http://example.com/dim", local_name="OpenDim", prefix="dim")
+    agrupacion_dim_qname = QName(namespace=BDE_DIM_NS, local_name="Agrupacion", prefix="bde")
+    agrupacion_member = QName(namespace="http://example.com/bde", local_name="AgrupacionIndividual", prefix="bde")
+    return SimpleNamespace(
+        schema_ref_href="http://www.bde.es/example.xsd",
+        entity=SimpleNamespace(identifier="ES0001", scheme="http://example.com/entity"),
+        period=SimpleNamespace(period_type="instant", instant_date=date(2024, 12, 31)),
+        filing_indicators=[],
+        included_table_ids=[],
+        facts=[
+            SimpleNamespace(
+                concept=concept_qname,
+                context_ref="ctx_open_dynamic",
+                value="10",
+                decimals=None,
+            )
+        ],
+        contexts={
+            "ctx_open_dynamic": SimpleNamespace(
+                dimensions={
+                    row_dim_qname: member_qname,
+                    agrupacion_dim_qname: agrupacion_member,
+                }
+            )
+        },
+        dimensional_configs={},
+        bde_preambulo=None,
+    )
+
+
+def _editable_instance_with_open_row_fact(member_qname: QName) -> XbrlInstance:
+    concept_qname = QName(namespace="http://example.com/met", local_name="OpenConcept", prefix="met")
+    row_dim_qname = QName(namespace="http://example.com/dim", local_name="OpenDim", prefix="dim")
+    entity = ReportingEntity(identifier="ES0001", scheme="http://example.com/entity")
+    period = ReportingPeriod(period_type="instant", instant_date=date(2024, 12, 31))
+    context = build_dimensional_context(entity, period, {row_dim_qname: member_qname})
+    return XbrlInstance(
+        taxonomy_entry_point=Path("tax.xsd"),
+        schema_ref_href="http://www.bde.es/example.xsd",
+        entity=entity,
+        period=period,
+        contexts={context.context_id: context},
+        facts=[
+            Fact(
+                concept=concept_qname,
+                context_ref=context.context_id,
+                unit_ref=None,
+                value="10",
+            )
+        ],
+    )
+
+
+def _open_row_table() -> TableDefinitionPWD:
+    concept_clark = "{http://example.com/met}OpenConcept"
+    dim_clark = "{http://example.com/dim}OpenDim"
+    member_a = "{http://example.com/mem}MemberA"
+    member_b = "{http://example.com/mem}MemberB"
+    return TableDefinitionPWD(
+        table_id="es_tOPEN_1",
+        label="Open rows table",
+        extended_link_role="http://example.com/role/es_tOPEN_1",
+        x_breakdown=BreakdownNode(node_type="rule", is_abstract=True, children=[_leaf("Column")]),
+        y_breakdown=BreakdownNode(
+            node_type="rule",
+            is_abstract=True,
+            children=[
+                BreakdownNode(
+                    node_type="rule",
+                    label="Dynamic section",
+                    is_abstract=True,
+                    aspect_constraints={"concept": concept_clark},
+                    children=[
+                        BreakdownNode(
+                            node_type="rule",
+                            label="Member A row",
+                            is_abstract=False,
+                            aspect_constraints={
+                                "concept": concept_clark,
+                                "explicitDimension": {dim_clark: member_a},
+                            },
+                        ),
+                        BreakdownNode(
+                            node_type="rule",
+                            label="Member B row",
+                            is_abstract=False,
+                            aspect_constraints={
+                                "concept": concept_clark,
+                                "explicitDimension": {dim_clark: member_b},
+                            },
+                        ),
+                    ],
+                ),
+            ],
+        ),
+    )
+
+
+def _open_aspect_table() -> TableDefinitionPWD:
+    dim_clark = "{http://example.com/dim}OpenDim"
+    return TableDefinitionPWD(
+        table_id="es_tOPEN_ASPECT",
+        label="Open aspect rows table",
+        extended_link_role="http://example.com/role/es_tOPEN_ASPECT",
+        x_breakdown=BreakdownNode(node_type="rule", is_abstract=True, children=[_leaf("Column")]),
+        y_breakdown=BreakdownNode(
+            node_type="rule",
+            is_abstract=True,
+            children=[
+                BreakdownNode(
+                    node_type="aspect",
+                    label="",
+                    is_abstract=False,
+                    aspect_constraints={"dimensionAspect": dim_clark},
+                )
+            ],
+        ),
+    )
+
+
+def _mixed_open_aspect_table() -> TableDefinitionPWD:
+    typed_dim_clark = "{http://example.com/dim}LineName"
+    explicit_dim_clark = "{http://example.com/dim}LineCode"
+    return TableDefinitionPWD(
+        table_id="es_tOPEN_ASPECT_MIXED",
+        label="Mixed open aspect rows table",
+        extended_link_role="http://example.com/role/es_tOPEN_ASPECT_MIXED",
+        x_breakdown=BreakdownNode(node_type="rule", is_abstract=True, children=[_leaf("Column")]),
+        y_breakdown=BreakdownNode(
+            node_type="rule",
+            is_abstract=True,
+            children=[
+                BreakdownNode(
+                    node_type="aspect",
+                    label="",
+                    is_abstract=False,
+                    aspect_constraints={"dimensionAspect": typed_dim_clark},
+                ),
+                BreakdownNode(
+                    node_type="aspect",
+                    label="",
+                    is_abstract=False,
+                    aspect_constraints={"dimensionAspect": explicit_dim_clark},
+                ),
+            ],
+        ),
+    )
+
+
+def _taxonomy_with_mixed_open_row_dimensions(table: TableDefinitionPWD) -> tuple[TaxonomyStructure, QName, QName, QName]:
+    typed_dim = QName(namespace="http://example.com/dim", local_name="LineName", prefix="dim")
+    explicit_dim = QName(namespace="http://example.com/dim", local_name="LineCode", prefix="dim")
+    member_c = QName(namespace="http://example.com/mem", local_name="MemberC", prefix="mem")
+    concept_qname = QName(namespace="http://example.com/met", local_name="OpenConcept", prefix="met")
+    labels = _LabelResolverStub({
+        typed_dim: "Nombre",
+        explicit_dim: "Codigo",
+        member_c: "Member C",
+        concept_qname: "Open concept",
+    })
+    taxonomy = TaxonomyStructure(
+        metadata=TaxonomyMetadata(
+            name="OpenRowsTax",
+            version="1.0",
+            publisher="Test",
+            entry_point_path=Path("tax.xsd"),
+            loaded_at=datetime(2024, 1, 1),
+            declared_languages=("es", "en"),
+        ),
+        concepts={},
+        labels=labels,
+        presentation={},
+        calculation={},
+        definition={},
+        hypercubes=[],
+        dimensions={
+            typed_dim: DimensionModel(
+                qname=typed_dim,
+                dimension_type="typed",
+                default_member=None,
+                domain=None,
+                members=(),
+            ),
+            explicit_dim: DimensionModel(
+                qname=explicit_dim,
+                dimension_type="explicit",
+                default_member=None,
+                domain=None,
+                members=(DomainMember(qname=member_c, parent=None, order=1.0),),
+            ),
+        },
+        tables=[table],
+    )
+    return taxonomy, typed_dim, explicit_dim, member_c
 
 
 @pytest.mark.qt
@@ -628,6 +896,295 @@ def test_xbrl_table_view_prioritises_instance_z_values_and_rerenders_on_change(q
         instance.dimensional_configs[table.table_id].dimension_assignments[dim_qname]
         == member_a
     )
+
+
+@pytest.mark.qt
+def test_taxonomy_view_shows_dummy_open_row_for_open_breakdown_table(qtbot) -> None:
+    table = _open_row_table()
+    taxonomy, _, _ = _taxonomy_with_open_row_dimension(table)
+
+    view = XbrlTableView()
+    qtbot.addWidget(view)
+    view.resize(960, 640)
+    view.show()
+    view.set_table(table, taxonomy, None)
+
+    assert view._layout is not None
+    labels = [row[0].label for row in view._layout.row_header.levels]
+    rendered_labels = [view._row_header._section_cells[i].label for i in range(len(view._row_header._section_cells))]
+    rendered_texts = [view._row_header._section_cells[i].label if view._row_header._section_cells[i].rc_code is None else f"{view._row_header._section_cells[i].label} ({view._row_header._section_cells[i].rc_code})" for i in range(len(view._row_header._section_cells))]
+    assert labels == ["Dynamic section", "Member A row", "Member B row", "Open row"]
+    assert rendered_labels[-1] == "Open row"
+    assert rendered_texts[-1] == "Open row (999)"
+
+
+@pytest.mark.qt
+def test_instance_view_can_add_dynamic_open_row(qtbot, monkeypatch) -> None:
+    table = _open_row_table()
+    taxonomy, _, member_c = _taxonomy_with_open_row_dimension(table)
+    instance = _instance_for_open_rows()
+
+    selections = iter([("Member C", True)])
+    monkeypatch.setattr(
+        "bde_xbrl_editor.ui.widgets.xbrl_table_view.QInputDialog.getItem",
+        lambda *args, **kwargs: next(selections),
+    )
+
+    view = XbrlTableView()
+    qtbot.addWidget(view)
+    view.resize(960, 640)
+    view.show()
+    view.set_table(table, taxonomy, instance)
+
+    qtbot.mouseClick(view._editing_switch, Qt.MouseButton.LeftButton)
+    assert view._add_open_row_button.isVisible()
+
+    qtbot.mouseClick(view._add_open_row_button, Qt.MouseButton.LeftButton)
+
+    assert view._layout is not None
+    labels = [row[0].label for row in view._layout.row_header.levels]
+    assert labels[:3] == ["Dynamic section", "Member A row", "Member B row"]
+    assert labels[3] in {"Member C", "mem:MemberC"}
+    assert (
+        str(member_c)
+        in view._open_row_members_by_table[table.table_id][view._open_row_candidates[0]["signature"]]
+    )
+
+
+@pytest.mark.qt
+def test_instance_view_shows_open_rows_already_present_in_file(qtbot) -> None:
+    table = _open_row_table()
+    taxonomy, _, member_c = _taxonomy_with_open_row_dimension(table)
+    instance = _instance_with_open_row_fact(member_c)
+
+    view = XbrlTableView()
+    qtbot.addWidget(view)
+    view.resize(960, 640)
+    view.show()
+    view.set_table(table, taxonomy, instance)
+
+    assert view._layout is not None
+    labels = [row[0].label for row in view._layout.row_header.levels]
+    assert labels[:3] == ["Dynamic section", "Member A row", "Member B row"]
+    assert labels[3] in {"Member C", "mem:MemberC"}
+
+
+@pytest.mark.qt
+def test_instance_view_keeps_single_placeholder_open_row_when_no_dynamic_rows_exist(qtbot) -> None:
+    table = _open_row_table()
+    taxonomy, _, _ = _taxonomy_with_open_row_dimension(table)
+    instance = _instance_for_open_rows()
+
+    view = XbrlTableView()
+    qtbot.addWidget(view)
+    view.resize(960, 640)
+    view.show()
+    view.set_table(table, taxonomy, instance)
+
+    assert view._layout is not None
+    labels = [row[0].label for row in view._layout.row_header.levels]
+    assert labels == ["Dynamic section", "Member A row", "Member B row", "Open row"]
+    placeholder_rows = [row[0] for row in view._layout.row_header.levels if row[0].label == "Open row"]
+    assert len(placeholder_rows) == 1
+    assert placeholder_rows[0].rc_code == "999"
+
+
+@pytest.mark.qt
+def test_open_row_placeholder_includes_key_column_with_available_members(qtbot) -> None:
+    table = _open_row_table()
+    taxonomy, dim_qname, member_c = _taxonomy_with_open_row_dimension(table)
+    instance = _instance_for_open_rows()
+
+    view = XbrlTableView()
+    qtbot.addWidget(view)
+    view.resize(960, 640)
+    view.show()
+    view.set_table(table, taxonomy, instance)
+
+    assert view._layout is not None
+    assert view._layout.column_header.leaf_count == 2
+    assert view._layout.column_header.levels[0][0].label == "Open dimension"
+
+    placeholder_key_cell = view._layout.body[3][0]
+    assert placeholder_key_cell.cell_kind == "open-key"
+    assert placeholder_key_cell.open_key_dimension == dim_qname
+    assert placeholder_key_cell.open_key_member is None
+    assert placeholder_key_cell.open_key_options == (member_c,)
+
+    model = view._body_view.model()
+    index = model.index(3, 0)
+    role_data = index.data(OPEN_KEY_ROLE)
+    assert role_data is not None
+    assert role_data["dimension"] == dim_qname
+    assert role_data["options"] == (member_c,)
+
+
+@pytest.mark.qt
+def test_taxonomy_view_shows_placeholder_for_aspect_open_table(qtbot) -> None:
+    table = _open_aspect_table()
+    taxonomy, dim_qname, member_c = _taxonomy_with_open_row_dimension(table)
+
+    view = XbrlTableView()
+    qtbot.addWidget(view)
+    view.resize(960, 640)
+    view.show()
+    view.set_table(table, taxonomy, None)
+
+    assert view._layout is not None
+    assert [row[0].label for row in view._layout.row_header.levels] == ["Open row"]
+    assert view._layout.row_header.levels[0][0].rc_code == "999"
+    assert view._layout.column_header.levels[0][0].label == "Open dimension"
+    assert view._layout.body[0][0].cell_kind == "open-key"
+    assert view._layout.body[0][0].open_key_dimension == dim_qname
+    assert member_c in view._layout.body[0][0].open_key_options
+
+
+@pytest.mark.qt
+def test_aspect_open_rows_preserve_free_text_keys_from_stored_rows(qtbot) -> None:
+    table = _mixed_open_aspect_table()
+    taxonomy, typed_dim, explicit_dim, member_c = _taxonomy_with_mixed_open_row_dimensions(table)
+
+    view = XbrlTableView()
+    view._open_aspect_rows_by_table[table.table_id] = [  # noqa: SLF001
+        {
+            f"{{{typed_dim.namespace}}}{typed_dim.local_name}": "Entidad A",
+            f"{{{explicit_dim.namespace}}}{explicit_dim.local_name}": (
+                f"{{{member_c.namespace}}}{member_c.local_name}"
+            ),
+        }
+    ]
+    qtbot.addWidget(view)
+    view.resize(960, 640)
+    view.show()
+    view.set_table(table, taxonomy, None)
+
+    assert view._layout is not None
+    assert view._layout.body[0][0].cell_kind == "open-key"
+    assert view._layout.body[0][0].open_key_text == "Entidad A"
+    assert view._layout.body[0][0].open_key_options == ()
+    assert view._layout.body[0][1].open_key_member == member_c
+
+
+@pytest.mark.qt
+def test_refresh_instance_does_not_duplicate_open_key_columns(qtbot) -> None:
+    table = _mixed_open_aspect_table()
+    taxonomy, typed_dim, explicit_dim, member_c = _taxonomy_with_mixed_open_row_dimensions(table)
+
+    view = XbrlTableView()
+    view._open_aspect_rows_by_table[table.table_id] = [  # noqa: SLF001
+        {
+            f"{{{typed_dim.namespace}}}{typed_dim.local_name}": "Entidad A",
+            f"{{{explicit_dim.namespace}}}{explicit_dim.local_name}": (
+                f"{{{member_c.namespace}}}{member_c.local_name}"
+            ),
+        }
+    ]
+    qtbot.addWidget(view)
+    view.resize(960, 640)
+    view.show()
+    view.set_table(table, taxonomy, _instance_for_open_rows())
+
+    assert view._layout is not None
+    initial_col_count = view._layout.column_header.leaf_count
+    initial_headers = [cell.label for cell in view._layout.column_header.levels[0][:2]]
+
+    view.refresh_instance(_instance_for_open_rows())
+
+    assert view._layout is not None
+    assert view._layout.column_header.leaf_count == initial_col_count
+    assert [cell.label for cell in view._layout.column_header.levels[0][:2]] == initial_headers
+    assert [cell.cell_kind for cell in view._layout.body[0][:2]] == ["open-key", "open-key"]
+
+
+@pytest.mark.qt
+def test_known_enum_fact_cells_publish_dropdown_options() -> None:
+    table = _table("es_tFI_40-1", "Table 40-1")
+    concept = QName(namespace="http://example.com/met", local_name="qBVQ", prefix="met")
+    body_cell = SimpleNamespace(
+        row_index=0,
+        col_index=0,
+        coordinate=SimpleNamespace(concept=concept, explicit_dimensions={}),
+        cell_kind="fact",
+        fact_options=(),
+    )
+    layout = SimpleNamespace(table_id=table.table_id, body=[[body_cell]])
+
+    from bde_xbrl_editor.ui.widgets.xbrl_table_view import _apply_known_fact_options
+
+    updated = _apply_known_fact_options(layout, table=table)
+
+    assert updated.body[0][0].fact_options == ("eba_qSC:qx3", "eba_qSC:qx4")
+
+
+@pytest.mark.qt
+def test_editing_open_row_key_creates_dynamic_row_coordinates(qtbot) -> None:
+    table = _open_row_table()
+    taxonomy, dim_qname, member_c = _taxonomy_with_open_row_dimension(table)
+    instance = _instance_for_open_rows()
+
+    view = XbrlTableView()
+    qtbot.addWidget(view)
+    view.resize(960, 640)
+    view.show()
+    view.set_table(table, taxonomy, instance)
+
+    model = view._body_view.model()
+    assert model.setData(
+        model.index(3, 0),
+        "{http://example.com/mem}MemberC",
+        Qt.ItemDataRole.EditRole,
+    )
+
+    assert view._layout is not None
+    labels = [row[0].label for row in view._layout.row_header.levels]
+    assert labels[:3] == ["Dynamic section", "Member A row", "Member B row"]
+    assert labels[3] in {"Member C", "mem:MemberC"}
+
+    dynamic_key_cell = view._layout.body[3][0]
+    dynamic_fact_cell = view._layout.body[3][1]
+    assert dynamic_key_cell.cell_kind == "open-key"
+    assert dynamic_key_cell.open_key_member == member_c
+    assert dynamic_fact_cell.cell_kind == "fact"
+    assert dynamic_fact_cell.coordinate.explicit_dimensions == {dim_qname: member_c}
+
+
+@pytest.mark.qt
+def test_editing_existing_open_row_key_migrates_fact_context(qtbot) -> None:
+    table = _open_row_table()
+    taxonomy, dim_qname, member_c = _taxonomy_with_open_row_dimension(table)
+    member_d = QName(namespace="http://example.com/mem", local_name="MemberD", prefix="mem")
+    dim_model = taxonomy.dimensions[dim_qname]
+    taxonomy.dimensions[dim_qname] = DimensionModel(
+        qname=dim_model.qname,
+        dimension_type=dim_model.dimension_type,
+        default_member=dim_model.default_member,
+        domain=dim_model.domain,
+        members=dim_model.members + (DomainMember(qname=member_d, parent=None, order=4.0),),
+    )
+    taxonomy.labels._mapping[member_d] = "Member D"  # type: ignore[attr-defined]  # noqa: SLF001
+    instance = _editable_instance_with_open_row_fact(member_c)
+    editor = InstanceEditor(instance)
+
+    view = XbrlTableView()
+    view.set_editor(editor)
+    qtbot.addWidget(view)
+    view.resize(960, 640)
+    view.show()
+    view.set_table(table, taxonomy, instance)
+
+    model = view._body_view.model()
+    assert model.setData(
+        model.index(3, 0),
+        "{http://example.com/mem}MemberD",
+        Qt.ItemDataRole.EditRole,
+    )
+
+    assert len(instance.facts) == 1
+    moved_fact = instance.facts[0]
+    moved_context = instance.contexts[moved_fact.context_ref]
+    assert moved_context.dimensions == {dim_qname: member_d}
+    assert moved_fact.value == "10"
+    assert instance.has_unsaved_changes
 
 
 @pytest.mark.qt

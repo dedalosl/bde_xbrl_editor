@@ -285,6 +285,8 @@ class MainWindow(QMainWindow):
                 self._editor.changes_made.disconnect(self._on_changes_made)
                 self._editor.filing_indicators_changed.disconnect(self._on_filing_indicators_changed)
         self._editor = None
+        if self._table_view is not None:
+            self._table_view.set_editor(None)
         self._current_instance = None
         self._clear_browser_view_refs()
         self._pending_load_timing = None
@@ -320,6 +322,8 @@ class MainWindow(QMainWindow):
         workspace_started_at = time.perf_counter()
         self._current_instance = None
         self._editor = None
+        if self._table_view is not None:
+            self._table_view.set_editor(None)
         self._current_taxonomy = structure
         meta = structure.metadata
         table_count = len(structure.tables)
@@ -813,6 +817,8 @@ class MainWindow(QMainWindow):
         self._editor = InstanceEditor(instance, parent=self)
         self._editor.changes_made.connect(self._on_changes_made)
         self._editor.filing_indicators_changed.connect(self._on_filing_indicators_changed)
+        if self._table_view is not None:
+            self._table_view.set_editor(self._editor)
 
         self._table_view = XbrlTableView(parent=self)
         self._table_view.editing_mode_changed.connect(self._on_table_editing_mode_changed)
@@ -956,6 +962,7 @@ class MainWindow(QMainWindow):
                 table_view_widget=self._table_view._body_view,
             )
             self._table_view._body_view.setItemDelegate(delegate)
+            self._table_view.set_editor(self._editor)
         if self._pending_initial_table_started_at is not None:
             first_table_elapsed = time.perf_counter() - self._pending_initial_table_started_at
             if self._pending_load_timing is not None:
