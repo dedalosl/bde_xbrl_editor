@@ -661,7 +661,9 @@ def test_instance_panel_shows_non_filed_taxonomy_tables(qtbot, monkeypatch) -> N
 
 
 @pytest.mark.qt
-def test_instance_panel_preserves_taxonomy_table_order(qtbot, monkeypatch) -> None:
+def test_instance_panel_keeps_taxonomy_order_within_filled_and_empty_groups(
+    qtbot, monkeypatch
+) -> None:
     first_table = _table("es_tF1_11", "Coberturas", table_code="0011")
     second_table = _table("es_tF1_10", "Derivados", table_code="0010")
     taxonomy = _taxonomy_with_tables(first_table, second_table)
@@ -682,10 +684,45 @@ def test_instance_panel_preserves_taxonomy_table_order(qtbot, monkeypatch) -> No
     panel.populate(instance, taxonomy)
 
     assert panel._table_list.count() == 2
-    assert "es_tF1_11" in panel._table_list.item(0).text()
-    assert "Empty" in panel._table_list.item(0).text()
-    assert "es_tF1_10" in panel._table_list.item(1).text()
-    assert "Contains data" in panel._table_list.item(1).text()
+    assert "es_tF1_10" in panel._table_list.item(0).text()
+    assert "Contains data" in panel._table_list.item(0).text()
+    assert "es_tF1_11" in panel._table_list.item(1).text()
+    assert "Empty" in panel._table_list.item(1).text()
+
+
+@pytest.mark.qt
+def test_instance_panel_groups_filled_tables_first_without_reordering_within_group(
+    qtbot, monkeypatch
+) -> None:
+    first_filled = _table("es_tF1_20", "First filled", table_code="0020")
+    second_filled = _table("es_tF1_10", "Second filled", table_code="0010")
+    first_empty = _table("es_tF1_30", "First empty", table_code="0030")
+    second_empty = _table("es_tF1_11", "Second empty", table_code="0011")
+    taxonomy = _taxonomy_with_tables(first_filled, second_filled, first_empty, second_empty)
+    instance = _instance_with_filing_indicators("0020", "0010")
+
+    monkeypatch.setattr(
+        _InstancePanel,
+        "_compute_table_data_presence",
+        staticmethod(lambda _instance, _taxonomy, _tables: {
+            first_filled.table_id: True,
+            second_filled.table_id: True,
+            first_empty.table_id: False,
+            second_empty.table_id: False,
+        }),
+    )
+
+    panel = _InstancePanel()
+    qtbot.addWidget(panel)
+    panel.show()
+    panel.populate(instance, taxonomy)
+
+    assert panel._table_list.count() == 4
+    texts = [panel._table_list.item(i).text() for i in range(panel._table_list.count())]
+    assert "es_tF1_20" in texts[0]
+    assert "es_tF1_10" in texts[1]
+    assert "es_tF1_30" in texts[2]
+    assert "es_tF1_11" in texts[3]
 
 
 @pytest.mark.qt

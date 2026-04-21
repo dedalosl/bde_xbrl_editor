@@ -15,6 +15,8 @@ from bde_xbrl_editor.taxonomy.linkbases.presentation import PresentationLinkbase
 from bde_xbrl_editor.taxonomy.loader import (
     _build_group_table_order,
     _classify_linkbases,
+    _find_companion_tab_presentation_linkbases,
+    _preferred_group_table_results,
     _run_path_jobs,
     _schema_parse_workers,
     _sniff_linkbase_type,
@@ -25,6 +27,11 @@ from bde_xbrl_editor.taxonomy.models import TaxonomyParseError
 def test_sniff_linkbase_calculation_stem_does_not_use_formula_bucket() -> None:
     """Filename heuristics no longer expose a ``formula`` bucket — only structural detection."""
     assert _sniff_linkbase_type(Path("/dts/my-formula-calculation.xml")) == "calc"
+
+
+def test_sniff_linkbase_pre_stem_is_treated_as_presentation() -> None:
+    assert _sniff_linkbase_type(Path("/dts/tab-pre.xml")) == "pres"
+    assert _sniff_linkbase_type(Path("/dts/mod-pre.xml")) == "pres"
 
 
 def test_linkbase_contains_formula_assertions_detects_validation_assertion_set(
@@ -198,6 +205,67 @@ def test_build_group_table_order_uses_arc_order_depth_first() -> None:
         "table_b_child": 2,
         "table_c": 3,
     }
+
+
+def test_build_group_table_order_traverses_multiple_roots_in_discovery_order() -> None:
+    first = PresentationLinkbaseParseResult(
+        networks={},
+        group_table_children={"group-a": [(2.0, "table_a2"), (1.0, "table_a1")]},
+        group_table_rend_fragments={"table_a1", "table_a2"},
+        group_table_root_fragment="group-a",
+    )
+    second = PresentationLinkbaseParseResult(
+        networks={},
+        group_table_children={"group-b": [(1.0, "table_b1")]},
+        group_table_rend_fragments={"table_b1"},
+        group_table_root_fragment="group-b",
+    )
+
+    assert _build_group_table_order([first, second]) == {
+        "table_a1": 0,
+        "table_a2": 1,
+        "table_b1": 2,
+    }
+
+
+def test_preferred_group_table_results_prefers_tab_directory() -> None:
+    mod_result = PresentationLinkbaseParseResult(
+        networks={},
+        group_table_children={"mod-root": [(1.0, "mod-table")]},
+        group_table_rend_fragments={"mod-table"},
+        group_table_root_fragment="mod-root",
+    )
+    tab_result = PresentationLinkbaseParseResult(
+        networks={},
+        group_table_children={"tab-root": [(1.0, "tab-table")]},
+        group_table_rend_fragments={"tab-table"},
+        group_table_root_fragment="tab-root",
+    )
+
+    selected = _preferred_group_table_results([
+        (Path("/tmp/mod/finrep_ind-pre.xml"), mod_result),
+        (Path("/tmp/tab/tab-pre.xml"), tab_result),
+    ])
+
+    assert selected == [tab_result]
+
+
+def test_find_companion_tab_presentation_linkbases_detects_tab_pre(tmp_path: Path) -> None:
+    mod_dir = tmp_path / "mod"
+    tab_dir = tmp_path / "tab"
+    mod_dir.mkdir()
+    tab_dir.mkdir()
+    entry = mod_dir / "finrep_ind.xsd"
+    entry.write_text("<xs:schema xmlns:xs='http://www.w3.org/2001/XMLSchema'/>", encoding="utf-8")
+    tab_pre = tab_dir / "tab-pre.xml"
+    tab_pre.write_text(
+        "<link:linkbase xmlns:link='http://www.xbrl.org/2003/linkbase'/>",
+        encoding="utf-8",
+    )
+
+    found = _find_companion_tab_presentation_linkbases(entry, known_linkbases=[])
+
+    assert found == [tab_pre]
 
 
 def test_schema_parse_workers_is_bounded() -> None:

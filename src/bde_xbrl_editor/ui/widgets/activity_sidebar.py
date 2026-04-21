@@ -875,9 +875,13 @@ class _InstancePanel(QWidget):
         self._table_entries.clear()
         visible_tables = list(taxonomy.tables)  # type: ignore[union-attr]
         data_presence = self._compute_table_data_presence(instance, taxonomy, visible_tables)
-        self._table_entries = [
-            (table, data_presence.get(table.table_id, False)) for table in visible_tables
+        populated_entries = [
+            (table, True) for table in visible_tables if data_presence.get(table.table_id, False)
         ]
+        empty_entries = [
+            (table, False) for table in visible_tables if not data_presence.get(table.table_id, False)
+        ]
+        self._table_entries = populated_entries + empty_entries
         self._table_search.blockSignals(True)
         self._table_search.clear()
         self._table_search.blockSignals(False)

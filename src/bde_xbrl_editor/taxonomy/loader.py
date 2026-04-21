@@ -155,6 +155,8 @@ def _sniff_linkbase_type(path: Path) -> str:
     ``.xml`` linkbase (see ``_do_load``).
     """
     name = path.stem.lower()
+    if re.search(r"(?:^|[-_])pre(?:sentation)?(?:$|[-_])", name):
+        return "pres"
     if "label" in name or "lab" in name:
         if "gen" in name:
             return "generic"
@@ -172,6 +174,9 @@ def _sniff_linkbase_type(path: Path) -> str:
         ctx = etree.iterparse(BytesIO(path.read_bytes()), events=("start",))
         for _, el in ctx:
             tag = str(el.tag)
+            local = tag.split("}")[-1] if "}" in tag else tag
+            if local == "presentationLink":
+                return "pres"
             if NS_TABLE_PWD in tag:
                 return "table"
     except Exception:  # noqa: BLE001
@@ -196,43 +201,112 @@ def _classify_linkbases(linkbase_paths: list[Path]) -> dict[str, list[Path]]:
     return classified
 
 
+def _find_companion_tab_presentation_linkbases(
+    entry_point: Path,
+    known_linkbases: list[Path],
+) -> list[Path]:
+    """Find sibling ``tab/*pre*.xml`` files that DTS discovery may miss."""
+    known = set(known_linkbases)
+    search_roots: list[Path] = []
+    if entry_point.parent.name in {"mod", "tab"}:
+        search_roots.append(entry_point.parent.parent)
+    search_roots.append(entry_point.parent)
+
+    discovered: list[Path] = []
+    seen: set[Path] = set()
+    for root in search_roots:
+        tab_dir = root / "tab"
+        if not tab_dir.is_dir():
+            continue
+        for path in sorted(tab_dir.glob("*pre*.xml")):
+            if path in known or path in seen:
+                continue
+            if _sniff_linkbase_type(path) != "pres":
+                continue
+            seen.add(path)
+            discovered.append(path)
+    return discovered
+
+
 def _build_group_table_order(
     presentation_results: list[PresentationLinkbaseParseResult],
 ) -> dict[str, int]:
     """Compute flat table order from already-parsed presentation metadata."""
     children: dict[str, list[tuple[float, str]]] = {}
     rend_fragments: set[str] = set()
-    root_fragment: str | None = None
+    fallback_roots: list[str] = []
+    child_fragments: set[str] = set()
 
     for result in presentation_results:
         for parent, child_entries in result.group_table_children.items():
             children.setdefault(parent, []).extend(child_entries)
+            child_fragments.update(child for _, child in child_entries)
         rend_fragments.update(result.group_table_rend_fragments)
-        if root_fragment is None and result.group_table_root_fragment is not None:
-            root_fragment = result.group_table_root_fragment
+        if (
+            result.group_table_root_fragment is not None
+            and result.group_table_root_fragment not in fallback_roots
+        ):
+            fallback_roots.append(result.group_table_root_fragment)
 
-    if not children or root_fragment is None:
+    if not children:
         return {}
 
     for parent in children:
         children[parent].sort(key=lambda item: item[0])
 
+    root_fragments = [parent for parent in children if parent not in child_fragments]
+    if not root_fragments:
+        root_fragments = [root for root in fallback_roots if root in children]
+    else:
+        for root in fallback_roots:
+            if root in children and root not in root_fragments:
+                root_fragments.append(root)
+
+    if not root_fragments:
+        root_fragments = list(children)
+
     flat_order: dict[str, int] = {}
     counter = 0
-    stack: list[str] = [root_fragment]
     visited: set[str] = set()
-    while stack:
-        node = stack.pop()
-        if node in visited:
-            continue
-        visited.add(node)
-        if node in rend_fragments:
-            flat_order[node] = counter
-            counter += 1
-        for _, child_frag in reversed(children.get(node, [])):
-            if child_frag not in visited:
-                stack.append(child_frag)
+
+    for root_fragment in root_fragments:
+        stack: list[str] = [root_fragment]
+        while stack:
+            node = stack.pop()
+            if node in visited:
+                continue
+            visited.add(node)
+            if node in rend_fragments:
+                flat_order[node] = counter
+                counter += 1
+            for _, child_frag in reversed(children.get(node, [])):
+                if child_frag not in visited:
+                    stack.append(child_frag)
     return flat_order
+
+
+def _preferred_group_table_results(
+    presentation_results: list[tuple[Path, PresentationLinkbaseParseResult]],
+) -> list[PresentationLinkbaseParseResult]:
+    """Choose the presentation results that should drive table ordering.
+
+    When a taxonomy ships both a module-level ``*-pre.xml`` and a dedicated
+    ``tab/tab-pre.xml``, the latter reflects the table browser order users
+    expect. Prefer presentation linkbases discovered under a ``tab`` folder
+    when they provide ``group-table`` metadata; otherwise fall back to every
+    presentation result that contains such metadata.
+    """
+
+    tab_results = [
+        result
+        for path, result in presentation_results
+        if result.group_table_children and "tab" in path.parts
+    ]
+    if tab_results:
+        return tab_results
+    return [
+        result for _path, result in presentation_results if result.group_table_children
+    ]
 
 
 def _build_concept_id_map(concepts: dict[QName, Concept]) -> dict[str, QName]:
@@ -924,12 +998,18 @@ class TaxonomyLoader:
                 lambda message, _current, _total: progress(message, 1)
             ),
         )
+        companion_tab_linkbases = _find_companion_tab_presentation_linkbases(
+            entry_point,
+            linkbase_paths,
+        )
+        all_linkbase_paths = list(linkbase_paths)
+        all_linkbase_paths.extend(companion_tab_linkbases)
         self._last_skipped_urls: list[str] = skipped_urls
         progress(
-            f"DTS discovered — {len(schema_paths)} schemas, {len(linkbase_paths)} linkbases",
+            f"DTS discovered — {len(schema_paths)} schemas, {len(all_linkbase_paths)} linkbases",
             1,
         )
-        classified_linkbases = _classify_linkbases(linkbase_paths)
+        classified_linkbases = _classify_linkbases(all_linkbase_paths)
         label_linkbases = classified_linkbases["label"]
         generic_label_linkbases = classified_linkbases["generic"]
         presentation_linkbases = classified_linkbases["pres"]
@@ -939,13 +1019,13 @@ class TaxonomyLoader:
         formula_linkbases = list(
             dict.fromkeys(
                 p
-                for p in linkbase_paths
+                for p in all_linkbase_paths
                 if p.suffix.lower() in (".xml", ".xbrl")
                 and not _should_skip_linkbase(p)
                 and linkbase_contains_formula_assertions(p)
             )
         )
-        linkbase_workers = _linkbase_parse_workers(len(linkbase_paths))
+        linkbase_workers = _linkbase_parse_workers(len(all_linkbase_paths))
 
         # Step 2: Parse schemas → concepts (with cross-schema transitive SG resolution)
         progress("Parsing schemas…", 2)
@@ -1137,10 +1217,10 @@ class TaxonomyLoader:
             lambda lb_path: parse_presentation_linkbase(lb_path, concept_id_map),
             workers=linkbase_workers,
         )
-        presentation_parse_results: list[PresentationLinkbaseParseResult] = []
+        presentation_parse_results: list[tuple[Path, PresentationLinkbaseParseResult]] = []
         for _lb_path, result in parsed_presentation_linkbases:
             presentation.update(result.networks)
-            presentation_parse_results.append(result)
+            presentation_parse_results.append((_lb_path, result))
 
         parsed_calculation_linkbases = _run_path_jobs(
             calculation_linkbases,
@@ -1195,7 +1275,9 @@ class TaxonomyLoader:
             tables.extend(parsed_tables)
 
         # Sort tables by the order attribute on group-table arcs in presentation linkbases.
-        group_table_order = _build_group_table_order(presentation_parse_results)
+        group_table_order = _build_group_table_order(
+            _preferred_group_table_results(presentation_parse_results)
+        )
         if group_table_order:
             tables.sort(key=lambda t: group_table_order.get(t.table_id, float("inf")))
         progress(f"Tables prepared — {len(tables)} available", 5)
@@ -1219,7 +1301,7 @@ class TaxonomyLoader:
                 all_assertions.extend(fas.assertions)
 
             parsed_assertion_resource_linkbases = _run_path_jobs(
-                linkbase_paths,
+                all_linkbase_paths,
                 parse_assertion_resource_linkbase,
                 workers=linkbase_workers,
             )
@@ -1229,7 +1311,7 @@ class TaxonomyLoader:
                     assertion_resources.setdefault(assertion_id, []).extend(resources)
 
             parsed_assertion_table_linkbases = _run_path_jobs(
-                linkbase_paths,
+                all_linkbase_paths,
                 parse_assertion_table_mappings,
                 workers=linkbase_workers,
             )
@@ -1277,7 +1359,7 @@ class TaxonomyLoader:
             formula_assertion_set = FormulaAssertionSet()
 
         parsed_custom_function_linkbases = _run_path_jobs(
-            linkbase_paths,
+            all_linkbase_paths,
             parse_custom_function_linkbase,
             workers=linkbase_workers,
         )
@@ -1309,7 +1391,7 @@ class TaxonomyLoader:
             formula_assertion_set=formula_assertion_set,
             custom_functions=tuple(custom_functions),
             schema_files=tuple(sorted(schema_paths)),
-            linkbase_files=tuple(sorted(linkbase_paths)),
+            linkbase_files=tuple(sorted(all_linkbase_paths)),
         )
 
         progress("Taxonomy loaded successfully", _TOTAL_STEPS)
