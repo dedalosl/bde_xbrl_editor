@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QEvent, QModelIndex, QPoint, QRect, Qt
@@ -17,15 +18,111 @@ from PySide6.QtWidgets import (
 )
 
 from bde_xbrl_editor.instance.models import DuplicateFactError
-from bde_xbrl_editor.ui import theme
 from bde_xbrl_editor.instance.validator import XbrlTypeValidator
-from bde_xbrl_editor.ui.widgets.table_body_model import CELL_CODE_ROLE, FACT_OPTIONS_ROLE, OPEN_KEY_ROLE
+from bde_xbrl_editor.taxonomy.models import QName, TaxonomyStructure
+from bde_xbrl_editor.ui import theme
+from bde_xbrl_editor.ui.widgets.table_body_model import (
+    CELL_CODE_ROLE,
+    FACT_OPTIONS_ROLE,
+    OPEN_KEY_ROLE,
+)
 
 if TYPE_CHECKING:
     from bde_xbrl_editor.instance.editor import InstanceEditor
     from bde_xbrl_editor.instance.models import XbrlInstance
     from bde_xbrl_editor.table_renderer.models import CellCoordinate, ComputedTableLayout
-    from bde_xbrl_editor.taxonomy.models import QName, TaxonomyStructure
+
+_FACT_ENUM_LANG_PREF = ["es", "en"]
+
+
+def _build_namespace_prefix_map(taxonomy: TaxonomyStructure) -> dict[str, str]:
+    """Pick the most common XML prefix for each target namespace from declared concepts."""
+    votes: dict[str, Counter[str]] = {}
+    for c in taxonomy.concepts.values():
+        pfx = c.qname.prefix
+        ns = c.qname.namespace
+        if not pfx or not ns:
+            continue
+        votes.setdefault(ns, Counter())[pfx] += 1
+    return {ns: counter.most_common(1)[0][0] for ns, counter in votes.items()}
+
+
+def _build_prefix_to_namespace(taxonomy: TaxonomyStructure) -> dict[str, str]:
+    """Map QName prefix → namespace URI (first declaration wins on collision)."""
+    out: dict[str, str] = {}
+    for c in taxonomy.concepts.values():
+        pfx = c.qname.prefix
+        ns = c.qname.namespace
+        if pfx and ns and pfx not in out:
+            out[pfx] = ns
+    return out
+
+
+def _fallback_prefix_for_namespace(namespace: str) -> str:
+    """Derive a readable prefix when the taxonomy did not declare one for this namespace."""
+    tail = namespace.rstrip("/").split("/")[-1] or "mem"
+    slug = "".join(ch if ch.isalnum() else "_" for ch in tail).strip("_").lower()
+    return (slug[:20] or "mem").lstrip("0123456789") or "mem"
+
+
+def _qname_to_prefixed_lexical(qname: QName, ns_to_prefix: dict[str, str]) -> str:
+    """Return ``prefix:local`` for XBRL instance lexical form."""
+    ns = qname.namespace
+    pfx = qname.prefix or ns_to_prefix.get(ns)
+    if not pfx:
+        pfx = _fallback_prefix_for_namespace(ns)
+    return f"{pfx}:{qname.local_name}"
+
+
+def _parse_fact_option_lexical(
+    lexical: str,
+    taxonomy: TaxonomyStructure,
+    prefix_to_ns: dict[str, str],
+) -> QName | None:
+    """Parse XSD QName lexical, Clark, EE2 URI, or ``prefix:local`` into a QName."""
+    s = lexical.strip()
+    if not s:
+        return None
+    if s.startswith("{") and "}" in s:
+        return QName.from_clark(s)
+    if s.startswith(("http://", "https://")) and "#" in s:
+        ns, _, local = s.partition("#")
+        if ns and local:
+            return QName(namespace=ns, local_name=local)
+    if ":" in s and not s.startswith("http"):
+        prefix, _, local = s.partition(":")
+        ns = prefix_to_ns.get(prefix)
+        if ns:
+            return QName(namespace=ns, local_name=local, prefix=prefix)
+    return None
+
+
+def _fact_option_match_candidates(
+    raw: str,
+    taxonomy: TaxonomyStructure,
+    ns_to_prefix: dict[str, str],
+    prefix_to_ns: dict[str, str],
+) -> list[str]:
+    """All string forms that should select the same combo row (prefix, Clark, URI)."""
+    s = raw.strip()
+    if not s:
+        return []
+    out: list[str] = []
+
+    def _push(x: str) -> None:
+        if x and x not in out:
+            out.append(x)
+
+    _push(s)
+    qn = _parse_fact_option_lexical(s, taxonomy, prefix_to_ns)
+    if qn is None:
+        return out
+    _push(_qname_to_prefixed_lexical(qn, ns_to_prefix))
+    _push(_qname_to_clark(qn))
+    uri = _clark_to_expanded_name_uri(_qname_to_clark(qn))
+    if uri:
+        _push(uri)
+    return out
 
 
 _CELL_CODE_FG = QColor(theme.TEXT_MAIN)
@@ -38,7 +135,20 @@ def _qname_to_clark(concept: QName) -> str:
     return f"{{{concept.namespace}}}{concept.local_name}"
 
 
+def _clark_to_expanded_name_uri(clark: str) -> str | None:
+    """Map ``{ns}local`` to EE2 expanded name URI ``ns#local``."""
+    if not (clark.startswith("{") and "}" in clark):
+        return None
+    end = clark.index("}")
+    ns, local = clark[1:end], clark[end + 1 :]
+    if not ns or not local:
+        return None
+    return f"{ns}#{local}"
+
+
 def _display_option_value(raw_value: str) -> str:
+    if raw_value.startswith(("http://", "https://")) and "#" in raw_value:
+        return raw_value.rsplit("#", 1)[-1]
     if raw_value.startswith("{") and "}" in raw_value:
         return raw_value.split("}", 1)[1]
     if ":" in raw_value:
@@ -140,10 +250,24 @@ class CellEditDelegate(QStyledItemDelegate):
         self._table_view_widget = table_view_widget
         self._validator = XbrlTypeValidator(taxonomy) if taxonomy is not None else None
         self._invalid_editors: set[int] = set()  # id(editor) for invalid-state editors
+        self._prefix_maps_cache: tuple[int, dict[str, str], dict[str, str]] | None = None
 
     def set_table_layout(self, layout: ComputedTableLayout | None) -> None:
         """Update active layout reference after Z-axis change."""
         self._table_layout = layout
+
+    def _prefix_maps(self) -> tuple[dict[str, str], dict[str, str]]:
+        """Cached (namespace→prefix, prefix→namespace) maps for the active taxonomy."""
+        if self._taxonomy is None:
+            return {}, {}
+        tid = id(self._taxonomy)
+        if self._prefix_maps_cache is None or self._prefix_maps_cache[0] != tid:
+            self._prefix_maps_cache = (
+                tid,
+                _build_namespace_prefix_map(self._taxonomy),
+                _build_prefix_to_namespace(self._taxonomy),
+            )
+        return self._prefix_maps_cache[1], self._prefix_maps_cache[2]
 
     # ------------------------------------------------------------------
     # paint — draws cell content + regulator-style cell-code badge
@@ -226,7 +350,9 @@ class CellEditDelegate(QStyledItemDelegate):
                 for option_qname in options:
                     if hasattr(option_qname, "namespace") and hasattr(option_qname, "local_name"):
                         label = (
-                            self._taxonomy.labels.resolve(option_qname)
+                            self._taxonomy.labels.resolve(
+                                option_qname, language_preference=_FACT_ENUM_LANG_PREF
+                            )
                             if self._taxonomy is not None
                             else str(option_qname)
                         )
@@ -242,9 +368,25 @@ class CellEditDelegate(QStyledItemDelegate):
         fact_options = index.data(FACT_OPTIONS_ROLE)
         if isinstance(fact_options, tuple) and fact_options:
             ed = QComboBox(parent)
-            for option in fact_options:
-                option_text = str(option)
-                ed.addItem(_display_option_value(option_text), option_text)
+            if self._taxonomy is not None:
+                ns_to_prefix, prefix_to_ns = self._prefix_maps()
+                for option in fact_options:
+                    option_text = str(option)
+                    qn = _parse_fact_option_lexical(option_text, self._taxonomy, prefix_to_ns)
+                    if qn is None:
+                        ed.addItem(_display_option_value(option_text), option_text)
+                        continue
+                    label = self._taxonomy.labels.resolve(
+                        qn, language_preference=_FACT_ENUM_LANG_PREF
+                    )
+                    if label == str(qn):
+                        label = qn.local_name
+                    data = _qname_to_prefixed_lexical(qn, ns_to_prefix)
+                    ed.addItem(label, data)
+            else:
+                for option in fact_options:
+                    option_text = str(option)
+                    ed.addItem(_display_option_value(option_text), option_text)
             return ed
         if self._editor is None or self._taxonomy is None:
             return None
@@ -292,8 +434,25 @@ class CellEditDelegate(QStyledItemDelegate):
             if d.isValid():
                 editor_widget.setDate(d)
         elif isinstance(editor_widget, QComboBox):
-            idx = editor_widget.findData(raw_value)
-            if idx < 0:
+            idx = -1
+            if isinstance(raw_value, str) and self._taxonomy is not None:
+                ns_to_prefix, prefix_to_ns = self._prefix_maps()
+                for cand in _fact_option_match_candidates(
+                    raw_value, self._taxonomy, ns_to_prefix, prefix_to_ns
+                ):
+                    idx = editor_widget.findData(cand)
+                    if idx >= 0:
+                        break
+            elif isinstance(raw_value, str):
+                candidates = [raw_value]
+                alt = _clark_to_expanded_name_uri(raw_value)
+                if alt and alt not in candidates:
+                    candidates.append(alt)
+                for cand in candidates:
+                    idx = editor_widget.findData(cand)
+                    if idx >= 0:
+                        break
+            if idx < 0 and isinstance(raw_value, str):
                 idx = editor_widget.findText(raw_value)
             if idx >= 0:
                 editor_widget.setCurrentIndex(idx)
@@ -330,10 +489,9 @@ class CellEditDelegate(QStyledItemDelegate):
         if isinstance(fact_options, tuple) and fact_options:
             if isinstance(editor_widget, QComboBox):
                 selected = editor_widget.currentData()
-                if isinstance(selected, str):
-                    submitted = selected
-                else:
-                    submitted = editor_widget.currentText()
+                submitted = (
+                    selected if isinstance(selected, str) else editor_widget.currentText()
+                )
             else:
                 submitted = ""
         elif self._editor is None or self._taxonomy is None or self._validator is None:

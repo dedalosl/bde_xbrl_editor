@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "raw/Table Linkbase 1.0.md",
+                "file": "raw/Extensible Enumerations 2.0.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "Table Linkbase 1.0"
+              "title": "Extensible Enumerations 2.0"
             }
           }
         ]
@@ -74,8 +74,7 @@
               "title": "Marcadores"
             }
           }
-        ],
-        "currentTab": 1
+        ]
       }
     ],
     "direction": "horizontal",
@@ -95,7 +94,7 @@
             "state": {
               "type": "backlink",
               "state": {
-                "file": "raw/Table Linkbase 1.0.md",
+                "file": "raw/Extensible Enumerations 2.0.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -105,7 +104,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "Enlaces entrantes de Table Linkbase 1.0"
+              "title": "Enlaces entrantes de Extensible Enumerations 2.0"
             }
           },
           {
@@ -114,12 +113,12 @@
             "state": {
               "type": "outgoing-link",
               "state": {
-                "file": "raw/Table Linkbase 1.0.md",
+                "file": "raw/Extensible Enumerations 2.0.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
               "icon": "links-going-out",
-              "title": "Enlaces salientes de Table Linkbase 1.0"
+              "title": "Enlaces salientes de Extensible Enumerations 2.0"
             }
           },
           {
@@ -157,13 +156,13 @@
             "state": {
               "type": "outline",
               "state": {
-                "file": "raw/Table Linkbase 1.0.md",
+                "file": "raw/Extensible Enumerations 2.0.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "Esquema de Table Linkbase 1.0"
+              "title": "Esquema de Extensible Enumerations 2.0"
             }
           }
         ]
@@ -184,8 +183,11 @@
       "bases:Crear nueva base": false
     }
   },
-  "active": "4fbb5601d6c422ff",
+  "active": "80710794a4d22926",
   "lastOpenFiles": [
+    "raw/Extensible Enumerations 1.0.md",
+    "raw/Extensible Enumerations 2.0.md",
+    "raw/Table Linkbase 1.0.md",
     "schema.md",
     "log.md",
     "index.md",
@@ -215,7 +217,6 @@
     "raw/assets/example-simple-table.png",
     "raw/assets/projection-result.png",
     "raw/assets/structural-model-projection.png",
-    "raw/Table Linkbase 1.0.md",
     "raw/Extensible Business Reporting Language (XBRL) 2.1.md",
     "raw/XBRL Formula Overview 1.0.md",
     "Clippings",

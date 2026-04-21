@@ -9,6 +9,10 @@ NS_XLINK = "http://www.w3.org/1999/xlink"
 NS_XSD = "http://www.w3.org/2001/XMLSchema"
 NS_XBRLDT = "http://xbrl.org/2005/xbrldt"
 
+# Extensible Enumerations 1.0 / 2.0 (attributes on xs:element declarations)
+NS_EXTENSIBLE_ENUM = "http://xbrl.org/2014/extensible-enumerations"
+NS_EXTENSIBLE_ENUM_2 = "http://xbrl.org/2020/extensible-enumerations-2.0"
+
 # Generic linkbase namespaces (XBRL 2.1 generic link spec)
 NS_GEN = "http://xbrl.org/2008/generic"
 NS_GENLAB = "http://xbrl.org/2008/label"

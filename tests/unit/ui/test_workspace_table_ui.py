@@ -17,9 +17,9 @@ pytest.importorskip("PySide6", reason="PySide6 not available - UI tests skipped"
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QTableView
 
-from bde_xbrl_editor.instance.editor import InstanceEditor
 from bde_xbrl_editor.instance.constants import BDE_DIM_NS
 from bde_xbrl_editor.instance.context_builder import build_dimensional_context
+from bde_xbrl_editor.instance.editor import InstanceEditor
 from bde_xbrl_editor.instance.models import (
     BdeEstadoReportado,
     BdePreambulo,
@@ -41,7 +41,7 @@ from bde_xbrl_editor.taxonomy.models import (
     TaxonomyStructure,
 )
 from bde_xbrl_editor.ui.widgets.activity_sidebar import _InstancePanel
-from bde_xbrl_editor.ui.widgets.table_body_model import FACT_OPTIONS_ROLE, OPEN_KEY_ROLE
+from bde_xbrl_editor.ui.widgets.table_body_model import OPEN_KEY_ROLE
 from bde_xbrl_editor.ui.widgets.xbrl_table_view import XbrlTableView
 
 
@@ -1098,8 +1098,36 @@ def test_refresh_instance_does_not_duplicate_open_key_columns(qtbot) -> None:
 
 @pytest.mark.qt
 def test_known_enum_fact_cells_publish_dropdown_options() -> None:
+    from bde_xbrl_editor.taxonomy.models import Concept
+    from bde_xbrl_editor.ui.widgets.xbrl_table_view import _apply_taxonomy_fact_options
+
     table = _table("es_tFI_40-1", "Table 40-1")
     concept = QName(namespace="http://example.com/met", local_name="qBVQ", prefix="met")
+    concept_def = Concept(
+        qname=concept,
+        data_type=QName(namespace="http://www.xbrl.org/2003/instance", local_name="QNameItemType"),
+        period_type="instant",
+        enumeration_values=("eba_qSC:qx3", "eba_qSC:qx4"),
+    )
+    meta = TaxonomyMetadata(
+        name="t",
+        version="1",
+        publisher="p",
+        entry_point_path=Path("/tmp/x.xsd"),
+        loaded_at=datetime.now(),
+        declared_languages=("en",),
+    )
+    taxonomy = TaxonomyStructure(
+        metadata=meta,
+        concepts={concept: concept_def},
+        labels=MagicMock(),
+        presentation={},
+        calculation={},
+        definition={},
+        hypercubes=(),
+        dimensions={},
+        tables=(),
+    )
     body_cell = SimpleNamespace(
         row_index=0,
         col_index=0,
@@ -1109,9 +1137,7 @@ def test_known_enum_fact_cells_publish_dropdown_options() -> None:
     )
     layout = SimpleNamespace(table_id=table.table_id, body=[[body_cell]])
 
-    from bde_xbrl_editor.ui.widgets.xbrl_table_view import _apply_known_fact_options
-
-    updated = _apply_known_fact_options(layout, table=table)
+    updated = _apply_taxonomy_fact_options(layout, taxonomy=taxonomy)
 
     assert updated.body[0][0].fact_options == ("eba_qSC:qx3", "eba_qSC:qx4")
 

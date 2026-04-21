@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from bde_xbrl_editor.instance.constants import BDE_DIM_NS
 from bde_xbrl_editor.table_renderer.errors import TableLayoutError, ZIndexOutOfRangeError
 from bde_xbrl_editor.table_renderer.layout_engine import (
     TableLayoutEngine,
@@ -34,7 +35,6 @@ from bde_xbrl_editor.table_renderer.models import (
     HeaderCell,
     HeaderGrid,
 )
-from bde_xbrl_editor.instance.constants import BDE_DIM_NS
 from bde_xbrl_editor.taxonomy.constants import ARCROLE_DOMAIN_MEMBER
 from bde_xbrl_editor.taxonomy.models import QName
 from bde_xbrl_editor.ui import theme
@@ -71,13 +71,8 @@ _EDIT_TRIGGERS = (
     | QTableView.EditTrigger.SelectedClicked
 )
 _MANUAL_DIMENSION_LABELS_ES = {
-    "qLIN": "Nombre",
-    "qCIN": "Codigo nacional",
-}
-_KNOWN_ENUM_FACT_OPTIONS = {
-    ("es_tFI_40-1", "qBJD"): ("eba_qRP:qx2090",),
-    ("es_tFI_40-1", "qBVQ"): ("eba_qSC:qx3", "eba_qSC:qx4"),
-    ("es_tFI_40-1", "qBVR"): ("eba_qSC:qx3",),
+    "qLIN": "Código (0011)",
+    "qCIN": "Tipo de código (0015)",
 }
 
 
@@ -203,23 +198,28 @@ def _resolve_typed_dimension_element(
     return dim_qname
 
 
-def _fact_options_for_cell(table_id: str | None, concept: QName | None) -> tuple[str, ...]:
-    if not table_id or concept is None:
+def _enumeration_fact_options(
+    taxonomy: TaxonomyStructure | None,
+    concept: QName | None,
+) -> tuple[str, ...]:
+    if taxonomy is None or concept is None:
         return ()
-    return _KNOWN_ENUM_FACT_OPTIONS.get((table_id, concept.local_name), ())
+    concept_def = taxonomy.concepts.get(concept)
+    if concept_def is None or not concept_def.enumeration_values:
+        return ()
+    return tuple(concept_def.enumeration_values)
 
 
-def _apply_known_fact_options(
+def _apply_taxonomy_fact_options(
     layout: ComputedTableLayout,
     *,
-    table: TableDefinitionPWD | None,
+    taxonomy: TaxonomyStructure | None,
 ) -> ComputedTableLayout:
-    table_id = table.table_id if table is not None else layout.table_id
     for row in layout.body:
         for cell in row:
             if cell.cell_kind != "fact":
                 continue
-            cell.fact_options = _fact_options_for_cell(table_id, cell.coordinate.concept)
+            cell.fact_options = _enumeration_fact_options(taxonomy, cell.coordinate.concept)
     return layout
 
 
@@ -823,7 +823,6 @@ def _append_open_rows_to_layout(
             ]
             new_levels.append(placeholders + layout.column_header.levels[level_idx])
 
-        signature_to_candidate = {candidate["signature"]: candidate for candidate in key_candidates}
         for row_idx, row in enumerate(body_rows):
             signature, member_clark = row_open_keys.get(row_idx, (None, None))
             key_cells: list[BodyCell] = []
@@ -1118,7 +1117,7 @@ def _append_open_aspect_rows_to_layout(
                 row_index=row_idx,
                 col_index=col_idx,
                 coordinate=coord,
-                fact_options=_fact_options_for_cell(table.table_id, coord.concept),
+                fact_options=_enumeration_fact_options(taxonomy, coord.concept),
             )
             if fact_mapper is not None:
                 result = fact_mapper.match(coord, instance)
@@ -2035,7 +2034,7 @@ class XbrlTableView(QFrame):
                 include_placeholder_rows=self._instance is None,
             )
             self._open_row_candidates = open_row_candidates
-        layout = _apply_known_fact_options(layout, table=self._table)
+        layout = _apply_taxonomy_fact_options(layout, taxonomy=self._taxonomy)
         self._layout = layout
         self._active_z_index = layout.active_z_index
         self._active_z_constraints = dict(layout.active_z_constraints)

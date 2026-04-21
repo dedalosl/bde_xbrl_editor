@@ -124,6 +124,13 @@ class Concept:
     # True when the item type is xbrli:monetaryItemType or a restriction/extension
     # thereof (used for ISO 4217 unit validation).
     monetary_item_type: bool = False
+    # Lexical values from XSD enumeration facets (e.g. QNameItemType restrictions)
+    # and/or Extensible Enumerations 1.0/2.0 (expanded-name URI "ns#local" per EE2).
+    enumeration_values: tuple[str, ...] = field(default_factory=tuple)
+    # EE 1.0 / EE 2.0 — domain members come from definition linkbase (not XSD facets).
+    enumeration_domain: QName | None = None
+    enumeration_linkrole: str | None = None
+    enumeration_head_usable: bool = False
 
 
 # ---------------------------------------------------------------------------

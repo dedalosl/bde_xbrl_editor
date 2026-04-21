@@ -2,11 +2,20 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import Literal
 
 from lxml import etree
 
-from bde_xbrl_editor.taxonomy.constants import NS_XBRLDT, NS_XBRLI, NS_XSD
+from bde_xbrl_editor.taxonomy.constants import (
+    NS_EXTENSIBLE_ENUM,
+    NS_EXTENSIBLE_ENUM_2,
+    NS_XBRLDT,
+    NS_XBRLI,
+    NS_XSD,
+)
 from bde_xbrl_editor.taxonomy.models import (
     Concept,
     QName,
@@ -20,6 +29,8 @@ _COMPLEX_TYPE = f"{{{NS_XSD}}}complexType"
 _SIMPLE_CONTENT = f"{{{NS_XSD}}}simpleContent"
 _RESTRICTION = f"{{{NS_XSD}}}restriction"
 _EXTENSION = f"{{{NS_XSD}}}extension"
+_ENUMERATION = f"{{{NS_XSD}}}enumeration"
+_UNION = f"{{{NS_XSD}}}union"
 
 # XBRL substitution groups that mark items and tuples
 _SG_ITEM = QName(NS_XBRLI, "item", prefix="xbrli")
@@ -103,6 +114,24 @@ def _build_concept(
     xml_id = el.get("id") or None
     typed_domain_ref = el.get(f"{{{NS_XBRLDT}}}typedDomainRef") or None
 
+    enum_domain_raw = el.get(f"{{{NS_EXTENSIBLE_ENUM_2}}}domain") or el.get(
+        f"{{{NS_EXTENSIBLE_ENUM}}}domain"
+    )
+    enum_linkrole = el.get(f"{{{NS_EXTENSIBLE_ENUM_2}}}linkrole") or el.get(
+        f"{{{NS_EXTENSIBLE_ENUM}}}linkrole"
+    )
+    enum_head_raw = el.get(f"{{{NS_EXTENSIBLE_ENUM_2}}}headUsable") or el.get(
+        f"{{{NS_EXTENSIBLE_ENUM}}}headUsable"
+    )
+    enumeration_domain = (
+        _resolve_qname(enum_domain_raw, ns_map, schema_path_str) if enum_domain_raw else None
+    )
+    if enum_domain_raw and enumeration_domain is None:
+        enum_linkrole = None
+    enumeration_head_usable = (
+        enum_head_raw is not None and str(enum_head_raw).strip().lower() in ("true", "1", "yes")
+    )
+
     concept = Concept(
         qname=qname,
         data_type=data_type,
@@ -114,6 +143,9 @@ def _build_concept(
         xml_id=xml_id,
         typed_domain_ref=typed_domain_ref,
         schema_path=schema_path_str,
+        enumeration_domain=enumeration_domain,
+        enumeration_linkrole=enum_linkrole if enum_linkrole else None,
+        enumeration_head_usable=enumeration_head_usable,
     )
     return qname, concept, sg
 
@@ -207,7 +239,14 @@ def parse_schema(
                 still_pending.append((qn, c, sg))
         pending = still_pending
 
-    return resolved
+    registry = build_global_named_type_registry(
+        [schema_path],
+        {schema_path: namespace_override} if namespace_override is not None else {},
+    )
+    enums = extract_concept_enumerations_for_schema(schema_path, namespace_override, registry)
+    return {
+        qn: replace(c, enumeration_values=enums.get(qn, ())) for qn, c in resolved.items()
+    }
 
 
 _MONETARY_ITEM_TYPE = QName(NS_XBRLI, "monetaryItemType")
@@ -286,3 +325,226 @@ def extract_monetary_value_type_qnames(
             out.add(QName(namespace=target_ns, local_name=name))
 
     return frozenset(out)
+
+
+# ---------------------------------------------------------------------------
+# XSD enumeration facets on item types (QNameItemType, string item types, …)
+# ---------------------------------------------------------------------------
+
+_ENUM_BASE_TYPES: frozenset[QName] = frozenset(
+    {
+        QName(NS_XBRLI, "QNameItemType"),
+        QName(NS_XBRLI, "stringItemType"),
+        QName(NS_XBRLI, "tokenItemType"),
+        QName(NS_XBRLI, "normalizedStringItemType"),
+        QName(NS_XSD, "string"),
+        QName(NS_XSD, "token"),
+        QName(NS_XSD, "normalizedString"),
+        QName(NS_XSD, "QName"),
+    }
+)
+
+
+@dataclass(frozen=True)
+class _NamedXsdType:
+    """Named xs:simpleType or xs:complexType (simpleContent) usable as an element @type."""
+
+    target_ns: str
+    ns_map: dict[str, str]
+    schema_path_str: str
+    kind: Literal["simple", "complex_simple"]
+    element: etree._Element
+
+
+def _restriction_enumeration_lexicals(restriction_el: etree._Element) -> list[str]:
+    return [
+        str(v)
+        for v in (child.get("value") for child in restriction_el if child.tag == _ENUMERATION)
+        if v
+    ]
+
+
+def _enums_from_restriction(
+    restriction_el: etree._Element,
+    ns_map: dict[str, str],
+    schema_path_str: str,
+    registry: dict[QName, _NamedXsdType],
+    visited: frozenset[QName],
+) -> tuple[str, ...] | None:
+    base_raw = restriction_el.get("base")
+    if not base_raw:
+        return None
+    base_qn = _resolve_qname(base_raw, ns_map, schema_path_str)
+    if base_qn is None:
+        return None
+    local_vals = _restriction_enumeration_lexicals(restriction_el)
+
+    if base_qn in _ENUM_BASE_TYPES:
+        return tuple(local_vals) if local_vals else None
+
+    if base_qn in visited:
+        return None
+    if base_qn in registry:
+        visited_next = visited | {base_qn}
+        parent = _enums_for_named_type(registry[base_qn], registry, visited_next)
+        if local_vals:
+            if parent:
+                allowed = set(parent)
+                narrowed = tuple(v for v in local_vals if v in allowed)
+                return narrowed or None
+            return tuple(local_vals)
+        return parent
+    return None
+
+
+def _enums_from_simple_type_el(
+    st_el: etree._Element,
+    ns_map: dict[str, str],
+    schema_path_str: str,
+    registry: dict[QName, _NamedXsdType],
+    visited: frozenset[QName],
+) -> tuple[str, ...] | None:
+    for child in st_el:
+        if child.tag == _RESTRICTION:
+            return _enums_from_restriction(child, ns_map, schema_path_str, registry, visited)
+        if child.tag == _UNION:
+            return _enums_from_union(child, ns_map, schema_path_str, registry, visited)
+    return None
+
+
+def _enums_from_union(
+    union_el: etree._Element,
+    ns_map: dict[str, str],
+    schema_path_str: str,
+    registry: dict[QName, _NamedXsdType],
+    visited: frozenset[QName],
+) -> tuple[str, ...] | None:
+    members_raw = union_el.get("memberTypes")
+    merged: list[str] = []
+    if members_raw:
+        for token in members_raw.split():
+            tq = _resolve_qname(token, ns_map, schema_path_str)
+            if tq is None:
+                continue
+            if tq in registry:
+                part = _enums_for_named_type(registry[tq], registry, visited)
+                if part:
+                    merged.extend(part)
+    else:
+        for child in union_el:
+            if child.tag == _SIMPLE_TYPE:
+                part = _enums_from_simple_type_el(child, ns_map, schema_path_str, registry, visited)
+                if part:
+                    merged.extend(part)
+    if not merged:
+        return None
+    return tuple(dict.fromkeys(merged))
+
+
+def _enums_for_named_type(
+    named: _NamedXsdType,
+    registry: dict[QName, _NamedXsdType],
+    visited: frozenset[QName],
+) -> tuple[str, ...] | None:
+    if named.kind == "simple":
+        return _enums_from_simple_type_el(
+            named.element, named.ns_map, named.schema_path_str, registry, visited
+        )
+    ct = named.element
+    sc = next((c for c in ct if c.tag == _SIMPLE_CONTENT), None)
+    if sc is None:
+        return None
+    restriction = next((c for c in sc if c.tag == _RESTRICTION), None)
+    if restriction is None:
+        return None
+    return _enums_from_restriction(
+        restriction, named.ns_map, named.schema_path_str, registry, visited
+    )
+
+
+def _element_enumeration_display_values(
+    el: etree._Element,
+    ns_map: dict[str, str],
+    schema_path_str: str,
+    registry: dict[QName, _NamedXsdType],
+) -> tuple[str, ...] | None:
+    type_raw = el.get("type")
+    if type_raw:
+        tq = _resolve_qname(type_raw, ns_map, schema_path_str)
+        if tq is not None and tq in registry:
+            return _enums_for_named_type(registry[tq], registry, frozenset())
+        return None
+    for child in el:
+        if child.tag == _SIMPLE_TYPE:
+            return _enums_from_simple_type_el(child, ns_map, schema_path_str, registry, frozenset())
+        if child.tag == _COMPLEX_TYPE:
+            for cc in child:
+                if cc.tag != _SIMPLE_CONTENT:
+                    continue
+                for r in cc:
+                    if r.tag == _RESTRICTION:
+                        return _enums_from_restriction(r, ns_map, schema_path_str, registry, frozenset())
+    return None
+
+
+def build_global_named_type_registry(
+    schema_paths: list[Path],
+    include_ns_map: Mapping[Path, str | None],
+) -> dict[QName, _NamedXsdType]:
+    """Index named XSD types across the DTS for cross-schema @type resolution."""
+    registry: dict[QName, _NamedXsdType] = {}
+    for schema_path in schema_paths:
+        try:
+            tree = parse_xml_file(schema_path)
+        except etree.XMLSyntaxError:
+            continue
+        root = tree.getroot()
+        override = include_ns_map.get(schema_path)
+        target_ns = override if override is not None else root.get("targetNamespace", "")
+        ns_map: dict[str, str] = {k or "": v for k, v in root.nsmap.items()}
+        path_str = str(schema_path)
+        for el in root.iter(_SIMPLE_TYPE):
+            name = el.get("name")
+            if name and target_ns:
+                qn = QName(namespace=target_ns, local_name=name)
+                registry[qn] = _NamedXsdType(target_ns, ns_map, path_str, "simple", el)
+        for el in root.iter(_COMPLEX_TYPE):
+            name = el.get("name")
+            if not name or not target_ns:
+                continue
+            sc = next((c for c in el if c.tag == _SIMPLE_CONTENT), None)
+            if sc is None:
+                continue
+            if next((c for c in sc if c.tag == _RESTRICTION), None) is None:
+                continue
+            qn = QName(namespace=target_ns, local_name=name)
+            registry[qn] = _NamedXsdType(target_ns, ns_map, path_str, "complex_simple", el)
+    return registry
+
+
+def extract_concept_enumerations_for_schema(
+    schema_path: Path,
+    namespace_override: str | None,
+    registry: dict[QName, _NamedXsdType],
+) -> dict[QName, tuple[str, ...]]:
+    """Map concept QName → enumeration lexical values declared for that element's type."""
+    try:
+        tree = parse_xml_file(schema_path)
+    except etree.XMLSyntaxError:
+        return {}
+
+    root = tree.getroot()
+    target_ns = namespace_override if namespace_override is not None else root.get("targetNamespace", "")
+    ns_map: dict[str, str] = {k or "": v for k, v in root.nsmap.items()}
+    path_str = str(schema_path)
+    out: dict[QName, tuple[str, ...]] = {}
+    for el in root.iter(_ELEMENT):
+        if not el.get("substitutionGroup"):
+            continue
+        name = el.get("name")
+        if not name or not target_ns:
+            continue
+        vals = _element_enumeration_display_values(el, ns_map, path_str, registry)
+        if vals:
+            out[QName(namespace=target_ns, local_name=name)] = vals
+    return out

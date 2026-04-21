@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import re
+from collections import deque
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import replace
@@ -39,10 +40,10 @@ from bde_xbrl_editor.taxonomy.label_resolver import LabelResolver
 from bde_xbrl_editor.taxonomy.linkbases.assertion_resources import (
     parse_assertion_resource_linkbase,
 )
+from bde_xbrl_editor.taxonomy.linkbases.calculation import parse_calculation_linkbase
 from bde_xbrl_editor.taxonomy.linkbases.custom_functions import (
     parse_custom_function_linkbase,
 )
-from bde_xbrl_editor.taxonomy.linkbases.calculation import parse_calculation_linkbase
 from bde_xbrl_editor.taxonomy.linkbases.definition import parse_definition_linkbase
 from bde_xbrl_editor.taxonomy.linkbases.formula import (
     linkbase_contains_formula_assertions,
@@ -70,6 +71,8 @@ from bde_xbrl_editor.taxonomy.models import (
 )
 from bde_xbrl_editor.taxonomy.schema import (
     XBRL_SG_ROOTS,
+    build_global_named_type_registry,
+    extract_concept_enumerations_for_schema,
     extract_monetary_value_type_qnames,
     parse_schema_raw,
 )
@@ -694,13 +697,81 @@ def _rebuild_dimensions(
 
         dimensions[dim_q] = DimensionModel(
             qname=dim_q,
-            dimension_type="typed" if concepts.get(dim_q, None) and concepts[dim_q].typed_domain_ref else "explicit",
+            dimension_type="typed" if concepts.get(dim_q) and concepts[dim_q].typed_domain_ref else "explicit",
             default_member=dim_defaults.get(dim_q),
             domain=domain_q,
             members=tuple(all_members),
         )
 
     return dimensions
+
+
+def _member_qname_to_expanded_name_uri(member: QName) -> str:
+    """EE 2.0 expanded name URI: ``namespace-uri#localname``."""
+    return f"{member.namespace}#{member.local_name}"
+
+
+def _collect_enumeration_domain_members(
+    linkrole: str,
+    domain_head: QName,
+    *,
+    head_usable: bool,
+    definition_arcs: dict[str, list],
+) -> list[QName]:
+    """Domain of allowed values per Extensible Enumerations 1.0/2.0 (XDT domain-member walk)."""
+    queue: deque[tuple[QName, str]] = deque([(domain_head, linkrole)])
+    seen_states: set[tuple[QName, str]] = set()
+    emitted: set[QName] = set()
+    result: list[QName] = []
+
+    while queue:
+        node, elr = queue.popleft()
+        state = (node, elr)
+        if state in seen_states:
+            continue
+        seen_states.add(state)
+
+        if node == domain_head:
+            if head_usable and node not in emitted:
+                emitted.add(node)
+                result.append(node)
+        elif node not in emitted:
+            emitted.add(node)
+            result.append(node)
+
+        for arc in definition_arcs.get(elr, []):
+            if arc.arcrole != ARCROLE_DOMAIN_MEMBER or arc.source != node:
+                continue
+            if arc.usable is False:
+                continue
+            next_elr = arc.target_role or elr
+            queue.append((arc.target, next_elr))
+
+    return result
+
+
+def _apply_extensible_enumeration_values(
+    concepts: dict[QName, Concept],
+    definition_arcs: dict[str, list],
+) -> dict[QName, Concept]:
+    """Populate ``enumeration_values`` from EE domain-member networks (overrides XSD-only enums)."""
+    updated: dict[QName, Concept] = {}
+    for qn, c in concepts.items():
+        if not c.enumeration_linkrole or c.enumeration_domain is None:
+            updated[qn] = c
+            continue
+        members = _collect_enumeration_domain_members(
+            c.enumeration_linkrole,
+            c.enumeration_domain,
+            head_usable=c.enumeration_head_usable,
+            definition_arcs=definition_arcs,
+        )
+        if not members:
+            updated[qn] = c
+            continue
+        uris = tuple(_member_qname_to_expanded_name_uri(m) for m in members)
+        updated[qn] = replace(c, enumeration_values=uris)
+    return updated
 
 
 def _schema_parse_workers(schema_count: int) -> int:
@@ -950,13 +1021,32 @@ class TaxonomyLoader:
         for _path, mt_set in parsed_monetary_types:
             monetary_derived_types.update(mt_set)
 
+        type_enum_registry = build_global_named_type_registry(schema_paths, include_ns_map)
+        enum_workers = _schema_parse_workers(len(schema_paths))
+        parsed_concept_enums = _run_path_jobs(
+            schema_paths,
+            lambda p: extract_concept_enumerations_for_schema(
+                p, include_ns_map.get(p), type_enum_registry
+            ),
+            workers=enum_workers,
+        )
+        enum_by_concept: dict[QName, tuple[str, ...]] = {}
+        for _path, emap in parsed_concept_enums:
+            for qn, vals in emap.items():
+                if vals:
+                    enum_by_concept[qn] = vals
+
         def _concept_is_monetary_item(c: Concept) -> bool:
             if c.data_type.namespace == NS_XBRLI and c.data_type.local_name == "monetaryItemType":
                 return True
             return c.data_type in monetary_derived_types
 
         concepts = {
-            qn: replace(c, monetary_item_type=_concept_is_monetary_item(c))
+            qn: replace(
+                c,
+                monetary_item_type=_concept_is_monetary_item(c),
+                enumeration_values=enum_by_concept.get(qn, ()),
+            )
             for qn, c in concepts.items()
         }
 
@@ -1075,6 +1165,8 @@ class TaxonomyLoader:
             for elr, arc_list in arcs_by_elr.items():
                 definition_arcs.setdefault(elr, []).extend(arc_list)
             hypercubes.extend(hcs)
+
+        concepts = _apply_extensible_enumeration_values(concepts, definition_arcs)
 
         # Build dimensions once from the complete merged arc set so that
         # domain-member arcs in extension linkbases are correctly associated
