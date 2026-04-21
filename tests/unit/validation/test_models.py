@@ -6,6 +6,7 @@ from datetime import datetime
 
 import pytest
 
+from bde_xbrl_editor.performance import StageTiming
 from bde_xbrl_editor.validation.models import (
     ValidationFinding,
     ValidationReport,
@@ -157,6 +158,22 @@ class TestValidationReportPassed:
         )
         report = _report(findings)
         assert report.pass_count == 1
+
+    def test_total_elapsed_seconds_sums_stage_timings(self) -> None:
+        report = ValidationReport(
+            instance_path="/some/instance.xbrl",
+            taxonomy_name="ExampleTax",
+            taxonomy_version="2024",
+            run_timestamp=datetime(2024, 6, 1, 12, 0, 0),
+            findings=(),
+            formula_linkbase_available=True,
+            stage_timings=(
+                StageTiming("structural", 0.25),
+                StageTiming("formula", 1.75),
+            ),
+        )
+
+        assert report.total_elapsed_seconds == pytest.approx(2.0)
 
 
 class TestValidationReportFindingsForTable:
@@ -334,7 +351,7 @@ class TestValidationFilterProxy:
         model = ValidationResultsModel()
         model.populate((finding,))
 
-        assert model.item(0, 3).text() == "0010  |  es_tFI_40-1"
+        assert model.item(0, 2).text() == "0010  |  es_tFI_40-1"
 
     def test_append_findings_adds_rows_without_replacing_existing_ones(self) -> None:
         """append_findings keeps previously streamed results visible."""

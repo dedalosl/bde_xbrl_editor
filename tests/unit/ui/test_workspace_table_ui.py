@@ -287,6 +287,32 @@ def test_instance_panel_data_presence_checks_only_active_z_slice(qtbot, monkeypa
 
 
 @pytest.mark.qt
+def test_instance_panel_data_presence_uses_filing_indicators_before_layout_compute(qtbot, monkeypatch) -> None:
+    table_with_data = _table("es_tF1_10", "Derivados", table_code="0010")
+    empty_table = _table("es_tF1_11", "Coberturas", table_code="0011")
+    taxonomy = _taxonomy_with_tables(table_with_data, empty_table)
+    instance = _instance_with_filing_indicators("0010")
+
+    class _ExplodingEngine:
+        def __init__(self, _taxonomy) -> None:
+            raise AssertionError("layout engine should not be used when filing indicators are available")
+
+    monkeypatch.setattr(
+        "bde_xbrl_editor.table_renderer.layout_engine.TableLayoutEngine",
+        _ExplodingEngine,
+    )
+
+    panel = _InstancePanel()
+    qtbot.addWidget(panel)
+    presence = panel._compute_table_data_presence(instance, taxonomy, [table_with_data, empty_table])
+
+    assert presence == {
+        table_with_data.table_id: True,
+        empty_table.table_id: False,
+    }
+
+
+@pytest.mark.qt
 def test_instance_panel_shows_table_codes_status_and_search(qtbot, monkeypatch) -> None:
     table_with_data = _table("es_tF1_10", "Derivados", table_code="0010")
     empty_table = _table("es_tF1_11", "Coberturas", table_code="0011")

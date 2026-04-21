@@ -289,6 +289,39 @@ class TestValueAssertion:
         assert len(findings) == 1
         assert all(f.status == ValidationStatus.PASS for f in findings)
 
+    def test_reuses_compiled_xpath_for_multiple_bindings(self, monkeypatch) -> None:
+        """Repeated evaluation of the same XPath should reuse the compiled token."""
+        var_def = FactVariableDefinition(variable_name="v", concept_filter=_qn("Amount"))
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(assertion_id="VA_CACHE", variables=(var_def,)),
+            test_xpath="$v > 0",
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
+        inst = _instance(
+            [_fact("Amount", "ctx1", "1"), _fact("Amount", "ctx2", "2")],
+            contexts={"ctx1": _ctx("ctx1"), "ctx2": _ctx("ctx2")},
+        )
+
+        build_calls: list[str] = []
+        original_build = __import__(
+            "bde_xbrl_editor.validation.formula.evaluator",
+            fromlist=["build_formula_parser"],
+        ).build_formula_parser
+
+        def _tracked_build(*args, **kwargs):
+            build_calls.append("build")
+            return original_build(*args, **kwargs)
+
+        monkeypatch.setattr(
+            "bde_xbrl_editor.validation.formula.evaluator.build_formula_parser",
+            _tracked_build,
+        )
+
+        findings = FormulaEvaluator(taxonomy).evaluate(inst)
+
+        assert len(findings) == 2
+        assert build_calls == ["build"]
+
     def test_unsatisfied_message_template_is_rendered_with_binding_values(self) -> None:
         """Validation messages render embedded XPath expressions against bound facts."""
         var_def = FactVariableDefinition(variable_name="v", concept_filter=_qn("Amount"))

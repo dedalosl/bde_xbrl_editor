@@ -7,6 +7,7 @@ Clicking the active icon collapses the panel to give the table more space.
 from __future__ import annotations
 
 from pathlib import Path
+from collections.abc import Callable
 
 from PySide6.QtCore import QEasingCurve, Qt, QVariantAnimation, Signal
 from PySide6.QtGui import QColor, QFont
@@ -943,12 +944,37 @@ class _InstancePanel(QWidget):
         if self._data_presence_cache_key == cache_key:
             return {table.table_id: self._data_presence_cache.get(table.table_id, False) for table in tables}
 
+        presence: dict[str, bool] = {}
+        filed_ids: set[str] = set()
+        filing_indicators = list(getattr(instance, "filing_indicators", []) or [])
+        if filing_indicators:
+            filed_ids.update(
+                str(getattr(indicator, "template_id", ""))
+                for indicator in filing_indicators
+                if getattr(indicator, "filed", False) and getattr(indicator, "template_id", "")
+            )
+        bde_preambulo = getattr(instance, "bde_preambulo", None)
+        if bde_preambulo is not None:
+            filed_ids.update(
+                str(getattr(estado, "codigo", ""))
+                for estado in getattr(bde_preambulo, "estados_reportados", []) or []
+                if not getattr(estado, "blanco", False) and getattr(estado, "codigo", "")
+            )
+
+        if filed_ids:
+            presence = {
+                table.table_id: _table_is_filed(table, filed_ids)
+                for table in tables
+            }
+            self._data_presence_cache_key = cache_key
+            self._data_presence_cache = dict(presence)
+            return presence
+
         from bde_xbrl_editor.table_renderer.errors import TableLayoutError, ZIndexOutOfRangeError
         from bde_xbrl_editor.table_renderer.layout_engine import TableLayoutEngine
         from bde_xbrl_editor.ui.widgets.xbrl_table_view import _derive_initial_z_constraints
 
         engine = TableLayoutEngine(taxonomy)  # type: ignore[arg-type]
-        presence: dict[str, bool] = {}
 
         for table in tables:
             has_data = False
@@ -996,6 +1022,13 @@ class _InstancePanel(QWidget):
             return
 
         tables = list(getattr(taxonomy, "tables", []) or [])
+        table_lookup: dict[str, object] = {}
+        for table in tables:
+            for alias in _indicator_aliases(getattr(table, "table_id", "") or ""):
+                table_lookup.setdefault(alias, table)
+            table_code = getattr(table, "table_code", None) or ""
+            for alias in _indicator_aliases(table_code):
+                table_lookup.setdefault(alias, table)
         use_bde_list = any(getattr(table, "table_code", None) for table in tables)
         if not use_bde_list:
             fi_texts = []
@@ -1009,7 +1042,7 @@ class _InstancePanel(QWidget):
             return
 
         for fi in indicators:
-            table = next((table for table in tables if _table_matches_indicator(table, fi.template_id)), None)
+            table = table_lookup.get(fi.template_id)
             identity = _table_identity(table) if table is not None else fi.template_id
             label = getattr(table, "label", "") if table is not None else ""
             line = f"{identity}\n{label or 'Unknown table'}"
@@ -1130,9 +1163,19 @@ class ActivitySidebar(QWidget):
     table_selected = Signal(object)  # TableDefinitionPWD
     width_changed = Signal(int)
 
-    def __init__(self, taxonomy: TaxonomyStructure, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        taxonomy: TaxonomyStructure,
+        parent: QWidget | None = None,
+        *,
+        visible_indexes: tuple[int, ...] = (0, 1, 2, 3),
+        initial_index: int | None = None,
+    ) -> None:
         super().__init__(parent)
         self._taxonomy = taxonomy
+        self._visible_indexes = tuple(sorted(set(visible_indexes)))
+        self._lazy_builders: dict[int, Callable[[], QWidget]] = {}
+        self._loaded_indexes: set[int] = set()
         self._active_index: int | None = None
         self._target_width = _BAR_W + _PANEL_W
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
@@ -1168,8 +1211,8 @@ class ActivitySidebar(QWidget):
             bar_layout.addWidget(btn)
             self._buttons.append(btn)
 
-        # The instance panel is only useful once an instance is loaded.
-        self._buttons[3].setVisible(False)
+        for index, button in enumerate(self._buttons):
+            button.setVisible(index in self._visible_indexes)
 
         bar_layout.addStretch(1)
         root_layout.addWidget(self._bar)
@@ -1192,33 +1235,63 @@ class ActivitySidebar(QWidget):
         self._stack = QStackedWidget()
         panel_layout.addWidget(self._stack)
 
-        self._tables_panel = _TablesPanel(taxonomy)
-        self._tables_panel.table_selected.connect(self.table_selected)
+        self._tables_panel = _TablesPanel(taxonomy) if 1 in self._visible_indexes else None
+        if self._tables_panel is not None:
+            self._tables_panel.table_selected.connect(self.table_selected)
 
-        self._instance_panel = _InstancePanel()
-        self._instance_panel.table_selected.connect(self.table_selected)
+        self._instance_panel = _InstancePanel() if 3 in self._visible_indexes else None
+        if self._instance_panel is not None:
+            self._instance_panel.table_selected.connect(self.table_selected)
 
-        self._stack.addWidget(_TaxonomyPanel(taxonomy))       # 0
-        self._stack.addWidget(self._tables_panel)             # 1
-        self._stack.addWidget(_ValidationsPanel(taxonomy))    # 2
-        self._stack.addWidget(self._instance_panel)           # 3
+        taxonomy_widget = _TaxonomyPanel(taxonomy) if 0 in self._visible_indexes else QWidget()
+        tables_widget = self._tables_panel or QWidget()
+        validations_widget = QWidget()
+        instance_widget = self._instance_panel or QWidget()
+
+        self._stack.addWidget(taxonomy_widget)    # 0
+        self._stack.addWidget(tables_widget)      # 1
+        self._stack.addWidget(validations_widget) # 2
+        self._stack.addWidget(instance_widget)    # 3
+
+        if 0 in self._visible_indexes:
+            self._loaded_indexes.add(0)
+        if 1 in self._visible_indexes:
+            self._loaded_indexes.add(1)
+        if 3 in self._visible_indexes:
+            self._loaded_indexes.add(3)
+        if 2 in self._visible_indexes:
+            self._lazy_builders[2] = lambda: _ValidationsPanel(taxonomy)
 
         root_layout.addWidget(self._panel_root)
 
-        # Start with Tables panel visible
-        self._stack.setCurrentIndex(1)
-        self._panel_root.setVisible(True)
-        self._panel_opacity.setOpacity(1.0)
-        self._active_index = 1
-        for i, btn in enumerate(self._buttons):
-            btn.setChecked(i == 1)
-        self._apply_sidebar_width(_BAR_W + _PANEL_W, animated=False)
+        default_index = initial_index if initial_index in self._visible_indexes else None
+        if default_index is None and self._visible_indexes:
+            default_index = self._visible_indexes[0]
+
+        if default_index is None:
+            self._panel_root.setVisible(False)
+            self._panel_opacity.setOpacity(0.0)
+            self._active_index = None
+            for btn in self._buttons:
+                btn.setChecked(False)
+            self._apply_sidebar_width(_BAR_W, animated=False)
+        else:
+            self._ensure_panel_loaded(default_index)
+            self._stack.setCurrentIndex(default_index)
+            self._panel_root.setVisible(True)
+            self._panel_opacity.setOpacity(1.0)
+            self._active_index = default_index
+            for i, btn in enumerate(self._buttons):
+                btn.setChecked(i == default_index)
+            self._apply_sidebar_width(_BAR_W + _PANEL_W, animated=False)
 
     # ------------------------------------------------------------------
     # Toggle logic
     # ------------------------------------------------------------------
 
     def _on_button_clicked(self, idx: int) -> None:
+        if idx not in self._visible_indexes:
+            return
         if self._active_index == idx and self._panel_root.isVisible():
             # Clicking the already-active button → collapse panel
             self._buttons[idx].setChecked(False)
@@ -1229,6 +1302,9 @@ class ActivitySidebar(QWidget):
             self._activate(idx)
 
     def _activate(self, idx: int) -> None:
+        if idx not in self._visible_indexes:
+            return
+        self._ensure_panel_loaded(idx)
         self._active_index = idx
         self._stack.setCurrentIndex(idx)
         self._panel_root.setVisible(True)
@@ -1239,15 +1315,10 @@ class ActivitySidebar(QWidget):
 
     def _apply_sidebar_width(self, width: int, *, animated: bool) -> None:
         self._target_width = width
-        if not animated:
-            self.setFixedWidth(width)
-            self.updateGeometry()
-            self.width_changed.emit(width)
-            return
         self._width_anim.stop()
-        self._width_anim.setStartValue(self.width())
-        self._width_anim.setEndValue(width)
-        self._width_anim.start()
+        self.setFixedWidth(width)
+        self.updateGeometry()
+        self.width_changed.emit(width)
 
     def _on_width_animate(self, value: object) -> None:
         width = max(int(value), _BAR_W)
@@ -1272,23 +1343,41 @@ class ActivitySidebar(QWidget):
         if opacity == 0.0 and self._active_index is None:
             self._panel_root.setVisible(False)
 
+    def _ensure_panel_loaded(self, idx: int) -> None:
+        if idx in self._loaded_indexes:
+            return
+        builder = self._lazy_builders.get(idx)
+        if builder is None:
+            self._loaded_indexes.add(idx)
+            return
+        widget = builder()
+        old_widget = self._stack.widget(idx)
+        self._stack.removeWidget(old_widget)
+        self._stack.insertWidget(idx, widget)
+        old_widget.deleteLater()
+        self._loaded_indexes.add(idx)
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
     def select_first_table(self) -> None:
         """Activate the Tables panel and select the first table."""
+        if self._tables_panel is None:
+            return
         self._activate(1)
         self._tables_panel.select_first()
 
     def set_instance(self, instance: object, taxonomy: object, editor: object | None = None) -> None:
         """Populate the Instance panel with *instance* data and switch to it."""
+        if self._instance_panel is None:
+            return
         self.refresh_instance_panel(instance, taxonomy, editor)
-        self._buttons[3].setVisible(True)
         self._activate(3)
 
     def set_instance_editing_enabled(self, enabled: bool) -> None:
-        self._instance_panel.set_editing_enabled(enabled)
+        if self._instance_panel is not None:
+            self._instance_panel.set_editing_enabled(enabled)
 
     def refresh_instance_panel(
         self,
@@ -1296,14 +1385,18 @@ class ActivitySidebar(QWidget):
         taxonomy: object,
         editor: object | None = None,
     ) -> None:
+        if self._instance_panel is None:
+            return
         self._instance_panel.populate(instance, taxonomy)
         self._instance_panel.set_editor(editor)
 
     def clear_instance(self) -> None:
         """Switch back to the Tables panel (used when an instance is closed)."""
-        self._buttons[3].setVisible(False)
-        self._activate(1)
+        fallback_index = 1 if 1 in self._visible_indexes else (self._visible_indexes[0] if self._visible_indexes else None)
+        if fallback_index is not None:
+            self._activate(fallback_index)
 
     def select_first_instance_table(self) -> None:
         """Select and emit the first table from the Instance panel."""
-        self._instance_panel.select_first()
+        if self._instance_panel is not None:
+            self._instance_panel.select_first()
