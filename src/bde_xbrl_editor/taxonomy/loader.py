@@ -31,7 +31,7 @@ from bde_xbrl_editor.taxonomy.constants import (
     ARCROLE_HYPERCUBE_DIMENSION,
     ARCROLE_NOT_ALL,
     NS_LINK,
-    NS_TABLE_PWD,
+    NS_TABLE_NAMESPACES,
     NS_XBRLDT,
     NS_XBRLI,
 )
@@ -177,7 +177,7 @@ def _sniff_linkbase_type(path: Path) -> str:
             local = tag.split("}")[-1] if "}" in tag else tag
             if local == "presentationLink":
                 return "pres"
-            if NS_TABLE_PWD in tag:
+            if any(table_ns in tag for table_ns in NS_TABLE_NAMESPACES):
                 return "table"
     except Exception:  # noqa: BLE001
         pass
@@ -307,6 +307,39 @@ def _preferred_group_table_results(
     return [
         result for _path, result in presentation_results if result.group_table_children
     ]
+
+
+def _find_cache_root(entry_point: Path) -> Path | None:
+    """Return the nearest ancestor named ``cache`` for *entry_point*, if any."""
+    for parent in entry_point.resolve().parents:
+        if parent.name == "cache":
+            return parent
+    return None
+
+
+def _infer_local_catalog_from_cache(entry_point: Path) -> dict[str, Path]:
+    """Infer URL-prefix mappings from a mirrored on-disk taxonomy cache.
+
+    When users open an entry point directly from ``cache/<host>/...``, downstream
+    schemas often jump back to remote HTTP URLs for sibling hosts such as
+    ``www.eba.europa.eu`` or ``www.eurofiling.info``. Treat every host directory
+    under the shared ``cache`` root as a local mirror so those remote imports can
+    still resolve without requiring manual loader settings.
+    """
+    cache_root = _find_cache_root(entry_point)
+    if cache_root is None or not cache_root.is_dir():
+        return {}
+
+    catalog: dict[str, Path] = {}
+    for host_dir in sorted(cache_root.iterdir()):
+        if not host_dir.is_dir():
+            continue
+        host = host_dir.name.strip()
+        if not host:
+            continue
+        for scheme in ("http", "https", "ftp"):
+            catalog[f"{scheme}://{host}/"] = host_dir
+    return catalog
 
 
 def _build_concept_id_map(concepts: dict[QName, Concept]) -> dict[str, QName]:
@@ -989,11 +1022,24 @@ class TaxonomyLoader:
             if cb:
                 cb(msg, step, _TOTAL_STEPS)
 
+        inferred_catalog = _infer_local_catalog_from_cache(entry_point)
+        if self._settings.local_catalog:
+            local_catalog = dict(self._settings.local_catalog)
+            for prefix, local_root in inferred_catalog.items():
+                local_catalog.setdefault(prefix, local_root)
+        else:
+            local_catalog = inferred_catalog or None
+        effective_settings = (
+            self._settings
+            if local_catalog == self._settings.local_catalog
+            else replace(self._settings, local_catalog=local_catalog)
+        )
+
         # Step 1: DTS discovery
         progress("Discovering DTS…", 1)
         schema_paths, linkbase_paths, skipped_urls, include_ns_map, discovered_roles = discover_dts(
             entry_point,
-            self._settings,
+            effective_settings,
             progress_callback=(
                 lambda message, _current, _total: progress(message, 1)
             ),
@@ -1144,8 +1190,8 @@ class TaxonomyLoader:
         # Keys are both the absolute local path string and, when the local_catalog
         # is configured, the corresponding HTTP URL string.
         schema_ns_map: dict[str, str] = dict(schema_path_to_ns)
-        if self._settings.local_catalog:
-            for url_prefix, local_root in self._settings.local_catalog.items():
+        if effective_settings.local_catalog:
+            for url_prefix, local_root in effective_settings.local_catalog.items():
                 url_prefix_stripped = url_prefix.rstrip("/")
                 for path_str, ns in schema_path_to_ns.items():
                     try:

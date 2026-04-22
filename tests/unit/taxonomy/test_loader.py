@@ -16,11 +16,14 @@ from bde_xbrl_editor.taxonomy.loader import (
     _build_group_table_order,
     _classify_linkbases,
     _find_companion_tab_presentation_linkbases,
+    _infer_local_catalog_from_cache,
     _preferred_group_table_results,
     _run_path_jobs,
     _schema_parse_workers,
     _sniff_linkbase_type,
+    TaxonomyLoader,
 )
+from bde_xbrl_editor.taxonomy import LoaderSettings, TaxonomyCache
 from bde_xbrl_editor.taxonomy.models import TaxonomyParseError
 
 
@@ -272,6 +275,61 @@ def test_schema_parse_workers_is_bounded() -> None:
     assert _schema_parse_workers(0) == 1
     assert _schema_parse_workers(1) == 1
     assert 1 <= _schema_parse_workers(50) <= 8
+
+
+def test_infer_local_catalog_from_cache_maps_all_host_directories(tmp_path: Path) -> None:
+    cache_root = tmp_path / "cache"
+    entry = cache_root / "www.bde.es" / "es" / "xbrl" / "fws" / "test" / "entry.xsd"
+    entry.parent.mkdir(parents=True, exist_ok=True)
+    entry.write_text("<xs:schema xmlns:xs='http://www.w3.org/2001/XMLSchema'/>", encoding="utf-8")
+    (cache_root / "www.eba.europa.eu").mkdir(parents=True)
+    (cache_root / "www.eurofiling.info").mkdir(parents=True)
+
+    catalog = _infer_local_catalog_from_cache(entry)
+
+    assert catalog["http://www.bde.es/"] == cache_root / "www.bde.es"
+    assert catalog["https://www.eba.europa.eu/"] == cache_root / "www.eba.europa.eu"
+    assert catalog["ftp://www.eurofiling.info/"] == cache_root / "www.eurofiling.info"
+
+
+def test_loader_uses_inferred_cache_catalog_for_remote_imports(tmp_path: Path) -> None:
+    cache_root = tmp_path / "cache"
+    entry = cache_root / "www.bde.es" / "es" / "xbrl" / "fws" / "test" / "entry.xsd"
+    entry.parent.mkdir(parents=True, exist_ok=True)
+    entry.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:xbrli="http://www.xbrl.org/2003/instance"
+           targetNamespace="http://www.bde.es/xbrl/fws/test"
+           elementFormDefault="qualified">
+  <xs:import namespace="http://external.example/shared"
+             schemaLocation="http://external.example/shared/schema.xsd"/>
+  <xs:element name="TestConcept"
+              id="test_TestConcept"
+              substitutionGroup="xbrli:item"
+              type="xbrli:stringItemType"
+              nillable="true"
+              xbrli:periodType="duration"/>
+</xs:schema>
+""",
+        encoding="utf-8",
+    )
+    remote_schema = cache_root / "external.example" / "shared" / "schema.xsd"
+    remote_schema.parent.mkdir(parents=True, exist_ok=True)
+    remote_schema.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="http://external.example/shared"/>
+""",
+        encoding="utf-8",
+    )
+
+    loader = TaxonomyLoader(cache=TaxonomyCache(), settings=LoaderSettings(allow_network=False))
+
+    taxonomy = loader.load(entry)
+
+    assert remote_schema.resolve() in taxonomy.schema_files
+    assert not any("http://external.example/shared/schema.xsd" in url for url in loader.last_skipped_urls)
 
 
 def test_run_path_jobs_preserves_input_order_when_parallel() -> None:

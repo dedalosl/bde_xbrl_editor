@@ -47,6 +47,7 @@ _SKIP_NS = {
     "http://xbrl.org/2008/label",
     "http://xbrl.org/2008/formula",
     "http://xbrl.org/PWD/2013-05-17/table",
+    "http://xbrl.org/2014/table",
 }
 
 

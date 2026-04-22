@@ -21,8 +21,11 @@ NS_MSG = "http://xbrl.org/2010/message"
 # Eurofiling extension namespaces
 NS_EUROFILING_FI = "http://www.eurofiling.info/xbrl/ext/filing-indicators"
 
-# PWD Table Linkbase namespace (BDE uses the PWD draft version)
+# Table Linkbase namespaces: some taxonomies still use the older PWD draft,
+# while EBA CRR 4.2 rendering files use the final 2014 recommendation namespace.
 NS_TABLE_PWD = "http://xbrl.org/PWD/2013-05-17/table"
+NS_TABLE_2014 = "http://xbrl.org/2014/table"
+NS_TABLE_NAMESPACES = (NS_TABLE_PWD, NS_TABLE_2014)
 NS_FORMULA = "http://xbrl.org/2008/formula"
 # Validation 1.0 REC — ``validation`` prefix (assertionSet, etc.):
 # https://www.xbrl.org/specification/validation/REC-2009-06-22/validation-REC-2009-06-22.html#sec-namespaces
