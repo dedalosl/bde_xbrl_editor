@@ -677,7 +677,7 @@ class MainWindow(QMainWindow):
         if wizard.exec() == QDialog.DialogCode.Accepted:
             instance = wizard.created_instance
             if instance:
-                self._load_instance(instance)
+                self._load_instance(instance, enable_editing=True)
 
     # ------------------------------------------------------------------
     # File → Open Instance (T015)
@@ -803,7 +803,7 @@ class MainWindow(QMainWindow):
             f"taxonomy and will be preserved verbatim on save.",
         )
 
-    def _load_instance(self, instance) -> None:
+    def _load_instance(self, instance, *, enable_editing: bool = False) -> None:
         from bde_xbrl_editor.instance.editor import InstanceEditor  # noqa: PLC0415
         from bde_xbrl_editor.ui.widgets.xbrl_table_view import XbrlTableView  # noqa: PLC0415
         workspace_started_at = time.perf_counter()
@@ -833,6 +833,7 @@ class MainWindow(QMainWindow):
         self._sidebar.table_selected.connect(self._on_table_selected)
         self._sidebar.width_changed.connect(self._on_sidebar_width_changed)
         self._sidebar.set_instance(instance, self._current_taxonomy, self._editor)
+        self._table_view.set_editing_enabled(enable_editing)
         self._sidebar.set_instance_editing_enabled(self._table_view.editing_enabled)
 
         splitter = QSplitter(self)

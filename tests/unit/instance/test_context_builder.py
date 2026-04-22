@@ -84,6 +84,14 @@ class TestGenerateContextId:
         id2 = generate_context_id(e, p, {}, {dim: "B"})
         assert id1 != id2
 
+    def test_different_dimension_containers_change_context_id(self):
+        e, p = _entity(), _instant_period()
+        dim = QName("http://example.com/ns", "DimA")
+        mem = QName("http://example.com/ns", "Mem1")
+        id1 = generate_context_id(e, p, {dim: mem}, dim_containers={dim: "scenario"})
+        id2 = generate_context_id(e, p, {dim: mem}, dim_containers={dim: "segment"})
+        assert id1 != id2
+
 
 class TestBuildFilingIndicatorContext:
     def test_returns_xbrl_context(self):

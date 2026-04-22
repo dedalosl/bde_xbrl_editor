@@ -202,6 +202,20 @@ def test_instance_open_uses_instance_sidebar_only(qtbot, qapp) -> None:
     assert [btn.text() for btn in window._sidebar._buttons if not btn.isHidden()] == ["INS"]
 
 
+def test_new_instance_load_enables_editing_mode_immediately(qtbot, qapp) -> None:
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window._current_taxonomy = _taxonomy()
+    window._load_instance(_instance(), enable_editing=True)
+
+    assert window._table_view is not None
+    assert window._table_view.editing_enabled is True
+    assert window._sidebar is not None
+    assert window._sidebar._instance_panel is not None
+    assert window._sidebar._instance_panel._editing_enabled is True
+
+
 def test_taxonomy_load_status_shows_timing_breakdown(qtbot, qapp) -> None:
     window = MainWindow()
     qtbot.addWidget(window)

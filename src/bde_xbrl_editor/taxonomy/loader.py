@@ -748,9 +748,10 @@ def _rebuild_dimensions(
     parent dimensions.  By using the globally merged definition_arcs we see all arcs
     across all files and correctly populate every dimension's member set.
     """
-    # dimension → (root domain concept, domain_usable)
+    # dimension → list of (root domain concept, order, domain_usable)
     # Preserves xbrldt:usable on the dimension-domain arc for the domain root.
-    dim_domain: dict[QName, tuple[QName, bool]] = {}
+    # Some taxonomies declare multiple direct roots for one explicit dimension.
+    dim_domain_roots: dict[QName, list[tuple[QName, float, bool]]] = {}
     dim_defaults: dict[QName, QName] = {}
     # Children in the domain-member arc graph, indexed by parent concept.
     # For duplicate (parent, child) pairs (e.g. after arc override/prohibition),
@@ -761,9 +762,10 @@ def _rebuild_dimensions(
     for _elr, arcs in definition_arcs.items():
         for arc in arcs:
             if arc.arcrole == ARCROLE_DIMENSION_DOMAIN:
-                if arc.source not in dim_domain:
-                    domain_usable = arc.usable if arc.usable is not None else True
-                    dim_domain[arc.source] = (arc.target, domain_usable)
+                domain_usable = arc.usable if arc.usable is not None else True
+                dim_domain_roots.setdefault(arc.source, []).append(
+                    (arc.target, arc.order, domain_usable)
+                )
             elif arc.arcrole == ARCROLE_DOMAIN_MEMBER:
                 usable = arc.usable if arc.usable is not None else True
                 parent_map = dm_children_usable.setdefault(arc.source, {})
@@ -782,14 +784,18 @@ def _rebuild_dimensions(
     }
 
     dimensions: dict[QName, DimensionModel] = {}
-    for dim_q, (domain_q, domain_usable) in dim_domain.items():
-        # BFS from the root domain concept to collect all members transitively
+    for dim_q, roots in dim_domain_roots.items():
+        # BFS from every root domain concept to collect all members transitively.
         all_members: list[DomainMember] = []
         visited: set[QName] = set()
         # queue entries: (concept, parent, order, usable)
-        queue: list[tuple[QName, QName | None, float, bool]] = [
-            (domain_q, None, 1.0, domain_usable)
-        ]
+        queue: list[tuple[QName, QName | None, float, bool]] = sorted(
+            [
+                (domain_q, None, order, domain_usable)
+                for domain_q, order, domain_usable in roots
+            ],
+            key=lambda item: item[2],
+        )
         while queue:
             current_q, parent_q, order, usable = queue.pop(0)
             if current_q in visited:
@@ -806,7 +812,7 @@ def _rebuild_dimensions(
             qname=dim_q,
             dimension_type="typed" if concepts.get(dim_q) and concepts[dim_q].typed_domain_ref else "explicit",
             default_member=dim_defaults.get(dim_q),
-            domain=domain_q,
+            domain=roots[0][0],
             members=tuple(all_members),
         )
 

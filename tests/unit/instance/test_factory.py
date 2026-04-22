@@ -20,6 +20,7 @@ from bde_xbrl_editor.instance import (
     ReportingPeriod,
     XbrlInstance,
 )
+from bde_xbrl_editor.instance.constants import BDE_DIM_NS
 from bde_xbrl_editor.taxonomy.models import (
     DimensionModel,
     DomainMember,
@@ -208,6 +209,117 @@ class TestFactorySuccessfulCreate:
         assert result.bde_preambulo.estados_reportados[0].blanco is False
         assert result.bde_preambulo.estados_reportados[1].blanco is True
         assert [fi.template_id for fi in result.filing_indicators] == ["3201", "3202"]
+
+    def test_bde_taxonomy_requires_agrupacion_selection(self):
+        from bde_xbrl_editor.taxonomy.models import BreakdownNode
+
+        bd = BreakdownNode(node_type="rule")
+        taxonomy = _make_taxonomy(
+            tables=[
+                TableDefinitionPWD(
+                    table_id="T1",
+                    label="Table 1",
+                    extended_link_role="http://example.com/role/T1",
+                    x_breakdown=bd,
+                    y_breakdown=bd,
+                    table_code="3201",
+                )
+            ],
+            dimensions={
+                QName(BDE_DIM_NS, "Agrupacion", prefix="es-be-cm-dim"): DimensionModel(
+                    qname=QName(BDE_DIM_NS, "Agrupacion", prefix="es-be-cm-dim"),
+                    dimension_type="explicit",
+                    members=(
+                        DomainMember(
+                            qname=QName(
+                                BDE_DIM_NS,
+                                "AgrupacionIndividual",
+                                prefix="es-be-cm-dim",
+                            ),
+                            parent=None,
+                            order=1.0,
+                            usable=True,
+                        ),
+                    ),
+                )
+            },
+        )
+
+        with pytest.raises(InstanceCreationError, match="Agrupacion"):
+            InstanceFactory(taxonomy).create(_entity(), _instant(), ["T1"], {})
+
+    def test_bde_taxonomy_sets_agrupacion_on_all_generated_contexts(self):
+        from bde_xbrl_editor.taxonomy.models import BreakdownNode
+
+        bd = BreakdownNode(node_type="rule")
+        dim_q = QName("http://example.com/dim", "Dim1")
+        mem_q = QName("http://example.com/dim", "Mem1")
+        agrupacion_dim = QName(BDE_DIM_NS, "Agrupacion", prefix="es-be-cm-dim")
+        agrupacion_member = QName(
+            BDE_DIM_NS,
+            "AgrupacionIndividual",
+            prefix="es-be-cm-dim",
+        )
+        taxonomy = _make_taxonomy(
+            tables=[
+                TableDefinitionPWD(
+                    table_id="T1",
+                    label="Table 1",
+                    extended_link_role="http://example.com/role/T1",
+                    x_breakdown=bd,
+                    y_breakdown=bd,
+                    table_code="3201",
+                )
+            ],
+            hypercubes=[
+                HypercubeModel(
+                    qname=QName("http://example.com/dim", "HC1"),
+                    arcrole="all",
+                    closed=True,
+                    context_element="scenario",
+                    primary_items=(),
+                    dimensions=(dim_q,),
+                    extended_link_role="http://example.com/role/T1",
+                )
+            ],
+            dimensions={
+                dim_q: DimensionModel(
+                    qname=dim_q,
+                    dimension_type="explicit",
+                    members=(DomainMember(qname=mem_q, parent=None, order=1.0, usable=True),),
+                ),
+                agrupacion_dim: DimensionModel(
+                    qname=agrupacion_dim,
+                    dimension_type="explicit",
+                    members=(
+                        DomainMember(
+                            qname=agrupacion_member,
+                            parent=None,
+                            order=1.0,
+                            usable=True,
+                        ),
+                    ),
+                ),
+            },
+        )
+
+        result = InstanceFactory(taxonomy).create(
+            _entity(),
+            _instant(),
+            ["T1"],
+            {
+                "T1": DimensionalConfiguration(
+                    table_id="T1",
+                    dimension_assignments={dim_q: mem_q},
+                )
+            },
+            agrupacion_member=agrupacion_member,
+        )
+
+        assert result.contexts
+        for ctx in result.contexts.values():
+            assert ctx.dimensions[agrupacion_dim] == agrupacion_member
+            assert ctx.dim_containers[agrupacion_dim] == "segment"
 
 
 class TestFactoryDimensionalValidation:

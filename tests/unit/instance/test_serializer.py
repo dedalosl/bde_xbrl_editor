@@ -20,6 +20,7 @@ from bde_xbrl_editor.instance import (
     XbrlUnit,
 )
 from bde_xbrl_editor.instance.constants import (
+    BDE_DIM_NS,
     BDE_PBLO_NS,
     FILING_IND_NS,
     LINK_NS,
@@ -191,6 +192,60 @@ class TestToXml:
         typed_child = next(iter(typed_member))
         assert typed_child.tag == "{http://example.com/dom}qLE"
         assert typed_child.text == "Entidad A"
+
+    def test_segment_and_scenario_dimensions_are_serialised_separately(self):
+        entity = ReportingEntity(identifier="ES123", scheme="http://www.bde.es/")
+        period = ReportingPeriod(period_type="instant", instant_date=date(2024, 12, 31))
+        table_dim = QName("http://example.com/dim", "TableAxis", prefix="dim")
+        table_member = QName("http://example.com/dim", "MemberA", prefix="dim")
+        agrupacion_dim = QName(BDE_DIM_NS, "Agrupacion", prefix="es-be-cm-dim")
+        agrupacion_member = QName(
+            BDE_DIM_NS,
+            "AgrupacionIndividual",
+            prefix="es-be-cm-dim",
+        )
+        ctx = XbrlContext(
+            context_id=generate_context_id(
+                entity,
+                period,
+                {table_dim: table_member, agrupacion_dim: agrupacion_member},
+                dim_containers={table_dim: "scenario", agrupacion_dim: "segment"},
+            ),
+            entity=entity,
+            period=period,
+            dimensions={
+                table_dim: table_member,
+                agrupacion_dim: agrupacion_member,
+            },
+            context_element="scenario",
+            dim_containers={table_dim: "scenario", agrupacion_dim: "segment"},
+        )
+        inst = XbrlInstance(
+            taxonomy_entry_point=Path("/tmp/entry.xsd"),
+            schema_ref_href="/tmp/entry.xsd",
+            entity=entity,
+            period=period,
+            contexts={ctx.context_id: ctx},
+            _dirty=True,
+        )
+
+        root = etree.fromstring(InstanceSerializer().to_xml(inst))
+        context_el = root.find(f"{{{XBRLI_NS}}}context")
+        assert context_el is not None
+
+        segment_el = context_el.find(f"{{{XBRLI_NS}}}segment")
+        scenario_el = context_el.find(f"{{{XBRLI_NS}}}scenario")
+        assert segment_el is not None
+        assert scenario_el is not None
+
+        segment_member = segment_el.find(f"{{{XBRLDI_NS}}}explicitMember")
+        scenario_member = scenario_el.find(f"{{{XBRLDI_NS}}}explicitMember")
+        assert segment_member is not None
+        assert scenario_member is not None
+        assert segment_member.get("dimension") == "es-be-cm-dim:Agrupacion"
+        assert segment_member.text == "es-be-cm-dim:AgrupacionIndividual"
+        assert scenario_member.get("dimension") == "dim:TableAxis"
+        assert scenario_member.text == "dim:MemberA"
 
 
 class TestSave:

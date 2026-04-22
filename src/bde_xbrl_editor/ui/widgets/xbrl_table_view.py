@@ -576,15 +576,44 @@ def _ensure_context_ref_for_dimensions(
         generate_context_id,
     )
 
-    ctx_id = generate_context_id(instance.entity, instance.period, dimensions, typed_dimensions)
+    report_level_dims = {}
+    report_level_dim_containers = {}
+    for context in instance.contexts.values():
+        context_dimensions = getattr(context, "dimensions", {}) or {}
+        if _AGRUPACION_DIM not in context_dimensions:
+            continue
+        dim_containers = getattr(context, "dim_containers", {}) or {}
+        report_level_dims = {_AGRUPACION_DIM: context_dimensions[_AGRUPACION_DIM]}
+        report_level_dim_containers = {
+            _AGRUPACION_DIM: dim_containers.get(_AGRUPACION_DIM, "segment")
+        }
+        break
+
+    merged_dimensions = dict(report_level_dims)
+    merged_dimensions.update(dimensions)
+    dim_containers = dict(report_level_dim_containers)
+    target_context_element = "segment" if context_element == "segment" else "scenario"
+    for dim_qname in dimensions:
+        dim_containers[dim_qname] = target_context_element
+    for dim_qname in typed_dimensions or {}:
+        dim_containers[dim_qname] = target_context_element
+
+    ctx_id = generate_context_id(
+        instance.entity,
+        instance.period,
+        merged_dimensions,
+        typed_dimensions,
+        dim_containers,
+    )
     if ctx_id not in instance.contexts:
         ctx = build_dimensional_context(
             instance.entity,
             instance.period,
-            dimensions,
+            merged_dimensions,
             typed_dimensions=typed_dimensions,
             typed_dimension_elements=typed_dimension_elements,
-            context_element="segment" if context_element == "segment" else "scenario",
+            context_element=target_context_element,
+            dim_containers=dim_containers,
         )
         instance.contexts[ctx_id] = ctx
     return ctx_id
@@ -1705,6 +1734,10 @@ class XbrlTableView(QFrame):
     def set_editor(self, editor: InstanceEditor | None) -> None:
         self._editor = editor
 
+    def set_editing_enabled(self, enabled: bool) -> None:
+        """Enable or disable inline fact editing for the active instance view."""
+        self._set_editing_enabled(enabled)
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -2161,9 +2194,11 @@ class XbrlTableView(QFrame):
         self._add_open_row_button.setEnabled(False)
 
     def _set_editing_enabled(self, enabled: bool) -> None:
-        self._editing_enabled = bool(enabled) and self._instance is not None
+        self._editing_enabled = bool(enabled)
         self._body_view.setEditTriggers(
-            _EDIT_TRIGGERS if self._editing_enabled else QTableView.EditTrigger.NoEditTriggers
+            _EDIT_TRIGGERS
+            if self._editing_enabled and self._instance is not None
+            else QTableView.EditTrigger.NoEditTriggers
         )
         self._editing_switch.setText("Editing mode on" if self._editing_enabled else "Editing mode off")
         if self._layout is not None:

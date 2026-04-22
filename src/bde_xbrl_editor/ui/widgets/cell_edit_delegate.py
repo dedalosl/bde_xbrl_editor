@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from bde_xbrl_editor.instance.constants import BDE_DIM_NS
 from bde_xbrl_editor.instance.models import DuplicateFactError
 from bde_xbrl_editor.instance.validator import XbrlTypeValidator
 from bde_xbrl_editor.taxonomy.models import QName, TaxonomyStructure
@@ -33,6 +34,7 @@ if TYPE_CHECKING:
     from bde_xbrl_editor.table_renderer.models import CellCoordinate, ComputedTableLayout
 
 _FACT_ENUM_LANG_PREF = ["es", "en"]
+_AGRUPACION_DIM = QName(namespace=BDE_DIM_NS, local_name="Agrupacion")
 
 
 def _build_namespace_prefix_map(taxonomy: TaxonomyStructure) -> dict[str, str]:
@@ -191,6 +193,7 @@ def _find_fact_index(
             for dim_qname, member_qname in context.dimensions.items()
             if dim_qname not in typed_dim_keys
         }
+        fact_dims.pop(_AGRUPACION_DIM, None)
         fact_typed_dims = {
             dim_qname: value.strip()
             for dim_qname, value in (getattr(context, "typed_dimensions", {}) or {}).items()
@@ -210,6 +213,22 @@ def _find_fact_index(
     return None
 
 
+def _report_level_bde_dimensions(
+    instance: XbrlInstance,
+) -> tuple[dict[QName, QName], dict[QName, str]]:
+    """Return report-level BDE dimensions that must be preserved on all contexts."""
+    for context in instance.contexts.values():
+        dimensions = getattr(context, "dimensions", {}) or {}
+        if _AGRUPACION_DIM not in dimensions:
+            continue
+        dim_containers = getattr(context, "dim_containers", {}) or {}
+        return (
+            {_AGRUPACION_DIM: dimensions[_AGRUPACION_DIM]},
+            {_AGRUPACION_DIM: dim_containers.get(_AGRUPACION_DIM, "segment")},
+        )
+    return {}, {}
+
+
 def _ensure_context_ref(instance: XbrlInstance, coordinate: CellCoordinate) -> str:
     """Return the deterministic context_ref for this coordinate, creating the context if needed."""
     from bde_xbrl_editor.instance.context_builder import (  # noqa: PLC0415
@@ -217,10 +236,24 @@ def _ensure_context_ref(instance: XbrlInstance, coordinate: CellCoordinate) -> s
         generate_context_id,
     )
 
-    dims = coordinate.explicit_dimensions or {}
+    report_level_dims, report_level_dim_containers = _report_level_bde_dimensions(instance)
+    dims = dict(report_level_dims)
+    dims.update(coordinate.explicit_dimensions or {})
     typed_dims = coordinate.typed_dimensions or {}
     typed_dimension_elements = coordinate.typed_dimension_elements or {}
-    ctx_id = generate_context_id(instance.entity, instance.period, dims, typed_dims)
+    dim_containers = dict(report_level_dim_containers)
+    context_element = "scenario"
+    for dim_qname in coordinate.explicit_dimensions or {}:
+        dim_containers[dim_qname] = "scenario"
+    for dim_qname in typed_dims:
+        dim_containers[dim_qname] = "scenario"
+    ctx_id = generate_context_id(
+        instance.entity,
+        instance.period,
+        dims,
+        typed_dims,
+        dim_containers,
+    )
     if ctx_id not in instance.contexts:
         ctx = build_dimensional_context(
             instance.entity,
@@ -228,6 +261,8 @@ def _ensure_context_ref(instance: XbrlInstance, coordinate: CellCoordinate) -> s
             dims,
             typed_dimensions=typed_dims,
             typed_dimension_elements=typed_dimension_elements,
+            dim_containers=dim_containers,
+            context_element=context_element,
         )
         instance.contexts[ctx_id] = ctx
     return ctx_id
