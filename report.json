@@ -1,5 +1,5 @@
 {
-  "run_timestamp": "2026-04-16T21:20:40.340606+00:00",
+  "run_timestamp": "2026-04-20T12:07:06.476586+00:00",
   "runner_version": "0.1.0",
   "overall_passed": false,
   "exit_code": 1,
@@ -10,9 +10,9 @@
       "blocking": true,
       "status": "failed",
       "total": 606,
-      "passed": 356,
-      "failed": 213,
-      "failed_optional": 37,
+      "passed": 394,
+      "failed": 178,
+      "failed_optional": 34,
       "errored": 0,
       "skipped": 0,
       "informational_note": null,
@@ -110,20 +110,20 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/IdScope.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/301-06-FootnoteScopeValid.xml"
           ],
-          "duration_ms": 1
+          "duration_ms": 0
         },
         {
           "variation_id": "V-8",
           "test_case_id": "Identifier Scope",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
             "error_code": null
           },
           "actual_error_codes": [],
-          "exception_message": null,
+          "exception_message": "Failed to parse instance '/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/301-08-FootnoteToContext.xml': xbrli:InvalidFootnoteLinkReference: link:loc xlink:href='#cd1' references context element (not allowed)",
           "description": "301.08 href attribute is referencing to context element.",
           "input_files": [
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/IdScope.xsd",
@@ -135,14 +135,14 @@
           "variation_id": "V-9",
           "test_case_id": "Identifier Scope",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
             "error_code": null
           },
           "actual_error_codes": [],
-          "exception_message": null,
+          "exception_message": "Failed to parse instance '/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/301-09-FootnoteToUnit.xml': xbrli:InvalidFootnoteLinkReference: link:loc xlink:href='#u1' references unit element (not allowed)",
           "description": "301.09 href attribute is referencing to unit element.",
           "input_files": [
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/IdScope.xsd",
@@ -154,14 +154,14 @@
           "variation_id": "V-10",
           "test_case_id": "Identifier Scope",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
             "error_code": null
           },
           "actual_error_codes": [],
-          "exception_message": null,
+          "exception_message": "Failed to parse instance '/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/301-10-FootnoteFromOutOfScope.xml': xbrli:InvalidFootnoteLinkReference: link:footnoteArc xlink:from='fact1' does not match any loc xlink:label in the same extended link",
           "description": "301.10 The instance contains two footnote links.  The second one contains an arc with a from value that does not have a corresponding loc in the same extended link.",
           "input_files": [
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/IdScope.xsd",
@@ -173,14 +173,14 @@
           "variation_id": "V-11",
           "test_case_id": "Identifier Scope",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
             "error_code": null
           },
           "actual_error_codes": [],
-          "exception_message": null,
+          "exception_message": "Failed to parse instance '/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/301-11-FootnoteToOutOfScope.xml': xbrli:InvalidFootnoteLinkReference: link:footnoteArc xlink:to='footnote1' does not match any footnote xlink:label in the same extended link",
           "description": "301.11 The instance contains two footnote links.  The second one contains an arc with a to value that does not have a corresponding footnote resource in the same extended link.",
           "input_files": [
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/IdScope.xsd",
@@ -192,14 +192,14 @@
           "variation_id": "V-12",
           "test_case_id": "Identifier Scope",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
             "error_code": null
           },
           "actual_error_codes": [],
-          "exception_message": null,
+          "exception_message": "Failed to parse instance '/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/301-12-FootnoteLocOutOfScope.xml': xbrli:InvalidFootnoteLinkReference: link:loc xlink:href='301-12-FootnoteLocOutOfScope2.xml#...' references external document (not allowed)",
           "description": "301.12 The instance contains a footnote link.  In the footnote link there is a loc element that has an href that points to a fact in another instance document.",
           "input_files": [
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/IdScope.xsd",
@@ -231,14 +231,14 @@
           "variation_id": "V-14",
           "test_case_id": "Identifier Scope",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
             "error_code": null
           },
           "actual_error_codes": [],
-          "exception_message": null,
+          "exception_message": "Failed to parse instance '/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/301-14-FootnoteFromResource.xml': xbrli:InvalidFootnoteLinkReference: link:footnoteArc xlink:from='footnote2' does not match any loc xlink:label in the same extended link",
           "description": "301.14 The instance contains a footnote link. The arc in the footnote link has a from value that matches a footnote resource. This is not valid for the fact-footnote arc role on the arc. The from must point to a loc which in turns points to a fact in the same instance document.",
           "input_files": [
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/IdScope.xsd",
@@ -250,14 +250,14 @@
           "variation_id": "V-15",
           "test_case_id": "Identifier Scope",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
             "error_code": null
           },
           "actual_error_codes": [],
-          "exception_message": null,
+          "exception_message": "Failed to parse instance '/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/301-15-FootnoteToLoc.xml': xbrli:InvalidFootnoteLinkReference: link:footnoteArc xlink:to='fact2' does not match any footnote xlink:label in the same extended link",
           "description": "301.15 The instance contains a footnote link. The arc in the footnote link has a from value that matches a footnote resource. This is not valid for the fact-footnote arc role on the arc. The from must point to a loc which in turns points to a fact in the same instance document.",
           "input_files": [
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/IdScope.xsd",
@@ -269,14 +269,14 @@
           "variation_id": "V-16",
           "test_case_id": "Identifier Scope",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
             "error_code": null
           },
           "actual_error_codes": [],
-          "exception_message": null,
+          "exception_message": "Failed to parse instance '/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/301-16-FootnoteWithoutLang.xml': xbrli:InvalidFootnoteLinkReference: link:footnote is missing required xml:lang attribute",
           "description": "301.16 The xml:lang attribute is missing on the footnote resource.",
           "input_files": [
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/IdScope.xsd",
@@ -309,14 +309,14 @@
           "variation_id": "V-18",
           "test_case_id": "Identifier Scope",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
             "error_code": null
           },
           "actual_error_codes": [],
-          "exception_message": null,
+          "exception_message": "Failed to parse instance '/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/301-18-FootnoteCustomLocator.xml': xbrli:InvalidFootnoteLinkReference: Invalid locator in footnote extended link: only link:loc may be used as an xlink:type='locator' child (found '{http://www.example.com/test/customLoc}customLoc')",
           "description": "301.18 The footnote link contains a custom locator, which is invalid. See 4.11.1.1 in the XBRL 2.1 specification.",
           "input_files": [
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/IdScope.xsd",
@@ -328,14 +328,14 @@
           "variation_id": "V-19",
           "test_case_id": "Identifier Scope",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
             "error_code": null
           },
           "actual_error_codes": [],
-          "exception_message": null,
+          "exception_message": "Failed to parse instance '/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/301-19-LocToFootnoteResource.xml': xbrli:InvalidFootnoteLinkReference: link:footnoteArc xlink:to='footnote1Loc' does not match any footnote xlink:label in the same extended link",
           "description": "The instance corresponds to an inline XBRL source document for which it is convenient to represent the footnote and the arc in separate extended link elements.  In such an inline document there could be a ix:footnote, id=footnote1, an ix:nonFraction, id=f1, and an ix:relationship for the default link role fromRef=f1, toRef=footnote1.  The 2.1 spec doesn't say this is not allowed although 4.11.1.1 says a loc must only point to items/tuples in the same instance, which can be interpreted to exclude pointing to items/tuples in other instances, but unclear that it excludes pointing to footnote resources in other extended link elements of the same instance.",
           "input_files": [
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/IdScope.xsd",
@@ -347,14 +347,14 @@
           "variation_id": "V-20",
           "test_case_id": "Identifier Scope",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
             "error_code": null
           },
           "actual_error_codes": [],
-          "exception_message": null,
+          "exception_message": "Failed to parse instance '/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/301-20-LinkRolesShareFootnote.xml': xbrli:InvalidFootnoteLinkReference: link:footnoteArc xlink:to='footnote1Loc' does not match any footnote xlink:label in the same extended link; link:footnoteArc xlink:to='footnote1Loc' does not match any footnote xlink:label in the same extended link",
           "description": "The instance corresponds to an inline XBRL source document for which it is convenient to represent a common footnote that is shared by two arcs in different link roled extended link elements.  In such an inline document there could be a ix:footnote, id=footnote1, an ix:nonFraction, id=f1, and an ix:relationship for the  link role role1 fromRef=f1, toRef=footnote1, and a second ix:nonFraction, id=f2, and an ix:relationship for the link role role2, fromRef=f2, toRef=footnote1.  We assume it's a big hairy large footnote to emphasize the undesirability of repeating it in two link rolew, and that the id on the footnote has to be unique in the instance, so if repeated, we'd have to contrive the second occurence's id differently, which could be messy for auditors wanting strict traceability or if a large graph of footnotes, facts, and relationships.",
           "input_files": [
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/301-20-LinkRolesShareFootnote.xsd",
@@ -366,14 +366,14 @@
           "variation_id": "V-01",
           "test_case_id": "Context Segments and Scenarios",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
           "actual_error_codes": [],
-          "exception_message": "Unsupported taxonomy format at '/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/SegmentValid.xsd': No XBRL concepts found — file may not be a valid XBRL taxonomy entry point. Ensure the file is a valid XBRL 2.1 entry-point schema (.xsd).",
+          "exception_message": null,
           "description": "302.01 Valid segment in a context",
           "input_files": [
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/SegmentValid.xsd",
@@ -404,14 +404,14 @@
           "variation_id": "V-03",
           "test_case_id": "Context Segments and Scenarios",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
           "actual_error_codes": [],
-          "exception_message": "Unsupported taxonomy format at '/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/ScenarioValid.xsd': No XBRL concepts found — file may not be a valid XBRL taxonomy entry point. Ensure the file is a valid XBRL 2.1 entry-point schema (.xsd).",
+          "exception_message": null,
           "description": "302.03  Valid scenario in a context",
           "input_files": [
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/ScenarioValid.xsd",
@@ -442,7 +442,7 @@
           "variation_id": "V-05",
           "test_case_id": "Context Segments and Scenarios",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -461,7 +461,7 @@
           "variation_id": "V-06",
           "test_case_id": "Context Segments and Scenarios",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -518,14 +518,14 @@
           "variation_id": "V-09",
           "test_case_id": "Context Segments and Scenarios",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
           "actual_error_codes": [],
-          "exception_message": "Unsupported taxonomy format at '/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/ScenarioValid.xsd': No XBRL concepts found — file may not be a valid XBRL taxonomy entry point. Ensure the file is a valid XBRL 2.1 entry-point schema (.xsd).",
+          "exception_message": null,
           "description": "302.09 Valid duration context with start date earlier than end date",
           "input_files": [
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/ScenarioValid.xsd",
@@ -544,7 +544,7 @@
             "error_code": null
           },
           "actual_error_codes": [],
-          "exception_message": "Unsupported taxonomy format at '/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/ScenarioValid.xsd': No XBRL concepts found — file may not be a valid XBRL taxonomy entry point. Ensure the file is a valid XBRL 2.1 entry-point schema (.xsd).",
+          "exception_message": "Failed to parse instance '/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/302-10-PeriodDateTimeInvalid.xml': Context parse error: Invalid reporting period: taxonomy requires 'duration', got 'duration' — end_date (2002-11-01) must be >= start_date (2002-12-01)",
           "description": "302.10 Invalid duration context with start date later than end date",
           "input_files": [
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/ScenarioValid.xsd",
@@ -556,7 +556,7 @@
           "variation_id": "V-11",
           "test_case_id": "Context Segments and Scenarios",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -575,7 +575,7 @@
           "variation_id": "V-12",
           "test_case_id": "Context Segments and Scenarios",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -783,7 +783,7 @@
           "variation_id": "V-06",
           "test_case_id": "Unit of Measure Consistency",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -802,7 +802,7 @@
           "variation_id": "V-07",
           "test_case_id": "Unit of Measure Consistency",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -821,7 +821,7 @@
           "variation_id": "V-08",
           "test_case_id": "Unit of Measure Consistency",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -840,7 +840,7 @@
           "variation_id": "V-09",
           "test_case_id": "Unit of Measure Consistency",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -1189,7 +1189,7 @@
           "variation_id": "V-25",
           "test_case_id": "Unit of Measure Consistency",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -1208,7 +1208,7 @@
           "variation_id": "V-26",
           "test_case_id": "Unit of Measure Consistency",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -1227,7 +1227,7 @@
           "variation_id": "V-28",
           "test_case_id": "Unit of Measure Consistency",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -1360,7 +1360,7 @@
           "variation_id": "V-07",
           "test_case_id": "Decimal and Precision Mutual Exclusion and prohibition on nil items",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -1411,7 +1411,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/306-Required-definition.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/306-01-RequiredInstanceValid.xml"
           ],
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "variation_id": "V-2",
@@ -1668,14 +1668,14 @@
           "variation_id": "V-02",
           "test_case_id": "Footnote elements tests",
           "suite_id": "xbrl21",
-          "outcome": "pass",
+          "outcome": "fail",
           "mandatory": true,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
           "actual_error_codes": [],
-          "exception_message": null,
+          "exception_message": "Failed to parse instance '/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/311-02-instance.xml': xbrli:InvalidFootnoteLinkReference: link:footnote is missing required xml:lang attribute",
           "description": "Footnote has xml:lang on ancestor element",
           "input_files": [
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/IdScope.xsd",
@@ -1687,14 +1687,14 @@
           "variation_id": "V-03",
           "test_case_id": "Footnote elements tests",
           "suite_id": "xbrl21",
-          "outcome": "pass",
+          "outcome": "fail",
           "mandatory": true,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
           "actual_error_codes": [],
-          "exception_message": null,
+          "exception_message": "Failed to parse instance '/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/311-03-instance.xml': xbrli:InvalidFootnoteLinkReference: link:footnote is missing required xml:lang attribute",
           "description": "Footnote has xml:lang on link element",
           "input_files": [
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/IdScope.xsd",
@@ -1706,14 +1706,14 @@
           "variation_id": "V-04",
           "test_case_id": "Footnote elements tests",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
             "error_code": null
           },
           "actual_error_codes": [],
-          "exception_message": null,
+          "exception_message": "Failed to parse instance '/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/311-04-instance.xml': xbrli:InvalidFootnoteLinkReference: link:footnote is missing required xml:lang attribute",
           "description": "Footnote has xml:lang on xbrl element",
           "input_files": [
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/IdScope.xsd",
@@ -1858,7 +1858,7 @@
           "variation_id": "V-01",
           "test_case_id": "Identifier Scope",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -1877,7 +1877,7 @@
           "variation_id": "V-02",
           "test_case_id": "Identifier Scope",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -1909,7 +1909,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/320-03-nestedtupleBindCalc.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/320-03-nestedtupleBindCalculationInferPrecision-instance.xbrl"
           ],
-          "duration_ms": 1
+          "duration_ms": 2
         },
         {
           "variation_id": "V-04",
@@ -1953,7 +1953,7 @@
           "variation_id": "V-06",
           "test_case_id": "Identifier Scope",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -1991,7 +1991,7 @@
           "variation_id": "V-08",
           "test_case_id": "Identifier Scope",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -2048,7 +2048,7 @@
           "variation_id": "V-11",
           "test_case_id": "Identifier Scope",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -2143,7 +2143,7 @@
           "variation_id": "V-16",
           "test_case_id": "Identifier Scope",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -2162,7 +2162,7 @@
           "variation_id": "V-17",
           "test_case_id": "Identifier Scope",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -2175,13 +2175,13 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/320-17-BindCalculationInferPrecision.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/320-17-BindCalculationInferPrecision-instance.xbrl"
           ],
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "variation_id": "V-18",
           "test_case_id": "Identifier Scope",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -2194,13 +2194,13 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/320-18-BindCalculationInferPrecision.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/320-18-BindCalculationInferPrecision-instance.xbrl"
           ],
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "variation_id": "V-19",
           "test_case_id": "Identifier Scope",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -2238,15 +2238,13 @@
           "variation_id": "V-21",
           "test_case_id": "Identifier Scope",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
-          "actual_error_codes": [
-            "structural:duplicate-fact"
-          ],
+          "actual_error_codes": [],
           "exception_message": null,
           "description": "320.21 - Duplicate Facts reported and thus calculation will not bind per 5.2.5.2\n                        \n                        A calculation represented by a “summation-item” relationship binds for a summation item S if and only if:\n                        1.      S has at least one contributing item.\n                        2.      S is not a duplicate item (as defined in section 4.10), and\n                        3.      None of the contributing items are duplicates.\n                        4.      S is not nil-valued (i.e. it does not have an xsi:nil attribute with value true).\n                        \n                        Test ensures that we do not bind the calculation due to a duplicated fact and do not infer precision.",
           "input_files": [
@@ -2280,13 +2278,15 @@
           "variation_id": "V-23",
           "test_case_id": "Identifier Scope",
           "suite_id": "xbrl21",
-          "outcome": "pass",
+          "outcome": "fail",
           "mandatory": true,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
-          "actual_error_codes": [],
+          "actual_error_codes": [
+            "calculation:summation-inconsistent"
+          ],
           "exception_message": null,
           "description": "320-24 - Valid - Consistent\n                        Inferred precision and Weight Attribute test\n                        \n                        Summation                                                                       \n                        ns:A weight:                1.01\n                        ns:A lexical value:      -3.03\n                        ns:A decimal:             4               \n                        \n                        Contributing items\n                        ns:B weight:                1.01                 \n                        ns:B lexical value:      -1.01\n                        ns:B decimal:              4\n                                              \n                        ns:C weight:                 1.01\n                        ns:C lexical value:        1.99\n                        ns:C decimal:               4\n                                                \n                        Effective summation of contributing items:   -3.0300 +  -1.0100 + -1.9900  =-3.0300 \n                        \n                        Valid Summation:  -3.0300 = -3.03",
           "input_files": [
@@ -2318,7 +2318,7 @@
           "variation_id": "V-25",
           "test_case_id": "Identifier Scope",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -2394,7 +2394,7 @@
           "variation_id": "V-32",
           "test_case_id": "Identifier Scope",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -2451,7 +2451,7 @@
           "variation_id": "V-35",
           "test_case_id": "Identifier Scope",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -2486,7 +2486,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/321-01-internationalization-label.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/321-01-internationalization-presentation.xml"
           ],
-          "duration_ms": 1
+          "duration_ms": 2
         },
         {
           "variation_id": "V-01",
@@ -2514,26 +2514,28 @@
           "variation_id": "V-00",
           "test_case_id": "XML-XBRL Interaction",
           "suite_id": "xbrl21",
-          "outcome": "pass",
+          "outcome": "fail",
           "mandatory": true,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
-          "actual_error_codes": [],
+          "actual_error_codes": [
+            "calculation:summation-inconsistent"
+          ],
           "exception_message": null,
           "description": "322.00 - Valid",
           "input_files": [
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/322-XmlXbrlInteraction.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/322-00-BindCalculationDefaultDecimals-instance.xbrl"
           ],
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "variation_id": "V-01",
           "test_case_id": "XML-XBRL Interaction",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -2552,13 +2554,15 @@
           "variation_id": "V-02",
           "test_case_id": "XML-XBRL Interaction",
           "suite_id": "xbrl21",
-          "outcome": "pass",
+          "outcome": "fail",
           "mandatory": true,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
-          "actual_error_codes": [],
+          "actual_error_codes": [
+            "calculation:summation-inconsistent"
+          ],
           "exception_message": null,
           "description": "322.02 - Valid",
           "input_files": [
@@ -2571,7 +2575,7 @@
           "variation_id": "V-03",
           "test_case_id": "XML-XBRL Interaction",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -2590,13 +2594,15 @@
           "variation_id": "V-04",
           "test_case_id": "XML-XBRL Interaction",
           "suite_id": "xbrl21",
-          "outcome": "pass",
+          "outcome": "fail",
           "mandatory": true,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
-          "actual_error_codes": [],
+          "actual_error_codes": [
+            "calculation:summation-inconsistent"
+          ],
           "exception_message": null,
           "description": "322.04 - Valid",
           "input_files": [
@@ -2609,13 +2615,15 @@
           "variation_id": "V-05",
           "test_case_id": "XML-XBRL Interaction",
           "suite_id": "xbrl21",
-          "outcome": "pass",
+          "outcome": "fail",
           "mandatory": true,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
-          "actual_error_codes": [],
+          "actual_error_codes": [
+            "calculation:summation-inconsistent"
+          ],
           "exception_message": null,
           "description": "322.05 - Invalid",
           "input_files": [
@@ -2628,7 +2636,7 @@
           "variation_id": "V-01",
           "test_case_id": "s-equal tests",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -2640,19 +2648,21 @@
           "input_files": [
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/331-equivalentRelationships-instance-01.xml"
           ],
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "variation_id": "V-02",
           "test_case_id": "s-equal tests",
           "suite_id": "xbrl21",
-          "outcome": "pass",
+          "outcome": "fail",
           "mandatory": true,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
-          "actual_error_codes": [],
+          "actual_error_codes": [
+            "calculation:summation-inconsistent"
+          ],
           "exception_message": null,
           "description": "Same as V-01 but t:P3 calculation arc is with an arc prohibited with nothing tricky, thus avoiding the calculation inconsistency.  The prohibiting arc has the same arcrole, from, to, order, weight, t: attributes and use=prohibited.",
           "input_files": [
@@ -2664,7 +2674,7 @@
           "variation_id": "V-03",
           "test_case_id": "s-equal tests",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -2682,13 +2692,15 @@
           "variation_id": "V-04",
           "test_case_id": "s-equal tests",
           "suite_id": "xbrl21",
-          "outcome": "pass",
+          "outcome": "fail",
           "mandatory": true,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
-          "actual_error_codes": [],
+          "actual_error_codes": [
+            "calculation:summation-inconsistent"
+          ],
           "exception_message": null,
           "description": "Same as V-02 but prohibiting arc has has an xmlns not on the original arc, which is exempt.  Also the xmlns provides different lexical prefixes for the home-made attributes on the arc.",
           "input_files": [
@@ -2700,13 +2712,15 @@
           "variation_id": "V-05",
           "test_case_id": "s-equal tests",
           "suite_id": "xbrl21",
-          "outcome": "pass",
+          "outcome": "fail",
           "mandatory": true,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
-          "actual_error_codes": [],
+          "actual_error_codes": [
+            "calculation:summation-inconsistent"
+          ],
           "exception_message": null,
           "description": "Same as V-02 but prohibiting arc has has an xlink:title not on the original arc, which is exempt.",
           "input_files": [
@@ -2718,7 +2732,7 @@
           "variation_id": "V-06",
           "test_case_id": "s-equal tests",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -2736,7 +2750,7 @@
           "variation_id": "V-07",
           "test_case_id": "s-equal tests",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -2754,7 +2768,7 @@
           "variation_id": "V-08",
           "test_case_id": "s-equal tests",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -2772,7 +2786,7 @@
           "variation_id": "V-09",
           "test_case_id": "s-equal tests",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -2790,13 +2804,15 @@
           "variation_id": "V-10",
           "test_case_id": "s-equal tests",
           "suite_id": "xbrl21",
-          "outcome": "pass",
+          "outcome": "fail",
           "mandatory": true,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
-          "actual_error_codes": [],
+          "actual_error_codes": [
+            "calculation:summation-inconsistent"
+          ],
           "exception_message": null,
           "description": "Same as V-02 but prohibiting arc has the decimalAttr lexically different but same value.",
           "input_files": [
@@ -2808,13 +2824,15 @@
           "variation_id": "V-11",
           "test_case_id": "s-equal tests",
           "suite_id": "xbrl21",
-          "outcome": "pass",
+          "outcome": "fail",
           "mandatory": true,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
-          "actual_error_codes": [],
+          "actual_error_codes": [
+            "calculation:summation-inconsistent"
+          ],
           "exception_message": null,
           "description": "Same as V-02 but prohibiting arc has the doubleAttr lexically different and scaled differently but same value.",
           "input_files": [
@@ -2826,7 +2844,7 @@
           "variation_id": "V-12",
           "test_case_id": "s-equal tests",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -2844,13 +2862,15 @@
           "variation_id": "V-13",
           "test_case_id": "s-equal tests",
           "suite_id": "xbrl21",
-          "outcome": "pass",
+          "outcome": "fail",
           "mandatory": true,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
-          "actual_error_codes": [],
+          "actual_error_codes": [
+            "calculation:summation-inconsistent"
+          ],
           "exception_message": null,
           "description": "Same as V-02 but prohibiting arc has the boolAttr lexically different but same value (e.g., 1 == true, 0 == false).",
           "input_files": [
@@ -2874,13 +2894,13 @@
           "input_files": [
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/330-s-equal-instance-01.xml"
           ],
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "variation_id": "V-02",
           "test_case_id": "s-equal tests",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -2898,7 +2918,7 @@
           "variation_id": "V-03",
           "test_case_id": "s-equal tests",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -2916,7 +2936,7 @@
           "variation_id": "V-04",
           "test_case_id": "s-equal tests",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -2934,7 +2954,7 @@
           "variation_id": "V-05",
           "test_case_id": "s-equal tests",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -2952,7 +2972,7 @@
           "variation_id": "V-06",
           "test_case_id": "s-equal tests",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -2970,7 +2990,7 @@
           "variation_id": "V-07",
           "test_case_id": "s-equal tests",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -3024,13 +3044,15 @@
           "variation_id": "V-13",
           "test_case_id": "s-equal tests",
           "suite_id": "xbrl21",
-          "outcome": "pass",
+          "outcome": "fail",
           "mandatory": true,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
-          "actual_error_codes": [],
+          "actual_error_codes": [
+            "calculation:summation-inconsistent"
+          ],
           "exception_message": null,
           "description": "t:P1 is a summation of t:P2 and t:P3.  t:P2's context has the same scenario, but numbers test lexical signing representations, + optional on positive, and +0 equal to -0.",
           "input_files": [
@@ -3060,7 +3082,7 @@
           "variation_id": "V-15",
           "test_case_id": "s-equal tests",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -3096,13 +3118,15 @@
           "variation_id": "V-17",
           "test_case_id": "s-equal tests",
           "suite_id": "xbrl21",
-          "outcome": "pass",
+          "outcome": "fail",
           "mandatory": true,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
-          "actual_error_codes": [],
+          "actual_error_codes": [
+            "calculation:summation-inconsistent"
+          ],
           "exception_message": null,
           "description": "t:P1 is a summation of t:P2 and t:P3.  t:P2's context has the same scenario, but booleans test lexical representations, 0 or 1 for false or true.",
           "input_files": [
@@ -3114,13 +3138,15 @@
           "variation_id": "V-81",
           "test_case_id": "s-equal tests",
           "suite_id": "xbrl21",
-          "outcome": "pass",
+          "outcome": "fail",
           "mandatory": true,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
-          "actual_error_codes": [],
+          "actual_error_codes": [
+            "calculation:summation-inconsistent"
+          ],
           "exception_message": null,
           "description": "t:P1 is a summation of t:P2 and t:P3.  Contexts are instant.  t:P1 and t:P3 have a Dec 31st date (no time part), and t:P2 has a new-years-eve dateTime of midnight (Jan 1 T00:00:00).  These are equivalent according to spec 4.7.1.",
           "input_files": [
@@ -3150,7 +3176,7 @@
           "variation_id": "V-83",
           "test_case_id": "s-equal tests",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -3168,13 +3194,15 @@
           "variation_id": "V-84",
           "test_case_id": "s-equal tests",
           "suite_id": "xbrl21",
-          "outcome": "pass",
+          "outcome": "fail",
           "mandatory": true,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
-          "actual_error_codes": [],
+          "actual_error_codes": [
+            "calculation:summation-inconsistent"
+          ],
           "exception_message": null,
           "description": "t:P1 is a summation of t:P2 and t:P3.  Contexts are instant.  t:P1 and t:P3 have a Dec 31st date at 24:00:00, and t:P2 has a new-years-eve dateTime of midnight (Jan 1 T00:00:00).  XML defines 24:00:00 to be equivalent to 00:00:00 the next day.  Thus these are equivalent (is the champagne glass half full at 24:00 and half empty at 00:00?).",
           "input_files": [
@@ -3186,13 +3214,15 @@
           "variation_id": "V-85",
           "test_case_id": "s-equal tests",
           "suite_id": "xbrl21",
-          "outcome": "pass",
+          "outcome": "fail",
           "mandatory": true,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
-          "actual_error_codes": [],
+          "actual_error_codes": [
+            "calculation:summation-inconsistent"
+          ],
           "exception_message": null,
           "description": "t:P1 is a summation of t:P2 and t:P3.  Contexts are instant.  Reverse of times of V-84.",
           "input_files": [
@@ -3204,13 +3234,15 @@
           "variation_id": "V-86",
           "test_case_id": "s-equal tests",
           "suite_id": "xbrl21",
-          "outcome": "pass",
+          "outcome": "fail",
           "mandatory": true,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
-          "actual_error_codes": [],
+          "actual_error_codes": [
+            "calculation:summation-inconsistent"
+          ],
           "exception_message": null,
           "description": "t:P1 is a summation of t:P2 and t:P3.  Contexts are instant.  Same as V-84 but for Feb 28 on non-leap year.  t:P1 and t:P3 have a Feb 28th date at 24:00:00, and t:P2 has a March 1 dateTime of midnight (Mar 1 T00:00:00).",
           "input_files": [
@@ -3222,13 +3254,15 @@
           "variation_id": "V-87",
           "test_case_id": "s-equal tests",
           "suite_id": "xbrl21",
-          "outcome": "pass",
+          "outcome": "fail",
           "mandatory": true,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
-          "actual_error_codes": [],
+          "actual_error_codes": [
+            "calculation:summation-inconsistent"
+          ],
           "exception_message": null,
           "description": "t:P1 is a summation of t:P2 and t:P3.  Contexts are instant.  t:P1 and t:P3 have a Feb 29th date (no time part), and t:P2 has a March 1 dateTime of midnight (2008-03-01 T00:00:00).  These are equivalent according to spec 4.7.1.",
           "input_files": [
@@ -3240,13 +3274,15 @@
           "variation_id": "V-88",
           "test_case_id": "s-equal tests",
           "suite_id": "xbrl21",
-          "outcome": "pass",
+          "outcome": "fail",
           "mandatory": true,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
-          "actual_error_codes": [],
+          "actual_error_codes": [
+            "calculation:summation-inconsistent"
+          ],
           "exception_message": null,
           "description": "t:P1 is a summation of t:P2 and t:P3.  Contexts are instant.  t:P1 and t:P3 have a 2100 Feb 28th date (no time part), and t:P2 has a March 1 dateTime of midnight (2100-03-01 T00:00:00).  These are equivalent according to spec 4.7.1.  Tests that years divisible by 4 that are not leap years work correctly (e.g., 2100, 2200, 2300, 2500, 2600, 2700, 2900, and 3000 will not be leap years, but 2400 and 2800 will be).",
           "input_files": [
@@ -3270,13 +3306,13 @@
           "input_files": [
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/330-s-equal-instance-89.xml"
           ],
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "variation_id": "V-90",
           "test_case_id": "s-equal tests",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -3294,13 +3330,15 @@
           "variation_id": "V-91",
           "test_case_id": "s-equal tests",
           "suite_id": "xbrl21",
-          "outcome": "pass",
+          "outcome": "fail",
           "mandatory": true,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
-          "actual_error_codes": [],
+          "actual_error_codes": [
+            "calculation:summation-inconsistent"
+          ],
           "exception_message": null,
           "description": "t:P1 is a summation of t:P2 and t:P3.  Contexts are duration.  t:P1 and t:P3 have a leap year Feb 29 start date 24:00 hrs midnight (2008-02-29T24:00:00), and t:P2 has a March 1 dateTime of 00:00 hrs midnight (2008-03-01 T00:00:00).  These are equivalent according to XML.",
           "input_files": [
@@ -3312,13 +3350,15 @@
           "variation_id": "V-92",
           "test_case_id": "s-equal tests",
           "suite_id": "xbrl21",
-          "outcome": "pass",
+          "outcome": "fail",
           "mandatory": true,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
-          "actual_error_codes": [],
+          "actual_error_codes": [
+            "calculation:summation-inconsistent"
+          ],
           "exception_message": null,
           "description": "t:P1 is a summation of t:P2 and t:P3.  Contexts are duration.  t:P1 and t:P3 have a leap year Feb 29th end date (no time part), and t:P2 has a March 1 dateTime of midnight (2008-03-01 T00:00:00).  These are equivalent according to spec 4.7.1.",
           "input_files": [
@@ -3348,13 +3388,15 @@
           "variation_id": "V-94",
           "test_case_id": "s-equal tests",
           "suite_id": "xbrl21",
-          "outcome": "pass",
+          "outcome": "fail",
           "mandatory": true,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
-          "actual_error_codes": [],
+          "actual_error_codes": [
+            "calculation:summation-inconsistent"
+          ],
           "exception_message": null,
           "description": "t:P1 is a summation of t:P2 and t:P3.  Contexts are duration.  t:P1 and t:P3 have a leap year Feb 29 end date 24:00 hrs midnight (2008-02-29T24:00:00), and t:P2 has a March 1 dateTime of 00:00 hrs midnight (2008-03-01 T00:00:00).  These are equivalent according to XML.",
           "input_files": [
@@ -3379,7 +3421,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-01-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 33
+          "duration_ms": 65
         },
         {
           "variation_id": "V-02",
@@ -3398,7 +3440,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-02-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 8
+          "duration_ms": 23
         },
         {
           "variation_id": "V-03",
@@ -3417,7 +3459,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-03-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 7
+          "duration_ms": 23
         },
         {
           "variation_id": "V-04",
@@ -3436,7 +3478,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-04-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 7
+          "duration_ms": 23
         },
         {
           "variation_id": "V-05",
@@ -3455,7 +3497,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-05-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 11
+          "duration_ms": 23
         },
         {
           "variation_id": "V-06",
@@ -3474,7 +3516,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-06-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 7
+          "duration_ms": 28
         },
         {
           "variation_id": "V-07",
@@ -3493,7 +3535,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-07-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 6
+          "duration_ms": 22
         },
         {
           "variation_id": "V-08",
@@ -3512,7 +3554,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-08-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 7
+          "duration_ms": 22
         },
         {
           "variation_id": "V-09",
@@ -3531,7 +3573,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-09-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 7
+          "duration_ms": 22
         },
         {
           "variation_id": "V-10",
@@ -3550,7 +3592,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-10-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 7
+          "duration_ms": 27
         },
         {
           "variation_id": "V-11",
@@ -3569,7 +3611,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-11-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 6
+          "duration_ms": 22
         },
         {
           "variation_id": "V-12",
@@ -3588,7 +3630,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-12-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 6
+          "duration_ms": 23
         },
         {
           "variation_id": "V-13",
@@ -3607,7 +3649,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-13-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 7
+          "duration_ms": 23
         },
         {
           "variation_id": "V-14",
@@ -3626,7 +3668,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-14-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 7
+          "duration_ms": 24
         },
         {
           "variation_id": "V-15",
@@ -3645,7 +3687,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-15-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 7
+          "duration_ms": 27
         },
         {
           "variation_id": "V-16",
@@ -3664,7 +3706,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-16-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 7
+          "duration_ms": 23
         },
         {
           "variation_id": "V-17",
@@ -3683,7 +3725,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-17-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 7
+          "duration_ms": 23
         },
         {
           "variation_id": "V-18",
@@ -3702,7 +3744,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-18-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 8
+          "duration_ms": 23
         },
         {
           "variation_id": "V-19",
@@ -3721,7 +3763,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-19-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 9
+          "duration_ms": 28
         },
         {
           "variation_id": "V-20",
@@ -3740,7 +3782,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-20-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 8
+          "duration_ms": 24
         },
         {
           "variation_id": "V-21",
@@ -3759,7 +3801,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-21-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 8
+          "duration_ms": 24
         },
         {
           "variation_id": "V-22",
@@ -3778,7 +3820,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-22-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 8
+          "duration_ms": 25
         },
         {
           "variation_id": "V-23",
@@ -3797,7 +3839,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-23-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 8
+          "duration_ms": 29
         },
         {
           "variation_id": "V-24",
@@ -3816,7 +3858,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-24-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 13
+          "duration_ms": 25
         },
         {
           "variation_id": "V-25",
@@ -3835,7 +3877,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-25-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 9
+          "duration_ms": 25
         },
         {
           "variation_id": "V-26",
@@ -3854,7 +3896,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-26-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 10
+          "duration_ms": 25
         },
         {
           "variation_id": "V-27",
@@ -3873,7 +3915,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-27-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 9
+          "duration_ms": 29
         },
         {
           "variation_id": "V-28",
@@ -3892,7 +3934,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-28-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 10
+          "duration_ms": 25
         },
         {
           "variation_id": "V-29",
@@ -3911,7 +3953,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-29-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 9
+          "duration_ms": 26
         },
         {
           "variation_id": "V-30",
@@ -3930,7 +3972,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-30-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 9
+          "duration_ms": 30
         },
         {
           "variation_id": "V-31",
@@ -3949,7 +3991,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-31-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 9
+          "duration_ms": 25
         },
         {
           "variation_id": "V-32",
@@ -3968,7 +4010,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-32-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 9
+          "duration_ms": 25
         },
         {
           "variation_id": "V-33",
@@ -3987,7 +4029,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-33-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 9
+          "duration_ms": 25
         },
         {
           "variation_id": "V-34",
@@ -4006,7 +4048,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-34-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 10
+          "duration_ms": 30
         },
         {
           "variation_id": "V-35",
@@ -4025,7 +4067,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-35-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 9
+          "duration_ms": 25
         },
         {
           "variation_id": "V-36",
@@ -4044,7 +4086,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-36-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 9
+          "duration_ms": 25
         },
         {
           "variation_id": "V-37",
@@ -4063,7 +4105,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-37-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 13
+          "duration_ms": 26
         },
         {
           "variation_id": "V-38",
@@ -4082,7 +4124,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-38-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 10
+          "duration_ms": 29
         },
         {
           "variation_id": "V-39",
@@ -4101,7 +4143,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-39-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 7
+          "duration_ms": 28
         },
         {
           "variation_id": "V-40",
@@ -4120,7 +4162,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-40-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 6
+          "duration_ms": 23
         },
         {
           "variation_id": "V-41",
@@ -4139,7 +4181,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-41-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 7
+          "duration_ms": 23
         },
         {
           "variation_id": "V-42",
@@ -4158,7 +4200,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-42-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 6
+          "duration_ms": 28
         },
         {
           "variation_id": "V-43",
@@ -4177,7 +4219,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-43-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 6
+          "duration_ms": 22
         },
         {
           "variation_id": "V-44",
@@ -4196,7 +4238,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-44-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 6
+          "duration_ms": 22
         },
         {
           "variation_id": "V-45",
@@ -4215,7 +4257,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-45-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 7
+          "duration_ms": 23
         },
         {
           "variation_id": "V-46",
@@ -4234,7 +4276,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-46-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 7
+          "duration_ms": 23
         },
         {
           "variation_id": "V-47",
@@ -4253,7 +4295,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-47-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 7
+          "duration_ms": 27
         },
         {
           "variation_id": "V-48",
@@ -4272,7 +4314,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-48-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 7
+          "duration_ms": 22
         },
         {
           "variation_id": "V-49",
@@ -4291,7 +4333,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-49-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 7
+          "duration_ms": 23
         },
         {
           "variation_id": "V-50",
@@ -4310,7 +4352,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-50-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 7
+          "duration_ms": 23
         },
         {
           "variation_id": "V-51",
@@ -4329,7 +4371,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-51-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 8
+          "duration_ms": 29
         },
         {
           "variation_id": "V-52",
@@ -4348,7 +4390,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-52-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 8
+          "duration_ms": 25
         },
         {
           "variation_id": "V-53",
@@ -4367,7 +4409,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-53-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 8
+          "duration_ms": 25
         },
         {
           "variation_id": "V-54",
@@ -4386,7 +4428,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-54-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 8
+          "duration_ms": 24
         },
         {
           "variation_id": "V-55",
@@ -4405,7 +4447,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-55-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 13
+          "duration_ms": 28
         },
         {
           "variation_id": "V-56",
@@ -4424,7 +4466,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-56-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 8
+          "duration_ms": 24
         },
         {
           "variation_id": "V-57",
@@ -4443,7 +4485,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-57-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 9
+          "duration_ms": 25
         },
         {
           "variation_id": "V-58",
@@ -4462,7 +4504,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-58-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 9
+          "duration_ms": 31
         },
         {
           "variation_id": "V-59",
@@ -4481,7 +4523,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-59-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 9
+          "duration_ms": 26
         },
         {
           "variation_id": "V-60",
@@ -4500,7 +4542,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-60-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 9
+          "duration_ms": 25
         },
         {
           "variation_id": "V-61",
@@ -4519,7 +4561,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-61-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 9
+          "duration_ms": 26
         },
         {
           "variation_id": "V-62",
@@ -4538,7 +4580,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-62-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 9
+          "duration_ms": 30
         },
         {
           "variation_id": "V-63",
@@ -4557,7 +4599,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-63-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 9
+          "duration_ms": 26
         },
         {
           "variation_id": "V-64",
@@ -4576,7 +4618,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-64-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 9
+          "duration_ms": 25
         },
         {
           "variation_id": "V-65",
@@ -4595,7 +4637,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-65-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 9
+          "duration_ms": 25
         },
         {
           "variation_id": "V-66",
@@ -4614,7 +4656,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-66-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 9
+          "duration_ms": 30
         },
         {
           "variation_id": "V-67",
@@ -4633,7 +4675,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-67-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 9
+          "duration_ms": 25
         },
         {
           "variation_id": "V-68",
@@ -4652,7 +4694,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-68-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 13
+          "duration_ms": 25
         },
         {
           "variation_id": "V-69",
@@ -4671,7 +4713,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-69-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 10
+          "duration_ms": 26
         },
         {
           "variation_id": "V-70",
@@ -4690,7 +4732,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-inferPrecisionDecimals.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/391a-70-InferDecimalsFromPrecision.xml"
           ],
-          "duration_ms": 9
+          "duration_ms": 30
         },
         {
           "variation_id": "V-1",
@@ -4736,16 +4778,13 @@
           "variation_id": "V-3",
           "test_case_id": "Essence-Alias Closure",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": false,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
-          "actual_error_codes": [
-            "structural:duplicate-fact",
-            "structural:duplicate-fact"
-          ],
+          "actual_error_codes": [],
           "exception_message": null,
           "description": "392.03 Valid example of essence-alias attribute using duplicate. No copy happens.",
           "input_files": [
@@ -4793,7 +4832,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/EssenceAlias_definition.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/392-05-EssenceAliasValidWithValue.xml"
           ],
-          "duration_ms": 1
+          "duration_ms": 0
         },
         {
           "variation_id": "V-6",
@@ -5058,7 +5097,7 @@
           "variation_id": "V-2",
           "test_case_id": "Infer Calculated Value Consistency",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": false,
           "expected_outcome": {
             "type": "error",
@@ -5192,13 +5231,15 @@
           "variation_id": "V-00",
           "test_case_id": "SummationItem",
           "suite_id": "xbrl21",
-          "outcome": "pass",
+          "outcome": "fail",
           "mandatory": false,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
-          "actual_error_codes": [],
+          "actual_error_codes": [
+            "calculation:summation-inconsistent"
+          ],
           "exception_message": null,
           "description": "A simple consistent instance; A = B + C",
           "input_files": [
@@ -5212,7 +5253,7 @@
           "variation_id": "V-01",
           "test_case_id": "SummationItem",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": false,
           "expected_outcome": {
             "type": "error",
@@ -5292,13 +5333,15 @@
           "variation_id": "V-05",
           "test_case_id": "SummationItem",
           "suite_id": "xbrl21",
-          "outcome": "pass",
+          "outcome": "fail",
           "mandatory": false,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
-          "actual_error_codes": [],
+          "actual_error_codes": [
+            "calculation:summation-inconsistent"
+          ],
           "exception_message": null,
           "description": "B and C are both nil-valued, so neither contributes to A.  No checks are\n      performed.  The instance is consistent.",
           "input_files": [
@@ -5332,7 +5375,7 @@
           "variation_id": "V-07",
           "test_case_id": "SummationItem",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": false,
           "expected_outcome": {
             "type": "error",
@@ -5441,7 +5484,7 @@
             "error_code": null
           },
           "actual_error_codes": [
-            "structural:duplicate-fact"
+            "calculation:summation-inconsistent"
           ],
           "exception_message": null,
           "description": "Things don't add up, but this goes undetected because one of the\n      contributing items is duplicated.",
@@ -5519,7 +5562,7 @@
           "variation_id": "V-16",
           "test_case_id": "SummationItem",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": false,
           "expected_outcome": {
             "type": "error",
@@ -5648,7 +5691,7 @@
           "variation_id": "V-22",
           "test_case_id": "SummationItem",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": false,
           "expected_outcome": {
             "type": "error",
@@ -5754,7 +5797,7 @@
           "variation_id": "V-27",
           "test_case_id": "SummationItem",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": false,
           "expected_outcome": {
             "type": "error",
@@ -5774,13 +5817,15 @@
           "variation_id": "V-28",
           "test_case_id": "SummationItem",
           "suite_id": "xbrl21",
-          "outcome": "pass",
+          "outcome": "fail",
           "mandatory": false,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
-          "actual_error_codes": [],
+          "actual_error_codes": [
+            "calculation:summation-inconsistent"
+          ],
           "exception_message": null,
           "description": "In the current inferring decimals approach, the summation item reported as 100.00 precision 5, is deemed 100.00 decimals 2,\n    and compared to a sum of contributing items 99.996, with 99.996 rounded according to the precision of the summation item, which\n    is deemed decimals 2, so then the sum of contributing items after such rounding is 100.00, exactly matching the summation item, and\n    this case is valid.\n    (In the prior approach with inferred precision, this was invalid because\n    the summation item is 100.00 precision 5 and the calculated total of contributing items is 99.996, which when rounded to precision 5, remains\n    99.996.\n    This is within the implied error bounds so you might reasonably expect the calculation to be consistent.\n    The prior spec which required inferring precision, however, says to round using the precision of the total so you actually end up checking 100 against 99.996 so that the calculation fails.)",
           "input_files": [
@@ -5794,7 +5839,7 @@
           "variation_id": "V-29",
           "test_case_id": "SummationItem",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": false,
           "expected_outcome": {
             "type": "error",
@@ -5814,7 +5859,7 @@
           "variation_id": "V-30",
           "test_case_id": "SummationItem",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": false,
           "expected_outcome": {
             "type": "error",
@@ -5865,7 +5910,7 @@
           "input_files": [
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/300-instance/399-01-same-local-name-valid.xbrl"
           ],
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "variation_id": "V-01",
@@ -6065,7 +6110,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/LinkbaseRef-presentation.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/LinkbaseRef-definition.xml"
           ],
-          "duration_ms": 1
+          "duration_ms": 2
         },
         {
           "variation_id": "V-01",
@@ -6673,7 +6718,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/ArcCyclesPCNC_presentation.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/ArcCyclesPCNCExtension.xml"
           ],
-          "duration_ms": 1
+          "duration_ms": 2
         },
         {
           "variation_id": "V-8",
@@ -6695,7 +6740,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/ArcCyclesPCNC_presentation.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/ArcCyclesPCWCExtension.xml"
           ],
-          "duration_ms": 1
+          "duration_ms": 2
         },
         {
           "variation_id": "V-9",
@@ -6797,7 +6842,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/ArcCyclesSINC_calculation.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/ArcCyclesSINCExtension.xml"
           ],
-          "duration_ms": 1
+          "duration_ms": 2
         },
         {
           "variation_id": "V-14",
@@ -6819,7 +6864,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/ArcCyclesSINC_calculation.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/ArcCyclesSIWCExtension.xml"
           ],
-          "duration_ms": 1
+          "duration_ms": 2
         },
         {
           "variation_id": "V-15",
@@ -6839,7 +6884,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/ArcCyclesGSNC_definition.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/ArcCyclesGSNC.xml"
           ],
-          "duration_ms": 1
+          "duration_ms": 2
         },
         {
           "variation_id": "V-16",
@@ -6859,7 +6904,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/ArcCyclesGSNCWR_definition.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/ArcCyclesGSNCWR.xml"
           ],
-          "duration_ms": 1
+          "duration_ms": 2
         },
         {
           "variation_id": "V-17",
@@ -6879,7 +6924,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/ArcCyclesGSUC_definition.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/ArcCyclesGSUC.xml"
           ],
-          "duration_ms": 1
+          "duration_ms": 2
         },
         {
           "variation_id": "V-18",
@@ -6899,7 +6944,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/ArcCyclesGSDC_definition.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/ArcCyclesGSDC.xml"
           ],
-          "duration_ms": 1
+          "duration_ms": 2
         },
         {
           "variation_id": "V-19",
@@ -6921,7 +6966,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/ArcCyclesGSNC_definition.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/ArcCyclesGSNCExtension.xml"
           ],
-          "duration_ms": 2
+          "duration_ms": 3
         },
         {
           "variation_id": "V-20",
@@ -6943,7 +6988,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/ArcCyclesGSNC_definition.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/ArcCyclesGSWUCExtension.xml"
           ],
-          "duration_ms": 2
+          "duration_ms": 3
         },
         {
           "variation_id": "V-21",
@@ -6965,7 +7010,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/ArcCyclesGSNC_definition.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/ArcCyclesGSWDCExtension.xml"
           ],
-          "duration_ms": 2
+          "duration_ms": 3
         },
         {
           "variation_id": "V-22",
@@ -7005,7 +7050,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/ArcCyclesEAUC_definition.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/ArcCyclesEAUC.xml"
           ],
-          "duration_ms": 1
+          "duration_ms": 2
         },
         {
           "variation_id": "V-24",
@@ -7025,7 +7070,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/ArcCyclesEADC_definition.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/ArcCyclesEADC.xml"
           ],
-          "duration_ms": 1
+          "duration_ms": 2
         },
         {
           "variation_id": "V-29",
@@ -7124,7 +7169,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/RoleS_linkbase.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/RoleS.xml"
           ],
-          "duration_ms": 1
+          "duration_ms": 2
         },
         {
           "variation_id": "V-2",
@@ -7144,7 +7189,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/RoleE_presentation.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/RoleE.xml"
           ],
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "variation_id": "V-3",
@@ -7205,7 +7250,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/RoleSBU_linkbase.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/RoleSBU.xml"
           ],
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "variation_id": "V-6",
@@ -7226,7 +7271,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/RoleSBR_linkbase.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/RoleSBR.xml"
           ],
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "variation_id": "V-7",
@@ -7248,7 +7293,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/RoleSDR_linkbase.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/RoleSDR.xml"
           ],
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "variation_id": "V-8",
@@ -7270,7 +7315,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/RoleSDRI_linkbase.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/RoleSDRI.xml"
           ],
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "variation_id": "V-9",
@@ -7491,7 +7536,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/ArcRoleDR2_presentation.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/ArcRoleDR2.xml"
           ],
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "variation_id": "V-7",
@@ -7512,7 +7557,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/ArcRoleDR3_presentation.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/ArcRoleDR3.xml"
           ],
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "variation_id": "V-8",
@@ -7573,7 +7618,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/DecArcCyclesNN_definition.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/DecArcCyclesNN.xml"
           ],
-          "duration_ms": 1
+          "duration_ms": 2
         },
         {
           "variation_id": "V-2",
@@ -7593,7 +7638,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/DecArcCyclesNU_definition.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/DecArcCyclesNU.xml"
           ],
-          "duration_ms": 1
+          "duration_ms": 2
         },
         {
           "variation_id": "V-3",
@@ -7613,7 +7658,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/DecArcCyclesND_definition.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/DecArcCyclesND.xml"
           ],
-          "duration_ms": 1
+          "duration_ms": 2
         },
         {
           "variation_id": "V-4",
@@ -7657,7 +7702,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/DecArcCyclesNE2_definition.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/DecArcCyclesNE.xml"
           ],
-          "duration_ms": 2
+          "duration_ms": 3
         },
         {
           "variation_id": "V-6",
@@ -7677,7 +7722,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/DecArcCyclesUN_definition.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/DecArcCyclesUN.xml"
           ],
-          "duration_ms": 1
+          "duration_ms": 2
         },
         {
           "variation_id": "V-7",
@@ -7697,7 +7742,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/DecArcCyclesUU_definition.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/DecArcCyclesUU.xml"
           ],
-          "duration_ms": 1
+          "duration_ms": 2
         },
         {
           "variation_id": "V-8",
@@ -7717,7 +7762,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/DecArcCyclesUD_definition.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/DecArcCyclesUD.xml"
           ],
-          "duration_ms": 1
+          "duration_ms": 2
         },
         {
           "variation_id": "V-9",
@@ -7739,7 +7784,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/DecArcCyclesUUE2_definition.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/DecArcCyclesUUE.xml"
           ],
-          "duration_ms": 2
+          "duration_ms": 3
         },
         {
           "variation_id": "V-10",
@@ -7781,7 +7826,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/DecArcCyclesDN_definition.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/DecArcCyclesDN.xml"
           ],
-          "duration_ms": 1
+          "duration_ms": 2
         },
         {
           "variation_id": "V-12",
@@ -7801,7 +7846,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/DecArcCyclesDU_definition.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/DecArcCyclesDU.xml"
           ],
-          "duration_ms": 1
+          "duration_ms": 2
         },
         {
           "variation_id": "V-13",
@@ -7880,7 +7925,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/209-02-DifferentPreferredLabels-label.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/209-02-DifferentPreferredLabels-presentation.xml"
           ],
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "variation_id": "V-03",
@@ -8184,7 +8229,7 @@
           "variation_id": "V-10",
           "test_case_id": "Item-Summation Balance Constraint",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -8224,13 +8269,15 @@
           "variation_id": "V-1",
           "test_case_id": "Relationship Equivalence",
           "suite_id": "xbrl21",
-          "outcome": "pass",
+          "outcome": "fail",
           "mandatory": false,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
-          "actual_error_codes": [],
+          "actual_error_codes": [
+            "calculation:summation-inconsistent"
+          ],
           "exception_message": null,
           "description": "210.01 A prohibiting arc of a higher priority overrides a relationship, thus removing the calculation relationship.  The instance would be invalid if the relationship had not been prohibited.",
           "input_files": [
@@ -8245,7 +8292,7 @@
           "variation_id": "V-2",
           "test_case_id": "Relationship Equivalence",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": false,
           "expected_outcome": {
             "type": "error",
@@ -8260,19 +8307,21 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/210-02-DifferentOrder-calculation-2.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/210-02-DifferentOrder-instance.xml"
           ],
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "variation_id": "V-3",
           "test_case_id": "Relationship Equivalence",
           "suite_id": "xbrl21",
-          "outcome": "pass",
+          "outcome": "fail",
           "mandatory": false,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
-          "actual_error_codes": [],
+          "actual_error_codes": [
+            "calculation:summation-inconsistent"
+          ],
           "exception_message": null,
           "description": "210.03 A prohibiting arc of a higher priority has no order attribute, and another arc has order one.  The instance is thus valid since the arc is prohibited as the prohibiting arc's order takes the default value.",
           "input_files": [
@@ -8281,19 +8330,21 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/210-03-MissingOrder-calculation-2.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/210-03-MissingOrder-instance.xml"
           ],
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "variation_id": "V-4",
           "test_case_id": "Relationship Equivalence",
           "suite_id": "xbrl21",
-          "outcome": "pass",
+          "outcome": "fail",
           "mandatory": false,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
-          "actual_error_codes": [],
+          "actual_error_codes": [
+            "calculation:summation-inconsistent"
+          ],
           "exception_message": null,
           "description": "210.04 A prohibiting arc of a higher priority overrides a relationship, thus removing the calculation relationship.  The instance would be invalid if the relationship had not been prohibited. In this variation, linkbase calculation-2 has the \"optional\" arc appear before the \"prohibited\".",
           "input_files": [
@@ -8308,13 +8359,15 @@
           "variation_id": "V-5",
           "test_case_id": "Relationship Equivalence",
           "suite_id": "xbrl21",
-          "outcome": "pass",
+          "outcome": "fail",
           "mandatory": false,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
-          "actual_error_codes": [],
+          "actual_error_codes": [
+            "calculation:summation-inconsistent"
+          ],
           "exception_message": null,
           "description": "210.05 A prohibiting arc of a higher priority overrides a relationship, thus removing the calculation relationship.  The instance would be invalid if the relationship had not been prohibited. In this variation, linkbase calculation-2 has the \"prohibited\" arc appear before the \"optional\".",
           "input_files": [
@@ -8323,7 +8376,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/210-05-RelationshipEquivalence-calculation-2.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/210-05-RelationshipEquivalence-instance.xml"
           ],
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "variation_id": "V-00",
@@ -9058,7 +9111,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/220-06-Concepts.xsd",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/220-06-Arcrole.xsd"
           ],
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "variation_id": "V-07",
@@ -9191,7 +9244,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/230-01-Custom-linkbase.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/230-01-LocatorToADocumentWithoutFragment-T2.xsd"
           ],
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "variation_id": "V-02",
@@ -9216,7 +9269,7 @@
           "variation_id": "V-01",
           "test_case_id": "Syntactically equal arcs",
           "suite_id": "xbrl21",
-          "outcome": "fail",
+          "outcome": "pass",
           "mandatory": true,
           "expected_outcome": {
             "type": "error",
@@ -9234,13 +9287,15 @@
           "variation_id": "V-02",
           "test_case_id": "Syntactically equal arcs",
           "suite_id": "xbrl21",
-          "outcome": "pass",
+          "outcome": "fail",
           "mandatory": true,
           "expected_outcome": {
             "type": "valid",
             "error_code": null
           },
-          "actual_error_codes": [],
+          "actual_error_codes": [
+            "calculation:summation-inconsistent"
+          ],
           "exception_message": null,
           "description": "XBRL 2.1 spec says duplicate arcs are not allowed on extended links. Two syntactically equal arcs in different extended links are not equal. this is a valid instance document according to the taxonomy with syntactically equal arcs that are not duplicate arcs. The example must not raise duplicate arcs errors and no calculation mistmatch or warnings of this type.",
           "input_files": [
@@ -9266,7 +9321,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/291-01-ArcOverrideDisjointLinkbases-1-label.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/291-01-ArcOverrideDisjointLinkbases-2-label.xml"
           ],
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "variation_id": "V-2",
@@ -9286,7 +9341,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/291-02-ArcOverrideLabelLinkbases-1-label.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/291-02-ArcOverrideLabelLinkbases-2-label.xml"
           ],
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "variation_id": "V-3",
@@ -9327,7 +9382,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/291-04-ArcOverrideLinkbases-1-def.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/291-04-ArcOverrideLinkbases-2-def.xml"
           ],
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "variation_id": "V-5",
@@ -9347,7 +9402,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/291-05-ArcOverrideLinkbases-1-def.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/291-05-ArcOverrideLinkbases-2-def.xml"
           ],
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "variation_id": "V-6",
@@ -9388,7 +9443,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/291-07-ArcOverrideLabelLinkbases-1-label.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/291-07-ArcOverrideLabelLinkbases-2-label.xml"
           ],
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "variation_id": "V-08",
@@ -9408,7 +9463,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/291-08-ArcOverrideLabelLinkbases-1-label.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/291-08-ArcOverrideLabelLinkbases-2-label.xml"
           ],
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "variation_id": "V-09",
@@ -9428,7 +9483,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/291-09-ArcOverrideLabelLinkbases-1-label.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/291-09-ArcOverrideLabelLinkbases-2-label.xml"
           ],
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "variation_id": "V-10",
@@ -9448,7 +9503,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/291-10-ArcOverrideDisjointLinkbases-1-reference.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/291-10-ArcOverrideDisjointLinkbases-2-reference.xml"
           ],
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "variation_id": "V-11",
@@ -9468,7 +9523,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/291-11-ArcOverrideReferenceLinkbases-1-reference.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/291-11-ArcOverrideReferenceLinkbases-2-reference.xml"
           ],
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "variation_id": "V-12",
@@ -9489,7 +9544,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/291-12-ArcOverrideReferenceLinkbases-2-reference.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/291-12-ArcOverrideReferenceLinkbases-3-reference.xml"
           ],
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "variation_id": "V-13",
@@ -9509,7 +9564,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/291-13-ArcOverrideReferenceLinkbases-1-reference.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/291-13-ArcOverrideReferenceLinkbases-2-reference.xml"
           ],
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "variation_id": "V-14",
@@ -9549,7 +9604,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/291-15-ArcOverrideReferenceLinkbases-1-reference.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/291-15-ArcOverrideReferenceLinkbases-2-reference.xml"
           ],
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "variation_id": "V-00",
@@ -9609,7 +9664,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/LinkbaseRef-presentation.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/LinkbaseRef-definition.xml"
           ],
-          "duration_ms": 1
+          "duration_ms": 2
         },
         {
           "variation_id": "V-03",
@@ -9791,7 +9846,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/prefLabel-single-language-valid-label.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/prefLabel-single-language-valid-presentation.xml"
           ],
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "variation_id": "V-2",
@@ -9831,7 +9886,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/prefLabel-single-language-invalid2-label.xml",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/200-linkbase/prefLabel-single-language-invalid2-presentation.xml"
           ],
-          "duration_ms": 0
+          "duration_ms": 1
         },
         {
           "variation_id": "V-4",
@@ -11650,7 +11705,7 @@
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/400-misc/402-01-xml-namespace-01-valid.xbrl",
             "/Users/javiercobo/Documents/master_devia/claudeCodeTests/bde_xbrl_editor/conformance/XBRL-CONF-2025-07-16/Common/400-misc/402-01-tx-cor-2015-01-01.xsd"
           ],
-          "duration_ms": 0
+          "duration_ms": 1
         }
       ]
     },

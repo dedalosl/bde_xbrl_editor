@@ -8,6 +8,7 @@ from bde_xbrl_editor.taxonomy.linkbases.table_pwd import parse_table_linkbase
 from bde_xbrl_editor.taxonomy.models import BreakdownNode
 
 NS_TABLE = "http://xbrl.org/PWD/2013-05-17/table"
+NS_TABLE_2014 = "http://xbrl.org/2014/table"
 NS_XLINK = "http://www.w3.org/1999/xlink"
 NS_LINK = "http://www.xbrl.org/2003/linkbase"
 
@@ -61,6 +62,17 @@ TABLE_WITH_BREAKDOWN = textwrap.dedent("""\
     </link:linkbase>
 """)
 
+TABLE_WITH_BREAKDOWN_2014 = TABLE_WITH_BREAKDOWN.replace(
+    "http://xbrl.org/PWD/2013-05-17/table",
+    "http://xbrl.org/2014/table",
+).replace(
+    "http://xbrl.org/PWD/2013-05-17/table/arcrole/table-breakdown",
+    "http://xbrl.org/arcrole/2014/table-breakdown",
+).replace(
+    "http://xbrl.org/PWD/2013-05-17/table/arcrole/breakdown-tree",
+    "http://xbrl.org/arcrole/2014/breakdown-tree",
+)
+
 TABLE_LABEL_CODES = textwrap.dedent("""\
     <?xml version="1.0" encoding="UTF-8"?>
     <link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
@@ -75,6 +87,28 @@ TABLE_LABEL_CODES = textwrap.dedent("""\
                      xlink:label="label_t1"
                      xlink:role="http://www.bde.es/xbrl/role/fin-code"
                      xml:lang="es">0010</label:label>
+        <gen:arc xlink:type="arc"
+                 xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
+                 xlink:from="loc_t1"
+                 xlink:to="label_t1"/>
+      </gen:link>
+    </link:linkbase>
+""")
+
+TABLE_LABEL_ES = textwrap.dedent("""\
+    <?xml version="1.0" encoding="UTF-8"?>
+    <link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+                   xmlns:gen="http://xbrl.org/2008/generic"
+                   xmlns:label="http://xbrl.org/2008/label"
+                   xmlns:xlink="http://www.w3.org/1999/xlink">
+      <gen:link xlink:type="extended">
+        <link:loc xlink:type="locator"
+                  xlink:href="http://www.eba.europa.eu/eu/fr/xbrl/crr/fws/corep/4.2/tab/c_40.00.a/c_40.00.a-rend.xml#t1"
+                  xlink:label="loc_t1"/>
+        <label:label xlink:type="resource"
+                     xlink:label="label_t1"
+                     xlink:role="http://www.xbrl.org/2008/role/label"
+                     xml:lang="es">Tabla en espanol</label:label>
         <gen:arc xlink:type="arc"
                  xlink:arcrole="http://xbrl.org/arcrole/2008/element-label"
                  xlink:from="loc_t1"
@@ -264,6 +298,12 @@ class TestMinimalTableParsing:
         # Should find at least one table
         assert len(tables) >= 1
 
+    def test_table_with_breakdown_2014_namespace_parses(self, tmp_path):
+        lb = tmp_path / "table-2014.xml"
+        lb.write_text(TABLE_WITH_BREAKDOWN_2014, encoding="utf-8")
+        tables = parse_table_linkbase(lb)
+        assert len(tables) >= 1
+
     def test_table_id_correct(self, tmp_path):
         lb = tmp_path / "table.xml"
         lb.write_text(TABLE_WITH_BREAKDOWN, encoding="utf-8")
@@ -299,6 +339,51 @@ class TestMinimalTableParsing:
         assert tables[0].table_code == "0010"
         assert tables[0].display_code == "0010  |  t1"
 
+    def test_bde_spanish_table_labels_override_eba_english_when_available(self, tmp_path):
+        eba_dir = (
+            tmp_path
+            / "cache"
+            / "www.eba.europa.eu"
+            / "eu"
+            / "fr"
+            / "xbrl"
+            / "crr"
+            / "fws"
+            / "corep"
+            / "4.2"
+            / "tab"
+            / "c_40.00.a"
+        )
+        bde_dir = (
+            tmp_path
+            / "cache"
+            / "www.bde.es"
+            / "es"
+            / "xbrl"
+            / "fws"
+            / "ebacrr_corep"
+            / "4.2"
+            / "tab"
+            / "c_40.00.a"
+        )
+        eba_dir.mkdir(parents=True)
+        bde_dir.mkdir(parents=True)
+
+        rend = eba_dir / "c_40.00.a-rend.xml"
+        rend.write_text(MINIMAL_TABLE_LB, encoding="utf-8")
+        en = eba_dir / "c_40.00.a-lab-en.xml"
+        en.write_text(
+            TABLE_LABEL_ES.replace('xml:lang="es">Tabla en espanol', 'xml:lang="en">English table'),
+            encoding="utf-8",
+        )
+        es = bde_dir / "c_40.00.a-lab-es.xml"
+        es.write_text(TABLE_LABEL_ES, encoding="utf-8")
+
+        tables = parse_table_linkbase(rend)
+
+        assert len(tables) == 1
+        assert tables[0].label == "Tabla en espanol"
+
 
 class TestBreakdownNodeTypes:
     def test_rule_node_type(self):
@@ -316,6 +401,10 @@ class TestBreakdownNodeTypes:
     def test_dimension_relationship_node_type(self):
         from bde_xbrl_editor.taxonomy.linkbases.table_pwd import _node_type_from_tag
         assert _node_type_from_tag(f"{{{NS_TABLE}}}dimensionRelationshipNode") == "dimensionRelationship"
+
+    def test_rule_node_type_2014_namespace(self):
+        from bde_xbrl_editor.taxonomy.linkbases.table_pwd import _node_type_from_tag
+        assert _node_type_from_tag(f"{{{NS_TABLE_2014}}}ruleNode") == "rule"
 
 
 class TestBreakdownNodeAttributes:

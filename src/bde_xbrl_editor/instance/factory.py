@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Literal
 
 from bde_xbrl_editor.instance.constants import ISO4217_NS, XBRLDI_CONTEXT_ELEMENT, XBRLI_NS
+from bde_xbrl_editor.instance.constants import BDE_DIM_NS
 from bde_xbrl_editor.instance.context_builder import (
     build_dimensional_context,
     build_filing_indicator_context,
@@ -30,6 +31,7 @@ from bde_xbrl_editor.taxonomy.models import QName, TaxonomyStructure
 
 _PURE_MEASURE = f"{XBRLI_NS}:pure"
 _SHARES_MEASURE = f"{XBRLI_NS}:shares"
+_AGRUPACION_DIM_QNAME = QName(BDE_DIM_NS, "Agrupacion", prefix="es-be-cm-dim")
 
 
 def _is_bde_taxonomy(taxonomy: TaxonomyStructure) -> bool:
@@ -100,6 +102,7 @@ class InstanceFactory:
         period: ReportingPeriod,
         included_table_ids: list[str],
         dimensional_configs: dict[str, DimensionalConfiguration],
+        agrupacion_member: QName | None = None,
     ) -> XbrlInstance:
         """Create a new empty XbrlInstance.
 
@@ -136,6 +139,9 @@ class InstanceFactory:
 
         # Validate dimensional configs against dimension model
         self._validate_dimensional_configs(included_table_ids, dimensional_configs)
+        report_level_dims, report_level_dim_containers = self._build_report_level_dimensions(
+            agrupacion_member
+        )
 
         # Determine context_element (take the first hypercube's declaration or default)
         context_element: Literal["scenario", "segment"] = XBRLDI_CONTEXT_ELEMENT  # type: ignore[assignment]
@@ -149,13 +155,21 @@ class InstanceFactory:
         all_contexts: list[XbrlContext] = []
 
         # 1. Filing-indicator context (always present, no dimensions)
-        fi_ctx = build_filing_indicator_context(entity, period, context_element)
+        fi_ctx = build_filing_indicator_context(
+            entity,
+            period,
+            context_element,
+            dimensions=report_level_dims,
+            dim_containers=report_level_dim_containers,
+        )
         all_contexts.append(fi_ctx)
 
         # 2. Per-table dimensional contexts
         for tid in included_table_ids:
             dim_cfg = dimensional_configs.get(tid)
-            dims = dim_cfg.dimension_assignments if dim_cfg else {}
+            dims = dict(report_level_dims)
+            if dim_cfg:
+                dims.update(dim_cfg.dimension_assignments)
             if dims:
                 table = taxonomy.get_table(tid)
                 tbl_ctx_el = (
@@ -163,7 +177,16 @@ class InstanceFactory:
                     if table
                     else context_element
                 )
-                ctx = build_dimensional_context(entity, period, dims, tbl_ctx_el)
+                dim_containers = dict(report_level_dim_containers)
+                for dim_qname in (dim_cfg.dimension_assignments if dim_cfg else {}):
+                    dim_containers[dim_qname] = tbl_ctx_el
+                ctx = build_dimensional_context(
+                    entity,
+                    period,
+                    dims,
+                    tbl_ctx_el,
+                    dim_containers=dim_containers,
+                )
                 all_contexts.append(ctx)
 
         contexts = deduplicate_contexts(all_contexts)
@@ -214,6 +237,32 @@ class InstanceFactory:
             bde_preambulo=bde_preambulo,
             source_path=None,
             _dirty=True,
+        )
+
+    def _build_report_level_dimensions(
+        self,
+        agrupacion_member: QName | None,
+    ) -> tuple[dict[QName, QName], dict[QName, Literal["segment", "scenario"]]]:
+        """Return report-level dimensions that must be set on every generated context."""
+        agrupacion_dim = self._taxonomy.dimensions.get(_AGRUPACION_DIM_QNAME)
+        if agrupacion_dim is None:
+            return {}, {}
+
+        allowed_members = [member.qname for member in agrupacion_dim.members]
+        if agrupacion_member is None:
+            raise InstanceCreationError(
+                "Please select an Agrupacion value for the new XBRL instance."
+            )
+        if allowed_members and agrupacion_member not in allowed_members:
+            raise InvalidDimensionMemberError(
+                table_id="__report__",
+                dimension_qname=_AGRUPACION_DIM_QNAME,
+                provided_member=agrupacion_member,
+                allowed_members=allowed_members,
+            )
+        return (
+            {_AGRUPACION_DIM_QNAME: agrupacion_member},
+            {_AGRUPACION_DIM_QNAME: "segment"},
         )
 
     def _validate_dimensional_configs(

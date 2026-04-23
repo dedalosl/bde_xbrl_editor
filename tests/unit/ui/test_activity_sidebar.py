@@ -107,3 +107,46 @@ def test_activity_sidebar_merges_taxonomy_panels_into_tax_button(qtbot):
     assert [btn.text() for btn in sidebar._buttons] == ["TAX", "TAB", "VAL", "INS"]
     assert sidebar._buttons[0].accessibleName() == "Taxonomy"
     assert sidebar._stack.count() == 4
+
+
+@pytest.mark.qt
+def test_activity_sidebar_can_limit_visible_panels(qtbot):
+    from bde_xbrl_editor.ui.widgets.activity_sidebar import ActivitySidebar
+    from tests.unit.ui.test_main_window_loader_flow import _taxonomy
+
+    sidebar = ActivitySidebar(_taxonomy(), visible_indexes=(1, 2), initial_index=1)
+    qtbot.addWidget(sidebar)
+    sidebar.show()
+
+    visible = [btn.text() for btn in sidebar._buttons if not btn.isHidden()]
+    assert visible == ["TAB", "VAL"]
+    assert sidebar._active_index == 1
+
+
+@pytest.mark.qt
+def test_activity_sidebar_loads_validation_panel_lazily(qtbot, monkeypatch):
+    from PySide6.QtWidgets import QWidget
+
+    from bde_xbrl_editor.ui.widgets.activity_sidebar import ActivitySidebar
+    from tests.unit.ui.test_main_window_loader_flow import _taxonomy
+
+    created: list[str] = []
+
+    class _FakeValidationsPanel(QWidget):
+        def __init__(self, _taxonomy, parent=None) -> None:
+            super().__init__(parent)
+            created.append("created")
+
+    monkeypatch.setattr(
+        "bde_xbrl_editor.ui.widgets.activity_sidebar._ValidationsPanel",
+        _FakeValidationsPanel,
+    )
+
+    sidebar = ActivitySidebar(_taxonomy(), visible_indexes=(1, 2), initial_index=1)
+    qtbot.addWidget(sidebar)
+
+    assert created == []
+
+    sidebar._activate(2)
+
+    assert created == ["created"]

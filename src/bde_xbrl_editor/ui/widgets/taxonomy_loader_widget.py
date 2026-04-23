@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import time
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, Signal
@@ -24,6 +25,7 @@ from bde_xbrl_editor.taxonomy import (
     TaxonomyCache,
     TaxonomyLoader,
 )
+from bde_xbrl_editor.performance import LoadTiming, StageTiming, format_duration
 from bde_xbrl_editor.ui.loading import InstanceLoadWorker, TaxonomyLoadWorker
 from bde_xbrl_editor.ui import theme
 from bde_xbrl_editor.ui.widgets.loader_settings_dialog import (
@@ -179,6 +181,10 @@ class TaxonomyLoaderWidget(QWidget):
         self._inst_thread: QThread | None = None
         self._inst_worker: InstanceLoadWorker | None = None
         self._progress_dialog: TaxonomyProgressDialog | None = None
+        self.last_taxonomy_load_timing: LoadTiming | None = None
+        self.last_instance_load_timing: LoadTiming | None = None
+        self._taxonomy_load_started_at: float | None = None
+        self._instance_load_started_at: float | None = None
         self._setup_ui()
 
     # ── UI construction ────────────────────────────────────────────────────
@@ -533,6 +539,8 @@ class TaxonomyLoaderWidget(QWidget):
             return
 
         self._load_btn.setEnabled(False)
+        self._taxonomy_load_started_at = time.perf_counter()
+        self.last_taxonomy_load_timing = None
 
         progress_dialog = self._show_progress_dialog(
             "Loading Taxonomy…",
@@ -556,8 +564,14 @@ class TaxonomyLoaderWidget(QWidget):
     def _on_load_finished(self, payload: object) -> None:
         structure, skipped_urls = payload  # type: ignore[misc]
         self._cleanup_thread()
-        self._close_progress_dialog()
         self._load_btn.setEnabled(True)
+        elapsed = 0.0
+        if self._taxonomy_load_started_at is not None:
+            elapsed = time.perf_counter() - self._taxonomy_load_started_at
+        self.last_taxonomy_load_timing = LoadTiming(
+            total_seconds=elapsed,
+            stages=(StageTiming("taxonomy load", elapsed),),
+        )
 
         with contextlib.suppress(OSError):
             add_recent_file(self._path_edit.text().strip())
@@ -574,7 +588,14 @@ class TaxonomyLoaderWidget(QWidget):
                 f"{url_list}{suffix}",
             )
 
+        if self._progress_dialog is not None and elapsed > 0:
+            self._progress_dialog.update_progress(
+                f"Taxonomy parsed in {format_duration(elapsed)}",
+                100,
+                100,
+            )
         self.taxonomy_loaded.emit(structure)
+        self._close_progress_dialog()
 
     def _on_load_error(self, message: str) -> None:
         self._cleanup_thread()
@@ -615,6 +636,8 @@ class TaxonomyLoaderWidget(QWidget):
             return
 
         self._load_inst_btn.setEnabled(False)
+        self._instance_load_started_at = time.perf_counter()
+        self.last_instance_load_timing = None
 
         progress_dialog = self._show_progress_dialog(
             "Loading Instance…",
@@ -643,11 +666,25 @@ class TaxonomyLoaderWidget(QWidget):
     def _on_inst_load_finished(self, instance: object, taxonomy: object) -> None:
         self._cleanup_inst_thread()
         self._load_inst_btn.setEnabled(True)
+        elapsed = 0.0
+        if self._instance_load_started_at is not None:
+            elapsed = time.perf_counter() - self._instance_load_started_at
+        self.last_instance_load_timing = LoadTiming(
+            total_seconds=elapsed,
+            stages=(StageTiming("instance parse", elapsed),),
+        )
 
         with contextlib.suppress(OSError):
             add_recent_instance(self._inst_path_edit.text().strip())
         if self._progress_dialog is not None:
-            self._progress_dialog.update_progress("Opening workspace…", 100, 100)
+            timing_text = (
+                f" after {format_duration(elapsed)}" if elapsed > 0 else ""
+            )
+            self._progress_dialog.update_progress(
+                f"Opening workspace…{timing_text}",
+                100,
+                100,
+            )
         self.instance_loaded.emit(instance, taxonomy)
         self._close_progress_dialog()
 

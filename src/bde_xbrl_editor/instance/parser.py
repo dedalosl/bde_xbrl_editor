@@ -185,6 +185,8 @@ def _parse_context(el: etree._Element) -> XbrlContext:
     # Dimensions must be unique across BOTH segment and scenario combined.
     # NOTE: scenario is a direct child of context; segment is inside entity.
     dimensions: dict[QName, QName] = {}
+    typed_dimensions: dict[QName, str] = {}
+    typed_dimension_elements: dict[QName, QName] = {}
     dim_containers: dict[QName, str] = {}
     context_element: str = "scenario"
     _segment_container = entity_el.find(_XBRLI_SEGMENT) if entity_el is not None else None
@@ -233,8 +235,16 @@ def _parse_context(el: etree._Element) -> XbrlContext:
                             f"Dimension {dim_qname} appears more than once in "
                             f"context '{context_id}'",
                         )
-                    # Use dim_qname itself as placeholder value for typed members
+                    # Preserve typed-member lexical content and child element while also
+                    # keeping the legacy placeholder in dimensions for validators that
+                    # still use member_qname == dim_qname to identify typed dimensions.
                     dimensions[dim_qname] = dim_qname
+                    child_el = next((child for child in member_el if isinstance(child.tag, str)), None)
+                    if child_el is not None:
+                        typed_dimensions[dim_qname] = "".join(child_el.itertext()).strip()
+                        typed_dimension_elements[dim_qname] = _tag_to_qname(str(child_el.tag))
+                    else:
+                        typed_dimensions[dim_qname] = (member_el.text or "").strip()
                     dim_containers[dim_qname] = _ce
                 except InstanceParseError:
                     raise
@@ -262,6 +272,8 @@ def _parse_context(el: etree._Element) -> XbrlContext:
         entity=entity,
         period=period,
         dimensions=dimensions,
+        typed_dimensions=typed_dimensions,
+        typed_dimension_elements=typed_dimension_elements,
         context_element=context_element,  # type: ignore[arg-type]
         dim_containers=dim_containers,  # type: ignore[arg-type]
         s_equal_key=s_equal_key,

@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from bde_xbrl_editor.instance.models import XbrlInstance
 
 _XBRLDI_EXPLICIT = f"{{{XBRLDI_NS}}}explicitMember"
+_XBRLDI_TYPED = f"{{{XBRLDI_NS}}}typedMember"
 _DIM_ATTR = f"{{{XBRLDI_NS}}}dimension"
 
 
@@ -118,22 +119,44 @@ def build_s_equal_key_from_model(ctx: XbrlContext) -> tuple:
     sch = ctx.entity.scheme.strip()
     ident = ctx.entity.identifier.strip()
     pk = _period_key(ctx.period)
-    members: list[tuple] = []
+    scenario_members: list[tuple] = []
+    segment_members: list[tuple] = []
+    typed_dims = ctx.typed_dimensions or {}
+    dim_containers = ctx.dim_containers or {}
     for dim, mem in sorted(ctx.dimensions.items(), key=lambda kv: str(kv[0])):
+        if dim in typed_dims:
+            continue
         dim_clark = _qname_clark_from_model(dim)
         mem_clark = _qname_clark_from_model(mem)
-        members.append(
-            (
-                _XBRLDI_EXPLICIT,
-                ((_DIM_ATTR, ("qname", dim_clark)),),
-                ("qname", mem_clark),
-                (),
-            )
+        member_tuple = (
+            _XBRLDI_EXPLICIT,
+            ((_DIM_ATTR, ("qname", dim_clark)),),
+            ("qname", mem_clark),
+            (),
         )
-    dim_tuple = tuple(members)
-    if ctx.context_element == "segment":
-        return ("ctxseq1", sch, ident, pk, (), dim_tuple)
-    return ("ctxseq1", sch, ident, pk, dim_tuple, ())
+        target = (
+            segment_members
+            if dim_containers.get(dim, ctx.context_element) == "segment"
+            else scenario_members
+        )
+        target.append(member_tuple)
+    for dim, value in sorted(typed_dims.items(), key=lambda kv: str(kv[0])):
+        dim_clark = _qname_clark_from_model(dim)
+        typed_element = (ctx.typed_dimension_elements or {}).get(dim, dim)
+        typed_child_tag = _qname_clark_from_model(typed_element)
+        member_tuple = (
+            _XBRLDI_TYPED,
+            ((_DIM_ATTR, ("qname", dim_clark)),),
+            None,
+            ((typed_child_tag, (), ("str", value.strip()), ()),),
+        )
+        target = (
+            segment_members
+            if dim_containers.get(dim, ctx.context_element) == "segment"
+            else scenario_members
+        )
+        target.append(member_tuple)
+    return ("ctxseq1", sch, ident, pk, tuple(scenario_members), tuple(segment_members))
 
 
 def effective_s_equal_key(ctx: XbrlContext) -> tuple:

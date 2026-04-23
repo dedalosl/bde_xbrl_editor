@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import re
+from collections import deque
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import replace
@@ -30,7 +31,7 @@ from bde_xbrl_editor.taxonomy.constants import (
     ARCROLE_HYPERCUBE_DIMENSION,
     ARCROLE_NOT_ALL,
     NS_LINK,
-    NS_TABLE_PWD,
+    NS_TABLE_NAMESPACES,
     NS_XBRLDT,
     NS_XBRLI,
 )
@@ -39,10 +40,10 @@ from bde_xbrl_editor.taxonomy.label_resolver import LabelResolver
 from bde_xbrl_editor.taxonomy.linkbases.assertion_resources import (
     parse_assertion_resource_linkbase,
 )
+from bde_xbrl_editor.taxonomy.linkbases.calculation import parse_calculation_linkbase
 from bde_xbrl_editor.taxonomy.linkbases.custom_functions import (
     parse_custom_function_linkbase,
 )
-from bde_xbrl_editor.taxonomy.linkbases.calculation import parse_calculation_linkbase
 from bde_xbrl_editor.taxonomy.linkbases.definition import parse_definition_linkbase
 from bde_xbrl_editor.taxonomy.linkbases.formula import (
     linkbase_contains_formula_assertions,
@@ -70,6 +71,8 @@ from bde_xbrl_editor.taxonomy.models import (
 )
 from bde_xbrl_editor.taxonomy.schema import (
     XBRL_SG_ROOTS,
+    build_global_named_type_registry,
+    extract_concept_enumerations_for_schema,
     extract_monetary_value_type_qnames,
     parse_schema_raw,
 )
@@ -152,6 +155,8 @@ def _sniff_linkbase_type(path: Path) -> str:
     ``.xml`` linkbase (see ``_do_load``).
     """
     name = path.stem.lower()
+    if re.search(r"(?:^|[-_])pre(?:sentation)?(?:$|[-_])", name):
+        return "pres"
     if "label" in name or "lab" in name:
         if "gen" in name:
             return "generic"
@@ -169,7 +174,10 @@ def _sniff_linkbase_type(path: Path) -> str:
         ctx = etree.iterparse(BytesIO(path.read_bytes()), events=("start",))
         for _, el in ctx:
             tag = str(el.tag)
-            if NS_TABLE_PWD in tag:
+            local = tag.split("}")[-1] if "}" in tag else tag
+            if local == "presentationLink":
+                return "pres"
+            if any(table_ns in tag for table_ns in NS_TABLE_NAMESPACES):
                 return "table"
     except Exception:  # noqa: BLE001
         pass
@@ -193,43 +201,145 @@ def _classify_linkbases(linkbase_paths: list[Path]) -> dict[str, list[Path]]:
     return classified
 
 
+def _find_companion_tab_presentation_linkbases(
+    entry_point: Path,
+    known_linkbases: list[Path],
+) -> list[Path]:
+    """Find sibling ``tab/*pre*.xml`` files that DTS discovery may miss."""
+    known = set(known_linkbases)
+    search_roots: list[Path] = []
+    if entry_point.parent.name in {"mod", "tab"}:
+        search_roots.append(entry_point.parent.parent)
+    search_roots.append(entry_point.parent)
+
+    discovered: list[Path] = []
+    seen: set[Path] = set()
+    for root in search_roots:
+        tab_dir = root / "tab"
+        if not tab_dir.is_dir():
+            continue
+        for path in sorted(tab_dir.glob("*pre*.xml")):
+            if path in known or path in seen:
+                continue
+            if _sniff_linkbase_type(path) != "pres":
+                continue
+            seen.add(path)
+            discovered.append(path)
+    return discovered
+
+
 def _build_group_table_order(
     presentation_results: list[PresentationLinkbaseParseResult],
 ) -> dict[str, int]:
     """Compute flat table order from already-parsed presentation metadata."""
     children: dict[str, list[tuple[float, str]]] = {}
     rend_fragments: set[str] = set()
-    root_fragment: str | None = None
+    fallback_roots: list[str] = []
+    child_fragments: set[str] = set()
 
     for result in presentation_results:
         for parent, child_entries in result.group_table_children.items():
             children.setdefault(parent, []).extend(child_entries)
+            child_fragments.update(child for _, child in child_entries)
         rend_fragments.update(result.group_table_rend_fragments)
-        if root_fragment is None and result.group_table_root_fragment is not None:
-            root_fragment = result.group_table_root_fragment
+        if (
+            result.group_table_root_fragment is not None
+            and result.group_table_root_fragment not in fallback_roots
+        ):
+            fallback_roots.append(result.group_table_root_fragment)
 
-    if not children or root_fragment is None:
+    if not children:
         return {}
 
     for parent in children:
         children[parent].sort(key=lambda item: item[0])
 
+    root_fragments = [parent for parent in children if parent not in child_fragments]
+    if not root_fragments:
+        root_fragments = [root for root in fallback_roots if root in children]
+    else:
+        for root in fallback_roots:
+            if root in children and root not in root_fragments:
+                root_fragments.append(root)
+
+    if not root_fragments:
+        root_fragments = list(children)
+
     flat_order: dict[str, int] = {}
     counter = 0
-    stack: list[str] = [root_fragment]
     visited: set[str] = set()
-    while stack:
-        node = stack.pop()
-        if node in visited:
-            continue
-        visited.add(node)
-        if node in rend_fragments:
-            flat_order[node] = counter
-            counter += 1
-        for _, child_frag in reversed(children.get(node, [])):
-            if child_frag not in visited:
-                stack.append(child_frag)
+
+    for root_fragment in root_fragments:
+        stack: list[str] = [root_fragment]
+        while stack:
+            node = stack.pop()
+            if node in visited:
+                continue
+            visited.add(node)
+            if node in rend_fragments:
+                flat_order[node] = counter
+                counter += 1
+            for _, child_frag in reversed(children.get(node, [])):
+                if child_frag not in visited:
+                    stack.append(child_frag)
     return flat_order
+
+
+def _preferred_group_table_results(
+    presentation_results: list[tuple[Path, PresentationLinkbaseParseResult]],
+) -> list[PresentationLinkbaseParseResult]:
+    """Choose the presentation results that should drive table ordering.
+
+    When a taxonomy ships both a module-level ``*-pre.xml`` and a dedicated
+    ``tab/tab-pre.xml``, the latter reflects the table browser order users
+    expect. Prefer presentation linkbases discovered under a ``tab`` folder
+    when they provide ``group-table`` metadata; otherwise fall back to every
+    presentation result that contains such metadata.
+    """
+
+    tab_results = [
+        result
+        for path, result in presentation_results
+        if result.group_table_children and "tab" in path.parts
+    ]
+    if tab_results:
+        return tab_results
+    return [
+        result for _path, result in presentation_results if result.group_table_children
+    ]
+
+
+def _find_cache_root(entry_point: Path) -> Path | None:
+    """Return the nearest ancestor named ``cache`` for *entry_point*, if any."""
+    for parent in entry_point.resolve().parents:
+        if parent.name == "cache":
+            return parent
+    return None
+
+
+def _infer_local_catalog_from_cache(entry_point: Path) -> dict[str, Path]:
+    """Infer URL-prefix mappings from a mirrored on-disk taxonomy cache.
+
+    When users open an entry point directly from ``cache/<host>/...``, downstream
+    schemas often jump back to remote HTTP URLs for sibling hosts such as
+    ``www.eba.europa.eu`` or ``www.eurofiling.info``. Treat every host directory
+    under the shared ``cache`` root as a local mirror so those remote imports can
+    still resolve without requiring manual loader settings.
+    """
+    cache_root = _find_cache_root(entry_point)
+    if cache_root is None or not cache_root.is_dir():
+        return {}
+
+    catalog: dict[str, Path] = {}
+    for host_dir in sorted(cache_root.iterdir()):
+        if not host_dir.is_dir():
+            continue
+        host = host_dir.name.strip()
+        if not host:
+            continue
+        for scheme in ("http", "https", "ftp"):
+            catalog[f"{scheme}://{host}/"] = host_dir
+    return catalog
 
 
 def _build_concept_id_map(concepts: dict[QName, Concept]) -> dict[str, QName]:
@@ -627,7 +737,10 @@ def _check_dimensional_constraints(
 
 
 
-def _rebuild_dimensions(definition_arcs: dict[str, list]) -> dict[QName, DimensionModel]:
+def _rebuild_dimensions(
+    definition_arcs: dict[str, list],
+    concepts: dict[QName, Concept],
+) -> dict[QName, DimensionModel]:
     """Build DimensionModel objects by BFS-walking the complete merged definition arc set.
 
     The per-file approach in parse_definition_linkbase cannot associate domain-member
@@ -635,9 +748,10 @@ def _rebuild_dimensions(definition_arcs: dict[str, list]) -> dict[QName, Dimensi
     parent dimensions.  By using the globally merged definition_arcs we see all arcs
     across all files and correctly populate every dimension's member set.
     """
-    # dimension → (root domain concept, domain_usable)
+    # dimension → list of (root domain concept, order, domain_usable)
     # Preserves xbrldt:usable on the dimension-domain arc for the domain root.
-    dim_domain: dict[QName, tuple[QName, bool]] = {}
+    # Some taxonomies declare multiple direct roots for one explicit dimension.
+    dim_domain_roots: dict[QName, list[tuple[QName, float, bool]]] = {}
     dim_defaults: dict[QName, QName] = {}
     # Children in the domain-member arc graph, indexed by parent concept.
     # For duplicate (parent, child) pairs (e.g. after arc override/prohibition),
@@ -648,9 +762,10 @@ def _rebuild_dimensions(definition_arcs: dict[str, list]) -> dict[QName, Dimensi
     for _elr, arcs in definition_arcs.items():
         for arc in arcs:
             if arc.arcrole == ARCROLE_DIMENSION_DOMAIN:
-                if arc.source not in dim_domain:
-                    domain_usable = arc.usable if arc.usable is not None else True
-                    dim_domain[arc.source] = (arc.target, domain_usable)
+                domain_usable = arc.usable if arc.usable is not None else True
+                dim_domain_roots.setdefault(arc.source, []).append(
+                    (arc.target, arc.order, domain_usable)
+                )
             elif arc.arcrole == ARCROLE_DOMAIN_MEMBER:
                 usable = arc.usable if arc.usable is not None else True
                 parent_map = dm_children_usable.setdefault(arc.source, {})
@@ -669,14 +784,18 @@ def _rebuild_dimensions(definition_arcs: dict[str, list]) -> dict[QName, Dimensi
     }
 
     dimensions: dict[QName, DimensionModel] = {}
-    for dim_q, (domain_q, domain_usable) in dim_domain.items():
-        # BFS from the root domain concept to collect all members transitively
+    for dim_q, roots in dim_domain_roots.items():
+        # BFS from every root domain concept to collect all members transitively.
         all_members: list[DomainMember] = []
         visited: set[QName] = set()
         # queue entries: (concept, parent, order, usable)
-        queue: list[tuple[QName, QName | None, float, bool]] = [
-            (domain_q, None, 1.0, domain_usable)
-        ]
+        queue: list[tuple[QName, QName | None, float, bool]] = sorted(
+            [
+                (domain_q, None, order, domain_usable)
+                for domain_q, order, domain_usable in roots
+            ],
+            key=lambda item: item[2],
+        )
         while queue:
             current_q, parent_q, order, usable = queue.pop(0)
             if current_q in visited:
@@ -691,13 +810,81 @@ def _rebuild_dimensions(definition_arcs: dict[str, list]) -> dict[QName, Dimensi
 
         dimensions[dim_q] = DimensionModel(
             qname=dim_q,
-            dimension_type="explicit",
+            dimension_type="typed" if concepts.get(dim_q) and concepts[dim_q].typed_domain_ref else "explicit",
             default_member=dim_defaults.get(dim_q),
-            domain=domain_q,
+            domain=roots[0][0],
             members=tuple(all_members),
         )
 
     return dimensions
+
+
+def _member_qname_to_expanded_name_uri(member: QName) -> str:
+    """EE 2.0 expanded name URI: ``namespace-uri#localname``."""
+    return f"{member.namespace}#{member.local_name}"
+
+
+def _collect_enumeration_domain_members(
+    linkrole: str,
+    domain_head: QName,
+    *,
+    head_usable: bool,
+    definition_arcs: dict[str, list],
+) -> list[QName]:
+    """Domain of allowed values per Extensible Enumerations 1.0/2.0 (XDT domain-member walk)."""
+    queue: deque[tuple[QName, str]] = deque([(domain_head, linkrole)])
+    seen_states: set[tuple[QName, str]] = set()
+    emitted: set[QName] = set()
+    result: list[QName] = []
+
+    while queue:
+        node, elr = queue.popleft()
+        state = (node, elr)
+        if state in seen_states:
+            continue
+        seen_states.add(state)
+
+        if node == domain_head:
+            if head_usable and node not in emitted:
+                emitted.add(node)
+                result.append(node)
+        elif node not in emitted:
+            emitted.add(node)
+            result.append(node)
+
+        for arc in definition_arcs.get(elr, []):
+            if arc.arcrole != ARCROLE_DOMAIN_MEMBER or arc.source != node:
+                continue
+            if arc.usable is False:
+                continue
+            next_elr = arc.target_role or elr
+            queue.append((arc.target, next_elr))
+
+    return result
+
+
+def _apply_extensible_enumeration_values(
+    concepts: dict[QName, Concept],
+    definition_arcs: dict[str, list],
+) -> dict[QName, Concept]:
+    """Populate ``enumeration_values`` from EE domain-member networks (overrides XSD-only enums)."""
+    updated: dict[QName, Concept] = {}
+    for qn, c in concepts.items():
+        if not c.enumeration_linkrole or c.enumeration_domain is None:
+            updated[qn] = c
+            continue
+        members = _collect_enumeration_domain_members(
+            c.enumeration_linkrole,
+            c.enumeration_domain,
+            head_usable=c.enumeration_head_usable,
+            definition_arcs=definition_arcs,
+        )
+        if not members:
+            updated[qn] = c
+            continue
+        uris = tuple(_member_qname_to_expanded_name_uri(m) for m in members)
+        updated[qn] = replace(c, enumeration_values=uris)
+    return updated
 
 
 def _schema_parse_workers(schema_count: int) -> int:
@@ -841,21 +1028,40 @@ class TaxonomyLoader:
             if cb:
                 cb(msg, step, _TOTAL_STEPS)
 
+        inferred_catalog = _infer_local_catalog_from_cache(entry_point)
+        if self._settings.local_catalog:
+            local_catalog = dict(self._settings.local_catalog)
+            for prefix, local_root in inferred_catalog.items():
+                local_catalog.setdefault(prefix, local_root)
+        else:
+            local_catalog = inferred_catalog or None
+        effective_settings = (
+            self._settings
+            if local_catalog == self._settings.local_catalog
+            else replace(self._settings, local_catalog=local_catalog)
+        )
+
         # Step 1: DTS discovery
         progress("Discovering DTS…", 1)
         schema_paths, linkbase_paths, skipped_urls, include_ns_map, discovered_roles = discover_dts(
             entry_point,
-            self._settings,
+            effective_settings,
             progress_callback=(
                 lambda message, _current, _total: progress(message, 1)
             ),
         )
+        companion_tab_linkbases = _find_companion_tab_presentation_linkbases(
+            entry_point,
+            linkbase_paths,
+        )
+        all_linkbase_paths = list(linkbase_paths)
+        all_linkbase_paths.extend(companion_tab_linkbases)
         self._last_skipped_urls: list[str] = skipped_urls
         progress(
-            f"DTS discovered — {len(schema_paths)} schemas, {len(linkbase_paths)} linkbases",
+            f"DTS discovered — {len(schema_paths)} schemas, {len(all_linkbase_paths)} linkbases",
             1,
         )
-        classified_linkbases = _classify_linkbases(linkbase_paths)
+        classified_linkbases = _classify_linkbases(all_linkbase_paths)
         label_linkbases = classified_linkbases["label"]
         generic_label_linkbases = classified_linkbases["generic"]
         presentation_linkbases = classified_linkbases["pres"]
@@ -865,13 +1071,13 @@ class TaxonomyLoader:
         formula_linkbases = list(
             dict.fromkeys(
                 p
-                for p in linkbase_paths
+                for p in all_linkbase_paths
                 if p.suffix.lower() in (".xml", ".xbrl")
                 and not _should_skip_linkbase(p)
                 and linkbase_contains_formula_assertions(p)
             )
         )
-        linkbase_workers = _linkbase_parse_workers(len(linkbase_paths))
+        linkbase_workers = _linkbase_parse_workers(len(all_linkbase_paths))
 
         # Step 2: Parse schemas → concepts (with cross-schema transitive SG resolution)
         progress("Parsing schemas…", 2)
@@ -947,13 +1153,32 @@ class TaxonomyLoader:
         for _path, mt_set in parsed_monetary_types:
             monetary_derived_types.update(mt_set)
 
+        type_enum_registry = build_global_named_type_registry(schema_paths, include_ns_map)
+        enum_workers = _schema_parse_workers(len(schema_paths))
+        parsed_concept_enums = _run_path_jobs(
+            schema_paths,
+            lambda p: extract_concept_enumerations_for_schema(
+                p, include_ns_map.get(p), type_enum_registry
+            ),
+            workers=enum_workers,
+        )
+        enum_by_concept: dict[QName, tuple[str, ...]] = {}
+        for _path, emap in parsed_concept_enums:
+            for qn, vals in emap.items():
+                if vals:
+                    enum_by_concept[qn] = vals
+
         def _concept_is_monetary_item(c: Concept) -> bool:
             if c.data_type.namespace == NS_XBRLI and c.data_type.local_name == "monetaryItemType":
                 return True
             return c.data_type in monetary_derived_types
 
         concepts = {
-            qn: replace(c, monetary_item_type=_concept_is_monetary_item(c))
+            qn: replace(
+                c,
+                monetary_item_type=_concept_is_monetary_item(c),
+                enumeration_values=enum_by_concept.get(qn, ()),
+            )
             for qn, c in concepts.items()
         }
 
@@ -971,8 +1196,8 @@ class TaxonomyLoader:
         # Keys are both the absolute local path string and, when the local_catalog
         # is configured, the corresponding HTTP URL string.
         schema_ns_map: dict[str, str] = dict(schema_path_to_ns)
-        if self._settings.local_catalog:
-            for url_prefix, local_root in self._settings.local_catalog.items():
+        if effective_settings.local_catalog:
+            for url_prefix, local_root in effective_settings.local_catalog.items():
                 url_prefix_stripped = url_prefix.rstrip("/")
                 for path_str, ns in schema_path_to_ns.items():
                     try:
@@ -1044,10 +1269,10 @@ class TaxonomyLoader:
             lambda lb_path: parse_presentation_linkbase(lb_path, concept_id_map),
             workers=linkbase_workers,
         )
-        presentation_parse_results: list[PresentationLinkbaseParseResult] = []
+        presentation_parse_results: list[tuple[Path, PresentationLinkbaseParseResult]] = []
         for _lb_path, result in parsed_presentation_linkbases:
             presentation.update(result.networks)
-            presentation_parse_results.append(result)
+            presentation_parse_results.append((_lb_path, result))
 
         parsed_calculation_linkbases = _run_path_jobs(
             calculation_linkbases,
@@ -1073,10 +1298,12 @@ class TaxonomyLoader:
                 definition_arcs.setdefault(elr, []).extend(arc_list)
             hypercubes.extend(hcs)
 
+        concepts = _apply_extensible_enumeration_values(concepts, definition_arcs)
+
         # Build dimensions once from the complete merged arc set so that
         # domain-member arcs in extension linkbases are correctly associated
         # with their parent dimensions (which may be declared in a different file).
-        dimensions = _rebuild_dimensions(definition_arcs)
+        dimensions = _rebuild_dimensions(definition_arcs, concepts)
 
         # Step 4b: XBRL Dimensions 1.0 taxonomy constraint checks (xbrldte:* errors)
         declared_roles = set(_PREDEFINED_XBRL_ROLES)
@@ -1100,7 +1327,9 @@ class TaxonomyLoader:
             tables.extend(parsed_tables)
 
         # Sort tables by the order attribute on group-table arcs in presentation linkbases.
-        group_table_order = _build_group_table_order(presentation_parse_results)
+        group_table_order = _build_group_table_order(
+            _preferred_group_table_results(presentation_parse_results)
+        )
         if group_table_order:
             tables.sort(key=lambda t: group_table_order.get(t.table_id, float("inf")))
         progress(f"Tables prepared — {len(tables)} available", 5)
@@ -1124,7 +1353,7 @@ class TaxonomyLoader:
                 all_assertions.extend(fas.assertions)
 
             parsed_assertion_resource_linkbases = _run_path_jobs(
-                linkbase_paths,
+                all_linkbase_paths,
                 parse_assertion_resource_linkbase,
                 workers=linkbase_workers,
             )
@@ -1134,7 +1363,7 @@ class TaxonomyLoader:
                     assertion_resources.setdefault(assertion_id, []).extend(resources)
 
             parsed_assertion_table_linkbases = _run_path_jobs(
-                linkbase_paths,
+                all_linkbase_paths,
                 parse_assertion_table_mappings,
                 workers=linkbase_workers,
             )
@@ -1182,7 +1411,7 @@ class TaxonomyLoader:
             formula_assertion_set = FormulaAssertionSet()
 
         parsed_custom_function_linkbases = _run_path_jobs(
-            linkbase_paths,
+            all_linkbase_paths,
             parse_custom_function_linkbase,
             workers=linkbase_workers,
         )
@@ -1214,7 +1443,7 @@ class TaxonomyLoader:
             formula_assertion_set=formula_assertion_set,
             custom_functions=tuple(custom_functions),
             schema_files=tuple(sorted(schema_paths)),
-            linkbase_files=tuple(sorted(linkbase_paths)),
+            linkbase_files=tuple(sorted(all_linkbase_paths)),
         )
 
         progress("Taxonomy loaded successfully", _TOTAL_STEPS)

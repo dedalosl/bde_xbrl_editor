@@ -15,6 +15,7 @@ pytest.importorskip("PySide6", reason="PySide6 not available - UI flow tests ski
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QScrollArea, QSplitter
 
+from bde_xbrl_editor.performance import LoadTiming, StageTiming
 from bde_xbrl_editor.instance.models import ReportingEntity, ReportingPeriod, XbrlInstance
 from bde_xbrl_editor.taxonomy.models import (
     FactVariableDefinition,
@@ -162,6 +163,7 @@ def test_instance_open_stages_taxonomy_before_instance_finishes(qtbot, qapp, mon
     assert window._current_instance is None
     assert window._sidebar is not None
     assert window._browser_splitter is not None
+    assert [btn.text() for btn in window._sidebar._buttons if not btn.isHidden()] == ["TAB", "VAL"]
 
 
 def test_instance_open_passes_current_taxonomy_for_reuse(qtbot, qapp, monkeypatch) -> None:
@@ -177,6 +179,103 @@ def test_instance_open_passes_current_taxonomy_for_reuse(qtbot, qapp, monkeypatc
     assert window._instance_open_worker is not None
     assert window._instance_open_worker._preloaded_taxonomy is current_taxonomy
     assert window._current_taxonomy is current_taxonomy
+
+
+def test_taxonomy_open_uses_tabs_and_validations_sidebar_only(qtbot, qapp) -> None:
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window._on_taxonomy_loaded(_taxonomy())
+
+    assert window._sidebar is not None
+    assert [btn.text() for btn in window._sidebar._buttons if not btn.isHidden()] == ["TAB", "VAL"]
+
+
+def test_instance_open_uses_instance_sidebar_only(qtbot, qapp) -> None:
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window._current_taxonomy = _taxonomy()
+    window._load_instance(_instance())
+
+    assert window._sidebar is not None
+    assert [btn.text() for btn in window._sidebar._buttons if not btn.isHidden()] == ["INS"]
+
+
+def test_new_instance_load_enables_editing_mode_immediately(qtbot, qapp) -> None:
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window._current_taxonomy = _taxonomy()
+    window._load_instance(_instance(), enable_editing=True)
+
+    assert window._table_view is not None
+    assert window._table_view.editing_enabled is True
+    assert window._sidebar is not None
+    assert window._sidebar._instance_panel is not None
+    assert window._sidebar._instance_panel._editing_enabled is True
+
+
+def test_taxonomy_load_status_shows_timing_breakdown(qtbot, qapp) -> None:
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window._loader_widget = type(
+        "_LoaderStub",
+        (),
+        {
+            "last_taxonomy_load_timing": LoadTiming(
+                total_seconds=1.5,
+                stages=(StageTiming("taxonomy load", 1.5),),
+            )
+        },
+    )()
+
+    window._on_taxonomy_loaded(_taxonomy())
+
+    assert "taxonomy load" in window.statusBar().currentMessage()
+
+
+def test_validation_done_status_shows_timing_breakdown(qtbot, qapp) -> None:
+    from bde_xbrl_editor.validation.models import ValidationReport
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+    report = ValidationReport(
+        instance_path="/tmp/inst.xbrl",
+        taxonomy_name="SmokeTax",
+        taxonomy_version="1.0",
+        run_timestamp=datetime(2024, 1, 1),
+        findings=(),
+        formula_linkbase_available=True,
+        stage_timings=(
+            StageTiming("structural", 0.1),
+            StageTiming("formula", 1.2),
+        ),
+    )
+
+    window._on_validation_done(report)
+
+    assert "Validation PASSED" in window.statusBar().currentMessage()
+    assert "structural" in window.statusBar().currentMessage()
+
+
+def test_workspace_initial_table_render_is_deferred_beyond_current_event_loop(qtbot, qapp, monkeypatch) -> None:
+    delays: list[int] = []
+
+    monkeypatch.setattr(
+        "bde_xbrl_editor.ui.main_window.QTimer.singleShot",
+        lambda delay, callback: delays.append(delay),
+    )
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window._on_taxonomy_loaded(_taxonomy())
+    window._current_taxonomy = _taxonomy()
+    window._load_instance(_instance())
+
+    assert delays
+    assert MainWindow._INITIAL_TABLE_RENDER_DELAY_MS in delays
 
 
 def test_reload_to_loader_then_reopen_instance_rebuilds_browser_views(qtbot, qapp, monkeypatch) -> None:
@@ -240,7 +339,7 @@ def test_collapsing_active_sidebar_button_reallocates_splitter_space(qtbot, qapp
     assert splitter is not None
 
     before = splitter.sizes()
-    qtbot.mouseClick(window._sidebar._buttons[1], Qt.MouseButton.LeftButton)
+    window._sidebar._on_button_clicked(1)
     qtbot.waitUntil(lambda: splitter.sizes()[0] <= 60, timeout=1000)
     qtbot.waitUntil(lambda: window._sidebar.width() == 44, timeout=1000)
     after = splitter.sizes()

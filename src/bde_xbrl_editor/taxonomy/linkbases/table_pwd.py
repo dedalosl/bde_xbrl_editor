@@ -1,9 +1,10 @@
-"""PWD Table Linkbase parser.
+"""Table Linkbase parser for both the PWD draft and the final 2014 namespace.
 
 Parses table:table, table:breakdown, table:ruleNode, table:aspectNode, and
-table:conceptRelationshipNode elements using the PWD namespace
-http://xbrl.org/PWD/2013-05-17/table, producing TableDefinitionPWD and
-BreakdownNode trees.  RC-codes are extracted from the Eurofiling label role.
+table:conceptRelationshipNode elements using either
+``http://xbrl.org/PWD/2013-05-17/table`` or ``http://xbrl.org/2014/table``,
+producing TableDefinitionPWD and BreakdownNode trees. RC-codes are extracted
+from the Eurofiling label role.
 
 BDE linkbases use formula-namespace child elements inside ruleNode to express
 aspect constraints:
@@ -35,7 +36,7 @@ from lxml import etree
 from bde_xbrl_editor.taxonomy.constants import (
     NS_FORMULA,
     NS_LINK,
-    NS_TABLE_PWD,
+    NS_TABLE_NAMESPACES,
     NS_XBRLDT,
     NS_XLINK,
     ROLE_DEFINITION_LINKBASE_REF,
@@ -48,16 +49,15 @@ from bde_xbrl_editor.taxonomy.models import (
 )
 from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
 
-# PWD namespace tags
-_TABLE = f"{{{NS_TABLE_PWD}}}table"
-_BREAKDOWN = f"{{{NS_TABLE_PWD}}}breakdown"
-_RULE_NODE = f"{{{NS_TABLE_PWD}}}ruleNode"
-_ASPECT_NODE = f"{{{NS_TABLE_PWD}}}aspectNode"
-_CONCEPT_REL_NODE = f"{{{NS_TABLE_PWD}}}conceptRelationshipNode"
-_DIMENSION_REL_NODE = f"{{{NS_TABLE_PWD}}}dimensionRelationshipNode"
-_TABLE_BREAKDOWN_ARC = f"{{{NS_TABLE_PWD}}}tableBreakdownArc"
-_BREAKDOWN_TREE_ARC = f"{{{NS_TABLE_PWD}}}breakdownTreeArc"
-_DEFINITION_NODE_SUBTREE_ARC = f"{{{NS_TABLE_PWD}}}definitionNodeSubtreeArc"
+_TABLE_LOCALS = frozenset({"table"})
+_BREAKDOWN_LOCALS = frozenset({"breakdown"})
+_RULE_NODE_LOCALS = frozenset({"ruleNode"})
+_ASPECT_NODE_LOCALS = frozenset({"aspectNode"})
+_CONCEPT_REL_NODE_LOCALS = frozenset({"conceptRelationshipNode"})
+_DIMENSION_REL_NODE_LOCALS = frozenset({"dimensionRelationshipNode"})
+_TABLE_BREAKDOWN_ARC_LOCALS = frozenset({"tableBreakdownArc"})
+_BREAKDOWN_TREE_ARC_LOCALS = frozenset({"breakdownTreeArc"})
+_DEFINITION_NODE_SUBTREE_ARC_LOCALS = frozenset({"definitionNodeSubtreeArc"})
 
 # Formula namespace tags (used inside ruleNode for aspect constraints)
 _F_CONCEPT = f"{{{NS_FORMULA}}}concept"
@@ -74,7 +74,7 @@ _DF_QNAME = f"{{{_DF_NS}}}qname"
 _DF_LINKROLE = f"{{{_DF_NS}}}linkrole"
 _DF_ARCROLE = f"{{{_DF_NS}}}arcrole"
 _DF_AXIS = f"{{{_DF_NS}}}axis"
-_DIMENSION_ASPECT = f"{{{NS_TABLE_PWD}}}dimensionAspect"
+_DIMENSION_ASPECT_LOCALS = frozenset({"dimensionAspect"})
 
 _XLINK_HREF = f"{{{NS_XLINK}}}href"
 _XLINK_LABEL_ATTR = f"{{{NS_XLINK}}}label"
@@ -88,6 +88,26 @@ _XBRLDT_USABLE = f"{{{NS_XBRLDT}}}usable"
 _AXIS_X = "x"
 _AXIS_Y = "y"
 _AXIS_Z = "z"
+
+
+def _is_table_ns_tag(tag: str, local_names: frozenset[str]) -> bool:
+    """Return True when *tag* belongs to a supported table namespace and local name."""
+    if not isinstance(tag, str):
+        return False
+    if "}" not in tag:
+        return tag in local_names
+    ns, local = tag[1:].split("}", 1)
+    return ns in NS_TABLE_NAMESPACES and local in local_names
+
+
+def _iter_supported_table_elements(
+    container: etree._Element,
+    local_names: frozenset[str],
+):
+    """Yield elements in either the PWD or final 2014 table namespace."""
+    for el in container.iter():
+        if _is_table_ns_tag(el.tag, local_names):
+            yield el
 
 
 def _prefix_to_clark(text: str, nsmap: dict) -> str | None:
@@ -147,7 +167,7 @@ def _build_breakdown_node(
             continue
         tag = child_el.tag
 
-        if tag == _DIMENSION_ASPECT:
+        if _is_table_ns_tag(tag, _DIMENSION_ASPECT_LOCALS):
             if child_el.text:
                 dim_clark = _prefix_to_clark(child_el.text, child_el.nsmap)
                 if dim_clark:
@@ -261,6 +281,60 @@ def _resolve_href_to_local_path(href: str, *, base_path: Path) -> Path | None:
             return None
         return cache_root / parsed.netloc / parsed.path.lstrip("/")
     return (base_path.parent / href_no_fragment).resolve()
+
+
+def _candidate_label_files_for_rend_path(
+    linkbase_path: Path,
+    *,
+    language_preference: tuple[str, ...] = ("es", "en"),
+) -> list[Path]:
+    """Return label linkbase candidates for one render linkbase, ordered by preference.
+
+    EBA rendering files often live under ``cache/www.eba.europa.eu/...`` and ship
+    sibling English labels, while the Banco de España mirror keeps Spanish labels
+    for the same render node ids under ``cache/www.bde.es/...``. Prefer Spanish
+    files when available so table headers follow the taxonomy language preference.
+    """
+    stem = linkbase_path.stem
+    base = stem[: -len("-rend")] if stem.endswith("-rend") else stem
+    candidates: list[Path] = []
+    seen: set[Path] = set()
+
+    def _add(path: Path) -> None:
+        resolved = path.resolve()
+        if resolved.is_file() and resolved not in seen:
+            seen.add(resolved)
+            candidates.append(resolved)
+
+    for lang in language_preference:
+        _add(linkbase_path.parent / f"{base}-lab-{lang}.xml")
+    _add(linkbase_path.parent / f"{base}-lab-codes.xml")
+
+    cache_root = _cache_root_for(linkbase_path)
+    if cache_root is None:
+        return candidates
+
+    eba_prefix = (
+        cache_root
+        / "www.eba.europa.eu"
+        / "eu"
+        / "fr"
+        / "xbrl"
+        / "crr"
+        / "fws"
+        / "corep"
+    )
+    bde_prefix = cache_root / "www.bde.es" / "es" / "xbrl" / "fws" / "ebacrr_corep"
+    try:
+        rel_to_eba = linkbase_path.resolve().relative_to(eba_prefix)
+    except ValueError:
+        return candidates
+
+    bde_dir = (bde_prefix / rel_to_eba.parent).resolve()
+    for lang in language_preference:
+        _add(bde_dir / f"{base}-lab-{lang}.xml")
+    _add(bde_dir / f"{base}-lab-codes.xml")
+    return candidates
 
 
 def _schema_id_qname_map(schema_path: Path) -> dict[str, str]:
@@ -525,14 +599,13 @@ def parse_table_linkbase(
     root = tree.getroot()
     tables: list[TableDefinitionPWD] = []
 
-    # Load sibling label/rc-code linkbase files (e.g. *-lab-es.xml, *-lab-codes.xml)
+    # Load label/rc-code linkbase files for the render linkbase. When the render
+    # file comes from the EBA mirror, also look for BDE Spanish labels that point
+    # back to the same render-node ids.
     id_label_map: dict[str, str] = {}
     id_rc_map: dict[str, str] = {}
     id_fin_map: dict[str, str] = {}
-    stem = linkbase_path.stem  # e.g. "fi_31-2-rend"
-    base = stem[: -len("-rend")] if stem.endswith("-rend") else stem
-    lb_dir = linkbase_path.parent
-    for candidate in lb_dir.glob(f"{base}-lab*.xml"):
+    for candidate in _candidate_label_files_for_rend_path(linkbase_path):
         _parse_node_label_file(candidate, id_label_map, id_rc_map, id_fin_map)
 
     role_href_map: dict[str, str] = {
@@ -577,7 +650,7 @@ def _parse_linkbase_element(
     linkbase_path: Path | None = None,
 ) -> None:
     """Parse table elements from within a linkbase or linkbase container."""
-    for table_el in container.iter(_TABLE):
+    for table_el in _iter_supported_table_elements(container, _TABLE_LOCALS):
         table_id = table_el.get("id", "")
         table_pco_raw = table_el.get("parentChildOrder")
         table_pco = table_pco_raw if table_pco_raw in _VALID_PCO else "parent-first"
@@ -676,7 +749,12 @@ def _parse_linkbase_element(
         # Fallback: inline label/rc attributes on the elements themselves
         for xl, el in all_nodes.items():
             if xl not in label_map:
-                lbl = el.get("label") or el.get(f"{{{NS_TABLE_PWD}}}label")
+                lbl = el.get("label")
+                if not lbl:
+                    for table_ns in NS_TABLE_NAMESPACES:
+                        lbl = el.get(f"{{{table_ns}}}label")
+                        if lbl:
+                            break
                 if lbl:
                     label_map[xl] = lbl
 

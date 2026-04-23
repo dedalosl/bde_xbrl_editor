@@ -48,6 +48,8 @@ class CellCoordinate:
 
     concept: QName | None = None
     explicit_dimensions: dict[QName, QName] = field(default_factory=dict)
+    typed_dimensions: dict[QName, str] = field(default_factory=dict)
+    typed_dimension_elements: dict[QName, QName] = field(default_factory=dict)
     period_override: ReportingPeriod | None = None
     entity_override: ReportingEntity | None = None
 
@@ -65,6 +67,13 @@ class BodyCell:
     is_applicable: bool = True
     is_excluded: bool = False  # True when dimensional constraints forbid this cell
     cell_code: str | None = None  # row_fin_code + col_fin_code
+    cell_kind: str = "fact"  # fact | open-key | placeholder
+    open_key_signature: tuple[Any, ...] | None = None
+    open_key_dimension: "QName | None" = None
+    open_key_member: "QName | None" = None
+    open_key_text: str | None = None
+    open_key_options: tuple[Any, ...] = field(default_factory=tuple)
+    fact_options: tuple[str, ...] = field(default_factory=tuple)
 
 
 @dataclass

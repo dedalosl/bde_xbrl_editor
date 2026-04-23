@@ -24,6 +24,9 @@ from bde_xbrl_editor.validation.formula.xfi_functions import (
     xfi_decimal,          # backward-compat alias
     xfi_decimals,
     xfi_entity,
+    xfi_fact_explicit_dimensions,
+    xfi_fact_typed_dimension_value,
+    xfi_fact_typed_dimensions,
     xfi_is_instant_period,
     xfi_is_duration_period,
     xfi_period,
@@ -219,6 +222,24 @@ class TestXfiEntity:
         )
         _set_ctx({"_context": ctx})
         assert xfi_entity(None) == "LEI-12345-ABCDE"
+
+
+class TestTypedDimensions:
+    def test_typed_dimension_functions_use_typed_dimension_payload(self) -> None:
+        dim_qname = QName(namespace="http://example.com/dim", local_name="qLIN")
+        ctx = XbrlContext(
+            context_id="ctx1",
+            entity=_entity(),
+            period=ReportingPeriod(period_type="instant", instant_date=date(2024, 12, 31)),
+            dimensions={dim_qname: dim_qname},
+            typed_dimensions={dim_qname: "Entidad A"},
+        )
+        fact = _fact()
+        _set_ctx({"_context": ctx, "_fact": fact})
+
+        assert xfi_fact_typed_dimension_value(fact, dim_qname) == "Entidad A"
+        assert xfi_fact_typed_dimensions(fact) == [str(dim_qname)]
+        assert xfi_fact_explicit_dimensions(fact) == []
 
 
 # ---------------------------------------------------------------------------

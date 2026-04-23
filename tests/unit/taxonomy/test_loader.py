@@ -11,18 +11,30 @@ from bde_xbrl_editor.taxonomy.linkbases.formula import (
     parse_assertion_table_mappings,
     parse_formula_linkbase,
 )
+from bde_xbrl_editor.taxonomy.linkbases.presentation import PresentationLinkbaseParseResult
 from bde_xbrl_editor.taxonomy.loader import (
+    _build_group_table_order,
     _classify_linkbases,
+    _find_companion_tab_presentation_linkbases,
+    _infer_local_catalog_from_cache,
+    _preferred_group_table_results,
     _run_path_jobs,
     _schema_parse_workers,
     _sniff_linkbase_type,
+    TaxonomyLoader,
 )
+from bde_xbrl_editor.taxonomy import LoaderSettings, TaxonomyCache
 from bde_xbrl_editor.taxonomy.models import TaxonomyParseError
 
 
 def test_sniff_linkbase_calculation_stem_does_not_use_formula_bucket() -> None:
     """Filename heuristics no longer expose a ``formula`` bucket — only structural detection."""
     assert _sniff_linkbase_type(Path("/dts/my-formula-calculation.xml")) == "calc"
+
+
+def test_sniff_linkbase_pre_stem_is_treated_as_presentation() -> None:
+    assert _sniff_linkbase_type(Path("/dts/tab-pre.xml")) == "pres"
+    assert _sniff_linkbase_type(Path("/dts/mod-pre.xml")) == "pres"
 
 
 def test_linkbase_contains_formula_assertions_detects_validation_assertion_set(
@@ -179,10 +191,145 @@ def test_classify_linkbases_preserves_order_within_each_type() -> None:
     assert classified["unknown"] == [Path("/tmp/formula/value-assertions.xml")]
 
 
+def test_build_group_table_order_uses_arc_order_depth_first() -> None:
+    result = PresentationLinkbaseParseResult(
+        networks={},
+        group_table_children={
+            "group-root": [(2.0, "table_b"), (1.0, "table_a"), (3.0, "table_c")],
+            "table_b": [(1.0, "table_b_child")],
+        },
+        group_table_rend_fragments={"table_a", "table_b", "table_b_child", "table_c"},
+        group_table_root_fragment="group-root",
+    )
+
+    assert _build_group_table_order([result]) == {
+        "table_a": 0,
+        "table_b": 1,
+        "table_b_child": 2,
+        "table_c": 3,
+    }
+
+
+def test_build_group_table_order_traverses_multiple_roots_in_discovery_order() -> None:
+    first = PresentationLinkbaseParseResult(
+        networks={},
+        group_table_children={"group-a": [(2.0, "table_a2"), (1.0, "table_a1")]},
+        group_table_rend_fragments={"table_a1", "table_a2"},
+        group_table_root_fragment="group-a",
+    )
+    second = PresentationLinkbaseParseResult(
+        networks={},
+        group_table_children={"group-b": [(1.0, "table_b1")]},
+        group_table_rend_fragments={"table_b1"},
+        group_table_root_fragment="group-b",
+    )
+
+    assert _build_group_table_order([first, second]) == {
+        "table_a1": 0,
+        "table_a2": 1,
+        "table_b1": 2,
+    }
+
+
+def test_preferred_group_table_results_prefers_tab_directory() -> None:
+    mod_result = PresentationLinkbaseParseResult(
+        networks={},
+        group_table_children={"mod-root": [(1.0, "mod-table")]},
+        group_table_rend_fragments={"mod-table"},
+        group_table_root_fragment="mod-root",
+    )
+    tab_result = PresentationLinkbaseParseResult(
+        networks={},
+        group_table_children={"tab-root": [(1.0, "tab-table")]},
+        group_table_rend_fragments={"tab-table"},
+        group_table_root_fragment="tab-root",
+    )
+
+    selected = _preferred_group_table_results([
+        (Path("/tmp/mod/finrep_ind-pre.xml"), mod_result),
+        (Path("/tmp/tab/tab-pre.xml"), tab_result),
+    ])
+
+    assert selected == [tab_result]
+
+
+def test_find_companion_tab_presentation_linkbases_detects_tab_pre(tmp_path: Path) -> None:
+    mod_dir = tmp_path / "mod"
+    tab_dir = tmp_path / "tab"
+    mod_dir.mkdir()
+    tab_dir.mkdir()
+    entry = mod_dir / "finrep_ind.xsd"
+    entry.write_text("<xs:schema xmlns:xs='http://www.w3.org/2001/XMLSchema'/>", encoding="utf-8")
+    tab_pre = tab_dir / "tab-pre.xml"
+    tab_pre.write_text(
+        "<link:linkbase xmlns:link='http://www.xbrl.org/2003/linkbase'/>",
+        encoding="utf-8",
+    )
+
+    found = _find_companion_tab_presentation_linkbases(entry, known_linkbases=[])
+
+    assert found == [tab_pre]
+
+
 def test_schema_parse_workers_is_bounded() -> None:
     assert _schema_parse_workers(0) == 1
     assert _schema_parse_workers(1) == 1
     assert 1 <= _schema_parse_workers(50) <= 8
+
+
+def test_infer_local_catalog_from_cache_maps_all_host_directories(tmp_path: Path) -> None:
+    cache_root = tmp_path / "cache"
+    entry = cache_root / "www.bde.es" / "es" / "xbrl" / "fws" / "test" / "entry.xsd"
+    entry.parent.mkdir(parents=True, exist_ok=True)
+    entry.write_text("<xs:schema xmlns:xs='http://www.w3.org/2001/XMLSchema'/>", encoding="utf-8")
+    (cache_root / "www.eba.europa.eu").mkdir(parents=True)
+    (cache_root / "www.eurofiling.info").mkdir(parents=True)
+
+    catalog = _infer_local_catalog_from_cache(entry)
+
+    assert catalog["http://www.bde.es/"] == cache_root / "www.bde.es"
+    assert catalog["https://www.eba.europa.eu/"] == cache_root / "www.eba.europa.eu"
+    assert catalog["ftp://www.eurofiling.info/"] == cache_root / "www.eurofiling.info"
+
+
+def test_loader_uses_inferred_cache_catalog_for_remote_imports(tmp_path: Path) -> None:
+    cache_root = tmp_path / "cache"
+    entry = cache_root / "www.bde.es" / "es" / "xbrl" / "fws" / "test" / "entry.xsd"
+    entry.parent.mkdir(parents=True, exist_ok=True)
+    entry.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:xbrli="http://www.xbrl.org/2003/instance"
+           targetNamespace="http://www.bde.es/xbrl/fws/test"
+           elementFormDefault="qualified">
+  <xs:import namespace="http://external.example/shared"
+             schemaLocation="http://external.example/shared/schema.xsd"/>
+  <xs:element name="TestConcept"
+              id="test_TestConcept"
+              substitutionGroup="xbrli:item"
+              type="xbrli:stringItemType"
+              nillable="true"
+              xbrli:periodType="duration"/>
+</xs:schema>
+""",
+        encoding="utf-8",
+    )
+    remote_schema = cache_root / "external.example" / "shared" / "schema.xsd"
+    remote_schema.parent.mkdir(parents=True, exist_ok=True)
+    remote_schema.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="http://external.example/shared"/>
+""",
+        encoding="utf-8",
+    )
+
+    loader = TaxonomyLoader(cache=TaxonomyCache(), settings=LoaderSettings(allow_network=False))
+
+    taxonomy = loader.load(entry)
+
+    assert remote_schema.resolve() in taxonomy.schema_files
+    assert not any("http://external.example/shared/schema.xsd" in url for url in loader.last_skipped_urls)
 
 
 def test_run_path_jobs_preserves_input_order_when_parallel() -> None:
