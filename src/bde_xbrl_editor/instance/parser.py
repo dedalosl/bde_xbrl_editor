@@ -205,52 +205,54 @@ def _parse_context(el: etree._Element) -> XbrlContext:
             dim_str = member_el.get("dimension", "")
             mem_str = (member_el.text or "").strip()
             if dim_str and mem_str:
-                try:
-                    dim_clark = _resolve_prefixed_qname(member_el, dim_str)
-                    mem_clark = _resolve_prefixed_qname(member_el, mem_str)
-                    dim_qname = QName.from_clark(dim_clark)
-                    if dim_qname in dimensions:
-                        raise InstanceParseError(
-                            "",
-                            f"xbrldie:RepeatedDimensionInInstanceError: "
-                            f"Dimension {dim_qname} appears more than once in "
-                            f"context '{context_id}'",
-                        )
-                    dimensions[dim_qname] = QName.from_clark(mem_clark)
-                    dim_containers[dim_qname] = _ce
-                except InstanceParseError:
-                    raise
-                except Exception:  # noqa: BLE001
-                    pass
+                dim_qname = _parse_dimension_qname(
+                    member_el,
+                    dim_str,
+                    context_id=context_id,
+                    role="explicit dimension",
+                )
+                if dim_qname in dimensions:
+                    raise InstanceParseError(
+                        "",
+                        f"xbrldie:RepeatedDimensionInInstanceError: "
+                        f"Dimension {dim_qname} appears more than once in "
+                        f"context '{context_id}'",
+                    )
+                dimensions[dim_qname] = _parse_dimension_qname(
+                    member_el,
+                    mem_str,
+                    context_id=context_id,
+                    role=f"explicit dimension member for {dim_str}",
+                )
+                dim_containers[dim_qname] = _ce
         # Typed dimensions (value is an XML child, not text)
         for member_el in container.findall(_XBRLDI_TYPED_MEMBER):
             dim_str = member_el.get("dimension", "")
             if dim_str:
-                try:
-                    dim_clark = _resolve_prefixed_qname(member_el, dim_str)
-                    dim_qname = QName.from_clark(dim_clark)
-                    if dim_qname in dimensions:
-                        raise InstanceParseError(
-                            "",
-                            f"xbrldie:RepeatedDimensionInInstanceError: "
-                            f"Dimension {dim_qname} appears more than once in "
-                            f"context '{context_id}'",
-                        )
-                    # Preserve typed-member lexical content and child element while also
-                    # keeping the legacy placeholder in dimensions for validators that
-                    # still use member_qname == dim_qname to identify typed dimensions.
-                    dimensions[dim_qname] = dim_qname
-                    child_el = next((child for child in member_el if isinstance(child.tag, str)), None)
-                    if child_el is not None:
-                        typed_dimensions[dim_qname] = "".join(child_el.itertext()).strip()
-                        typed_dimension_elements[dim_qname] = _tag_to_qname(str(child_el.tag))
-                    else:
-                        typed_dimensions[dim_qname] = (member_el.text or "").strip()
-                    dim_containers[dim_qname] = _ce
-                except InstanceParseError:
-                    raise
-                except Exception:  # noqa: BLE001
-                    pass
+                dim_qname = _parse_dimension_qname(
+                    member_el,
+                    dim_str,
+                    context_id=context_id,
+                    role="typed dimension",
+                )
+                if dim_qname in dimensions:
+                    raise InstanceParseError(
+                        "",
+                        f"xbrldie:RepeatedDimensionInInstanceError: "
+                        f"Dimension {dim_qname} appears more than once in "
+                        f"context '{context_id}'",
+                    )
+                # Preserve typed-member lexical content and child element while also
+                # keeping the legacy placeholder in dimensions for validators that
+                # still use member_qname == dim_qname to identify typed dimensions.
+                dimensions[dim_qname] = dim_qname
+                child_el = next((child for child in member_el if isinstance(child.tag, str)), None)
+                if child_el is not None:
+                    typed_dimensions[dim_qname] = "".join(child_el.itertext()).strip()
+                    typed_dimension_elements[dim_qname] = _tag_to_qname(str(child_el.tag))
+                else:
+                    typed_dimensions[dim_qname] = (member_el.text or "").strip()
+                dim_containers[dim_qname] = _ce
 
     scenario_el = el.find(_XBRLI_SCENARIO)
     segment_el = entity_el.find(_XBRLI_SEGMENT) if entity_el is not None else None
@@ -346,6 +348,40 @@ def _resolve_prefixed_qname(el: etree._Element, prefixed: str) -> str:
         ns = nsmap.get(prefix, "")
         return f"{{{ns}}}{local}" if ns else local
     return prefixed
+
+
+def _parse_dimension_qname(
+    el: etree._Element,
+    raw_value: str,
+    *,
+    context_id: ContextId,
+    role: str,
+) -> QName:
+    """Parse a dimension/member QName and surface bad lexical values clearly."""
+    value = raw_value.strip()
+    try:
+        if not value:
+            raise ValueError("empty QName")
+        if value.startswith("{"):
+            qname = QName.from_clark(value)
+        elif ":" in value:
+            prefix, local = value.split(":", 1)
+            namespace = (el.nsmap or {}).get(prefix)
+            if not prefix or not local:
+                raise ValueError("QName prefix and local name must both be present")
+            if namespace is None:
+                raise ValueError(f"prefix '{prefix}' is not declared")
+            qname = QName(namespace=namespace, local_name=local, prefix=prefix)
+        else:
+            qname = QName(namespace="", local_name=value)
+        if not qname.local_name:
+            raise ValueError("QName local name is empty")
+        return qname
+    except ValueError as exc:
+        raise InstanceParseError(
+            "",
+            f"Invalid {role} QName '{raw_value}' in context '{context_id}': {exc}",
+        ) from exc
 
 
 def _tag_to_qname(tag: str) -> QName:
@@ -624,10 +660,14 @@ class InstanceParser:
                     concept_tag = child.tag
                     try:
                         concept_qname = _tag_to_qname(concept_tag)
-                    except Exception:  # noqa: BLE001
-                        concept_qname = None
+                    except ValueError as exc:
+                        raise InstanceParseError(
+                            path_str,
+                            f"Fact QName parse error in context '{context_ref}' "
+                            f"for element '{concept_tag}': {exc}",
+                        ) from exc
 
-                    if concept_qname is not None and concept_qname in known_concepts:
+                    if concept_qname in known_concepts:
                         facts.append(
                             Fact(
                                 concept=concept_qname,

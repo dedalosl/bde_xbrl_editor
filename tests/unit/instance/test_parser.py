@@ -240,6 +240,52 @@ def test_parser_preserves_typed_dimension_value_and_element(tmp_path: Path) -> N
     assert ctx.typed_dimension_elements[dim_qname] == QName(namespace="http://example.com/dom", local_name="qLE")
 
 
+def test_malformed_explicit_dimension_qname_raises_parse_error(tmp_path: Path) -> None:
+    parser, _ = _make_parser()
+    xbrl = _write_xbrl(
+        tmp_path,
+        """
+  <xbrli:context id="ctx_bad_explicit">
+    <xbrli:entity><xbrli:identifier scheme="http://example.com/entity">E1</xbrli:identifier></xbrli:entity>
+    <xbrli:period><xbrli:instant>2024-12-31</xbrli:instant></xbrli:period>
+    <xbrli:scenario xmlns:xbrldi="http://xbrl.org/2006/xbrldi" xmlns:dom="http://example.com/dom">
+      <xbrldi:explicitMember dimension="missing:Axis">dom:Member</xbrldi:explicitMember>
+    </xbrli:scenario>
+  </xbrli:context>
+        """,
+    )
+
+    with pytest.raises(
+        InstanceParseError,
+        match="missing:Axis.*ctx_bad_explicit.*prefix 'missing' is not declared",
+    ):
+        parser.load(xbrl)
+
+
+def test_malformed_typed_dimension_qname_raises_parse_error(tmp_path: Path) -> None:
+    parser, _ = _make_parser()
+    xbrl = _write_xbrl(
+        tmp_path,
+        """
+  <xbrli:context id="ctx_bad_typed">
+    <xbrli:entity><xbrli:identifier scheme="http://example.com/entity">E1</xbrli:identifier></xbrli:entity>
+    <xbrli:period><xbrli:instant>2024-12-31</xbrli:instant></xbrli:period>
+    <xbrli:scenario xmlns:xbrldi="http://xbrl.org/2006/xbrldi" xmlns:dom="http://example.com/dom">
+      <xbrldi:typedMember dimension="{http://example.com/dim">
+        <dom:qLE>Entidad A</dom:qLE>
+      </xbrldi:typedMember>
+    </xbrli:scenario>
+  </xbrli:context>
+        """,
+    )
+
+    with pytest.raises(
+        InstanceParseError,
+        match=r"\{http://example\.com/dim.*ctx_bad_typed",
+    ):
+        parser.load(xbrl)
+
+
 def test_local_catalog_resolves_bde_fr_schema_ref_to_cache_path(tmp_path: Path) -> None:
     schema_href = "http://www.bde.es/es/fr/xbrl/fws/test/entry.xsd"
     (tmp_path / Path(schema_href)).parent.mkdir(parents=True, exist_ok=True)
