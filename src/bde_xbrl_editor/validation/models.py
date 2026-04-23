@@ -2,21 +2,29 @@
 
 from __future__ import annotations
 
+import enum
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import StrEnum
+from enum import Enum
 from typing import Literal
 
 from bde_xbrl_editor.performance import StageTiming
 from bde_xbrl_editor.taxonomy.models import QName
 
 
-class ValidationSeverity(StrEnum):
+class _CompatStrEnum(str, Enum):
+    """Python 3.10-compatible fallback for enum.StrEnum."""
+
+
+StrEnumBase = enum.StrEnum if hasattr(enum, "StrEnum") else _CompatStrEnum
+
+
+class ValidationSeverity(StrEnumBase):
     ERROR = "error"
     WARNING = "warning"
 
 
-class ValidationStatus(StrEnum):
+class ValidationStatus(StrEnumBase):
     PASS = "pass"
     FAIL = "fail"
 
