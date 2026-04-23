@@ -35,6 +35,7 @@ from bde_xbrl_editor.instance.models import (
 )
 from bde_xbrl_editor.instance.s_equal import build_s_equal_key_from_xml_fragments
 from bde_xbrl_editor.taxonomy.models import QName
+from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
 
 if TYPE_CHECKING:
     from bde_xbrl_editor.taxonomy.loader import TaxonomyLoader
@@ -386,7 +387,7 @@ class InstanceParser:
         # Stage 1: Parse XML and validate root
         progress("Parsing instance XML…", 5)
         try:
-            tree = etree.parse(str(path))  # noqa: S320
+            tree = parse_xml_file(path)
             root = tree.getroot()
         except etree.XMLSyntaxError as exc:
             raise InstanceParseError(path_str, f"XML syntax error: {exc}") from exc

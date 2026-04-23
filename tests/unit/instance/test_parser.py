@@ -9,6 +9,7 @@ from unittest.mock import ANY, MagicMock
 
 import pytest
 
+import bde_xbrl_editor.instance.parser as parser_module
 from bde_xbrl_editor.instance.models import (
     InstanceParseError,
     TaxonomyResolutionError,
@@ -166,6 +167,23 @@ def test_parse_error_missing_schema_ref(tmp_path: Path) -> None:
     parser, _ = _make_parser()
     with pytest.raises(InstanceParseError, match="Missing link:schemaRef"):
         parser.load(xml)
+
+
+def test_parser_uses_shared_xml_file_helper(monkeypatch, tmp_path: Path) -> None:
+    p = _write_xbrl(tmp_path, "")
+    parser, _ = _make_parser()
+    parsed_paths: list[Path] = []
+    original_parse_xml_file = parser_module.parse_xml_file
+
+    def recording_parse_xml_file(path: Path):
+        parsed_paths.append(path)
+        return original_parse_xml_file(path)
+
+    monkeypatch.setattr(parser_module, "parse_xml_file", recording_parse_xml_file)
+
+    parser.load(p)
+
+    assert parsed_paths == [p]
 
 
 # ---------------------------------------------------------------------------

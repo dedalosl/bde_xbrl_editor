@@ -4,7 +4,11 @@ from pathlib import Path
 
 from lxml import etree
 
-from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
+from bde_xbrl_editor.taxonomy.xml_utils import (
+    XML_PARSER_OPTIONS,
+    parse_xml_file,
+    parse_xml_fragment,
+)
 
 
 def test_parse_xml_file_uses_in_memory_bytes_parser(
@@ -48,3 +52,21 @@ def test_parse_xml_file_repairs_malformed_prefixed_start_tag(tmp_path: Path) -> 
     tree = parse_xml_file(xml_path)
 
     assert tree.getroot().tag == "root"
+
+
+def test_shared_parser_options_disable_network_and_entity_resolution() -> None:
+    assert XML_PARSER_OPTIONS["no_network"] is True
+    assert XML_PARSER_OPTIONS["resolve_entities"] is False
+    assert XML_PARSER_OPTIONS["load_dtd"] is False
+    assert XML_PARSER_OPTIONS["recover"] is False
+
+
+def test_parse_xml_fragment_does_not_expand_external_entities() -> None:
+    root = parse_xml_fragment(
+        b"""<!DOCTYPE root [
+<!ENTITY external SYSTEM "file:///etc/passwd">
+]>
+<root>&external;</root>"""
+    )
+
+    assert root.text is None
