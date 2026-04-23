@@ -18,7 +18,7 @@ if False:  # pragma: no cover
 class ZAxisOption:
     """One selectable member for a Z-axis dimension."""
 
-    member_qname: "QName"
+    member_qname: QName
     label: str
     is_used: bool = False
 
@@ -27,10 +27,10 @@ class ZAxisOption:
 class ZAxisDimension:
     """UI-ready dimension selector definition."""
 
-    dimension_qname: "QName"
+    dimension_qname: QName
     label: str
     options: tuple[ZAxisOption, ...] = field(default_factory=tuple)
-    selected_member: "QName | None" = None
+    selected_member: QName | None = None
 
 
 _MUTED_OPTION_COLOR = QColor(theme.TEXT_SUBTLE)
@@ -45,14 +45,14 @@ class ZAxisSelector(QWidget):
     def __init__(
         self,
         dimensions: list[ZAxisDimension],
-        valid_combinations: list[dict["QName", "QName"]] | None = None,
+        valid_combinations: list[dict[QName, QName]] | None = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._dimensions = dimensions
         self._valid_combinations = valid_combinations or []
-        self._combo_by_dimension: dict["QName", QComboBox] = {}
-        self._selected: dict["QName", "QName"] = {}
+        self._combo_by_dimension: dict[QName, QComboBox] = {}
+        self._selected: dict[QName, QName] = {}
         self._syncing = False
 
         layout = QFormLayout(self)
@@ -92,13 +92,13 @@ class ZAxisSelector(QWidget):
         self._refresh_combos()
 
     @property
-    def selected_assignments(self) -> dict["QName", "QName"]:
+    def selected_assignments(self) -> dict[QName, QName]:
         return dict(self._selected)
 
     def set_dimensions(
         self,
         dimensions: list[ZAxisDimension],
-        valid_combinations: list[dict["QName", "QName"]] | None = None,
+        valid_combinations: list[dict[QName, QName]] | None = None,
     ) -> None:
         """Replace selector definitions and rebuild combo contents."""
         self._dimensions = dimensions
@@ -162,7 +162,7 @@ class ZAxisSelector(QWidget):
         finally:
             self._syncing = False
 
-    def _on_combo_changed(self, dimension_qname: "QName") -> None:
+    def _on_combo_changed(self, dimension_qname: QName) -> None:
         if self._syncing:
             return
         combo = self._combo_by_dimension.get(dimension_qname)

@@ -15,13 +15,13 @@ from PySide6.QtWidgets import (
     QWizardPage,
 )
 
+from bde_xbrl_editor.instance.constants import BDE_DIM_NS
 from bde_xbrl_editor.instance.models import (
     InvalidEntityIdentifierError,
     InvalidReportingPeriodError,
     ReportingEntity,
     ReportingPeriod,
 )
-from bde_xbrl_editor.instance.constants import BDE_DIM_NS
 from bde_xbrl_editor.taxonomy.models import QName, TaxonomyStructure
 
 
@@ -117,9 +117,10 @@ class EntityPeriodPage(QWizardPage):
             return False
         if not self._scheme_edit.text().strip():
             return False
-        if self._agrupacion_combo.isEnabled() and self._agrupacion_combo.currentData() is None:
-            return False
-        return True
+        return not (
+            self._agrupacion_combo.isEnabled()
+            and self._agrupacion_combo.currentData() is None
+        )
 
     def _populate_agrupacion_combo(self) -> None:
         self._agrupacion_combo.clear()

@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QThread, Qt, Signal, Slot
+from PySide6.QtCore import QObject, Qt, QThread, Signal, Slot
 from PySide6.QtWidgets import (
     QComboBox,
     QFileDialog,
@@ -22,12 +22,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from bde_xbrl_editor.performance import format_duration, format_stage_timings
+from bde_xbrl_editor.ui import theme
 from bde_xbrl_editor.ui.widgets.validation_results_model import (
     ValidationFilterProxy,
     ValidationResultsModel,
 )
-from bde_xbrl_editor.performance import format_duration, format_stage_timings
-from bde_xbrl_editor.ui import theme
 from bde_xbrl_editor.validation.models import (
     ValidationFinding,
     ValidationReport,

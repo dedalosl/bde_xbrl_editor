@@ -10,13 +10,13 @@ from pathlib import Path
 
 from lxml import etree
 
-from bde_xbrl_editor.taxonomy.linkbases.label import _resolve_locator_href
 from bde_xbrl_editor.taxonomy.constants import (
     ARCROLE_ELEMENT_LABEL,
     NS_GEN,
     NS_GENLAB,
     NS_XLINK,
 )
+from bde_xbrl_editor.taxonomy.linkbases.label import _resolve_locator_href
 from bde_xbrl_editor.taxonomy.models import Label, QName, TaxonomyParseError
 from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
 

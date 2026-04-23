@@ -24,7 +24,12 @@ from PySide6.QtWidgets import (
 )
 from shiboken6 import isValid
 
-from bde_xbrl_editor.performance import LoadTiming, StageTiming, format_duration, format_stage_timings
+from bde_xbrl_editor.performance import (
+    LoadTiming,
+    StageTiming,
+    format_duration,
+    format_stage_timings,
+)
 from bde_xbrl_editor.taxonomy import TaxonomyCache, TaxonomyStructure
 from bde_xbrl_editor.ui import theme
 from bde_xbrl_editor.ui.loading import InstanceLoadWorker
@@ -1041,9 +1046,9 @@ class MainWindow(QMainWindow):
         self._do_save(target)
 
     def _do_save(self, path: Path) -> None:
+        from bde_xbrl_editor.instance.constants import is_bde_schema_ref  # noqa: PLC0415
         from bde_xbrl_editor.instance.models import InstanceSaveError  # noqa: PLC0415
         from bde_xbrl_editor.instance.serializer import InstanceSerializer  # noqa: PLC0415
-        from bde_xbrl_editor.instance.constants import is_bde_schema_ref  # noqa: PLC0415
 
         if self._current_instance is not None and (
             is_bde_schema_ref(self._current_instance.schema_ref_href)

@@ -5,8 +5,8 @@ from __future__ import annotations
 from datetime import date
 
 from bde_xbrl_editor.instance.context_builder import (
-    build_filing_indicator_context,
     build_dimensional_context,
+    build_filing_indicator_context,
     deduplicate_contexts,
     generate_context_id,
 )

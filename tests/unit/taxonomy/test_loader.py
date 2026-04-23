@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from bde_xbrl_editor.taxonomy import LoaderSettings, TaxonomyCache
 from bde_xbrl_editor.taxonomy.linkbases.formula import (
     linkbase_contains_formula_assertions,
     parse_assertion_table_mappings,
@@ -13,6 +14,7 @@ from bde_xbrl_editor.taxonomy.linkbases.formula import (
 )
 from bde_xbrl_editor.taxonomy.linkbases.presentation import PresentationLinkbaseParseResult
 from bde_xbrl_editor.taxonomy.loader import (
+    TaxonomyLoader,
     _build_group_table_order,
     _classify_linkbases,
     _find_companion_tab_presentation_linkbases,
@@ -21,9 +23,7 @@ from bde_xbrl_editor.taxonomy.loader import (
     _run_path_jobs,
     _schema_parse_workers,
     _sniff_linkbase_type,
-    TaxonomyLoader,
 )
-from bde_xbrl_editor.taxonomy import LoaderSettings, TaxonomyCache
 from bde_xbrl_editor.taxonomy.models import TaxonomyParseError
 
 

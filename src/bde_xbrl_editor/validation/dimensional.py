@@ -583,10 +583,7 @@ class DimensionalConstraintValidator:
             declared_members: set[QName]
             if members_frozenset_cache is not None:
                 fs = members_frozenset_cache.get(dim_qname)
-                if fs is None:
-                    declared_members = set()
-                else:
-                    declared_members = set(fs)
+                declared_members = set() if fs is None else set(fs)
             else:
                 # Fallback: compute on-the-fly (legacy path).
                 declared_members = {m.qname for m in dim_model.members}

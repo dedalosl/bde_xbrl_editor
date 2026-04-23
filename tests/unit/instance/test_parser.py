@@ -561,7 +561,7 @@ def test_bde_preambulo_parses_estados_reportados(tmp_path: Path) -> None:
 
 def test_bde_preambulo_parses_blanco_estado(tmp_path: Path) -> None:
     """CodigoEstado with es-be-cm-pblo:blanco='true' sets blanco=True."""
-    body = textwrap.dedent(f"""\
+    body = textwrap.dedent("""\
         <xbrli:context id="cBasico">
           <xbrli:entity>
             <xbrli:identifier scheme="http://www.ecb.int/stats/money/mfi">ES9000</xbrli:identifier>

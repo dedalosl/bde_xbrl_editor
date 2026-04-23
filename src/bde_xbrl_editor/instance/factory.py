@@ -5,8 +5,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from bde_xbrl_editor.instance.constants import ISO4217_NS, XBRLDI_CONTEXT_ELEMENT, XBRLI_NS
-from bde_xbrl_editor.instance.constants import BDE_DIM_NS
+from bde_xbrl_editor.instance.constants import (
+    BDE_DIM_NS,
+    ISO4217_NS,
+    XBRLDI_CONTEXT_ELEMENT,
+    XBRLI_NS,
+)
 from bde_xbrl_editor.instance.context_builder import (
     build_dimensional_context,
     build_filing_indicator_context,

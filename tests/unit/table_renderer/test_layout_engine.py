@@ -557,7 +557,8 @@ class TestDimensionalExclusion:
     ):
         """Build a mock taxonomy with one closed all-hypercube and targetRole member list."""
         from unittest.mock import MagicMock
-        from bde_xbrl_editor.taxonomy.models import DefinitionArc, DimensionModel, HypercubeModel
+
+        from bde_xbrl_editor.taxonomy.models import DefinitionArc, HypercubeModel
 
         taxonomy = MagicMock()
         taxonomy.labels.resolve.side_effect = lambda qn, **kw: str(qn)

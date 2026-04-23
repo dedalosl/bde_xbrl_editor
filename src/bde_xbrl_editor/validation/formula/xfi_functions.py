@@ -25,8 +25,9 @@ Usage
 
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
+import contextlib
 import re
+from decimal import Decimal, InvalidOperation
 from types import SimpleNamespace
 from typing import Any
 
@@ -1339,25 +1340,19 @@ def _build_xbrl_parser_class() -> type:
     # Register all xfi:, efn:, and iaf: functions on a temporary instance, then promote to class
     _temp = XbrlFormulaParser(namespaces={"xfi": _XFI_NS, "efn": _EFN_NS, "iaf": _IAF_NS})
     for local_name, callback in _XFI_FUNCTIONS:
-        try:
+        with contextlib.suppress(Exception):
             _temp.external_function(callback, name=local_name, prefix="xfi", sequence_types=())
-        except Exception:  # noqa: BLE001
-            pass  # skip if already registered or name collision
     for local_name, callback in _EFN_FUNCTIONS:
-        try:
+        with contextlib.suppress(Exception):
             _temp.external_function(callback, name=local_name, prefix="efn", sequence_types=())
-        except Exception:  # noqa: BLE001
-            pass
     for local_name, callback, sequence_types in _IAF_FUNCTIONS:
-        try:
+        with contextlib.suppress(Exception):
             _temp.external_function(
                 callback,
                 name=local_name,
                 prefix="iaf",
                 sequence_types=sequence_types,
             )
-        except Exception:  # noqa: BLE001
-            pass
 
     # Promote instance symbol table → class level so all future instances inherit it
     XbrlFormulaParser.symbol_table = _temp.symbol_table
@@ -1498,15 +1493,13 @@ def _register_custom_functions(
         prefix = definition.prefix
         if prefix and prefix not in parser.namespaces:
             parser.namespaces[prefix] = definition.namespace
-        try:
+        with contextlib.suppress(Exception):
             parser.external_function(
                 _make_custom_function_callback(grouped_definitions),
                 name=definition.local_name,
                 prefix=prefix,
                 sequence_types=(),
             )
-        except Exception:  # noqa: BLE001
-            pass
 
 
 def build_formula_parser(
