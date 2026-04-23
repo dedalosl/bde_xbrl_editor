@@ -30,7 +30,6 @@ class DimensionalConstraintValidator:
             for hc in self._taxonomy.hypercubes:
                 for pi in hc.primary_items:
                     primary_to_hcs.setdefault(pi, []).append(hc)
-
             # Build set of all concept QNames for ExplicitMemberUndefinedQNameError check.
             all_concept_qnames: set[QName] = set(self._taxonomy.concepts.keys())
 
@@ -519,33 +518,35 @@ class DimensionalConstraintValidator:
                 )
 
         # --- 3. CLOSED_MISSING_DIMENSION -------------------------------------
-        if hc.closed:
-            for dim_qname in hc.dimensions:
-                if dim_qname in context_dims:
-                    continue
+        # A fact must satisfy all dimensions in a covering "all" hypercube unless
+        # a default member exists for the missing dimension. This applies to both
+        # open and closed hypercubes; "closed" only controls extra dimensions.
+        for dim_qname in hc.dimensions:
+            if dim_qname in context_dims:
+                continue
 
-                dim_model = self._taxonomy.dimensions.get(dim_qname)
-                has_default = (
-                    dim_model is not None and dim_model.default_member is not None
-                )
-                if not has_default:
-                    findings.append(
-                        ValidationFinding(
-                            rule_id="xbrldie:PrimaryItemDimensionallyInvalidError",
-                            severity=ValidationSeverity.ERROR,
-                            message=(
-                                f"Fact '{fact.concept}' in context '{fact.context_ref}' "
-                                f"is missing required dimension '{dim_qname}' in closed "
-                                f"hypercube '{hc.qname}' (no default member defined)."
-                            ),
-                            source="dimensional",
-                            concept_qname=fact.concept,
-                            context_ref=fact.context_ref,
-                            hypercube_qname=hc.qname,
-                            dimension_qname=dim_qname,
-                            constraint_type="CLOSED_MISSING_DIMENSION",
-                        )
+            dim_model = self._taxonomy.dimensions.get(dim_qname)
+            has_default = (
+                dim_model is not None and dim_model.default_member is not None
+            )
+            if not has_default:
+                findings.append(
+                    ValidationFinding(
+                        rule_id="xbrldie:PrimaryItemDimensionallyInvalidError",
+                        severity=ValidationSeverity.ERROR,
+                        message=(
+                            f"Fact '{fact.concept}' in context '{fact.context_ref}' "
+                            f"is missing required dimension '{dim_qname}' in "
+                            f"hypercube '{hc.qname}' (no default member defined)."
+                        ),
+                        source="dimensional",
+                        concept_qname=fact.concept,
+                        context_ref=fact.context_ref,
+                        hypercube_qname=hc.qname,
+                        dimension_qname=dim_qname,
+                        constraint_type="CLOSED_MISSING_DIMENSION",
                     )
+                )
 
     def _check_notall_hypercube(
         self,

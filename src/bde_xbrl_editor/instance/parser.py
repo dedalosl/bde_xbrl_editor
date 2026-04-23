@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -141,13 +141,50 @@ def _reject_xbrli_in_segment_or_scenario(
             )
 
 
+def _parse_date_boundary(text: str, *, date_only_is_end_boundary: bool = False) -> date:
+    stripped = text.strip()
+    if "T" not in stripped:
+        parsed = date.fromisoformat(stripped)
+        return parsed + timedelta(days=1) if date_only_is_end_boundary else parsed
+
+    day, time = stripped.split("T", 1)
+    parsed = date.fromisoformat(day)
+    return parsed + timedelta(days=1) if time.startswith("24:00:00") else parsed
+
+
 def _parse_date(text: str) -> date:
     stripped = text.strip()
     # XBRL allows ISO 8601 datetime strings for instant dates (e.g. "2009-01-01T00:00:00").
-    # Python's date.fromisoformat() rejects these, so strip the time portion first.
+    # The editor model stores dates, so keep the lexical calendar date here and
+    # apply end-boundary semantics only to S-equality keys.
     if "T" in stripped:
         stripped = stripped.split("T")[0]
     return date.fromisoformat(stripped)
+
+
+def _period_s_equal_key(period_el: etree._Element) -> tuple:
+    instant_el = period_el.find(_XBRLI_INSTANT)
+    if instant_el is not None:
+        return (
+            "instant",
+            _parse_date_boundary(
+                instant_el.text or "",
+                date_only_is_end_boundary=True,
+            ).isoformat(),
+        )
+
+    start_el = period_el.find(_XBRLI_START)
+    end_el = period_el.find(_XBRLI_END)
+    return (
+        "duration",
+        _parse_date_boundary(
+            (start_el.text or "") if start_el is not None else ""
+        ).isoformat(),
+        _parse_date_boundary(
+            (end_el.text or "") if end_el is not None else "",
+            date_only_is_end_boundary=True,
+        ).isoformat(),
+    )
 
 
 def _parse_context(el: etree._Element) -> XbrlContext:
@@ -267,7 +304,11 @@ def _parse_context(el: etree._Element) -> XbrlContext:
         else None
     )
     s_equal_key = build_s_equal_key_from_xml_fragments(
-        entity, period, scenario_el, segment_el
+        entity,
+        period,
+        scenario_el,
+        segment_el,
+        period_key=_period_s_equal_key(period_el),
     )
 
     return XbrlContext(

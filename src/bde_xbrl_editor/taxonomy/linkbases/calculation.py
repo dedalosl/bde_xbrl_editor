@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from lxml import etree
@@ -19,6 +20,44 @@ _XLINK_FROM = f"{{{NS_XLINK}}}from"
 _XLINK_TO = f"{{{NS_XLINK}}}to"
 _XLINK_ARCROLE = f"{{{NS_XLINK}}}arcrole"
 _XLINK_ROLE = f"{{{NS_XLINK}}}role"
+_XLINK_TYPE = f"{{{NS_XLINK}}}type"
+_XLINK_TITLE = f"{{{NS_XLINK}}}title"
+
+_RELATIONSHIP_EQUIVALENCE_EXCLUDED_ATTRS = frozenset(
+    {
+        _XLINK_TYPE,
+        _XLINK_TITLE,
+        "use",
+        "priority",
+    }
+)
+
+
+def _normalise_equivalence_value(raw: str) -> tuple[str, str]:
+    s = raw.strip()
+    low = s.lower()
+    if low == "true":
+        return ("dec", "1")
+    if low == "false":
+        return ("dec", "0")
+    try:
+        d = Decimal(s)
+        if d.is_nan():
+            return ("nan", s)
+        if d.is_zero():
+            return ("dec", "0")
+        return ("dec", format(d.normalize(), "f"))
+    except InvalidOperation:
+        return ("str", s)
+
+
+def _relationship_equivalence_key(arc: etree._Element) -> tuple:
+    attrs = []
+    for name in sorted(arc.attrib):
+        if name in _RELATIONSHIP_EQUIVALENCE_EXCLUDED_ATTRS:
+            continue
+        attrs.append((name, _normalise_equivalence_value(arc.attrib[name])))
+    return tuple(attrs)
 
 
 def parse_calculation_linkbase(
@@ -74,8 +113,17 @@ def parse_calculation_linkbase(
                 weight = float(arc.get("weight", "1"))
             except ValueError:
                 weight = 1.0
+            use = arc.get("use", "optional")
             result.setdefault(elr, []).append(
-                CalculationArc(parent=parent, child=child, order=order, weight=weight, extended_link_role=elr)
+                CalculationArc(
+                    parent=parent,
+                    child=child,
+                    order=order,
+                    weight=weight,
+                    extended_link_role=elr,
+                    use=use,
+                    equivalence_key=_relationship_equivalence_key(arc),
+                )
             )
 
     return result

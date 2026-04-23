@@ -24,10 +24,15 @@ def make_xml_parser() -> etree.XMLParser:
     return etree.XMLParser(**XML_PARSER_OPTIONS)
 
 
-def parse_xml_bytes(raw: bytes, *, repair_malformed_prefixed_tags: bool = False) -> etree._ElementTree:
+def parse_xml_bytes(
+    raw: bytes,
+    *,
+    repair_malformed_prefixed_tags: bool = False,
+    base_url: str | None = None,
+) -> etree._ElementTree:
     """Parse XML bytes with the shared parser configuration."""
     try:
-        return etree.parse(BytesIO(raw), parser=make_xml_parser())  # noqa: S320
+        return etree.parse(BytesIO(raw), parser=make_xml_parser(), base_url=base_url)  # noqa: S320
     except etree.XMLSyntaxError as exc:
         if not repair_malformed_prefixed_tags:
             raise
@@ -41,6 +46,7 @@ def parse_xml_bytes(raw: bytes, *, repair_malformed_prefixed_tags: bool = False)
         return etree.parse(  # noqa: S320
             BytesIO(repaired.encode("utf-8")),
             parser=make_xml_parser(),
+            base_url=base_url,
         )
 
 
@@ -61,4 +67,8 @@ def parse_xml_file(path: Path) -> etree._ElementTree:
     These are not well-formed XML, but they can be repaired safely by removing
     the stray whitespace after ``<``.
     """
-    return parse_xml_bytes(path.read_bytes(), repair_malformed_prefixed_tags=True)
+    return parse_xml_bytes(
+        path.read_bytes(),
+        repair_malformed_prefixed_tags=True,
+        base_url=str(path.resolve()),
+    )

@@ -394,8 +394,8 @@ class TestClosedMissingDimension:
         findings = DimensionalConstraintValidator(taxonomy).validate(inst)
         assert not any(f.constraint_type == "CLOSED_MISSING_DIMENSION" for f in findings)
 
-    def test_open_hc_missing_dimension_no_finding(self) -> None:
-        """CLOSED_MISSING_DIMENSION check applies only to closed='all' hypercubes."""
+    def test_open_hc_missing_dimension_reports_finding(self) -> None:
+        """Open hypercubes also require declared dimensions (unless a default exists)."""
         ctx = _make_context("ctx1", dims={})
         fact = Fact(concept=CONCEPT_QN, context_ref="ctx1", unit_ref=None, value="1")
         inst = _make_instance([fact], {"ctx1": ctx})
@@ -403,7 +403,7 @@ class TestClosedMissingDimension:
             _all_open_hc(), dims={DIM_QN: _dim_model_with_members()}
         )
         findings = DimensionalConstraintValidator(taxonomy).validate(inst)
-        assert not any(f.constraint_type == "CLOSED_MISSING_DIMENSION" for f in findings)
+        assert any(f.constraint_type == "CLOSED_MISSING_DIMENSION" for f in findings)
 
     def test_closed_hc_dimension_has_default_no_finding(self) -> None:
         """A missing dimension with a default member does not trigger the closed check."""

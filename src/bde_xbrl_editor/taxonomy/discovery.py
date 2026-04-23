@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from collections import deque
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 from lxml import etree
 
@@ -149,6 +149,25 @@ def _resolve_href(href: str, base_dir: Path, settings: LoaderSettings) -> Path |
     # Relative path — resolve against base_dir
     resolved = (base_dir / href).resolve()
     return resolved
+
+
+def _element_base_dir(el: etree._Element, fallback: Path) -> Path:
+    """Return the XML Base-aware directory for resolving attributes on *el*."""
+    if not el.base:
+        return fallback
+    raw_base = el.base
+    parsed = urlparse(raw_base)
+    if parsed.scheme == "file":
+        # lxml exposes percent-encoded file URIs (e.g. "%20" for spaces).
+        # Convert back to a local filesystem path before Path resolution.
+        base_value = unquote(parsed.path)
+    else:
+        base_value = unquote(raw_base)
+
+    base_path = Path(base_value)
+    if not base_path.is_absolute():
+        base_path = (fallback / base_path).resolve()
+    return base_path if raw_base.endswith("/") else base_path.parent
 
 
 def _enqueue_if_new(
@@ -308,7 +327,7 @@ def discover_dts(
                 href = href.split("#")[0]
                 if not href:
                     continue
-                resolved = _resolve_href(href, base_dir, settings)
+                resolved = _resolve_href(href, _element_base_dir(ref_el, base_dir), settings)
                 if resolved is None:
                     if _is_remote(href):
                         skipped_remote.append(href)
@@ -330,7 +349,7 @@ def discover_dts(
                 href = href.split("#")[0]
                 if not href:
                     continue
-                resolved = _resolve_href(href, base_dir, settings)
+                resolved = _resolve_href(href, _element_base_dir(lb_ref, base_dir), settings)
                 if resolved is None:
                     if _is_remote(href):
                         skipped_remote.append(href)
@@ -359,7 +378,11 @@ def discover_dts(
                     file_part = href.split("#")[0]
                     if not file_part:
                         continue
-                    resolved = _resolve_href(file_part, base_dir, settings)
+                    resolved = _resolve_href(
+                        file_part,
+                        _element_base_dir(loc_el, base_dir),
+                        settings,
+                    )
                     if resolved is None:
                         if _is_remote(file_part):
                             skipped_remote.append(file_part)
@@ -395,7 +418,7 @@ def discover_dts(
             schema_loc = el.get("schemaLocation")
             if not schema_loc:
                 continue
-            resolved = _resolve_href(schema_loc, base_dir, settings)
+            resolved = _resolve_href(schema_loc, _element_base_dir(el, base_dir), settings)
             if resolved is None:
                 if _is_remote(schema_loc):
                     skipped_remote.append(schema_loc)
@@ -415,7 +438,7 @@ def discover_dts(
             schema_loc = el.get("schemaLocation")
             if not schema_loc:
                 continue
-            resolved = _resolve_href(schema_loc, base_dir, settings)
+            resolved = _resolve_href(schema_loc, _element_base_dir(el, base_dir), settings)
             if resolved is None:
                 if _is_remote(schema_loc):
                     skipped_remote.append(schema_loc)
@@ -443,7 +466,7 @@ def discover_dts(
                 href = href.split("#")[0]
                 if not href:
                     continue
-                resolved = _resolve_href(href, base_dir, settings)
+                resolved = _resolve_href(href, _element_base_dir(lb_ref, base_dir), settings)
                 if resolved is None:
                     if _is_remote(href):
                         skipped_remote.append(href)
@@ -469,7 +492,7 @@ def discover_dts(
             href = href.split("#")[0]
             if not href:
                 continue
-            resolved = _resolve_href(href, base_dir, settings)
+            resolved = _resolve_href(href, _element_base_dir(lb_ref, base_dir), settings)
             if resolved is None:
                 if _is_remote(href):
                     skipped_remote.append(href)

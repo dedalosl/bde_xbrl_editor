@@ -121,6 +121,16 @@ class TestDiscoveryBasic:
         lb_names = {p.name for p in linkbases}
         assert "labels.xml" in lb_names
 
+    def test_discovers_linkbase_when_base_uri_is_percent_encoded(self, tmp_path):
+        base_dir = tmp_path / "10000 Formula"
+        base_dir.mkdir()
+        (base_dir / "labels.xml").write_text(LABEL_XML, encoding="utf-8")
+        entry = write_xsd(base_dir, "entry.xsd", XSD_WITH_LINKBASE)
+
+        _, linkbases, _, _, _ = discover_dts(entry, LoaderSettings())
+
+        assert (base_dir / "labels.xml").resolve() in linkbases
+
     def test_does_not_recurse_into_standard_ns(self, tmp_path):
         """Standard XBRL namespace imports are skipped (no network call)."""
         content = """\
