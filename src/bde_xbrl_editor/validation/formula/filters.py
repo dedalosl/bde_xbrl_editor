@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 from decimal import Decimal, InvalidOperation
+from typing import Any
 
 from bde_xbrl_editor.instance.models import Fact, XbrlInstance
 from bde_xbrl_editor.taxonomy.models import (
@@ -20,17 +21,22 @@ def apply_filters(
     variable_def: FactVariableDefinition,
     instance: XbrlInstance,
     custom_functions: tuple[CustomFunctionDefinition, ...] = (),
+    facts_by_concept: dict[object, list[Fact]] | None = None,
+    xpath_token_cache: dict[tuple[tuple[tuple[str, str], ...], str], Any] | None = None,
 ) -> list[Fact]:
     """Return the subset of facts that satisfy all filters in variable_def.
 
     Returns an empty list when no facts match. Never raises.
     """
-    result = list(facts)
-
     # Concept filter
     if variable_def.concept_filter is not None:
         cf = variable_def.concept_filter
-        result = [f for f in result if f.concept == cf]
+        if facts_by_concept is not None:
+            result = list(facts_by_concept.get(cf, ()))
+        else:
+            result = [f for f in facts if f.concept == cf]
+    else:
+        result = list(facts)
 
     # Period type filter (simple instant/duration)
     if variable_def.period_filter is not None:
@@ -67,7 +73,10 @@ def apply_filters(
             ctx_dims = ctx.dimensions
 
             if dim_filter.exclude:
-                if dim_filter.member_qnames and ctx_dims.get(dim_filter.dimension_qname) in dim_filter.member_qnames:
+                if (
+                    dim_filter.member_qnames
+                    and ctx_dims.get(dim_filter.dimension_qname) in dim_filter.member_qnames
+                ):
                     continue
                 filtered.append(fact)
             else:
@@ -83,8 +92,15 @@ def apply_filters(
     # Boolean filters (bf:andFilter / bf:orFilter)
     for bf in variable_def.boolean_filters:
         result = [
-            f for f in result
-            if _passes_boolean_filter(f, bf, instance, custom_functions)
+            f
+            for f in result
+            if _passes_boolean_filter(
+                f,
+                bf,
+                instance,
+                custom_functions,
+                xpath_token_cache=xpath_token_cache,
+            )
         ]
 
     # XPath filters (gf:general test=, pf:period test=)
@@ -94,6 +110,7 @@ def apply_filters(
             variable_def.xpath_filters,
             instance,
             custom_functions=custom_functions,
+            xpath_token_cache=xpath_token_cache,
         )
 
     return result
@@ -120,6 +137,7 @@ def _passes_boolean_filter(
     bf: BooleanFilterDefinition,
     instance: XbrlInstance,
     custom_functions: tuple[CustomFunctionDefinition, ...] = (),
+    xpath_token_cache: dict[tuple[tuple[tuple[str, str], ...], str], Any] | None = None,
 ) -> bool:
     """Return True if *fact* satisfies the boolean filter tree rooted at *bf*."""
     child_results: list[bool] = []
@@ -127,13 +145,22 @@ def _passes_boolean_filter(
         if isinstance(child, DimensionFilter):
             child_results.append(_passes_dim_filter(fact, child, instance))
         elif isinstance(child, BooleanFilterDefinition):
-            child_results.append(_passes_boolean_filter(fact, child, instance, custom_functions))
+            child_results.append(
+                _passes_boolean_filter(
+                    fact,
+                    child,
+                    instance,
+                    custom_functions,
+                    xpath_token_cache=xpath_token_cache,
+                )
+            )
         elif isinstance(child, XPathFilterDefinition):
             passed_list = _apply_xpath_filters(
                 [fact],
                 (child,),
                 instance,
                 custom_functions=custom_functions,
+                xpath_token_cache=xpath_token_cache,
             )  # type: ignore[arg-type]
             child_results.append(bool(passed_list))
 
@@ -152,6 +179,7 @@ def _apply_xpath_filters(
     xpath_filters: tuple,
     instance: XbrlInstance,
     custom_functions: tuple[CustomFunctionDefinition, ...] = (),
+    xpath_token_cache: dict[tuple[tuple[tuple[str, str], ...], str], Any] | None = None,
 ) -> list[Fact]:
     """Apply each XPath filter expression to every candidate fact.
 
@@ -166,7 +194,6 @@ def _apply_xpath_filters(
     import elementpath  # type: ignore[import-untyped]
 
     from bde_xbrl_editor.validation.formula.xfi_functions import (
-        build_formula_parser,
         clear_evaluation_context,
         set_evaluation_context,
     )
@@ -182,25 +209,26 @@ def _apply_xpath_filters(
         except (InvalidOperation, TypeError):
             item_value = fact.value or ""
 
-        set_evaluation_context({
-            "_all_facts": instance.facts,
-            "_current_fact": fact,
-            "_context": ctx_obj,
-            "_unit": unit_obj,
-            "_instance": instance,
-            "_custom_functions": custom_functions,
-        })
+        set_evaluation_context(
+            {
+                "_all_facts": instance.facts,
+                "_current_fact": fact,
+                "_context": ctx_obj,
+                "_unit": unit_obj,
+                "_instance": instance,
+                "_custom_functions": custom_functions,
+            }
+        )
 
         try:
             fact_passes = True
             for xf in xpath_filters:
                 with contextlib.suppress(Exception):
-                    parser = build_formula_parser(
-                        xf.namespaces,
+                    token = _get_xpath_filter_token(
+                        xf,
                         custom_functions=custom_functions,
-                        expression_hints=(xf.xpath_expr,),
+                        xpath_token_cache=xpath_token_cache,
                     )
-                    token = parser.parse(xf.xpath_expr)
                     xp_ctx = elementpath.XPathContext(root=None, item=item_value)
                     result = list(token.select(xp_ctx))
                     # Evaluate result as boolean
@@ -213,6 +241,32 @@ def _apply_xpath_filters(
             clear_evaluation_context()
 
     return passed
+
+
+def _get_xpath_filter_token(
+    xpath_filter: XPathFilterDefinition,
+    *,
+    custom_functions: tuple[CustomFunctionDefinition, ...],
+    xpath_token_cache: dict[tuple[tuple[tuple[str, str], ...], str], Any] | None,
+) -> Any:
+    from bde_xbrl_editor.validation.formula.xfi_functions import build_formula_parser
+
+    namespace_items = tuple(sorted((xpath_filter.namespaces or {}).items()))
+    cache_key = (namespace_items, xpath_filter.xpath_expr)
+    if xpath_token_cache is not None:
+        cached = xpath_token_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+    parser = build_formula_parser(
+        dict(namespace_items),
+        custom_functions=custom_functions,
+        expression_hints=(xpath_filter.xpath_expr,),
+    )
+    token = parser.parse(xpath_filter.xpath_expr)
+    if xpath_token_cache is not None:
+        xpath_token_cache[cache_key] = token
+    return token
 
 
 def _to_bool(value: object) -> bool:

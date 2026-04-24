@@ -7,7 +7,7 @@ import itertools
 import re
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Iterator
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -61,6 +61,7 @@ class FormulaEvaluator:
         self._cancel_event = cancel_event
         self._detail_cache: dict[str, dict[str, str]] = {}
         self._xpath_token_cache: dict[tuple[tuple[tuple[str, str], ...], str], Any] = {}
+        self._xpath_filter_token_cache: dict[tuple[tuple[tuple[str, str], ...], str], Any] = {}
         self._progress_interval_seconds = 0.1
 
     # ------------------------------------------------------------------
@@ -82,21 +83,27 @@ class FormulaEvaluator:
         non_abstract = [a for a in assertion_set.assertions if not a.abstract]
         total = len(non_abstract)
         last_progress_at = 0.0
+        facts_by_concept = self._facts_by_concept(instance)
 
         for idx, assertion in enumerate(non_abstract):
             if self._cancel_event and self._cancel_event.is_set():
                 break
             now = time.perf_counter()
-            if (
-                self._progress_callback
-                and (idx == 0 or idx + 1 == total or (now - last_progress_at) >= self._progress_interval_seconds)
+            if self._progress_callback and (
+                idx == 0
+                or idx + 1 == total
+                or (now - last_progress_at) >= self._progress_interval_seconds
             ):
                 with contextlib.suppress(Exception):
                     self._progress_callback(idx, total, assertion.assertion_id)
                 last_progress_at = now
 
             try:
-                bindings = self._bind_variables(assertion, instance)
+                bindings = self._bind_variables(
+                    assertion,
+                    instance,
+                    facts_by_concept=facts_by_concept,
+                )
                 if isinstance(assertion, ValueAssertionDefinition):
                     assertion_findings = tuple(
                         self._evaluate_value_assertion(assertion, bindings, instance)
@@ -119,21 +126,23 @@ class FormulaEvaluator:
                         assertion,
                         status=ValidationStatus.FAIL,
                         default_message=f"Evaluation error: {exc}",
-                    )
+                    ),
                 )
                 findings.extend(assertion_findings)
                 self._publish_findings(assertion_findings)
             except Exception as exc:  # noqa: BLE001
-                assertion_findings = (ValidationFinding(
-                    rule_id="internal:validator-error",
-                    severity=ValidationSeverity.ERROR,
-                    message=f"Unexpected error evaluating '{assertion.assertion_id}': {exc}",
-                    source="formula",
-                    status=ValidationStatus.FAIL,
-                    table_id=assertion.table_id,
-                    table_label=assertion.table_label,
-                    **self._formula_detail_kwargs(assertion),
-                ),)
+                assertion_findings = (
+                    ValidationFinding(
+                        rule_id="internal:validator-error",
+                        severity=ValidationSeverity.ERROR,
+                        message=f"Unexpected error evaluating '{assertion.assertion_id}': {exc}",
+                        source="formula",
+                        status=ValidationStatus.FAIL,
+                        table_id=assertion.table_id,
+                        table_label=assertion.table_label,
+                        **self._formula_detail_kwargs(assertion),
+                    ),
+                )
                 findings.extend(assertion_findings)
                 self._publish_findings(assertion_findings)
 
@@ -192,12 +201,20 @@ class FormulaEvaluator:
         message_resource: AssertionTextResource | None = None
         if status == ValidationStatus.FAIL:
             message_resource = next(
-                (resource for resource in message_candidates if "unsatisfied-message" in resource.arcrole),
+                (
+                    resource
+                    for resource in message_candidates
+                    if "unsatisfied-message" in resource.arcrole
+                ),
                 None,
             )
         else:
             message_resource = next(
-                (resource for resource in message_candidates if "satisfied-message" in resource.arcrole),
+                (
+                    resource
+                    for resource in message_candidates
+                    if "satisfied-message" in resource.arcrole
+                ),
                 None,
             )
 
@@ -340,9 +357,12 @@ class FormulaEvaluator:
             return None
 
         expression = (
-            assertion.test_xpath if isinstance(assertion, ValueAssertionDefinition)
-            else assertion.formula_xpath if isinstance(assertion, ConsistencyAssertionDefinition)
-            else assertion.test_xpath if isinstance(assertion, ExistenceAssertionDefinition)
+            assertion.test_xpath
+            if isinstance(assertion, ValueAssertionDefinition)
+            else assertion.formula_xpath
+            if isinstance(assertion, ConsistencyAssertionDefinition)
+            else assertion.test_xpath
+            if isinstance(assertion, ExistenceAssertionDefinition)
             else None
         )
         if not expression:
@@ -357,7 +377,9 @@ class FormulaEvaluator:
                 replacement = str(_coerce_value(var_def.fallback_value))
             else:
                 replacement = "[]"
-            rendered_expression = rendered_expression.replace(f"${var_def.variable_name}", replacement)
+            rendered_expression = rendered_expression.replace(
+                f"${var_def.variable_name}", replacement
+            )
 
         rendered_expression = re.sub(r"\s+", " ", rendered_expression).strip()
         if not rendered_expression:
@@ -401,21 +423,19 @@ class FormulaEvaluator:
             if first_fact.unit_ref:
                 unit_obj = instance.units.get(first_fact.unit_ref)
 
-        set_evaluation_context({
-            "_all_facts": instance.facts,
-            "_current_fact": first_fact,
-            "_context": ctx_obj,
-            "_unit": unit_obj,
-            "_instance": instance,
-            "_custom_functions": self._taxonomy.custom_functions,
-        })
+        set_evaluation_context(
+            {
+                "_all_facts": instance.facts,
+                "_current_fact": first_fact,
+                "_context": ctx_obj,
+                "_unit": unit_obj,
+                "_instance": instance,
+                "_custom_functions": self._taxonomy.custom_functions,
+            }
+        )
 
         context_item = next(
-            (
-                value
-                for value in variables.values()
-                if not isinstance(value, list) or value
-            ),
+            (value for value in variables.values() if not isinstance(value, list) or value),
             True,
         )
 
@@ -436,11 +456,14 @@ class FormulaEvaluator:
         self,
         assertion: FormulaAssertion,
         instance: XbrlInstance,
-    ) -> list[dict[str, list[Fact]]]:
-        """Produce the list of variable binding tuples for an assertion.
+        *,
+        facts_by_concept: dict[object, list[Fact]] | None = None,
+    ) -> Iterator[dict[str, list[Fact]]]:
+        """Yield variable binding tuples for an assertion.
 
         Each binding maps variable_name → list of matching facts.
-        Returns the Cartesian product of per-variable match sets.
+        The Cartesian product is streamed so large filings do not allocate all
+        binding combinations before the assertion can start evaluating.
         """
         all_facts = instance.facts
 
@@ -451,6 +474,8 @@ class FormulaEvaluator:
                 var_def,
                 instance,
                 custom_functions=self._taxonomy.custom_functions,
+                facts_by_concept=facts_by_concept,
+                xpath_token_cache=self._xpath_filter_token_cache,
             )
             # Each fact is one binding candidate for this variable
             # We group as list[list[Fact]] where each inner list is [one_fact]
@@ -463,18 +488,24 @@ class FormulaEvaluator:
             per_variable.append((var_def.variable_name, candidates))
 
         if not per_variable:
-            return [{}]
+            yield {}
+            return
 
         # Cartesian product across all variables
         variable_names = [name for name, _ in per_variable]
         candidate_lists = [candidates for _, candidates in per_variable]
-        result: list[dict[str, list[Fact]]] = []
         for combo in itertools.product(*candidate_lists):
             binding: dict[str, list[Fact]] = {
                 name: facts for name, facts in zip(variable_names, combo, strict=False)
             }
-            result.append(binding)
-        return result
+            yield binding
+
+    @staticmethod
+    def _facts_by_concept(instance: XbrlInstance) -> dict[object, list[Fact]]:
+        by_concept: dict[object, list[Fact]] = {}
+        for fact in instance.facts:
+            by_concept.setdefault(fact.concept, []).append(fact)
+        return by_concept
 
     # ------------------------------------------------------------------
     # Assertion evaluators
@@ -483,7 +514,7 @@ class FormulaEvaluator:
     def _evaluate_value_assertion(
         self,
         assertion: ValueAssertionDefinition,
-        bindings: list[dict[str, list[Fact]]],
+        bindings: Iterable[dict[str, list[Fact]]],
         instance: XbrlInstance,
     ) -> list[ValidationFinding]:
         """Evaluate @test XPath for each binding tuple."""
@@ -516,8 +547,8 @@ class FormulaEvaluator:
                     status=ValidationStatus.PASS if passed else ValidationStatus.FAIL,
                     default_message=(
                         f"Value assertion '{assertion.assertion_id}' passed"
-                        if passed else
-                        f"Value assertion '{assertion.assertion_id}' failed: "
+                        if passed
+                        else f"Value assertion '{assertion.assertion_id}' failed: "
                         f"test expression evaluated to false"
                     ),
                     fact=fact,
@@ -530,11 +561,14 @@ class FormulaEvaluator:
     def _evaluate_existence_assertion(
         self,
         assertion: ExistenceAssertionDefinition,
-        bindings: list[dict[str, list[Fact]]],
+        bindings: Iterable[dict[str, list[Fact]]],
         instance: XbrlInstance,
     ) -> list[ValidationFinding]:
         """Pass if at least one binding has a non-empty fact set."""
+        first_binding: dict[str, list[Fact]] | None = None
         for binding in bindings:
+            if first_binding is None:
+                first_binding = binding
             for facts in binding.values():
                 if facts:
                     return [
@@ -558,7 +592,7 @@ class FormulaEvaluator:
                     f"Existence assertion '{assertion.assertion_id}' failed: "
                     f"no matching facts found"
                 ),
-                binding=bindings[0] if bindings else None,
+                binding=first_binding,
                 instance=instance,
             )
         ]
@@ -566,7 +600,7 @@ class FormulaEvaluator:
     def _evaluate_consistency_assertion(
         self,
         assertion: ConsistencyAssertionDefinition,
-        bindings: list[dict[str, list[Fact]]],
+        bindings: Iterable[dict[str, list[Fact]]],
         instance: XbrlInstance,
     ) -> list[ValidationFinding]:
         """Evaluate formula expression; compare computed vs. actual fact value."""
@@ -607,8 +641,8 @@ class FormulaEvaluator:
                     status=ValidationStatus.PASS if passes else ValidationStatus.FAIL,
                     default_message=(
                         f"Consistency assertion '{assertion.assertion_id}' passed"
-                        if passes else
-                        f"Consistency assertion '{assertion.assertion_id}' failed: "
+                        if passes
+                        else f"Consistency assertion '{assertion.assertion_id}' failed: "
                         f"computed={computed_val}, actual={actual_val}, diff={difference}"
                     ),
                     fact=fact,
@@ -653,20 +687,20 @@ class FormulaEvaluator:
             if first_fact.unit_ref:
                 unit_obj = instance.units.get(first_fact.unit_ref)
 
-        set_evaluation_context({
-            "_all_facts": instance.facts,
-            "_current_fact": first_fact,
-            "_context": ctx_obj,
-            "_unit": unit_obj,
-            "_instance": instance,
-            "_custom_functions": self._taxonomy.custom_functions,
-        })
+        set_evaluation_context(
+            {
+                "_all_facts": instance.facts,
+                "_current_fact": first_fact,
+                "_context": ctx_obj,
+                "_unit": unit_obj,
+                "_instance": instance,
+                "_custom_functions": self._taxonomy.custom_functions,
+            }
+        )
 
         # Use the context item as a Decimal (for arithmetic) when available;
         # fall back to True as a harmless sentinel so elementpath stays happy.
-        context_item: Any = (
-            _coerce_value(first_fact.value) if first_fact is not None else True
-        )
+        context_item: Any = _coerce_value(first_fact.value) if first_fact is not None else True
 
         token = self._get_xpath_token(xpath_expr, namespaces)
         try:
@@ -705,9 +739,11 @@ class FormulaEvaluator:
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _sev(assertion: FormulaAssertion) -> ValidationSeverity:
     """Extract severity from assertion, defaulting to ERROR."""
     from bde_xbrl_editor.validation.models import ValidationSeverity as VS
+
     sev = assertion.severity
     if isinstance(sev, VS):
         return sev
