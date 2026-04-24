@@ -167,11 +167,10 @@ def _build_breakdown_node(
             continue
         tag = child_el.tag
 
-        if _is_table_ns_tag(tag, _DIMENSION_ASPECT_LOCALS):
-            if child_el.text:
-                dim_clark = _prefix_to_clark(child_el.text, child_el.nsmap)
-                if dim_clark:
-                    aspect_constraints["dimensionAspect"] = dim_clark
+        if _is_table_ns_tag(tag, _DIMENSION_ASPECT_LOCALS) and child_el.text:
+            dim_clark = _prefix_to_clark(child_el.text, child_el.nsmap)
+            if dim_clark:
+                aspect_constraints["dimensionAspect"] = dim_clark
 
         if tag == _F_CONCEPT:
             # <formula:concept><formula:qname>prefix:local</formula:qname></formula:concept>
@@ -687,10 +686,11 @@ def _parse_linkbase_element(
                 frm = el.get(_XLINK_FROM, "")
                 to = el.get(_XLINK_TO, "")
                 axis = el.get("axis", _AXIS_X)
-                if frm == table_xl and to:
+                if frm == table_xl and to and (
+                    to not in breakdown_arcs or arc_order < breakdown_arcs[to][0]
+                ):
                     # Keep only the lowest-order arc if duplicates exist
-                    if to not in breakdown_arcs or arc_order < breakdown_arcs[to][0]:
-                        breakdown_arcs[to] = (arc_order, axis)
+                    breakdown_arcs[to] = (arc_order, axis)
             elif local in ("breakdownTreeArc", "definitionNodeSubtreeArc"):
                 frm = el.get(_XLINK_FROM, "")
                 to = el.get(_XLINK_TO, "")

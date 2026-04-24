@@ -20,14 +20,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from bde_xbrl_editor.performance import LoadTiming, StageTiming, format_duration
 from bde_xbrl_editor.taxonomy import (
     LoaderSettings,
     TaxonomyCache,
     TaxonomyLoader,
 )
-from bde_xbrl_editor.performance import LoadTiming, StageTiming, format_duration
-from bde_xbrl_editor.ui.loading import InstanceLoadWorker, TaxonomyLoadWorker
 from bde_xbrl_editor.ui import theme
+from bde_xbrl_editor.ui.loading import InstanceLoadWorker, TaxonomyLoadWorker
 from bde_xbrl_editor.ui.widgets.loader_settings_dialog import (
     add_recent_file,
     add_recent_instance,
@@ -248,7 +248,7 @@ class TaxonomyLoaderWidget(QWidget):
 
         summary = QFrame()
         summary.setStyleSheet(
-            f"QFrame {{ background: rgba(255, 253, 248, 20); border: 1px solid rgba(255, 253, 248, 46);"
+            "QFrame { background: rgba(255, 253, 248, 20); border: 1px solid rgba(255, 253, 248, 46);"
             " border-radius: 10px; }}"
         )
         summary_layout = QVBoxLayout(summary)

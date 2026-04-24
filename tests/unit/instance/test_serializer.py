@@ -13,6 +13,7 @@ from bde_xbrl_editor.instance import (
     BdePreambulo,
     FilingIndicator,
     InstanceSerializer,
+    OrphanedFact,
     ReportingEntity,
     ReportingPeriod,
     XbrlContext,
@@ -246,6 +247,30 @@ class TestToXml:
         assert segment_member.text == "es-be-cm-dim:AgrupacionIndividual"
         assert scenario_member.get("dimension") == "dim:TableAxis"
         assert scenario_member.text == "dim:MemberA"
+
+    def test_orphaned_fact_round_trips_through_shared_fragment_parser(self):
+        inst = _make_minimal_instance()
+        context_ref = next(iter(inst.contexts))
+        inst.orphaned_facts.append(
+            OrphanedFact(
+                concept_qname_str="{http://example.com/extra}UnknownConcept",
+                context_ref=context_ref,
+                unit_ref=None,
+                value="kept",
+                decimals=None,
+                raw_element_xml=(
+                    b'<extra:UnknownConcept xmlns:extra="http://example.com/extra" '
+                    b'contextRef="' + context_ref.encode("utf-8") + b'">kept</extra:UnknownConcept>'
+                ),
+            )
+        )
+
+        root = etree.fromstring(InstanceSerializer().to_xml(inst))
+
+        orphan = root.find("{http://example.com/extra}UnknownConcept")
+        assert orphan is not None
+        assert orphan.get("contextRef") == context_ref
+        assert orphan.text == "kept"
 
 
 class TestSave:

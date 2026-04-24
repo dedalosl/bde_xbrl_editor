@@ -32,6 +32,7 @@ from bde_xbrl_editor.instance.models import (
     XbrlUnit,
 )
 from bde_xbrl_editor.taxonomy.models import QName
+from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_fragment
 
 # Standard namespace map declared on the root element (prefix → namespace)
 _BASE_NSMAP: dict[str, str] = {
@@ -422,7 +423,7 @@ class InstanceSerializer:
 
         # 7. Orphaned facts — preserved verbatim in original document order
         for orphan in instance.orphaned_facts:
-            orphan_el = etree.fromstring(orphan.raw_element_xml)  # noqa: S320
+            orphan_el = parse_xml_fragment(orphan.raw_element_xml)
             root.append(orphan_el)
 
         return etree.tostring(

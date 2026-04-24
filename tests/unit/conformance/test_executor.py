@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
-import pytest
-
-from bde_xbrl_editor.conformance.executor import TestCaseExecutor
+from bde_xbrl_editor.conformance.executor import (
+    TestCaseExecutor,
+    _validate_lax_known_declarations,
+    _validate_xlink_file,
+)
 from bde_xbrl_editor.conformance.models import (
     ExpectedOutcome,
     ExpectedOutcomeType,
@@ -12,7 +14,6 @@ from bde_xbrl_editor.conformance.models import (
 )
 from bde_xbrl_editor.taxonomy.cache import TaxonomyCache
 from bde_xbrl_editor.validation.models import ValidationFinding, ValidationSeverity
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -39,6 +40,254 @@ def _warning_finding(rule_id: str) -> ValidationFinding:
         message="test warning",
         source="structural",
     )
+
+
+def _write_xml(path, body: str) -> None:
+    path.write_text(
+        f"""<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:link="http://www.xbrl.org/2003/linkbase"
+           xmlns:xlink="http://www.w3.org/1999/xlink"
+           targetNamespace="http://example.com/test">
+  <xs:annotation>
+    <xs:appinfo>
+      {body}
+    </xs:appinfo>
+  </xs:annotation>
+  <xs:element name="source" id="source"/>
+  <xs:element name="target" id="target"/>
+</xs:schema>
+""",
+        encoding="utf-8",
+    )
+
+
+def _write_lax_defs(path) -> None:
+    path.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="http://example.com/lax"
+           elementFormDefault="qualified"
+           attributeFormDefault="unqualified">
+  <xs:element name="integerElement" type="xs:integer"/>
+  <xs:element name="stringElement" type="xs:string"/>
+  <xs:attribute name="integerAttribute" type="xs:integer"/>
+</xs:schema>
+""",
+        encoding="utf-8",
+    )
+
+
+def _write_linkbase(path, link_element: str) -> None:
+    path.write_text(
+        f"""<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+               xmlns:xlink="http://www.w3.org/1999/xlink">
+  <link:{link_element} xlink:type="extended" xlink:role="http://www.xbrl.org/2003/role/link"/>
+</link:linkbase>
+""",
+        encoding="utf-8",
+    )
+
+
+# ---------------------------------------------------------------------------
+# XLink/linkbase structural validation
+# ---------------------------------------------------------------------------
+
+
+def test_lax_validation_reports_known_integer_element(tmp_path) -> None:
+    defs_path = tmp_path / "defs.xsd"
+    _write_lax_defs(defs_path)
+    xml_path = tmp_path / "input.xml"
+    xml_path.write_text(
+        """<root xmlns:lax="http://example.com/lax"
+                 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                 xsi:schemaLocation="http://example.com/lax defs.xsd">
+  <lax:integerElement>not an integer</lax:integerElement>
+</root>
+""",
+        encoding="utf-8",
+    )
+
+    findings = _validate_lax_known_declarations((xml_path,))
+
+    assert [finding.rule_id for finding in findings] == [
+        "xmlschema:lax-validation-error"
+    ]
+
+
+def test_lax_validation_allows_unknown_open_content(tmp_path) -> None:
+    defs_path = tmp_path / "defs.xsd"
+    _write_lax_defs(defs_path)
+    xml_path = tmp_path / "input.xml"
+    xml_path.write_text(
+        """<root xmlns:lax="http://example.com/lax"
+                 xmlns:other="http://example.com/other"
+                 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                 xsi:schemaLocation="http://example.com/lax defs.xsd">
+  <other:unknownElement>not checked in lax mode</other:unknownElement>
+</root>
+""",
+        encoding="utf-8",
+    )
+
+    assert _validate_lax_known_declarations((xml_path,)) == ()
+
+
+def test_lax_validation_reports_known_integer_attribute(tmp_path) -> None:
+    defs_path = tmp_path / "defs.xsd"
+    _write_lax_defs(defs_path)
+    xml_path = tmp_path / "input.xml"
+    xml_path.write_text(
+        """<root xmlns:lax="http://example.com/lax"
+                 xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                 xsi:schemaLocation="http://example.com/lax defs.xsd"
+                 lax:integerAttribute="not an integer"/>
+""",
+        encoding="utf-8",
+    )
+
+    findings = _validate_lax_known_declarations((xml_path,))
+
+    assert [finding.rule_id for finding in findings] == [
+        "xmlschema:lax-validation-error"
+    ]
+
+
+def test_lax_validation_checks_xml_language_and_space(tmp_path) -> None:
+    xml_path = tmp_path / "input.xml"
+    xml_path.write_text(
+        """<root xml:lang="x-startrek-klingonian" xml:space="bad"/>""",
+        encoding="utf-8",
+    )
+
+    findings = _validate_lax_known_declarations((xml_path,))
+
+    assert [finding.rule_id for finding in findings] == [
+        "xmlschema:lax-validation-error",
+        "xmlschema:lax-validation-error",
+    ]
+
+
+def test_lax_validation_reports_known_element_in_linkbase_content(tmp_path) -> None:
+    defs_path = tmp_path / "defs.xsd"
+    _write_lax_defs(defs_path)
+    xml_path = tmp_path / "linkbase.xml"
+    xml_path.write_text(
+        """<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+                  xmlns:xlink="http://www.w3.org/1999/xlink"
+                  xmlns:lax="http://example.com/lax"
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  xsi:schemaLocation="http://example.com/lax defs.xsd">
+  <link:labelLink xlink:type="extended">
+    <lax:stringElement>declared but not allowed here</lax:stringElement>
+  </link:labelLink>
+</link:linkbase>
+""",
+        encoding="utf-8",
+    )
+
+    findings = _validate_lax_known_declarations((xml_path,))
+
+    assert [finding.rule_id for finding in findings] == [
+        "xmlschema:lax-validation-error"
+    ]
+
+
+def test_xlink_allows_duplicate_role_refs_in_different_linkbases(tmp_path) -> None:
+    xml_path = tmp_path / "different-linkbases.xsd"
+    _write_xml(
+        xml_path,
+        """
+      <link:linkbase>
+        <link:roleRef xlink:type="simple" xlink:href="#role" roleURI="http://example.com/role"/>
+        <link:definitionLink xlink:type="extended">
+          <link:loc xlink:type="locator" xlink:href="#source" xlink:label="source"/>
+        </link:definitionLink>
+      </link:linkbase>
+      <link:linkbase>
+        <link:roleRef xlink:type="simple" xlink:href="#role" roleURI="http://example.com/role"/>
+        <link:definitionLink xlink:type="extended">
+          <link:loc xlink:type="locator" xlink:href="#target" xlink:label="target"/>
+        </link:definitionLink>
+      </link:linkbase>
+""",
+    )
+
+    assert _validate_xlink_file(xml_path) == []
+
+
+def test_xlink_reports_duplicate_role_refs_in_same_linkbase(tmp_path) -> None:
+    xml_path = tmp_path / "duplicate-role-ref.xsd"
+    _write_xml(
+        xml_path,
+        """
+      <link:linkbase>
+        <link:roleRef xlink:type="simple" xlink:href="#role" roleURI="http://example.com/role"/>
+        <link:roleRef xlink:type="simple" xlink:href="#role" roleURI="http://example.com/role"/>
+      </link:linkbase>
+""",
+    )
+
+    findings = _validate_xlink_file(xml_path)
+
+    assert [finding.rule_id for finding in findings] == ["xbrl:duplicate-role-ref"]
+
+
+def test_xlink_reports_duplicate_arcrole_refs_in_same_linkbase(tmp_path) -> None:
+    xml_path = tmp_path / "duplicate-arcrole-ref.xsd"
+    _write_xml(
+        xml_path,
+        """
+      <link:linkbase>
+        <link:arcroleRef xlink:type="simple" xlink:href="#arcrole" arcroleURI="http://example.com/arcrole"/>
+        <link:arcroleRef xlink:type="simple" xlink:href="#arcrole" arcroleURI="http://example.com/arcrole"/>
+      </link:linkbase>
+""",
+    )
+
+    findings = _validate_xlink_file(xml_path)
+
+    assert [finding.rule_id for finding in findings] == ["xbrl:duplicate-arcrole-ref"]
+
+
+def test_linkbase_ref_role_must_match_target_linkbase_type(tmp_path) -> None:
+    _write_linkbase(tmp_path / "references.xml", "referenceLink")
+    xml_path = tmp_path / "schema.xsd"
+    _write_xml(
+        xml_path,
+        """
+      <link:linkbaseRef xlink:type="simple"
+                        xlink:href="references.xml"
+                        xlink:role="http://www.xbrl.org/2003/role/labelLinkbaseRef"
+                        xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase"/>
+""",
+    )
+
+    findings = _validate_xlink_file(xml_path)
+
+    assert [finding.rule_id for finding in findings] == [
+        "xbrl:linkbase-reference-error"
+    ]
+
+
+def test_linkbase_ref_uses_xml_base_when_resolving_target(tmp_path) -> None:
+    base_dir = tmp_path / "base"
+    base_dir.mkdir()
+    _write_linkbase(base_dir / "labels.xml", "labelLink")
+    xml_path = tmp_path / "schema.xsd"
+    _write_xml(
+        xml_path,
+        """
+      <link:linkbaseRef xlink:type="simple"
+                        xml:base="base/"
+                        xlink:href="labels.xml"
+                        xlink:role="http://www.xbrl.org/2003/role/labelLinkbaseRef"
+                        xlink:arcrole="http://www.w3.org/1999/xlink/properties/linkbase"/>
+""",
+    )
+
+    assert _validate_xlink_file(xml_path) == []
 
 
 # ---------------------------------------------------------------------------

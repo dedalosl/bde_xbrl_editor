@@ -7,9 +7,6 @@ from pathlib import Path
 
 import pytest
 
-# QApplication must exist before creating QObject subclasses with signals
-from PySide6.QtWidgets import QApplication
-
 from bde_xbrl_editor.instance.editor import InstanceEditor
 from bde_xbrl_editor.instance.models import (
     DuplicateFactError,
@@ -19,8 +16,6 @@ from bde_xbrl_editor.instance.models import (
     XbrlInstance,
 )
 from bde_xbrl_editor.taxonomy.models import QName
-
-_app = QApplication.instance() or QApplication([])
 
 # ---------------------------------------------------------------------------
 # Helpers

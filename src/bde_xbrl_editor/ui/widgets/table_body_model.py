@@ -203,9 +203,7 @@ class TableBodyModel(QAbstractTableModel):
         row, col = index.row(), index.column()
         if row < len(self._layout.body) and col < len(self._layout.body[row]):
             cell = self._layout.body[row][col]
-            if cell.cell_kind == "open-key":
-                base |= Qt.ItemFlag.ItemIsEditable
-            elif cell.is_applicable and not cell.is_excluded:
+            if cell.cell_kind == "open-key" or cell.is_applicable and not cell.is_excluded:
                 base |= Qt.ItemFlag.ItemIsEditable
         return base
 

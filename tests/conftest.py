@@ -1,6 +1,13 @@
 """Shared test fixtures for bde_xbrl_editor tests."""
 
+from __future__ import annotations
+
+import os
 from pathlib import Path
+
+# Qt must be configured before any PySide6 import. Without this, headless
+# collection can abort before pytest has a chance to run fixtures.
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
 

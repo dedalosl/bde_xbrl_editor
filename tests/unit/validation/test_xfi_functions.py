@@ -1,11 +1,12 @@
 """Unit tests for xfi: function implementations (validation/formula/xfi_functions.py)."""
 from __future__ import annotations
 
+import logging
 from datetime import date
 from decimal import Decimal
 
-import pytest
 import elementpath
+import pytest
 
 from bde_xbrl_editor.instance.models import (
     Fact,
@@ -21,18 +22,19 @@ from bde_xbrl_editor.validation.formula.xfi_functions import (
     iaf_numeric_add,
     iaf_sum,
     set_evaluation_context,
-    xfi_decimal,          # backward-compat alias
+    xfi_decimal,  # backward-compat alias
     xfi_decimals,
     xfi_entity,
     xfi_fact_explicit_dimensions,
+    xfi_fact_has_explicit_dimension,
     xfi_fact_typed_dimension_value,
     xfi_fact_typed_dimensions,
-    xfi_is_instant_period,
     xfi_is_duration_period,
+    xfi_is_instant_period,
     xfi_period,
+    xfi_period_end,
     xfi_period_instant,
     xfi_period_start,
-    xfi_period_end,
     xfi_unit,
 )
 
@@ -240,6 +242,15 @@ class TestTypedDimensions:
         assert xfi_fact_typed_dimension_value(fact, dim_qname) == "Entidad A"
         assert xfi_fact_typed_dimensions(fact) == [str(dim_qname)]
         assert xfi_fact_explicit_dimensions(fact) == []
+
+    def test_malformed_dimension_qname_argument_logs_debug(self, caplog) -> None:
+        fact = _fact()
+        _set_ctx({"_context": _instant_ctx(), "_fact": fact})
+
+        with caplog.at_level(logging.DEBUG, logger="bde_xbrl_editor.validation.formula.xfi_functions"):
+            assert xfi_fact_has_explicit_dimension(fact, "{http://example.com/dim") is False
+
+        assert "Could not parse QName argument" in caplog.text
 
 
 # ---------------------------------------------------------------------------

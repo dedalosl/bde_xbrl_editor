@@ -15,6 +15,7 @@ from bde_xbrl_editor.conformance.models import (
     TestVariation,
 )
 from bde_xbrl_editor.conformance.registry import SuiteDefinition
+from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
 
 log = logging.getLogger(__name__)
 
@@ -110,7 +111,7 @@ class ConformanceSuiteParser:
     ) -> list[Path]:
         """Parse the index XML and return absolute paths to all test case files."""
         try:
-            tree = etree.parse(str(index_path))  # noqa: S320
+            tree = parse_xml_file(index_path)
         except etree.XMLSyntaxError as exc:
             raise TestCaseParseError(index_path, f"XML syntax error: {exc}") from exc
 
@@ -150,7 +151,7 @@ class ConformanceSuiteParser:
     def _parse_test_case(self, tc_path: Path, suite_id: str) -> TestCase:
         """Parse a single test case XML file into a TestCase model."""
         try:
-            tree = etree.parse(str(tc_path))  # noqa: S320
+            tree = parse_xml_file(tc_path)
         except etree.XMLSyntaxError as exc:
             raise TestCaseParseError(tc_path, f"XML syntax error: {exc}") from exc
 

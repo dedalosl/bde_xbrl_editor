@@ -69,8 +69,8 @@ class BodyCell:
     cell_code: str | None = None  # row_fin_code + col_fin_code
     cell_kind: str = "fact"  # fact | open-key | placeholder
     open_key_signature: tuple[Any, ...] | None = None
-    open_key_dimension: "QName | None" = None
-    open_key_member: "QName | None" = None
+    open_key_dimension: QName | None = None
+    open_key_member: QName | None = None
     open_key_text: str | None = None
     open_key_options: tuple[Any, ...] = field(default_factory=tuple)
     fact_options: tuple[str, ...] = field(default_factory=tuple)
@@ -106,4 +106,4 @@ class ComputedTableLayout:
     z_members: list[ZMemberOption]
     active_z_index: int
     body: list[list[BodyCell]]  # body[row][col]
-    active_z_constraints: dict["QName", "QName"] = field(default_factory=dict)
+    active_z_constraints: dict[QName, QName] = field(default_factory=dict)

@@ -15,8 +15,8 @@ pytest.importorskip("PySide6", reason="PySide6 not available - UI flow tests ski
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QScrollArea, QSplitter
 
-from bde_xbrl_editor.performance import LoadTiming, StageTiming
 from bde_xbrl_editor.instance.models import ReportingEntity, ReportingPeriod, XbrlInstance
+from bde_xbrl_editor.performance import LoadTiming, StageTiming
 from bde_xbrl_editor.taxonomy.models import (
     FactVariableDefinition,
     FormulaAssertionSet,

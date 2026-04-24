@@ -232,6 +232,8 @@ class CalculationArc:
     order: float
     weight: float  # +1.0 (add) or −1.0 (subtract)
     extended_link_role: str
+    use: str = "optional"
+    equivalence_key: tuple = field(default_factory=tuple)
 
 
 # ---------------------------------------------------------------------------

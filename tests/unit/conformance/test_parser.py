@@ -7,12 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from bde_xbrl_editor.conformance.errors import SuiteDataMissingError, TestCaseParseError
-from bde_xbrl_editor.conformance.models import (
-    ExpectedOutcomeType,
-    TestCase,
-    TestVariation,
-)
+import bde_xbrl_editor.conformance.parser as parser_module
+from bde_xbrl_editor.conformance.errors import SuiteDataMissingError
+from bde_xbrl_editor.conformance.models import ExpectedOutcomeType
 from bde_xbrl_editor.conformance.parser import ConformanceSuiteParser
 from bde_xbrl_editor.conformance.registry import SuiteDefinition
 
@@ -69,10 +66,10 @@ def test_parse_flat_testcases_index(tmp_path: Path) -> None:
           </variation>
         </testcase>
     """
-    tc_path = _write(tmp_path, "suite/testcases/001-test.xml", tc_content)
+    _write(tmp_path, "suite/testcases/001-test.xml", tc_content)
     _write(tmp_path, "suite/testcases/foo.xsd", "<schema/>")
 
-    index_content = f"""\
+    index_content = """\
         <?xml version="1.0"?>
         <testcases name="Test">
           <testcase uri="testcases/001-test.xml"/>
@@ -89,6 +86,47 @@ def test_parse_flat_testcases_index(tmp_path: Path) -> None:
     assert len(test_cases[0].variations) == 1
 
 
+def test_conformance_parser_uses_shared_xml_file_helper(monkeypatch, tmp_path: Path) -> None:
+    tc_content = """\
+        <?xml version="1.0"?>
+        <testcase name="MyTest">
+          <variation id="V-01">
+            <data><xsd readMeFirst="true">foo.xsd</xsd></data>
+            <result expected="valid"/>
+          </variation>
+        </testcase>
+    """
+    _write(tmp_path, "suite/testcases/001-test.xml", tc_content)
+    _write(
+        tmp_path,
+        "suite/index.xml",
+        """\
+        <?xml version="1.0"?>
+        <testcases name="Test">
+          <testcase uri="testcases/001-test.xml"/>
+        </testcases>
+        """,
+    )
+    parser = ConformanceSuiteParser(tmp_path)
+    suite_def = _make_suite_def(subdirectory="suite", index_filename="index.xml")
+    parsed_paths: list[Path] = []
+    original_parse_xml_file = parser_module.parse_xml_file
+
+    def recording_parse_xml_file(path: Path):
+        parsed_paths.append(path)
+        return original_parse_xml_file(path)
+
+    monkeypatch.setattr(parser_module, "parse_xml_file", recording_parse_xml_file)
+
+    test_cases = parser.load_suite(suite_def)
+
+    assert len(test_cases) == 1
+    assert parsed_paths == [
+        tmp_path / "suite/index.xml",
+        (tmp_path / "suite/testcases/001-test.xml").resolve(),
+    ]
+
+
 def test_parse_formula_documentation_index(tmp_path: Path) -> None:
     """Formula format: <documentation><testcases><testcase uri="..."/></testcases>"""
     tc_content = """\
@@ -100,7 +138,7 @@ def test_parse_formula_documentation_index(tmp_path: Path) -> None:
           </variation>
         </testcase>
     """
-    tc_path = _write(tmp_path, "formula-suite/tests/001-test.xml", tc_content)
+    _write(tmp_path, "formula-suite/tests/001-test.xml", tc_content)
     _write(tmp_path, "formula-suite/tests/test.xsd", "<schema/>")
 
     index_content = """\

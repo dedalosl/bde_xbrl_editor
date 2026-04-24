@@ -55,14 +55,22 @@ def _normalize_lexical(el: etree._Element, raw: str) -> tuple[str, str]:
     s = raw.strip()
     if not s:
         return ("empty", "")
+    low = s.lower()
+    if low == "true":
+        return ("dec", "1")
+    if low == "false":
+        return ("dec", "0")
     try:
         d = Decimal(s)
+        if d.is_nan():
+            # XML Schema NaN is not equal to itself, so it must not collapse
+            # otherwise-identical segment/scenario fragments into one S-equal key.
+            return ("nan", str(id(el)))
+        if d.is_zero():
+            return ("dec", "0")
         return ("dec", format(d.normalize(), "f"))
     except InvalidOperation:
         pass
-    low = s.lower()
-    if low in ("true", "false"):
-        return ("bool", low)
     if s.startswith("{") or ":" in s:
         return ("qname", _resolve_prefixed_qname(el, s))
     return ("str", s)
@@ -96,6 +104,7 @@ def build_s_equal_key_from_xml_fragments(
     period: ReportingPeriod,
     scenario_el: etree._Element | None,
     segment_el: etree._Element | None,
+    period_key: tuple | None = None,
 ) -> tuple:
     """Full context S-equal signature from parsed XML (segment/scenario subtrees)."""
     sch = entity.scheme.strip()
@@ -104,7 +113,7 @@ def build_s_equal_key_from_xml_fragments(
         "ctxseq1",
         sch,
         ident,
-        _period_key(period),
+        period_key if period_key is not None else _period_key(period),
         _container_children_key(scenario_el),
         _container_children_key(segment_el),
     )

@@ -2,21 +2,21 @@
 
 from __future__ import annotations
 
+import enum
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import StrEnum
 from typing import Literal
 
 from bde_xbrl_editor.performance import StageTiming
 from bde_xbrl_editor.taxonomy.models import QName
 
 
-class ValidationSeverity(StrEnum):
+class ValidationSeverity(enum.StrEnum):
     ERROR = "error"
     WARNING = "warning"
 
 
-class ValidationStatus(StrEnum):
+class ValidationStatus(enum.StrEnum):
     PASS = "pass"
     FAIL = "fail"
 
