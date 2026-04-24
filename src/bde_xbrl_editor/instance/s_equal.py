@@ -21,6 +21,7 @@ if TYPE_CHECKING:
     from bde_xbrl_editor.instance.models import XbrlInstance
 
 _XBRLDI_EXPLICIT = f"{{{XBRLDI_NS}}}explicitMember"
+_XBRLDI_TYPED = f"{{{XBRLDI_NS}}}typedMember"
 _DIM_ATTR = f"{{{XBRLDI_NS}}}dimension"
 
 
@@ -54,14 +55,22 @@ def _normalize_lexical(el: etree._Element, raw: str) -> tuple[str, str]:
     s = raw.strip()
     if not s:
         return ("empty", "")
+    low = s.lower()
+    if low == "true":
+        return ("dec", "1")
+    if low == "false":
+        return ("dec", "0")
     try:
         d = Decimal(s)
+        if d.is_nan():
+            # XML Schema NaN is not equal to itself, so it must not collapse
+            # otherwise-identical segment/scenario fragments into one S-equal key.
+            return ("nan", str(id(el)))
+        if d.is_zero():
+            return ("dec", "0")
         return ("dec", format(d.normalize(), "f"))
     except InvalidOperation:
         pass
-    low = s.lower()
-    if low in ("true", "false"):
-        return ("bool", low)
     if s.startswith("{") or ":" in s:
         return ("qname", _resolve_prefixed_qname(el, s))
     return ("str", s)
@@ -95,6 +104,7 @@ def build_s_equal_key_from_xml_fragments(
     period: ReportingPeriod,
     scenario_el: etree._Element | None,
     segment_el: etree._Element | None,
+    period_key: tuple | None = None,
 ) -> tuple:
     """Full context S-equal signature from parsed XML (segment/scenario subtrees)."""
     sch = entity.scheme.strip()
@@ -103,7 +113,7 @@ def build_s_equal_key_from_xml_fragments(
         "ctxseq1",
         sch,
         ident,
-        _period_key(period),
+        period_key if period_key is not None else _period_key(period),
         _container_children_key(scenario_el),
         _container_children_key(segment_el),
     )
@@ -118,22 +128,44 @@ def build_s_equal_key_from_model(ctx: XbrlContext) -> tuple:
     sch = ctx.entity.scheme.strip()
     ident = ctx.entity.identifier.strip()
     pk = _period_key(ctx.period)
-    members: list[tuple] = []
+    scenario_members: list[tuple] = []
+    segment_members: list[tuple] = []
+    typed_dims = ctx.typed_dimensions or {}
+    dim_containers = ctx.dim_containers or {}
     for dim, mem in sorted(ctx.dimensions.items(), key=lambda kv: str(kv[0])):
+        if dim in typed_dims:
+            continue
         dim_clark = _qname_clark_from_model(dim)
         mem_clark = _qname_clark_from_model(mem)
-        members.append(
-            (
-                _XBRLDI_EXPLICIT,
-                ((_DIM_ATTR, ("qname", dim_clark)),),
-                ("qname", mem_clark),
-                (),
-            )
+        member_tuple = (
+            _XBRLDI_EXPLICIT,
+            ((_DIM_ATTR, ("qname", dim_clark)),),
+            ("qname", mem_clark),
+            (),
         )
-    dim_tuple = tuple(members)
-    if ctx.context_element == "segment":
-        return ("ctxseq1", sch, ident, pk, (), dim_tuple)
-    return ("ctxseq1", sch, ident, pk, dim_tuple, ())
+        target = (
+            segment_members
+            if dim_containers.get(dim, ctx.context_element) == "segment"
+            else scenario_members
+        )
+        target.append(member_tuple)
+    for dim, value in sorted(typed_dims.items(), key=lambda kv: str(kv[0])):
+        dim_clark = _qname_clark_from_model(dim)
+        typed_element = (ctx.typed_dimension_elements or {}).get(dim, dim)
+        typed_child_tag = _qname_clark_from_model(typed_element)
+        member_tuple = (
+            _XBRLDI_TYPED,
+            ((_DIM_ATTR, ("qname", dim_clark)),),
+            None,
+            ((typed_child_tag, (), ("str", value.strip()), ()),),
+        )
+        target = (
+            segment_members
+            if dim_containers.get(dim, ctx.context_element) == "segment"
+            else scenario_members
+        )
+        target.append(member_tuple)
+    return ("ctxseq1", sch, ident, pk, tuple(scenario_members), tuple(segment_members))
 
 
 def effective_s_equal_key(ctx: XbrlContext) -> tuple:

@@ -119,9 +119,18 @@ class Concept:
     nillable: bool = True
     substitution_group: QName | None = None
     xml_id: str | None = None  # @id attribute from the XSD element declaration
+    typed_domain_ref: str | None = None
+    schema_path: str | None = None
     # True when the item type is xbrli:monetaryItemType or a restriction/extension
     # thereof (used for ISO 4217 unit validation).
     monetary_item_type: bool = False
+    # Lexical values from XSD enumeration facets (e.g. QNameItemType restrictions)
+    # and/or Extensible Enumerations 1.0/2.0 (expanded-name URI "ns#local" per EE2).
+    enumeration_values: tuple[str, ...] = field(default_factory=tuple)
+    # EE 1.0 / EE 2.0 — domain members come from definition linkbase (not XSD facets).
+    enumeration_domain: QName | None = None
+    enumeration_linkrole: str | None = None
+    enumeration_head_usable: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -223,6 +232,8 @@ class CalculationArc:
     order: float
     weight: float  # +1.0 (add) or −1.0 (subtract)
     extended_link_role: str
+    use: str = "optional"
+    equivalence_key: tuple = field(default_factory=tuple)
 
 
 # ---------------------------------------------------------------------------

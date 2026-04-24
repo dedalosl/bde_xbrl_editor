@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import time
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, QTimer
@@ -23,6 +24,12 @@ from PySide6.QtWidgets import (
 )
 from shiboken6 import isValid
 
+from bde_xbrl_editor.performance import (
+    LoadTiming,
+    StageTiming,
+    format_duration,
+    format_stage_timings,
+)
 from bde_xbrl_editor.taxonomy import TaxonomyCache, TaxonomyStructure
 from bde_xbrl_editor.ui import theme
 from bde_xbrl_editor.ui.loading import InstanceLoadWorker
@@ -34,6 +41,8 @@ from bde_xbrl_editor.ui.widgets.taxonomy_loader_widget import TaxonomyLoaderWidg
 
 class MainWindow(QMainWindow):
     """Application main window."""
+
+    _INITIAL_TABLE_RENDER_DELAY_MS = 16
 
     def __init__(self) -> None:
         super().__init__()
@@ -57,6 +66,9 @@ class MainWindow(QMainWindow):
         self._loading_dialog: TaxonomyProgressDialog | None = None
         self._instance_open_thread: QThread | None = None
         self._instance_open_worker: InstanceLoadWorker | None = None
+        self._pending_load_timing: LoadTiming | None = None
+        self._pending_initial_table_started_at: float | None = None
+        self._instance_open_started_at: float | None = None
 
         # Validation
         self._validation_thread: QThread | None = None
@@ -278,8 +290,12 @@ class MainWindow(QMainWindow):
                 self._editor.changes_made.disconnect(self._on_changes_made)
                 self._editor.filing_indicators_changed.disconnect(self._on_filing_indicators_changed)
         self._editor = None
+        if self._table_view is not None:
+            self._table_view.set_editor(None)
         self._current_instance = None
         self._clear_browser_view_refs()
+        self._pending_load_timing = None
+        self._pending_initial_table_started_at = None
 
         widget = TaxonomyLoaderWidget(
             cache=self._cache,
@@ -308,22 +324,38 @@ class MainWindow(QMainWindow):
         self._show_loader_widget()
 
     def _on_taxonomy_loaded(self, structure: TaxonomyStructure) -> None:
+        workspace_started_at = time.perf_counter()
         self._current_instance = None
         self._editor = None
+        if self._table_view is not None:
+            self._table_view.set_editor(None)
         self._current_taxonomy = structure
         meta = structure.metadata
         table_count = len(structure.tables)
         concept_count = len(structure.concepts)
-        self._status.showMessage(
-            f"Loaded: {meta.name} v{meta.version} — "
-            f"{concept_count} concepts, {table_count} tables"
-        )
         self._reload_action.setEnabled(True)
         self._new_instance_action.setEnabled(True)
         self._open_instance_action.setEnabled(True)
         self._close_taxonomy_action.setEnabled(True)
 
         self._setup_browser_layout()
+        workspace_elapsed = time.perf_counter() - workspace_started_at
+        loader_timing = self._loader_widget.last_taxonomy_load_timing if self._loader_widget is not None else None
+        if loader_timing is not None:
+            self._pending_load_timing = LoadTiming(
+                total_seconds=loader_timing.total_seconds + workspace_elapsed,
+                stages=loader_timing.stages + (StageTiming("workspace", workspace_elapsed),),
+            )
+            timing_text = format_stage_timings(self._pending_load_timing.stages)
+            self._status.showMessage(
+                f"Loaded: {meta.name} v{meta.version} — "
+                f"{concept_count} concepts, {table_count} tables — {timing_text}"
+            )
+        else:
+            self._status.showMessage(
+                f"Loaded: {meta.name} v{meta.version} — "
+                f"{concept_count} concepts, {table_count} tables"
+            )
 
     def _on_instance_loaded_from_widget(self, instance, taxonomy: TaxonomyStructure) -> None:
         """Handle an instance+taxonomy loaded directly from the welcome screen."""
@@ -333,6 +365,11 @@ class MainWindow(QMainWindow):
         self._new_instance_action.setEnabled(True)
         self._open_instance_action.setEnabled(True)
         self._close_taxonomy_action.setEnabled(True)
+        self._pending_load_timing = (
+            self._loader_widget.last_instance_load_timing
+            if self._loader_widget is not None
+            else None
+        )
         self._status.showMessage(
             f"Loaded: {meta.name} v{meta.version} — "
             f"{len(taxonomy.concepts)} concepts, {len(taxonomy.tables)} tables"
@@ -344,7 +381,12 @@ class MainWindow(QMainWindow):
         from bde_xbrl_editor.ui.widgets.xbrl_table_view import XbrlTableView  # noqa: PLC0415
 
         assert self._current_taxonomy is not None
-        self._sidebar = ActivitySidebar(self._current_taxonomy, parent=self)
+        self._sidebar = ActivitySidebar(
+            self._current_taxonomy,
+            parent=self,
+            visible_indexes=(1, 2),
+            initial_index=1,
+        )
         self._sidebar.table_selected.connect(self._on_table_selected)
         self._sidebar.width_changed.connect(self._on_sidebar_width_changed)
 
@@ -370,8 +412,8 @@ class MainWindow(QMainWindow):
 
         self.setCentralWidget(container)
 
-        # Defer first-table render so the splitter/headers are fully laid out first
-        QTimer.singleShot(0, self._select_first_taxonomy_table)
+        # Give Qt a chance to paint the workspace shell before the first table render starts.
+        QTimer.singleShot(self._INITIAL_TABLE_RENDER_DELAY_MS, self._select_first_taxonomy_table)
 
     # ------------------------------------------------------------------
     # Context bar
@@ -620,6 +662,7 @@ class MainWindow(QMainWindow):
 
     def _select_first_taxonomy_table(self) -> None:
         if self._sidebar is not None and isValid(self._sidebar):
+            self._pending_initial_table_started_at = time.perf_counter()
             self._sidebar.select_first_table()
 
     def _on_reload(self) -> None:
@@ -639,7 +682,7 @@ class MainWindow(QMainWindow):
         if wizard.exec() == QDialog.DialogCode.Accepted:
             instance = wizard.created_instance
             if instance:
-                self._load_instance(instance)
+                self._load_instance(instance, enable_editing=True)
 
     # ------------------------------------------------------------------
     # File → Open Instance (T015)
@@ -669,6 +712,8 @@ class MainWindow(QMainWindow):
 
         self._status.showMessage("Opening instance…")
         self._open_instance_action.setEnabled(False)
+        self._instance_open_started_at = time.perf_counter()
+        self._pending_load_timing = None
         self._instance_open_worker = InstanceLoadWorker(self._cache, self._settings, path_str)
         self._instance_open_worker.set_preloaded_taxonomy(self._current_taxonomy)
         self._instance_open_thread = QThread(self)
@@ -719,9 +764,19 @@ class MainWindow(QMainWindow):
 
     def _on_open_instance_finished(self, instance, taxonomy: TaxonomyStructure) -> None:
         self._cleanup_instance_open_thread()
+        elapsed = 0.0
+        if self._instance_open_started_at is not None:
+            elapsed = time.perf_counter() - self._instance_open_started_at
+        self._pending_load_timing = LoadTiming(
+            total_seconds=elapsed,
+            stages=(StageTiming("instance parse", elapsed),),
+        )
         if self._loading_dialog is not None:
-            self._loading_dialog.update_progress("Opening workspace…", 100, 100)
-        self._close_loading_dialog()
+            self._loading_dialog.update_progress(
+                f"Opening workspace… after {format_duration(elapsed)}",
+                100,
+                100,
+            )
         self._current_taxonomy = taxonomy
         self._reload_action.setEnabled(True)
         self._new_instance_action.setEnabled(True)
@@ -753,9 +808,10 @@ class MainWindow(QMainWindow):
             f"taxonomy and will be preserved verbatim on save.",
         )
 
-    def _load_instance(self, instance) -> None:
+    def _load_instance(self, instance, *, enable_editing: bool = False) -> None:
         from bde_xbrl_editor.instance.editor import InstanceEditor  # noqa: PLC0415
         from bde_xbrl_editor.ui.widgets.xbrl_table_view import XbrlTableView  # noqa: PLC0415
+        workspace_started_at = time.perf_counter()
 
         # Disconnect old editor signals
         if self._editor is not None:
@@ -766,19 +822,23 @@ class MainWindow(QMainWindow):
         self._editor = InstanceEditor(instance, parent=self)
         self._editor.changes_made.connect(self._on_changes_made)
         self._editor.filing_indicators_changed.connect(self._on_filing_indicators_changed)
+        if self._table_view is not None:
+            self._table_view.set_editor(self._editor)
 
         self._table_view = XbrlTableView(parent=self)
         self._table_view.editing_mode_changed.connect(self._on_table_editing_mode_changed)
         self._table_view.layout_ready.connect(self._on_table_layout_ready)
 
-        # Ensure the sidebar exists (may be absent when loading directly from welcome screen)
-        if self._sidebar is None or not isValid(self._sidebar):
-            self._sidebar = ActivitySidebar(self._current_taxonomy, parent=self)
-            self._sidebar.table_selected.connect(self._on_table_selected)
-            self._sidebar.width_changed.connect(self._on_sidebar_width_changed)
-
-        # Switch the sidebar to instance mode and use it as the single table browser.
+        self._sidebar = ActivitySidebar(
+            self._current_taxonomy,
+            parent=self,
+            visible_indexes=(3,),
+            initial_index=3,
+        )
+        self._sidebar.table_selected.connect(self._on_table_selected)
+        self._sidebar.width_changed.connect(self._on_sidebar_width_changed)
         self._sidebar.set_instance(instance, self._current_taxonomy, self._editor)
+        self._table_view.set_editing_enabled(enable_editing)
         self._sidebar.set_instance_editing_enabled(self._table_view.editing_enabled)
 
         splitter = QSplitter(self)
@@ -820,8 +880,16 @@ class MainWindow(QMainWindow):
             self._validation_panel.clear()
         self._show_validation_panel_action.setEnabled(True)
 
-        # Let the workspace shell paint first, then render the initial table.
-        QTimer.singleShot(0, self._select_initial_instance_table)
+        self._close_loading_dialog()
+        workspace_elapsed = time.perf_counter() - workspace_started_at
+        if self._pending_load_timing is not None:
+            self._pending_load_timing = LoadTiming(
+                total_seconds=self._pending_load_timing.total_seconds + workspace_elapsed,
+                stages=self._pending_load_timing.stages + (StageTiming("workspace", workspace_elapsed),),
+            )
+
+        # Give Qt a chance to paint the workspace shell before the first table render starts.
+        QTimer.singleShot(self._INITIAL_TABLE_RENDER_DELAY_MS, self._select_initial_instance_table)
 
     def _on_sidebar_width_changed(self, width: int) -> None:
         splitter = self._browser_splitter
@@ -837,7 +905,10 @@ class MainWindow(QMainWindow):
             main_width = max(total - width, 0)
             splitter.setSizes([width, main_width])
 
-        QTimer.singleShot(0, _apply)
+        if splitter.width() > 0 or sum(splitter.sizes()) > 0:
+            _apply()
+        else:
+            QTimer.singleShot(0, _apply)
 
     def _select_initial_instance_table(self) -> None:
         if (
@@ -849,6 +920,7 @@ class MainWindow(QMainWindow):
             or self._table_view.active_table_id is not None
         ):
             return
+        self._pending_initial_table_started_at = time.perf_counter()
         self._sidebar.select_first_instance_table()
 
     # ------------------------------------------------------------------
@@ -879,23 +951,44 @@ class MainWindow(QMainWindow):
 
     def _on_table_layout_ready(self, layout) -> None:
         if (
-            self._editor is None
-            or self._table_view is None
+            self._table_view is None
             or self._current_taxonomy is None
             or layout is None
         ):
             return
-        from bde_xbrl_editor.ui.widgets.cell_edit_delegate import (
-            CellEditDelegate,  # noqa: PLC0415
-        )
+        if self._editor is not None:
+            from bde_xbrl_editor.ui.widgets.cell_edit_delegate import (
+                CellEditDelegate,  # noqa: PLC0415
+            )
 
-        delegate = CellEditDelegate(
-            taxonomy=self._current_taxonomy,
-            editor=self._editor,
-            table_layout=layout,
-            table_view_widget=self._table_view._body_view,
-        )
-        self._table_view._body_view.setItemDelegate(delegate)
+            delegate = CellEditDelegate(
+                taxonomy=self._current_taxonomy,
+                editor=self._editor,
+                table_layout=layout,
+                table_view_widget=self._table_view._body_view,
+            )
+            self._table_view._body_view.setItemDelegate(delegate)
+            self._table_view.set_editor(self._editor)
+        if self._pending_initial_table_started_at is not None:
+            first_table_elapsed = time.perf_counter() - self._pending_initial_table_started_at
+            if self._pending_load_timing is not None:
+                final_timing = LoadTiming(
+                    total_seconds=self._pending_load_timing.total_seconds + first_table_elapsed,
+                    stages=self._pending_load_timing.stages + (StageTiming("first table", first_table_elapsed),),
+                )
+                timing_text = format_stage_timings(final_timing.stages)
+                if self._current_instance is not None:
+                    self._status.showMessage(
+                        f"Opened: {self._current_instance.source_path} — "
+                        f"{len(self._current_instance.facts)} facts, {len(self._current_instance.contexts)} contexts — {timing_text}"
+                    )
+                else:
+                    meta = self._current_taxonomy.metadata
+                    self._status.showMessage(
+                        f"Loaded: {meta.name} v{meta.version} — "
+                        f"{len(self._current_taxonomy.concepts)} concepts, {len(self._current_taxonomy.tables)} tables — {timing_text}"
+                    )
+            self._pending_initial_table_started_at = None
 
     def _on_changes_made(self) -> None:
         self.setWindowModified(True)
@@ -953,9 +1046,9 @@ class MainWindow(QMainWindow):
         self._do_save(target)
 
     def _do_save(self, path: Path) -> None:
+        from bde_xbrl_editor.instance.constants import is_bde_schema_ref  # noqa: PLC0415
         from bde_xbrl_editor.instance.models import InstanceSaveError  # noqa: PLC0415
         from bde_xbrl_editor.instance.serializer import InstanceSerializer  # noqa: PLC0415
-        from bde_xbrl_editor.instance.constants import is_bde_schema_ref  # noqa: PLC0415
 
         if self._current_instance is not None and (
             is_bde_schema_ref(self._current_instance.schema_ref_href)
@@ -1104,7 +1197,13 @@ class MainWindow(QMainWindow):
         if self._validation_panel:
             self._validation_panel.show_report(report)
         status = "PASSED" if report.passed else f"FAILED ({report.error_count} error(s))"
-        self._status.showMessage(f"Validation {status}")
+        if report.stage_timings:
+            self._status.showMessage(
+                f"Validation {status} in {format_duration(report.total_elapsed_seconds)} — "
+                f"{format_stage_timings(report.stage_timings)}"
+            )
+        else:
+            self._status.showMessage(f"Validation {status}")
 
     def _on_validation_error(self, error_message: str) -> None:
         self._cleanup_validation_thread()

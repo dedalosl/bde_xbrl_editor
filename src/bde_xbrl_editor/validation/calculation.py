@@ -160,8 +160,20 @@ class CalculationConsistencyValidator:
         if not arcs:
             return findings
 
+        prohibited = {
+            arc.equivalence_key
+            for arc in arcs
+            if arc.use == "prohibited" and arc.equivalence_key
+        }
+        active_arcs = [
+            arc
+            for arc in arcs
+            if arc.use != "prohibited"
+            and (not arc.equivalence_key or arc.equivalence_key not in prohibited)
+        ]
+
         by_parent: dict[QName, list[CalculationArc]] = defaultdict(list)
-        for arc in arcs:
+        for arc in active_arcs:
             if arc.parent == arc.child:
                 continue
             by_parent[arc.parent].append(arc)

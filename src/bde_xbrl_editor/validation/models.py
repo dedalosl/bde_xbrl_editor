@@ -2,20 +2,21 @@
 
 from __future__ import annotations
 
+import enum
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import StrEnum
 from typing import Literal
 
+from bde_xbrl_editor.performance import StageTiming
 from bde_xbrl_editor.taxonomy.models import QName
 
 
-class ValidationSeverity(StrEnum):
+class ValidationSeverity(enum.StrEnum):
     ERROR = "error"
     WARNING = "warning"
 
 
-class ValidationStatus(StrEnum):
+class ValidationStatus(enum.StrEnum):
     PASS = "pass"
     FAIL = "fail"
 
@@ -58,6 +59,7 @@ class ValidationReport:
     findings: tuple[ValidationFinding, ...]
     formula_linkbase_available: bool
     structural_checks_run: bool = True
+    stage_timings: tuple[StageTiming, ...] = field(default_factory=tuple)
 
     @property
     def error_count(self) -> int:
@@ -74,6 +76,10 @@ class ValidationReport:
     @property
     def pass_count(self) -> int:
         return sum(1 for f in self.findings if f.status == ValidationStatus.PASS)
+
+    @property
+    def total_elapsed_seconds(self) -> float:
+        return sum(stage.elapsed_seconds for stage in self.stage_timings)
 
     def findings_for_table(self, table_id: str) -> tuple[ValidationFinding, ...]:
         return tuple(f for f in self.findings if f.table_id == table_id)

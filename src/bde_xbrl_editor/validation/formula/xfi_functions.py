@@ -25,12 +25,19 @@ Usage
 
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
+import logging
 import re
+from decimal import Decimal, InvalidOperation
 from types import SimpleNamespace
 from typing import Any
 
 from bde_xbrl_editor.taxonomy.models import CustomFunctionDefinition
+from bde_xbrl_editor.validation.formula.xpath_registration import (
+    build_registered_parser_class,
+    register_custom_functions,
+)
+
+log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Namespaces
@@ -125,8 +132,8 @@ def _to_xsd_date(d: Any) -> Any:
             return Date10.fromstring(d.date().isoformat())
         if isinstance(d, date):
             return Date10.fromstring(d.isoformat())
-    except Exception:  # noqa: BLE001
-        pass
+    except (ImportError, TypeError, ValueError) as exc:
+        log.debug("Could not convert %r to xs:date: %s", d, exc)
     return None
 
 
@@ -139,8 +146,8 @@ def _to_xsd_datetime(d: Any) -> Any:
             return DateTime10.fromstring(d.isoformat())
         if isinstance(d, date):
             return DateTime10.fromstring(f"{d.isoformat()}T00:00:00")
-    except Exception:  # noqa: BLE001
-        pass
+    except (ImportError, TypeError, ValueError) as exc:
+        log.debug("Could not convert %r to xs:dateTime: %s", d, exc)
     return None
 
 
@@ -448,11 +455,23 @@ def xfi_measure_name(measure_arg: Any) -> str:
 # ── Dimension functions ───────────────────────────────────────────────────
 
 def _get_context_dimensions(fact_arg: Any) -> dict:
-    """Return the dimensions dict for the relevant context."""
+    """Return explicit dimensions for the relevant context."""
     ctx = _context_from_arg(fact_arg)
     if ctx is None:
         return {}
-    return getattr(ctx, "dimensions", {}) or {}
+    typed_keys = set((getattr(ctx, "typed_dimensions", {}) or {}).keys())
+    return {
+        dim_qname: member_qname
+        for dim_qname, member_qname in (getattr(ctx, "dimensions", {}) or {}).items()
+        if dim_qname not in typed_keys
+    }
+
+
+def _get_context_typed_dimensions(fact_arg: Any) -> dict:
+    ctx = _context_from_arg(fact_arg)
+    if ctx is None:
+        return {}
+    return getattr(ctx, "typed_dimensions", {}) or {}
 
 
 def _qname_from_arg(qname_arg: Any) -> Any:
@@ -468,8 +487,8 @@ def _qname_from_arg(qname_arg: Any) -> Any:
         try:
             from bde_xbrl_editor.taxonomy.models import QName
             return QName.from_clark(s)
-        except Exception:  # noqa: BLE001
-            pass
+        except ValueError as exc:
+            log.debug("Could not parse QName argument %r: %s", qname_arg, exc)
     return None
 
 
@@ -483,9 +502,12 @@ def xfi_fact_has_explicit_dimension(fact_arg: Any, dim_qname_arg: Any) -> bool:
 
 
 def xfi_fact_has_typed_dimension(fact_arg: Any, dim_qname_arg: Any) -> bool:
-    """xfi:fact-has-typed-dimension($fact, $dimension) → boolean.
-    We model typed dimensions the same as explicit ones for now."""
-    return xfi_fact_has_explicit_dimension(fact_arg, dim_qname_arg)
+    """xfi:fact-has-typed-dimension($fact, $dimension) → boolean."""
+    dims = _get_context_typed_dimensions(fact_arg)
+    qn = _qname_from_arg(dim_qname_arg)
+    if qn is None:
+        return False
+    return qn in dims
 
 
 def xfi_fact_has_explicit_dimension_value(
@@ -517,12 +539,17 @@ def xfi_fact_explicit_dimension_value(fact_arg: Any, dim_qname_arg: Any) -> str:
 
 def xfi_fact_typed_dimension_value(fact_arg: Any, dim_qname_arg: Any) -> str:
     """xfi:fact-typed-dimension-value($fact, $dimension) → typed value string."""
-    return xfi_fact_explicit_dimension_value(fact_arg, dim_qname_arg)
+    dims = _get_context_typed_dimensions(fact_arg)
+    qn = _qname_from_arg(dim_qname_arg)
+    if qn is None:
+        return ""
+    value = dims.get(qn)
+    return str(value) if value is not None else ""
 
 
 def xfi_fact_typed_dimension_simple_value(fact_arg: Any, dim_qname_arg: Any) -> str:
     """xfi:fact-typed-dimension-simple-value($fact, $dim) → xs:string."""
-    return xfi_fact_explicit_dimension_value(fact_arg, dim_qname_arg)
+    return xfi_fact_typed_dimension_value(fact_arg, dim_qname_arg)
 
 
 def xfi_fact_explicit_dimensions(fact_arg: Any) -> list[str]:
@@ -533,7 +560,8 @@ def xfi_fact_explicit_dimensions(fact_arg: Any) -> list[str]:
 
 def xfi_fact_typed_dimensions(fact_arg: Any) -> list[str]:
     """xfi:fact-typed-dimensions($fact) → sequence of typed dimension QName strings."""
-    return xfi_fact_explicit_dimensions(fact_arg)
+    dims = _get_context_typed_dimensions(fact_arg)
+    return [str(k) for k in dims]
 
 
 def xfi_fact_dimension_s_equal(
@@ -546,10 +574,12 @@ def xfi_fact_dimension_s_equal(
 def xfi_fact_dimension_s_equal2(fact1_arg: Any, fact2_arg: Any) -> bool:
     """xfi:fact-dimension-s-equal2($fact1, $fact2) → dimensional context equality."""
     dims1 = _get_context_dimensions(fact1_arg)
+    typed_dims1 = _get_context_typed_dimensions(fact1_arg)
     # For fact2, temporarily swap context
     ctx2 = _context_from_arg(fact2_arg)
-    dims2 = getattr(ctx2, "dimensions", {}) or {} if ctx2 else {}
-    return dims1 == dims2
+    dims2 = _get_context_dimensions(fact2_arg) if ctx2 else {}
+    typed_dims2 = _get_context_typed_dimensions(fact2_arg) if ctx2 else {}
+    return dims1 == dims2 and typed_dims1 == typed_dims2
 
 
 def xfi_fact_segment_remainder(fact_arg: Any) -> list:
@@ -1300,49 +1330,6 @@ _EFN_FUNCTIONS: list[tuple[str, Any]] = [
 ]
 
 
-def _build_xbrl_parser_class() -> type:
-    """Create and return the XbrlFormulaParser class with all xfi: functions
-    registered at class level (done once at module import time).
-
-    The class has its own copy of the elementpath XPath2Parser symbol table so
-    we never mutate the base parser.
-    """
-    import elementpath
-
-    class XbrlFormulaParser(elementpath.XPath2Parser):
-        symbol_table = dict(elementpath.XPath2Parser.symbol_table)
-        function_signatures = dict(elementpath.XPath2Parser.function_signatures)
-
-    # Register all xfi:, efn:, and iaf: functions on a temporary instance, then promote to class
-    _temp = XbrlFormulaParser(namespaces={"xfi": _XFI_NS, "efn": _EFN_NS, "iaf": _IAF_NS})
-    for local_name, callback in _XFI_FUNCTIONS:
-        try:
-            _temp.external_function(callback, name=local_name, prefix="xfi", sequence_types=())
-        except Exception:  # noqa: BLE001
-            pass  # skip if already registered or name collision
-    for local_name, callback in _EFN_FUNCTIONS:
-        try:
-            _temp.external_function(callback, name=local_name, prefix="efn", sequence_types=())
-        except Exception:  # noqa: BLE001
-            pass
-    for local_name, callback, sequence_types in _IAF_FUNCTIONS:
-        try:
-            _temp.external_function(
-                callback,
-                name=local_name,
-                prefix="iaf",
-                sequence_types=sequence_types,
-            )
-        except Exception:  # noqa: BLE001
-            pass
-
-    # Promote instance symbol table → class level so all future instances inherit it
-    XbrlFormulaParser.symbol_table = _temp.symbol_table
-    XbrlFormulaParser.function_signatures = _temp.function_signatures
-
-    return XbrlFormulaParser
-
-
 # Singleton parser class (built once at first access)
 _XbrlFormulaParserClass: type | None = None
 
@@ -1350,7 +1337,14 @@ _XbrlFormulaParserClass: type | None = None
 def _get_parser_class() -> type:
     global _XbrlFormulaParserClass
     if _XbrlFormulaParserClass is None:
-        _XbrlFormulaParserClass = _build_xbrl_parser_class()
+        _XbrlFormulaParserClass = build_registered_parser_class(
+            xfi_namespace=_XFI_NS,
+            efn_namespace=_EFN_NS,
+            iaf_namespace=_IAF_NS,
+            xfi_functions=_XFI_FUNCTIONS,
+            efn_functions=_EFN_FUNCTIONS,
+            iaf_functions=_IAF_FUNCTIONS,
+        )
     return _XbrlFormulaParserClass
 
 
@@ -1360,15 +1354,6 @@ def _normalize_xpath_value(result: list[Any]) -> Any:
     if len(result) == 1:
         return result[0]
     return result
-
-
-def _custom_function_groups(
-    definitions: tuple[CustomFunctionDefinition, ...],
-) -> dict[tuple[str, str], list[CustomFunctionDefinition]]:
-    groups: dict[tuple[str, str], list[CustomFunctionDefinition]] = {}
-    for definition in definitions:
-        groups.setdefault((definition.namespace, definition.local_name), []).append(definition)
-    return groups
 
 
 def _select_custom_functions(
@@ -1466,26 +1451,6 @@ def _normalize_custom_function_expression(expression: str) -> str:
     return re.sub(r"schema-element\([^)]+\)", "element()", expression)
 
 
-def _register_custom_functions(
-    parser: Any,
-    definitions: tuple[CustomFunctionDefinition, ...],
-) -> None:
-    for grouped_definitions in _custom_function_groups(definitions).values():
-        definition = grouped_definitions[0]
-        prefix = definition.prefix
-        if prefix and prefix not in parser.namespaces:
-            parser.namespaces[prefix] = definition.namespace
-        try:
-            parser.external_function(
-                _make_custom_function_callback(grouped_definitions),
-                name=definition.local_name,
-                prefix=prefix,
-                sequence_types=(),
-            )
-        except Exception:  # noqa: BLE001
-            pass
-
-
 def build_formula_parser(
     namespaces: dict[str, str] | None = None,
     custom_functions: tuple[CustomFunctionDefinition, ...] = (),
@@ -1508,5 +1473,9 @@ def build_formula_parser(
             tuple(expression_hints),
         ) if expression_hints else custom_functions
         if selected_functions:
-            _register_custom_functions(parser, selected_functions)
+            register_custom_functions(
+                parser,
+                selected_functions,
+                _make_custom_function_callback,
+            )
     return parser

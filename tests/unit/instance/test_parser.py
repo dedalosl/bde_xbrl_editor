@@ -9,6 +9,7 @@ from unittest.mock import ANY, MagicMock
 
 import pytest
 
+import bde_xbrl_editor.instance.parser as parser_module
 from bde_xbrl_editor.instance.models import (
     InstanceParseError,
     TaxonomyResolutionError,
@@ -168,6 +169,23 @@ def test_parse_error_missing_schema_ref(tmp_path: Path) -> None:
         parser.load(xml)
 
 
+def test_parser_uses_shared_xml_file_helper(monkeypatch, tmp_path: Path) -> None:
+    p = _write_xbrl(tmp_path, "")
+    parser, _ = _make_parser()
+    parsed_paths: list[Path] = []
+    original_parse_xml_file = parser_module.parse_xml_file
+
+    def recording_parse_xml_file(path: Path):
+        parsed_paths.append(path)
+        return original_parse_xml_file(path)
+
+    monkeypatch.setattr(parser_module, "parse_xml_file", recording_parse_xml_file)
+
+    parser.load(p)
+
+    assert parsed_paths == [p]
+
+
 # ---------------------------------------------------------------------------
 # Tests: taxonomy resolution
 # ---------------------------------------------------------------------------
@@ -197,6 +215,75 @@ def test_manual_resolver_called_as_fallback(tmp_path: Path) -> None:
     instance, _ = parser.load(p)
     resolver.assert_called_once_with("remote.xsd")
     assert instance is not None
+
+
+def test_parser_preserves_typed_dimension_value_and_element(tmp_path: Path) -> None:
+    parser, _ = _make_parser()
+    xbrl = _write_xbrl(
+        tmp_path,
+        """
+  <xbrli:context id="ctx1">
+    <xbrli:entity><xbrli:identifier scheme="http://example.com/entity">E1</xbrli:identifier></xbrli:entity>
+    <xbrli:period><xbrli:instant>2024-12-31</xbrli:instant></xbrli:period>
+    <xbrli:scenario xmlns:xbrldi="http://xbrl.org/2006/xbrldi" xmlns:dim="http://example.com/dim" xmlns:dom="http://example.com/dom">
+      <xbrldi:typedMember dimension="dim:qLIN"><dom:qLE>Entidad A</dom:qLE></xbrldi:typedMember>
+    </xbrli:scenario>
+  </xbrli:context>
+        """,
+    )
+
+    instance, _ = parser.load(xbrl)
+    ctx = instance.contexts["ctx1"]
+    dim_qname = QName(namespace="http://example.com/dim", local_name="qLIN", prefix="dim")
+    assert ctx.dimensions[dim_qname] == dim_qname
+    assert ctx.typed_dimensions[dim_qname] == "Entidad A"
+    assert ctx.typed_dimension_elements[dim_qname] == QName(namespace="http://example.com/dom", local_name="qLE")
+
+
+def test_malformed_explicit_dimension_qname_raises_parse_error(tmp_path: Path) -> None:
+    parser, _ = _make_parser()
+    xbrl = _write_xbrl(
+        tmp_path,
+        """
+  <xbrli:context id="ctx_bad_explicit">
+    <xbrli:entity><xbrli:identifier scheme="http://example.com/entity">E1</xbrli:identifier></xbrli:entity>
+    <xbrli:period><xbrli:instant>2024-12-31</xbrli:instant></xbrli:period>
+    <xbrli:scenario xmlns:xbrldi="http://xbrl.org/2006/xbrldi" xmlns:dom="http://example.com/dom">
+      <xbrldi:explicitMember dimension="missing:Axis">dom:Member</xbrldi:explicitMember>
+    </xbrli:scenario>
+  </xbrli:context>
+        """,
+    )
+
+    with pytest.raises(
+        InstanceParseError,
+        match="missing:Axis.*ctx_bad_explicit.*prefix 'missing' is not declared",
+    ):
+        parser.load(xbrl)
+
+
+def test_malformed_typed_dimension_qname_raises_parse_error(tmp_path: Path) -> None:
+    parser, _ = _make_parser()
+    xbrl = _write_xbrl(
+        tmp_path,
+        """
+  <xbrli:context id="ctx_bad_typed">
+    <xbrli:entity><xbrli:identifier scheme="http://example.com/entity">E1</xbrli:identifier></xbrli:entity>
+    <xbrli:period><xbrli:instant>2024-12-31</xbrli:instant></xbrli:period>
+    <xbrli:scenario xmlns:xbrldi="http://xbrl.org/2006/xbrldi" xmlns:dom="http://example.com/dom">
+      <xbrldi:typedMember dimension="{http://example.com/dim">
+        <dom:qLE>Entidad A</dom:qLE>
+      </xbrldi:typedMember>
+    </xbrli:scenario>
+  </xbrli:context>
+        """,
+    )
+
+    with pytest.raises(
+        InstanceParseError,
+        match=r"\{http://example\.com/dim.*ctx_bad_typed",
+    ):
+        parser.load(xbrl)
 
 
 def test_local_catalog_resolves_bde_fr_schema_ref_to_cache_path(tmp_path: Path) -> None:
@@ -538,7 +625,7 @@ def test_bde_preambulo_parses_estados_reportados(tmp_path: Path) -> None:
 
 def test_bde_preambulo_parses_blanco_estado(tmp_path: Path) -> None:
     """CodigoEstado with es-be-cm-pblo:blanco='true' sets blanco=True."""
-    body = textwrap.dedent(f"""\
+    body = textwrap.dedent("""\
         <xbrli:context id="cBasico">
           <xbrli:entity>
             <xbrli:identifier scheme="http://www.ecb.int/stats/money/mfi">ES9000</xbrli:identifier>

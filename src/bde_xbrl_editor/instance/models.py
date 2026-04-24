@@ -212,6 +212,8 @@ class XbrlContext:
     entity: ReportingEntity
     period: ReportingPeriod
     dimensions: dict[QName, QName] = field(default_factory=dict)
+    typed_dimensions: dict[QName, str] = field(default_factory=dict)
+    typed_dimension_elements: dict[QName, QName] = field(default_factory=dict)
     context_element: Literal["scenario", "segment"] = "scenario"
     # Per-dimension container: "segment" or "scenario" for each dimension QName.
     # Used to validate xbrldt:contextElement constraints on hypercubes.

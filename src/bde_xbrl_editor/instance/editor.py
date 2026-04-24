@@ -78,6 +78,26 @@ class InstanceEditor(QObject):
         self._instance.remove_fact(fact_index)
         self.changes_made.emit()
 
+    def reassign_facts_context(self, fact_indexes: list[int], context_ref: ContextId) -> None:
+        """Move existing facts to a different context and emit one change notification."""
+        unique_indexes = sorted(set(fact_indexes))
+        if not unique_indexes:
+            return
+
+        moving = set(unique_indexes)
+        for fact_index in unique_indexes:
+            fact = self._instance.facts[fact_index]
+            for other_index, other_fact in enumerate(self._instance.facts):
+                if other_index in moving:
+                    continue
+                if other_fact.concept == fact.concept and other_fact.context_ref == context_ref:
+                    raise DuplicateFactError(fact.concept, context_ref)
+
+        for fact_index in unique_indexes:
+            self._instance.facts[fact_index].context_ref = context_ref
+        self._instance._dirty = True  # noqa: SLF001
+        self.changes_made.emit()
+
     def mark_saved(self, path: Path) -> None:
         """Called by InstanceSerializer.save(). Sets source_path and clears dirty flag."""
         self._instance.mark_saved(path)

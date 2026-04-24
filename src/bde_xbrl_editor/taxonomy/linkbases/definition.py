@@ -136,16 +136,12 @@ def parse_definition_linkbase(
     hc_primary: dict[str, list[tuple[QName, QName, str, bool, str, str | None]]] = {}
     # elr → list of (hypercube, dimension)
     hc_dims: dict[str, list[tuple[QName, QName]]] = {}
-    # dimension → list of (domain, member, parent, order, usable)
+    # dimension → default domain root (kept for compatibility in DimensionModel.domain)
     dim_domain: dict[QName, QName] = {}
+    # dimension-domain arcs with ELR scoping for downstream member expansion
+    dim_domain_arcs: list[tuple[QName, QName, str, float, bool]] = []
     dim_members: dict[QName, list[tuple[QName, QName | None, float, bool]]] = {}
     dim_defaults: dict[QName, QName] = {}
-    # Deferred domain-member arcs: collected during the main loop and resolved
-    # against dim_domain AFTER all definitionLink elements have been processed.
-    # This is necessary because dimension-domain arcs (which populate dim_domain)
-    # may appear in a later definitionLink than the domain-member arcs that reference
-    # those dimensions (e.g. when targetRole points to a separate ELR link).
-    _deferred_dm_arcs: list[tuple[QName, QName, float, bool]] = []
 
     for link_el in root.iter(_DEF_LINK):
         elr = link_el.get(_XLINK_ROLE, "http://www.xbrl.org/2003/role/link")
@@ -212,25 +208,38 @@ def parse_definition_linkbase(
             elif arcrole == ARCROLE_DIMENSION_DOMAIN:
                 dim_domain[source] = target
                 domain_usable = usable if usable is not None else True
-                dim_members.setdefault(source, []).append((target, None, order, domain_usable))
-            elif arcrole == ARCROLE_DOMAIN_MEMBER:
-                # Defer resolution: dim_domain may not be fully populated yet if
-                # dimension-domain arcs appear in a later definitionLink element.
-                _deferred_dm_arcs.append(
-                    (source, target, order, usable if usable is not None else True)
+                dim_members.setdefault(source, []).append(
+                    (target, None, order, domain_usable)
                 )
+                dm_start_elr = target_role if target_role else elr
+                dim_domain_arcs.append(
+                    (source, target, dm_start_elr, order, domain_usable)
+                )
+            elif arcrole == ARCROLE_DOMAIN_MEMBER:
+                # Domain-member relationships are resolved after all arcs are parsed.
+                # Keep the DefinitionArc in arcs_by_elr; no eager dimension binding.
+                pass
             elif arcrole == ARCROLE_DIMENSION_DEFAULT:
                 dim_defaults[source] = target
 
-    # Second pass: resolve deferred domain-member arcs now that dim_domain is complete.
-    for dm_source, dm_target, dm_order, dm_usable in _deferred_dm_arcs:
-        for dim_q in dim_domain:
-            # Heuristic: associate every domain-member arc with every known dimension.
-            # Proper resolution would require full ELR + targetRole scoping, but this
-            # is sufficient for all known BDE and conformance-suite taxonomies.
-            dim_members.setdefault(dim_q, []).append(
-                (dm_target, dm_source, dm_order, dm_usable)
-            )
+    # Resolve dimension members using each dimension-domain root and ELR scope.
+    # This avoids the previous over-broad heuristic that attached every
+    # domain-member arc to every known dimension.
+    seen_dim_members: dict[QName, set[tuple[QName, QName | None, float, bool]]] = {}
+    for dim_q, domain_q, start_elr, dm_order, dm_usable in dim_domain_arcs:
+        members = dim_members.setdefault(dim_q, [])
+        member_keys = seen_dim_members.setdefault(dim_q, set())
+
+        root_key = (domain_q, None, dm_order, dm_usable)
+        if root_key not in member_keys:
+            member_keys.add(root_key)
+            members.append(root_key)
+
+        for child_q in _collect_domain_member_descendants(domain_q, start_elr, arcs_by_elr):
+            child_key = (child_q, domain_q, 1.0, True)
+            if child_key not in member_keys:
+                member_keys.add(child_key)
+                members.append(child_key)
 
     # Build HypercubeModel objects
     hypercubes: list[HypercubeModel] = []
@@ -238,17 +247,24 @@ def parse_definition_linkbase(
         expanded_primaries: set[QName] = {p for p, *_ in prim_list}
         bfs_queue: list[tuple[QName, QName, str, bool, str, str | None]] = list(prim_list)
         for primary, hc, arcrole, closed, ctx, tgt_role in bfs_queue:
-            start_elr = tgt_role or elr
-            for child in _collect_domain_member_descendants(
-                primary,
-                start_elr,
-                arcs_by_elr,
-            ):
-                if child not in expanded_primaries:
-                    expanded_primaries.add(child)
-                    new_entry = (child, hc, arcrole, closed, ctx, tgt_role)
-                    prim_list.append(new_entry)
-                    bfs_queue.append(new_entry)
+            # Primary-item inheritance follows domain-member relationships.
+            # Some taxonomies keep those relationships in the has-hypercube ELR,
+            # others in the targetRole ELR. Traverse both to avoid missing
+            # inherited primary items.
+            start_elrs = [elr]
+            if tgt_role and tgt_role != elr:
+                start_elrs.append(tgt_role)
+            for start_elr in start_elrs:
+                for child in _collect_domain_member_descendants(
+                    primary,
+                    start_elr,
+                    arcs_by_elr,
+                ):
+                    if child not in expanded_primaries:
+                        expanded_primaries.add(child)
+                        new_entry = (child, hc, arcrole, closed, ctx, tgt_role)
+                        prim_list.append(new_entry)
+                        bfs_queue.append(new_entry)
 
         # Group by hypercube, tracking the targetRole of each hypercube's all/notAll arc.
         # hc → (arcrole, closed, ctx, target_role)

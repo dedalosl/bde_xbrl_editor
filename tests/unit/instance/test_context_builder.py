@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date
 
 from bde_xbrl_editor.instance.context_builder import (
+    build_dimensional_context,
     build_filing_indicator_context,
     deduplicate_contexts,
     generate_context_id,
@@ -76,6 +77,21 @@ class TestGenerateContextId:
         e, p = _entity(), _duration_period()
         assert generate_context_id(e, p) == generate_context_id(e, p)
 
+    def test_typed_dimensions_change_context_id(self):
+        e, p = _entity(), _instant_period()
+        dim = QName("http://example.com/ns", "TypedDim")
+        id1 = generate_context_id(e, p, {}, {dim: "A"})
+        id2 = generate_context_id(e, p, {}, {dim: "B"})
+        assert id1 != id2
+
+    def test_different_dimension_containers_change_context_id(self):
+        e, p = _entity(), _instant_period()
+        dim = QName("http://example.com/ns", "DimA")
+        mem = QName("http://example.com/ns", "Mem1")
+        id1 = generate_context_id(e, p, {dim: mem}, dim_containers={dim: "scenario"})
+        id2 = generate_context_id(e, p, {dim: mem}, dim_containers={dim: "segment"})
+        assert id1 != id2
+
 
 class TestBuildFilingIndicatorContext:
     def test_returns_xbrl_context(self):
@@ -102,6 +118,22 @@ class TestBuildFilingIndicatorContext:
             _entity(), _instant_period(), context_element="segment"
         )
         assert ctx.context_element == "segment"
+
+
+class TestBuildDimensionalContext:
+    def test_typed_dimensions_are_preserved_and_placeholder_is_added(self):
+        dim = QName("http://example.com/ns", "TypedDim")
+        typed_el = QName("http://example.com/ns", "typedValue")
+        ctx = build_dimensional_context(
+            _entity(),
+            _instant_period(),
+            {},
+            typed_dimensions={dim: "ABC"},
+            typed_dimension_elements={dim: typed_el},
+        )
+        assert ctx.typed_dimensions == {dim: "ABC"}
+        assert ctx.typed_dimension_elements == {dim: typed_el}
+        assert ctx.dimensions == {dim: dim}
 
 
 class TestDeduplicateContexts:

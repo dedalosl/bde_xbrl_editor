@@ -9,10 +9,12 @@ from __future__ import annotations
 
 import contextlib
 import threading
+import time
 from collections.abc import Callable
 from datetime import datetime
 
 from bde_xbrl_editor.instance.models import XbrlInstance
+from bde_xbrl_editor.performance import StageTiming
 from bde_xbrl_editor.taxonomy.models import TaxonomyStructure
 from bde_xbrl_editor.validation.calculation import CalculationConsistencyValidator
 from bde_xbrl_editor.validation.dimensional import DimensionalConstraintValidator
@@ -53,9 +55,11 @@ class InstanceValidator:
         individual validators are caught and turned into error findings.
         """
         findings: list[ValidationFinding] = []
+        stage_timings: list[StageTiming] = []
 
         # --- 1. Structural checks -------------------------------------------
         if not (self._cancel_event and self._cancel_event.is_set()):
+            stage_started_at = time.perf_counter()
             if self._progress_callback:
                 with contextlib.suppress(Exception):
                     self._progress_callback(0, 4, "Running structural checks…")
@@ -73,9 +77,13 @@ class InstanceValidator:
                 ),)
                 findings.extend(stage_findings)
                 self._publish_findings(stage_findings)
+            stage_timings.append(
+                StageTiming("structural", time.perf_counter() - stage_started_at)
+            )
 
         # --- 2. Calculation (summation-item) checks -------------------------
         if not (self._cancel_event and self._cancel_event.is_set()):
+            stage_started_at = time.perf_counter()
             if self._progress_callback:
                 with contextlib.suppress(Exception):
                     self._progress_callback(1, 4, "Running calculation checks…")
@@ -93,9 +101,13 @@ class InstanceValidator:
                 ),)
                 findings.extend(stage_findings)
                 self._publish_findings(stage_findings)
+            stage_timings.append(
+                StageTiming("calculation", time.perf_counter() - stage_started_at)
+            )
 
         # --- 3. Dimensional checks -------------------------------------------
         if not (self._cancel_event and self._cancel_event.is_set()):
+            stage_started_at = time.perf_counter()
             if self._progress_callback:
                 with contextlib.suppress(Exception):
                     self._progress_callback(2, 4, "Running dimensional checks…")
@@ -113,12 +125,16 @@ class InstanceValidator:
                 ),)
                 findings.extend(stage_findings)
                 self._publish_findings(stage_findings)
+            stage_timings.append(
+                StageTiming("dimensional", time.perf_counter() - stage_started_at)
+            )
 
         # --- 4. Formula assertions ------------------------------------------
         formula_available = bool(
             self._taxonomy.formula_assertion_set.assertions
         )
         if not (self._cancel_event and self._cancel_event.is_set()):
+            stage_started_at = time.perf_counter()
             if self._progress_callback:
                 with contextlib.suppress(Exception):
                     self._progress_callback(3, 4, "Evaluating formula assertions…")
@@ -139,10 +155,14 @@ class InstanceValidator:
                 ),)
                 findings.extend(stage_findings)
                 self._publish_findings(stage_findings)
+            stage_timings.append(
+                StageTiming("formula", time.perf_counter() - stage_started_at)
+            )
 
         if self._progress_callback:
             with contextlib.suppress(Exception):
-                self._progress_callback(4, 4, "Validation complete")
+                elapsed_total = sum(stage.elapsed_seconds for stage in stage_timings)
+                self._progress_callback(4, 4, f"Validation complete ({elapsed_total:.2f}s)")
 
         meta = self._taxonomy.metadata
         return ValidationReport(
@@ -155,6 +175,7 @@ class InstanceValidator:
                 self._taxonomy.formula_linkbase_path is not None
             ),
             structural_checks_run=True,
+            stage_timings=tuple(stage_timings),
         )
 
     def _publish_findings(self, findings: tuple[ValidationFinding, ...]) -> None:

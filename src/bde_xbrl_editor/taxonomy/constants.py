@@ -9,6 +9,10 @@ NS_XLINK = "http://www.w3.org/1999/xlink"
 NS_XSD = "http://www.w3.org/2001/XMLSchema"
 NS_XBRLDT = "http://xbrl.org/2005/xbrldt"
 
+# Extensible Enumerations 1.0 / 2.0 (attributes on xs:element declarations)
+NS_EXTENSIBLE_ENUM = "http://xbrl.org/2014/extensible-enumerations"
+NS_EXTENSIBLE_ENUM_2 = "http://xbrl.org/2020/extensible-enumerations-2.0"
+
 # Generic linkbase namespaces (XBRL 2.1 generic link spec)
 NS_GEN = "http://xbrl.org/2008/generic"
 NS_GENLAB = "http://xbrl.org/2008/label"
@@ -17,8 +21,11 @@ NS_MSG = "http://xbrl.org/2010/message"
 # Eurofiling extension namespaces
 NS_EUROFILING_FI = "http://www.eurofiling.info/xbrl/ext/filing-indicators"
 
-# PWD Table Linkbase namespace (BDE uses the PWD draft version)
+# Table Linkbase namespaces: some taxonomies still use the older PWD draft,
+# while EBA CRR 4.2 rendering files use the final 2014 recommendation namespace.
 NS_TABLE_PWD = "http://xbrl.org/PWD/2013-05-17/table"
+NS_TABLE_2014 = "http://xbrl.org/2014/table"
+NS_TABLE_NAMESPACES = (NS_TABLE_PWD, NS_TABLE_2014)
 NS_FORMULA = "http://xbrl.org/2008/formula"
 # Validation 1.0 REC — ``validation`` prefix (assertionSet, etc.):
 # https://www.xbrl.org/specification/validation/REC-2009-06-22/validation-REC-2009-06-22.html#sec-namespaces

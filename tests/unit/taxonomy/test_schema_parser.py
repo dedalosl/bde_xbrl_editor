@@ -8,7 +8,11 @@ from pathlib import Path
 import pytest
 
 from bde_xbrl_editor.taxonomy.models import QName
-from bde_xbrl_editor.taxonomy.schema import parse_schema
+from bde_xbrl_editor.taxonomy.schema import (
+    build_global_named_type_registry,
+    extract_concept_enumerations_for_schema,
+    parse_schema,
+)
 
 NS_XBRLI = "http://www.xbrl.org/2003/instance"
 NS_TEST = "http://test.example/ns"
@@ -133,3 +137,81 @@ class TestConceptAttributes:
         concepts = parse_schema(sample_xsd)
         assets = concepts[QName(NS_TEST, "Assets")]
         assert assets.data_type.local_name == "monetaryItemType"
+
+
+XSD_QNAME_ENUM = textwrap.dedent("""\
+    <?xml version="1.0" encoding="UTF-8"?>
+    <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+               xmlns:xbrli="http://www.xbrl.org/2003/instance"
+               xmlns:tns="http://test.example/ns"
+               targetNamespace="http://test.example/ns"
+               elementFormDefault="qualified">
+
+      <xs:import namespace="http://www.xbrl.org/2003/instance"/>
+
+      <xs:simpleType name="ChoiceEnum">
+        <xs:restriction base="xbrli:QNameItemType">
+          <xs:enumeration value="eba_qSC:qx3"/>
+          <xs:enumeration value="eba_qSC:qx4"/>
+        </xs:restriction>
+      </xs:simpleType>
+
+      <xs:element name="qBVQ"
+                  type="tns:ChoiceEnum"
+                  substitutionGroup="xbrli:item"
+                  xbrli:periodType="instant"/>
+    </xs:schema>
+""")
+
+
+class TestConceptEnumerationValues:
+    def test_parse_schema_attaches_xsd_enumerations(self, tmp_path: Path) -> None:
+        p = tmp_path / "enum.xsd"
+        p.write_text(XSD_QNAME_ENUM, encoding="utf-8")
+        concepts = parse_schema(p)
+        q = QName(NS_TEST, "qBVQ")
+        assert q in concepts
+        assert concepts[q].enumeration_values == ("eba_qSC:qx3", "eba_qSC:qx4")
+
+    def test_cross_file_type_reference(self, tmp_path: Path) -> None:
+        types_xsd = tmp_path / "enum_types.xsd"
+        items_xsd = tmp_path / "items.xsd"
+        types_xsd.write_text(
+            textwrap.dedent("""\
+            <?xml version="1.0" encoding="UTF-8"?>
+            <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                       xmlns:xbrli="http://www.xbrl.org/2003/instance"
+                       targetNamespace="http://ext.example/types"
+                       elementFormDefault="qualified">
+              <xs:import namespace="http://www.xbrl.org/2003/instance"/>
+              <xs:simpleType name="SharedChoice">
+                <xs:restriction base="xbrli:QNameItemType">
+                  <xs:enumeration value="a:one"/>
+                  <xs:enumeration value="a:two"/>
+                </xs:restriction>
+              </xs:simpleType>
+            </xs:schema>
+            """),
+            encoding="utf-8",
+        )
+        items_xsd.write_text(
+            textwrap.dedent("""\
+            <?xml version="1.0" encoding="UTF-8"?>
+            <xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+                       xmlns:xbrli="http://www.xbrl.org/2003/instance"
+                       xmlns:ext="http://ext.example/types"
+                       targetNamespace="http://test.example/ns"
+                       elementFormDefault="qualified">
+              <xs:import namespace="http://www.xbrl.org/2003/instance"/>
+              <xs:import namespace="http://ext.example/types" schemaLocation="enum_types.xsd"/>
+              <xs:element name="MetricX"
+                          type="ext:SharedChoice"
+                          substitutionGroup="xbrli:item"
+                          xbrli:periodType="instant"/>
+            </xs:schema>
+            """),
+            encoding="utf-8",
+        )
+        registry = build_global_named_type_registry([types_xsd, items_xsd], {})
+        enums = extract_concept_enumerations_for_schema(items_xsd, None, registry)
+        assert enums[QName(NS_TEST, "MetricX")] == ("a:one", "a:two")

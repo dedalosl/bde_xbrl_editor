@@ -32,6 +32,7 @@ from bde_xbrl_editor.instance.models import (
     XbrlUnit,
 )
 from bde_xbrl_editor.taxonomy.models import QName
+from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_fragment
 
 # Standard namespace map declared on the root element (prefix → namespace)
 _BASE_NSMAP: dict[str, str] = {
@@ -179,16 +180,35 @@ def _build_context_el(ctx: XbrlContext, ns_to_prefix: dict[str, str]) -> etree._
     period_el = etree.SubElement(ctx_el, f"{{{XBRLI_NS}}}period")
     _fill_period(period_el, ctx.period)
 
-    # <xbrli:scenario> or <xbrli:segment> with xbrldi:explicitMember children
-    if ctx.dimensions:
+    explicit_dimensions = {
+        dim_qname: member_qname
+        for dim_qname, member_qname in ctx.dimensions.items()
+        if dim_qname not in (ctx.typed_dimensions or {})
+    }
+
+    dim_containers = ctx.dim_containers or {}
+    container_dims: dict[str, dict[QName, QName]] = {"scenario": {}, "segment": {}}
+    container_typed: dict[str, dict[QName, str]] = {"scenario": {}, "segment": {}}
+
+    for dim_qname, member_qname in explicit_dimensions.items():
+        container = dim_containers.get(dim_qname, ctx.context_element)
+        container_dims[container][dim_qname] = member_qname
+
+    for dim_qname, typed_value in (ctx.typed_dimensions or {}).items():
+        container = dim_containers.get(dim_qname, ctx.context_element)
+        container_typed[container][dim_qname] = typed_value
+
+    for container_name in ("segment", "scenario"):
+        if not container_dims[container_name] and not container_typed[container_name]:
+            continue
         container_tag = (
-            f"{{{XBRLI_NS}}}scenario"
-            if ctx.context_element == "scenario"
-            else f"{{{XBRLI_NS}}}segment"
+            f"{{{XBRLI_NS}}}segment"
+            if container_name == "segment"
+            else f"{{{XBRLI_NS}}}scenario"
         )
         container_el = etree.SubElement(ctx_el, container_tag)
         for dim_qname, member_qname in sorted(
-            ctx.dimensions.items(), key=lambda kv: str(kv[0])
+            container_dims[container_name].items(), key=lambda kv: str(kv[0])
         ):
             em = etree.SubElement(
                 container_el,
@@ -196,6 +216,17 @@ def _build_context_el(ctx: XbrlContext, ns_to_prefix: dict[str, str]) -> etree._
                 attrib={"dimension": _qname_str(dim_qname, ns_to_prefix)},
             )
             em.text = _qname_str(member_qname, ns_to_prefix)
+        for dim_qname, typed_value in sorted(
+            container_typed[container_name].items(), key=lambda kv: str(kv[0])
+        ):
+            tm = etree.SubElement(
+                container_el,
+                f"{{{XBRLDI_NS}}}typedMember",
+                attrib={"dimension": _qname_str(dim_qname, ns_to_prefix)},
+            )
+            typed_element_qname = (ctx.typed_dimension_elements or {}).get(dim_qname, dim_qname)
+            typed_el = etree.SubElement(tm, etree.QName(typed_element_qname.namespace, typed_element_qname.local_name))
+            typed_el.text = typed_value
 
     return ctx_el
 
@@ -392,7 +423,7 @@ class InstanceSerializer:
 
         # 7. Orphaned facts — preserved verbatim in original document order
         for orphan in instance.orphaned_facts:
-            orphan_el = etree.fromstring(orphan.raw_element_xml)  # noqa: S320
+            orphan_el = parse_xml_fragment(orphan.raw_element_xml)
             root.append(orphan_el)
 
         return etree.tostring(

@@ -6,6 +6,7 @@ import contextlib
 import itertools
 import re
 import threading
+import time
 from collections.abc import Callable
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -58,6 +59,9 @@ class FormulaEvaluator:
         self._progress_callback = progress_callback
         self._finding_callback = finding_callback
         self._cancel_event = cancel_event
+        self._detail_cache: dict[str, dict[str, str]] = {}
+        self._xpath_token_cache: dict[tuple[tuple[tuple[str, str], ...], str], Any] = {}
+        self._progress_interval_seconds = 0.1
 
     # ------------------------------------------------------------------
     # Public API
@@ -77,13 +81,19 @@ class FormulaEvaluator:
         findings: list[ValidationFinding] = []
         non_abstract = [a for a in assertion_set.assertions if not a.abstract]
         total = len(non_abstract)
+        last_progress_at = 0.0
 
         for idx, assertion in enumerate(non_abstract):
             if self._cancel_event and self._cancel_event.is_set():
                 break
-            if self._progress_callback:
+            now = time.perf_counter()
+            if (
+                self._progress_callback
+                and (idx == 0 or idx + 1 == total or (now - last_progress_at) >= self._progress_interval_seconds)
+            ):
                 with contextlib.suppress(Exception):
                     self._progress_callback(idx, total, assertion.assertion_id)
+                last_progress_at = now
 
             try:
                 bindings = self._bind_variables(assertion, instance)
@@ -152,6 +162,14 @@ class FormulaEvaluator:
             "formula_operands_text": details.operands_text,
             "formula_precondition": details.precondition,
         }
+
+    def _cached_formula_detail_kwargs(self, assertion: FormulaAssertion) -> dict[str, str]:
+        cached = self._detail_cache.get(assertion.assertion_id)
+        if cached is not None:
+            return cached
+        details = self._formula_detail_kwargs(assertion)
+        self._detail_cache[assertion.assertion_id] = details
+        return details
 
     @staticmethod
     def _resource_text(resource: AssertionTextResource | None) -> str | None:
@@ -222,7 +240,7 @@ class FormulaEvaluator:
             rule_message=template_message,
             evaluated_rule_message=evaluated_message if message_resource is not None else None,
             rule_message_role=message_resource.role if message_resource else None,
-            **self._formula_detail_kwargs(assertion),
+            **self._cached_formula_detail_kwargs(assertion),
         )
 
     def _render_message_resource(
@@ -401,13 +419,8 @@ class FormulaEvaluator:
             True,
         )
 
-        parser = build_formula_parser(
-            namespaces,
-            custom_functions=self._taxonomy.custom_functions,
-            expression_hints=(expr,),
-        )
+        token = self._get_xpath_token(expr, namespaces)
         try:
-            token = parser.parse(expr)
             ctx = elementpath.XPathContext(
                 root=None,
                 item=context_item,
@@ -655,13 +668,8 @@ class FormulaEvaluator:
             _coerce_value(first_fact.value) if first_fact is not None else True
         )
 
-        parser = build_formula_parser(
-            namespaces,
-            custom_functions=self._taxonomy.custom_functions,
-            expression_hints=(xpath_expr,),
-        )
+        token = self._get_xpath_token(xpath_expr, namespaces)
         try:
-            token = parser.parse(xpath_expr)
             ctx = elementpath.XPathContext(
                 root=None,
                 item=context_item,
@@ -672,6 +680,25 @@ class FormulaEvaluator:
             clear_evaluation_context()
 
         return result
+
+    def _get_xpath_token(
+        self,
+        xpath_expr: str,
+        namespaces: dict[str, str] | None = None,
+    ) -> Any:
+        namespace_items = tuple(sorted((namespaces or {}).items()))
+        cache_key = (namespace_items, xpath_expr)
+        cached = self._xpath_token_cache.get(cache_key)
+        if cached is not None:
+            return cached
+        parser = build_formula_parser(
+            dict(namespace_items),
+            custom_functions=self._taxonomy.custom_functions,
+            expression_hints=(xpath_expr,),
+        )
+        token = parser.parse(xpath_expr)
+        self._xpath_token_cache[cache_key] = token
+        return token
 
 
 # ---------------------------------------------------------------------------

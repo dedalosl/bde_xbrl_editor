@@ -44,7 +44,7 @@ class InstanceCreationWizard(QWizard):
         self.setWindowTitle("New XBRL Instance")
         self.setWizardStyle(QWizard.WizardStyle.ModernStyle)
 
-        self._page_entity = EntityPeriodPage(self)
+        self._page_entity = EntityPeriodPage(taxonomy, self)
         self._page_tables = TableSelectionPage(taxonomy, self)
         self._page_dims = DimensionalPage(taxonomy, self)
         self._page_save = SavePage(self)
@@ -66,11 +66,18 @@ class InstanceCreationWizard(QWizard):
         try:
             entity = self._page_entity.get_entity()
             period = self._page_entity.get_period()
+            agrupacion_member = self._page_entity.get_agrupacion_member()
             table_ids = self._page_tables.get_selected_table_ids()
             dim_configs = self._page_dims.get_dimensional_configs()
 
             factory = InstanceFactory(self._taxonomy)
-            instance = factory.create(entity, period, table_ids, dim_configs)
+            instance = factory.create(
+                entity,
+                period,
+                table_ids,
+                dim_configs,
+                agrupacion_member=agrupacion_member,
+            )
             self.setProperty("assembled_instance", instance)
             self._created_instance = instance
         except Exception:  # noqa: BLE001

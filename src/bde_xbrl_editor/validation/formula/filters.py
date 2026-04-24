@@ -163,12 +163,13 @@ def _apply_xpath_filters(
     A fact passes if ALL XPath filter expressions evaluate to true.
     Facts for which any filter raises an exception are excluded.
     """
+    import elementpath  # type: ignore[import-untyped]
+
     from bde_xbrl_editor.validation.formula.xfi_functions import (
         build_formula_parser,
         clear_evaluation_context,
         set_evaluation_context,
     )
-    import elementpath  # type: ignore[import-untyped]
 
     passed: list[Fact] = []
     for fact in facts:
