@@ -44,6 +44,7 @@ from bde_xbrl_editor.validation.models import (
 ProgressCallback = Callable[[int, int, str], None]
 FindingCallback = Callable[[tuple[ValidationFinding, ...]], None]
 _MESSAGE_EXPR_RE = re.compile(r"\{([^{}]+)\}")
+_FINDING_BATCH_SIZE = 100
 
 
 class FormulaEvaluator:
@@ -111,21 +112,20 @@ class FormulaEvaluator:
                     facts_by_concept=facts_by_concept,
                 )
                 if isinstance(assertion, ValueAssertionDefinition):
-                    assertion_findings = tuple(
-                        self._evaluate_value_assertion(assertion, bindings, instance)
+                    assertion_findings = self._evaluate_value_assertion(
+                        assertion, bindings, instance
                     )
                 elif isinstance(assertion, ExistenceAssertionDefinition):
-                    assertion_findings = tuple(
-                        self._evaluate_existence_assertion(assertion, bindings, instance)
+                    assertion_findings = self._evaluate_existence_assertion(
+                        assertion, bindings, instance
                     )
                 elif isinstance(assertion, ConsistencyAssertionDefinition):
-                    assertion_findings = tuple(
-                        self._evaluate_consistency_assertion(assertion, bindings, instance)
+                    assertion_findings = self._evaluate_consistency_assertion(
+                        assertion, bindings, instance
                     )
                 else:
-                    assertion_findings = ()
+                    assertion_findings = []
                 findings.extend(assertion_findings)
-                self._publish_findings(assertion_findings)
             except ValidationEngineError as exc:
                 assertion_findings = (
                     self._finding_for_assertion(
@@ -163,6 +163,26 @@ class FormulaEvaluator:
             return
         with contextlib.suppress(Exception):
             self._finding_callback(findings)
+
+    def _append_and_maybe_publish(
+        self,
+        findings: list[ValidationFinding],
+        pending_publish: list[ValidationFinding],
+        finding: ValidationFinding,
+    ) -> None:
+        findings.append(finding)
+        if self._finding_callback is None:
+            return
+        pending_publish.append(finding)
+        if len(pending_publish) >= _FINDING_BATCH_SIZE:
+            self._publish_findings(tuple(pending_publish))
+            pending_publish.clear()
+
+    def _publish_pending(self, pending_publish: list[ValidationFinding]) -> None:
+        if not pending_publish:
+            return
+        self._publish_findings(tuple(pending_publish))
+        pending_publish.clear()
 
     # ------------------------------------------------------------------
     # Variable binding
@@ -538,12 +558,10 @@ class FormulaEvaluator:
     @classmethod
     def _variable_match_cache_key(cls, var_def: FactVariableDefinition) -> tuple[Any, ...]:
         return (
-            var_def.variable_name,
             var_def.concept_filter,
             var_def.period_filter,
             var_def.dimension_filters,
             var_def.unit_filter,
-            var_def.fallback_value,
             tuple(cls._xpath_filter_key(xf) for xf in var_def.xpath_filters),
             tuple(cls._boolean_filter_key(bf) for bf in var_def.boolean_filters),
         )
@@ -590,6 +608,7 @@ class FormulaEvaluator:
         if not assertion.test_xpath:
             return findings
 
+        pending_publish: list[ValidationFinding] = []
         for binding in bindings:
             try:
                 result = self._eval_xpath(
@@ -597,19 +616,23 @@ class FormulaEvaluator:
                 )
                 passed = _to_bool(result)
             except Exception as exc:  # noqa: BLE001
-                findings.append(
+                self._append_and_maybe_publish(
+                    findings,
+                    pending_publish,
                     self._finding_for_assertion(
                         assertion,
                         status=ValidationStatus.FAIL,
                         default_message=f"XPath evaluation failed: {exc}",
                         binding=binding,
                         instance=instance,
-                    )
+                    ),
                 )
                 continue
 
             fact = _first_fact(binding)
-            findings.append(
+            self._append_and_maybe_publish(
+                findings,
+                pending_publish,
                 self._finding_for_assertion(
                     assertion,
                     status=ValidationStatus.PASS if passed else ValidationStatus.FAIL,
@@ -622,8 +645,9 @@ class FormulaEvaluator:
                     fact=fact,
                     binding=binding,
                     instance=instance,
-                )
+                ),
             )
+        self._publish_pending(pending_publish)
         return findings
 
     def _evaluate_existence_assertion(
@@ -639,31 +663,28 @@ class FormulaEvaluator:
                 first_binding = binding
             for facts in binding.values():
                 if facts:
-                    return [
-                        self._finding_for_assertion(
-                            assertion,
-                            status=ValidationStatus.PASS,
-                            default_message=(
-                                f"Existence assertion '{assertion.assertion_id}' passed"
-                            ),
-                            fact=facts[0],
-                            binding=binding,
-                            instance=instance,
-                        )
-                    ]
+                    finding = self._finding_for_assertion(
+                        assertion,
+                        status=ValidationStatus.PASS,
+                        default_message=(f"Existence assertion '{assertion.assertion_id}' passed"),
+                        fact=facts[0],
+                        binding=binding,
+                        instance=instance,
+                    )
+                    self._publish_findings((finding,))
+                    return [finding]
 
-        return [
-            self._finding_for_assertion(
-                assertion,
-                status=ValidationStatus.FAIL,
-                default_message=(
-                    f"Existence assertion '{assertion.assertion_id}' failed: "
-                    f"no matching facts found"
-                ),
-                binding=first_binding,
-                instance=instance,
-            )
-        ]
+        finding = self._finding_for_assertion(
+            assertion,
+            status=ValidationStatus.FAIL,
+            default_message=(
+                f"Existence assertion '{assertion.assertion_id}' failed: no matching facts found"
+            ),
+            binding=first_binding,
+            instance=instance,
+        )
+        self._publish_findings((finding,))
+        return [finding]
 
     def _evaluate_consistency_assertion(
         self,
@@ -676,6 +697,7 @@ class FormulaEvaluator:
         if not assertion.formula_xpath:
             return findings
 
+        pending_publish: list[ValidationFinding] = []
         for binding in bindings:
             fact = _first_fact(binding)
             if fact is None:
@@ -703,7 +725,9 @@ class FormulaEvaluator:
             else:
                 passes = difference == 0
 
-            findings.append(
+            self._append_and_maybe_publish(
+                findings,
+                pending_publish,
                 self._finding_for_assertion(
                     assertion,
                     status=ValidationStatus.PASS if passes else ValidationStatus.FAIL,
@@ -716,8 +740,9 @@ class FormulaEvaluator:
                     fact=fact,
                     binding=binding,
                     instance=instance,
-                )
+                ),
             )
+        self._publish_pending(pending_publish)
         return findings
 
     # ------------------------------------------------------------------

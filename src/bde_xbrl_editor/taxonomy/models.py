@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 # QName — fundamental identifier
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class QName:
     """Qualified XML name. Identity is (namespace, local_name); prefix is display-only."""
@@ -38,7 +39,7 @@ class QName:
         """Parse a Clark-notation string ``{namespace}local_name`` into a QName."""
         if clark.startswith("{"):
             end = clark.index("}")
-            return cls(namespace=clark[1:end], local_name=clark[end + 1:], prefix=prefix)
+            return cls(namespace=clark[1:end], local_name=clark[end + 1 :], prefix=prefix)
         # No namespace (e.g., built-in XSD types without namespace)
         return cls(namespace="", local_name=clark, prefix=prefix)
 
@@ -46,6 +47,7 @@ class QName:
 # ---------------------------------------------------------------------------
 # Error hierarchy
 # ---------------------------------------------------------------------------
+
 
 class TaxonomyLoadError(Exception):
     """Base class for all taxonomy load failures."""
@@ -107,6 +109,7 @@ class TaxonomyParseError(TaxonomyLoadError):
 # Concept model
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class Concept:
     """An XBRL element declaration (concept)."""
@@ -136,6 +139,7 @@ class Concept:
 # ---------------------------------------------------------------------------
 # Label model
 # ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class Label:
@@ -188,6 +192,7 @@ class CustomFunctionDefinition:
 # Linkbase models — presentation
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class PresentationArc:
     """A single arc in a presentation linkbase."""
@@ -223,6 +228,7 @@ class PresentationNetwork:
 # Linkbase models — calculation
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class CalculationArc:
     """A single arc in a calculation linkbase."""
@@ -239,6 +245,7 @@ class CalculationArc:
 # ---------------------------------------------------------------------------
 # Linkbase models — definition / dimensional
 # ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class DefinitionArc:
@@ -293,6 +300,7 @@ class HypercubeModel:
 # PWD Table Linkbase model
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class BreakdownNode:
     """A node in the table's hierarchical breakdown structure."""
@@ -300,7 +308,9 @@ class BreakdownNode:
     node_type: Literal["rule", "aspect", "conceptRelationship", "dimensionRelationship"]
     label: str | None = None
     rc_code: str | None = None
-    fin_code: str | None = None  # http://www.bde.es/xbrl/role/fin-code label for cell-code computation
+    fin_code: str | None = (
+        None  # http://www.bde.es/xbrl/role/fin-code label for cell-code computation
+    )
     is_abstract: bool = False
     merge: bool = False
     span: int | None = None
@@ -334,6 +344,7 @@ class TableDefinitionPWD:
 # Taxonomy metadata
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class TaxonomyMetadata:
     """Descriptive metadata extracted from the entry-point schema."""
@@ -350,6 +361,7 @@ class TaxonomyMetadata:
 # ---------------------------------------------------------------------------
 # Formula linkbase domain types (Feature 005 — parsed during taxonomy loading)
 # ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class DimensionFilter:
@@ -416,18 +428,21 @@ class FormulaAssertion:
 @dataclass(frozen=True)
 class ValueAssertionDefinition(FormulaAssertion):
     """formula:valueAssertion — @test XPath must be true for each binding."""
+
     test_xpath: str = ""
 
 
 @dataclass(frozen=True)
 class ExistenceAssertionDefinition(FormulaAssertion):
     """formula:existenceAssertion — at least one binding must have a non-empty fact set."""
+
     test_xpath: str | None = None
 
 
 @dataclass(frozen=True)
 class ConsistencyAssertionDefinition(FormulaAssertion):
     """formula:consistencyAssertion — formula result must match fact value within radius."""
+
     formula_xpath: str = ""
     absolute_radius: Decimal | None = None
     relative_radius: Decimal | None = None
@@ -444,6 +459,7 @@ class FormulaAssertionSet:
 # ---------------------------------------------------------------------------
 # TaxonomyStructure — the complete immutable taxonomy
 # ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class TaxonomyStructure:
@@ -464,6 +480,9 @@ class TaxonomyStructure:
     # Files discovered during DTS traversal (populated by TaxonomyLoader)
     schema_files: tuple[Path, ...] = field(default_factory=tuple)
     linkbase_files: tuple[Path, ...] = field(default_factory=tuple)
+    # Raw schema substitution-group declarations collected during taxonomy load.
+    # Validation can reuse this instead of reparsing schema XML.
+    schema_substitution_groups: Mapping[QName, QName] = field(default_factory=dict)
 
     def get_table(self, table_id: str) -> TableDefinitionPWD | None:
         """Return the table with the given ID, or None if not found."""
@@ -476,6 +495,7 @@ class TaxonomyStructure:
 # ---------------------------------------------------------------------------
 # Cache entry
 # ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class TaxonomyCacheEntry:

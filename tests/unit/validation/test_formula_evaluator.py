@@ -324,15 +324,22 @@ class TestValueAssertion:
         assert build_calls == ["build"]
 
     def test_reuses_variable_filter_matches_across_assertions(self, monkeypatch) -> None:
-        """Assertions with the same variable definition should share filtered fact matches."""
+        """Equivalent filters should share fact matches even with different variable names."""
         var_def = FactVariableDefinition(variable_name="v", concept_filter=_qn("Amount"))
+        same_filter_different_name = FactVariableDefinition(
+            variable_name="amount",
+            concept_filter=_qn("Amount"),
+        )
         assertion_a = ValueAssertionDefinition(
             **_base_assertion_kwargs(assertion_id="VA_CACHE_A", variables=(var_def,)),
             test_xpath="$v > 0",
         )
         assertion_b = ValueAssertionDefinition(
-            **_base_assertion_kwargs(assertion_id="VA_CACHE_B", variables=(var_def,)),
-            test_xpath="$v < 10",
+            **_base_assertion_kwargs(
+                assertion_id="VA_CACHE_B",
+                variables=(same_filter_different_name,),
+            ),
+            test_xpath="$amount < 10",
         )
         taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion_a, assertion_b)))
         inst = _instance(

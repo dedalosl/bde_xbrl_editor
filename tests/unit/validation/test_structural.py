@@ -1,4 +1,5 @@
 """Unit tests for StructuralConformanceValidator (validation/structural.py)."""
+
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -169,9 +170,7 @@ class TestUnresolvedContextRef:
         """A fact with a valid context_ref produces no unresolved-context-ref finding."""
         inst = _minimal_instance()
         concept = _qname("Amount")
-        inst.facts.append(
-            Fact(concept=concept, context_ref="ctx1", unit_ref=None, value="100")
-        )
+        inst.facts.append(Fact(concept=concept, context_ref="ctx1", unit_ref=None, value="100"))
         findings = StructuralConformanceValidator().validate(inst)
         assert not any(f.rule_id == "structural:unresolved-context-ref" for f in findings)
 
@@ -201,9 +200,7 @@ class TestUnresolvedUnitRef:
         """A numeric fact with no unit_ref triggers unresolved-unit-ref."""
         inst = _minimal_instance()
         concept_qn = _qname("MyConcept")
-        inst.facts.append(
-            Fact(concept=concept_qn, context_ref="ctx1", unit_ref=None, value="1000")
-        )
+        inst.facts.append(Fact(concept=concept_qn, context_ref="ctx1", unit_ref=None, value="1000"))
         taxonomy = _minimal_taxonomy(type_local="monetaryItemType")
         findings = StructuralConformanceValidator().validate(inst, taxonomy)
         assert any(f.rule_id == "structural:unresolved-unit-ref" for f in findings)
@@ -235,9 +232,7 @@ class TestUnresolvedUnitRef:
         """When taxonomy=None, check 3 is skipped entirely."""
         inst = _minimal_instance()
         concept_qn = _qname("MyConcept")
-        inst.facts.append(
-            Fact(concept=concept_qn, context_ref="ctx1", unit_ref=None, value="1000")
-        )
+        inst.facts.append(Fact(concept=concept_qn, context_ref="ctx1", unit_ref=None, value="1000"))
         findings = StructuralConformanceValidator().validate(inst, taxonomy=None)
         assert not any(f.rule_id == "structural:unresolved-unit-ref" for f in findings)
 
@@ -245,9 +240,7 @@ class TestUnresolvedUnitRef:
         """A numeric fact referencing an undeclared unit_id triggers check 3."""
         inst = _minimal_instance()
         concept_qn = _qname("MyConcept")
-        inst.facts.append(
-            Fact(concept=concept_qn, context_ref="ctx1", unit_ref="USD", value="42")
-        )
+        inst.facts.append(Fact(concept=concept_qn, context_ref="ctx1", unit_ref="USD", value="42"))
         taxonomy = _minimal_taxonomy(type_local="monetaryItemType")
         findings = StructuralConformanceValidator().validate(inst, taxonomy)
         assert any(f.rule_id == "structural:unresolved-unit-ref" for f in findings)
@@ -316,9 +309,7 @@ class TestPeriodTypeMismatch:
         inst.contexts["ctx1"] = _context("ctx1", period=_duration_period())
 
         concept_qn = _qname("MyConcept")
-        inst.facts.append(
-            Fact(concept=concept_qn, context_ref="ctx1", unit_ref=None, value="val")
-        )
+        inst.facts.append(Fact(concept=concept_qn, context_ref="ctx1", unit_ref=None, value="val"))
         taxonomy = _minimal_taxonomy(period_type="instant", type_local="stringItemType")
         findings = StructuralConformanceValidator().validate(inst, taxonomy)
         assert any(f.rule_id == "structural:period-type-mismatch" for f in findings)
@@ -327,9 +318,7 @@ class TestPeriodTypeMismatch:
         """A concept declared as duration used with an instant context triggers mismatch."""
         inst = _minimal_instance()
         concept_qn = _qname("MyConcept")
-        inst.facts.append(
-            Fact(concept=concept_qn, context_ref="ctx1", unit_ref=None, value="val")
-        )
+        inst.facts.append(Fact(concept=concept_qn, context_ref="ctx1", unit_ref=None, value="val"))
         taxonomy = _minimal_taxonomy(period_type="duration", type_local="stringItemType")
         findings = StructuralConformanceValidator().validate(inst, taxonomy)
         assert any(f.rule_id == "structural:period-type-mismatch" for f in findings)
@@ -338,9 +327,7 @@ class TestPeriodTypeMismatch:
         """A concept and context with matching period_type produce no mismatch finding."""
         inst = _minimal_instance()
         concept_qn = _qname("MyConcept")
-        inst.facts.append(
-            Fact(concept=concept_qn, context_ref="ctx1", unit_ref=None, value="val")
-        )
+        inst.facts.append(Fact(concept=concept_qn, context_ref="ctx1", unit_ref=None, value="val"))
         taxonomy = _minimal_taxonomy(period_type="instant", type_local="stringItemType")
         findings = StructuralConformanceValidator().validate(inst, taxonomy)
         assert not any(f.rule_id == "structural:period-type-mismatch" for f in findings)
@@ -349,9 +336,7 @@ class TestPeriodTypeMismatch:
         """When taxonomy=None, check 5 is skipped."""
         inst = _minimal_instance()
         concept_qn = _qname("MyConcept")
-        inst.facts.append(
-            Fact(concept=concept_qn, context_ref="ctx1", unit_ref=None, value="val")
-        )
+        inst.facts.append(Fact(concept=concept_qn, context_ref="ctx1", unit_ref=None, value="val"))
         findings = StructuralConformanceValidator().validate(inst, taxonomy=None)
         assert not any(f.rule_id == "structural:period-type-mismatch" for f in findings)
 
@@ -401,7 +386,9 @@ class TestDuplicateFact:
         inst.contexts["ctx_other"] = ctx2
         concept = _qname("Revenue")
         inst.facts.append(Fact(concept=concept, context_ref="ctx1", unit_ref=None, value="100"))
-        inst.facts.append(Fact(concept=concept, context_ref="ctx_other", unit_ref=None, value="200"))
+        inst.facts.append(
+            Fact(concept=concept, context_ref="ctx_other", unit_ref=None, value="200")
+        )
         findings = StructuralConformanceValidator().validate(inst)
         assert any(f.rule_id == "structural:duplicate-fact" for f in findings)
 
@@ -435,7 +422,9 @@ class TestMonetaryIsoUnitMeasure:
     def test_monetary_with_pure_measure_fails(self) -> None:
         """Monetary facts must not use xbrli:pure as the unit measure."""
         inst = _minimal_instance()
-        inst.units["pure"] = XbrlUnit(unit_id="pure", measure_uri="http://www.xbrl.org/2003/instance:pure")
+        inst.units["pure"] = XbrlUnit(
+            unit_id="pure", measure_uri="http://www.xbrl.org/2003/instance:pure"
+        )
         concept_qn = _qname("MyConcept")
         inst.facts.append(
             Fact(concept=concept_qn, context_ref="ctx1", unit_ref="pure", value="100")
@@ -453,9 +442,7 @@ class TestMonetaryIsoUnitMeasure:
             simple_measure_count=0,
         )
         concept_qn = _qname("MyConcept")
-        inst.facts.append(
-            Fact(concept=concept_qn, context_ref="ctx1", unit_ref="u1", value="100")
-        )
+        inst.facts.append(Fact(concept=concept_qn, context_ref="ctx1", unit_ref="u1", value="100"))
         taxonomy = _minimal_taxonomy(type_local="monetaryItemType")
         findings = StructuralConformanceValidator().validate(inst, taxonomy)
         assert any(
@@ -499,9 +486,7 @@ class TestMonetaryIsoUnitMeasure:
             tables=[],
             formula_assertion_set=FormulaAssertionSet(),
         )
-        inst.facts.append(
-            Fact(concept=concept_qn, context_ref="ctx1", unit_ref="EUR", value="500")
-        )
+        inst.facts.append(Fact(concept=concept_qn, context_ref="ctx1", unit_ref="EUR", value="500"))
         findings = StructuralConformanceValidator().validate(inst, taxonomy)
         assert not any(f.rule_id == "structural:monetary-unit-measure" for f in findings)
 
@@ -515,9 +500,7 @@ class TestMonetaryIsoUnitMeasure:
             simple_measure_count=1,
         )
         concept_qn = _qname("MyConcept")
-        inst.facts.append(
-            Fact(concept=concept_qn, context_ref="ctx1", unit_ref="u1", value="1")
-        )
+        inst.facts.append(Fact(concept=concept_qn, context_ref="ctx1", unit_ref="u1", value="1"))
         taxonomy = _minimal_taxonomy(type_local="monetaryItemType")
         findings = StructuralConformanceValidator().validate(inst, taxonomy)
         assert any(f.rule_id == "structural:monetary-unit-measure" for f in findings)
@@ -605,9 +588,7 @@ class TestSegmentScenarioSubstitutionChecks:
         )
 
         findings = StructuralConformanceValidator().validate(inst, taxonomy)
-        assert not any(
-            f.rule_id == "structural:segment-scenario-substitution" for f in findings
-        )
+        assert not any(f.rule_id == "structural:segment-scenario-substitution" for f in findings)
 
     def test_schema_based_substitution_check_flags_element_not_in_concepts(
         self, tmp_path: Path
@@ -662,6 +643,49 @@ class TestSegmentScenarioSubstitutionChecks:
             for f in findings
         )
 
+    def test_schema_substitution_groups_from_taxonomy_are_reused(self, monkeypatch) -> None:
+        inst = _minimal_instance()
+        ctx = inst.contexts["ctx1"]
+        ctx.segment_xml = (
+            b'<xbrli:segment xmlns:xbrli="http://www.xbrl.org/2003/instance" '
+            b'xmlns:ex="http://example.com/taxonomy"><ex:BadFromSchemaMap/></xbrli:segment>'
+        )
+
+        def _fail_parse_schema_raw(*_args, **_kwargs):
+            raise AssertionError("schema XML should not be reparsed")
+
+        monkeypatch.setattr(
+            "bde_xbrl_editor.validation.structural.parse_schema_raw",
+            _fail_parse_schema_raw,
+        )
+
+        bad_qn = QName("http://example.com/taxonomy", "BadFromSchemaMap")
+        taxonomy = _minimal_taxonomy(type_local="stringItemType")
+        taxonomy = TaxonomyStructure(
+            metadata=taxonomy.metadata,
+            concepts=taxonomy.concepts,
+            labels=taxonomy.labels,
+            presentation=taxonomy.presentation,
+            calculation=taxonomy.calculation,
+            definition=taxonomy.definition,
+            hypercubes=taxonomy.hypercubes,
+            dimensions=taxonomy.dimensions,
+            tables=taxonomy.tables,
+            formula_assertion_set=taxonomy.formula_assertion_set,
+            schema_files=(Path("would-have-been-reparsed.xsd"),),
+            schema_substitution_groups={
+                bad_qn: QName(namespace=NS_XBRLI, local_name="item"),
+            },
+        )
+
+        findings = StructuralConformanceValidator().validate(inst, taxonomy)
+        assert any(
+            f.rule_id == "structural:segment-scenario-substitution"
+            and f.context_ref == "ctx1"
+            and f.concept_qname == bad_qn
+            for f in findings
+        )
+
 
 # ---------------------------------------------------------------------------
 # Clean instance: all checks pass
@@ -674,9 +698,7 @@ class TestCleanInstance:
         inst = _minimal_instance()
         concept_qn = _qname("MyConcept")
         inst.units["EUR"] = XbrlUnit(unit_id="EUR", measure_uri="iso4217:EUR")
-        inst.facts.append(
-            Fact(concept=concept_qn, context_ref="ctx1", unit_ref="EUR", value="500")
-        )
+        inst.facts.append(Fact(concept=concept_qn, context_ref="ctx1", unit_ref="EUR", value="500"))
         taxonomy = _minimal_taxonomy(period_type="instant", type_local="monetaryItemType")
         findings = StructuralConformanceValidator().validate(inst, taxonomy)
         assert findings == []

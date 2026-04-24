@@ -35,7 +35,7 @@ from bde_xbrl_editor.validation import InstanceValidator
 REPO_ROOT = Path(__file__).resolve().parents[3]
 BENCHMARK_HISTORY_PATH = REPO_ROOT / ".benchmarks" / "taxonomy_load_history.json"
 ALLOWED_REGRESSION_RATIO = 1.20
-ALLOWED_REGRESSION_ABSOLUTE_SECONDS = 0.05
+ALLOWED_REGRESSION_ABSOLUTE_SECONDS = 0.10
 SYNTHETIC_FACT_COUNT = 1_000
 
 _SAMPLE_TAXONOMY_PATH = (

@@ -213,6 +213,48 @@ def test_instance_load_worker_uses_thread_path_for_preloaded_taxonomy(qapp, monk
     assert finished == [(instance, taxonomy)]
 
 
+def test_instance_process_entry_does_not_queue_duplicate_taxonomy(monkeypatch) -> None:
+    from bde_xbrl_editor.taxonomy import LoaderSettings
+    from bde_xbrl_editor.ui.loading import _instance_load_process_entry
+
+    taxonomy = _taxonomy()
+    instance = _instance()
+    messages = []
+
+    class QueueStub:
+        def put(self, message):
+            messages.append(message)
+
+    class ParserStub:
+        def __init__(self, taxonomy_loader):
+            self.taxonomy_loader = taxonomy_loader
+
+        def load(
+            self,
+            path,
+            *,
+            progress_callback,
+            taxonomy_resolved_callback,
+            preloaded_taxonomy,
+        ):
+            assert preloaded_taxonomy is None
+            progress_callback("Loading taxonomy…", 12, 100)
+            taxonomy_resolved_callback(taxonomy)
+            return instance, []
+
+    monkeypatch.setattr("bde_xbrl_editor.instance.parser.InstanceParser", ParserStub)
+
+    _instance_load_process_entry(
+        "sample-instance.xbrl",
+        LoaderSettings(),
+        None,
+        QueueStub(),
+    )
+
+    assert [message[0] for message in messages] == ["progress", "finished"]
+    assert messages[-1][2] is taxonomy
+
+
 def test_taxonomy_open_uses_tabs_and_validations_sidebar_only(qtbot, qapp) -> None:
     window = MainWindow()
     qtbot.addWidget(window)

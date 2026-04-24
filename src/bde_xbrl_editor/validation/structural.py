@@ -163,9 +163,7 @@ class StructuralConformanceValidator:
         try:
             findings.extend(self._check_segment_scenario_substitutions(instance, taxonomy))
         except Exception as exc:  # noqa: BLE001
-            findings.append(
-                self._internal_error("structural:segment-scenario-substitution", exc)
-            )
+            findings.append(self._internal_error("structural:segment-scenario-substitution", exc))
 
         # Check 7 (structural:missing-namespace) is skipped — namespace info not
         # available on the in-memory instance model.
@@ -193,9 +191,7 @@ class StructuralConformanceValidator:
             ]
         return []
 
-    def _check_unresolved_context_refs(
-        self, instance: XbrlInstance
-    ) -> list[ValidationFinding]:
+    def _check_unresolved_context_refs(self, instance: XbrlInstance) -> list[ValidationFinding]:
         """Check 2: every fact.context_ref must exist in instance.contexts."""
         findings: list[ValidationFinding] = []
         for fact in instance.facts:
@@ -308,8 +304,10 @@ class StructuralConformanceValidator:
                 continue
 
             mq = _resolved_unit_measure_qname(unit)
-            if mq is None or mq.namespace != ISO4217_NS or not _is_iso4217_currency_code(
-                mq.local_name
+            if (
+                mq is None
+                or mq.namespace != ISO4217_NS
+                or not _is_iso4217_currency_code(mq.local_name)
             ):
                 got = str(mq) if mq is not None else repr(unit.measure_uri)
                 findings.append(
@@ -328,9 +326,7 @@ class StructuralConformanceValidator:
                 )
         return findings
 
-    def _check_incomplete_contexts(
-        self, instance: XbrlInstance
-    ) -> list[ValidationFinding]:
+    def _check_incomplete_contexts(self, instance: XbrlInstance) -> list[ValidationFinding]:
         """Check 4: each context must have both an entity and a period."""
         findings: list[ValidationFinding] = []
         for ctx_id, ctx in instance.contexts.items():
@@ -345,8 +341,7 @@ class StructuralConformanceValidator:
                         rule_id="structural:incomplete-context",
                         severity=ValidationSeverity.ERROR,
                         message=(
-                            f"Context '{ctx_id}' is incomplete: "
-                            f"missing {' and '.join(missing)}."
+                            f"Context '{ctx_id}' is incomplete: missing {' and '.join(missing)}."
                         ),
                         source="structural",
                         context_ref=ctx_id,
@@ -389,9 +384,7 @@ class StructuralConformanceValidator:
                 )
         return findings
 
-    def _check_duplicate_facts(
-        self, instance: XbrlInstance
-    ) -> list[ValidationFinding]:
+    def _check_duplicate_facts(self, instance: XbrlInstance) -> list[ValidationFinding]:
         """Check 6: conflicting duplicate facts (same concept/context/unit, unequal values).
 
         XBRL 2.1 allows multiple facts with the same dimension signature when the
@@ -419,11 +412,7 @@ class StructuralConformanceValidator:
                     message=(
                         f"Inconsistent duplicate facts for concept '{concept}' "
                         f"in context '{ctx_bind}'"
-                        + (
-                            f" with unit '{unit_ref}'"
-                            if unit_ref is not None
-                            else ""
-                        )
+                        + (f" with unit '{unit_ref}'" if unit_ref is not None else "")
                         + f": values {sorted(set(vals))!r}."
                     ),
                     source="structural",
@@ -443,26 +432,29 @@ class StructuralConformanceValidator:
             return []
 
         findings: list[ValidationFinding] = []
-        schema_substitution_groups: dict[QName, QName] = {}
-        for schema_path in taxonomy.schema_files:
-            try:
-                raw_candidates, _target_ns = parse_schema_raw(schema_path)
-            except Exception as exc:  # noqa: BLE001
-                findings.append(
-                    ValidationFinding(
-                        rule_id="structural:segment-scenario-substitution",
-                        severity=ValidationSeverity.ERROR,
-                        message=(
-                            "Unable to load substitution-group declarations from "
-                            f"schema '{schema_path}' while validating segment/scenario "
-                            f"contents: {exc}"
-                        ),
-                        source="structural",
+        schema_substitution_groups: dict[QName, QName] = dict(
+            getattr(taxonomy, "schema_substitution_groups", {}) or {}
+        )
+        if not schema_substitution_groups:
+            for schema_path in taxonomy.schema_files:
+                try:
+                    raw_candidates, _target_ns = parse_schema_raw(schema_path)
+                except Exception as exc:  # noqa: BLE001
+                    findings.append(
+                        ValidationFinding(
+                            rule_id="structural:segment-scenario-substitution",
+                            severity=ValidationSeverity.ERROR,
+                            message=(
+                                "Unable to load substitution-group declarations from "
+                                f"schema '{schema_path}' while validating segment/scenario "
+                                f"contents: {exc}"
+                            ),
+                            source="structural",
+                        )
                     )
-                )
-                continue
-            for qname, (_concept, substitution_group) in raw_candidates.items():
-                schema_substitution_groups[qname] = substitution_group
+                    continue
+                for qname, (_concept, substitution_group) in raw_candidates.items():
+                    schema_substitution_groups[qname] = substitution_group
 
         for ctx_id, ctx in instance.contexts.items():
             for container_name, container_xml in (

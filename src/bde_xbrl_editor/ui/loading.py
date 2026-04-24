@@ -39,7 +39,6 @@ def _instance_load_process_entry(
     def on_taxonomy_ready(taxonomy: object) -> None:
         nonlocal resolved_taxonomy
         resolved_taxonomy = taxonomy
-        result_queue.put(("taxonomy_resolved", taxonomy))
 
     try:
         instance, orphaned_facts = parser.load(
