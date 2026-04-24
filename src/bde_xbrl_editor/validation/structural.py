@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from dataclasses import dataclass
 
 from lxml import etree
 
 from bde_xbrl_editor.instance.constants import ISO4217_NS
-from bde_xbrl_editor.instance.models import XbrlInstance, XbrlUnit
+from bde_xbrl_editor.instance.models import Fact, XbrlInstance, XbrlUnit
 from bde_xbrl_editor.instance.s_equal import canonical_context_refs_by_s_equal
 from bde_xbrl_editor.taxonomy.constants import NS_XBRLI
 from bde_xbrl_editor.taxonomy.models import Concept, QName, TaxonomyStructure
@@ -17,6 +18,15 @@ from bde_xbrl_editor.validation.models import ValidationFinding, ValidationSever
 _NUMERIC_TYPE_KEYWORDS = ("monetary", "decimal", "integer", "float", "double")
 _XBRLI_ITEM = QName(NS_XBRLI, "item")
 _XBRLI_TUPLE = QName(NS_XBRLI, "tuple")
+
+
+@dataclass
+class _FactAnalysis:
+    unresolved_context_refs: list[ValidationFinding]
+    unresolved_unit_refs: list[ValidationFinding]
+    monetary_iso_units: list[ValidationFinding]
+    period_type_mismatches: list[ValidationFinding]
+    duplicate_facts: list[ValidationFinding]
 
 
 def _is_iso4217_currency_code(local_name: str) -> bool:
@@ -111,6 +121,11 @@ def _substitution_root_for_concept(
     return None
 
 
+def _is_numeric_concept(concept: Concept) -> bool:
+    local_name_lower = concept.data_type.local_name.lower()
+    return any(kw in local_name_lower for kw in _NUMERIC_TYPE_KEYWORDS)
+
+
 class StructuralConformanceValidator:
     """Run XBRL 2.1 structural checks against an in-memory instance.
 
@@ -125,23 +140,41 @@ class StructuralConformanceValidator:
     ) -> list[ValidationFinding]:
         """Run all structural checks and return the aggregated findings list."""
         findings: list[ValidationFinding] = []
+        fact_analysis: _FactAnalysis | None = None
+        try:
+            fact_analysis = self._analyze_facts(instance, taxonomy)
+        except Exception as exc:  # noqa: BLE001
+            findings.append(self._internal_error("structural:fact-analysis", exc))
+
         try:
             findings.extend(self._check_missing_schemaref(instance))
         except Exception as exc:  # noqa: BLE001
             findings.append(self._internal_error("structural:missing-schemaref", exc))
 
         try:
-            findings.extend(self._check_unresolved_context_refs(instance))
+            findings.extend(
+                fact_analysis.unresolved_context_refs
+                if fact_analysis is not None
+                else self._check_unresolved_context_refs(instance)
+            )
         except Exception as exc:  # noqa: BLE001
             findings.append(self._internal_error("structural:unresolved-context-ref", exc))
 
         try:
-            findings.extend(self._check_unresolved_unit_refs(instance, taxonomy))
+            findings.extend(
+                fact_analysis.unresolved_unit_refs
+                if fact_analysis is not None
+                else self._check_unresolved_unit_refs(instance, taxonomy)
+            )
         except Exception as exc:  # noqa: BLE001
             findings.append(self._internal_error("structural:unresolved-unit-ref", exc))
 
         try:
-            findings.extend(self._check_monetary_iso_units(instance, taxonomy))
+            findings.extend(
+                fact_analysis.monetary_iso_units
+                if fact_analysis is not None
+                else self._check_monetary_iso_units(instance, taxonomy)
+            )
         except Exception as exc:  # noqa: BLE001
             findings.append(self._internal_error("structural:monetary-unit-measure", exc))
 
@@ -151,12 +184,20 @@ class StructuralConformanceValidator:
             findings.append(self._internal_error("structural:incomplete-context", exc))
 
         try:
-            findings.extend(self._check_period_type_mismatch(instance, taxonomy))
+            findings.extend(
+                fact_analysis.period_type_mismatches
+                if fact_analysis is not None
+                else self._check_period_type_mismatch(instance, taxonomy)
+            )
         except Exception as exc:  # noqa: BLE001
             findings.append(self._internal_error("structural:period-type-mismatch", exc))
 
         try:
-            findings.extend(self._check_duplicate_facts(instance))
+            findings.extend(
+                fact_analysis.duplicate_facts
+                if fact_analysis is not None
+                else self._check_duplicate_facts(instance)
+            )
         except Exception as exc:  # noqa: BLE001
             findings.append(self._internal_error("structural:duplicate-fact", exc))
 
@@ -170,6 +211,122 @@ class StructuralConformanceValidator:
         # Check 8 (structural:root-element) is already covered by check 1.
 
         return findings
+
+    def _analyze_facts(
+        self,
+        instance: XbrlInstance,
+        taxonomy: TaxonomyStructure | None,
+    ) -> _FactAnalysis:
+        """Run fact-scoped structural checks in one pass over instance.facts."""
+        unresolved_context_refs: list[ValidationFinding] = []
+        unresolved_unit_refs: list[ValidationFinding] = []
+        monetary_iso_units: list[ValidationFinding] = []
+        period_type_mismatches: list[ValidationFinding] = []
+        duplicate_facts: list[ValidationFinding] = []
+        duplicate_key_values: dict[tuple, list[str]] = defaultdict(list)
+
+        try:
+            canonical_context_refs = canonical_context_refs_by_s_equal(instance)
+        except Exception as exc:  # noqa: BLE001
+            canonical_context_refs = None
+            duplicate_facts.append(self._internal_error("structural:duplicate-fact", exc))
+
+        concept_traits: dict[QName, tuple[Concept | None, bool, bool]] = {}
+
+        def _traits_for_fact(fact: Fact) -> tuple[Concept | None, bool, bool]:
+            if taxonomy is None:
+                return None, False, False
+            cached = concept_traits.get(fact.concept)
+            if cached is not None:
+                return cached
+            concept = taxonomy.concepts.get(fact.concept)
+            traits = (
+                concept,
+                _is_numeric_concept(concept) if concept is not None else False,
+                _concept_requires_iso4217_unit(concept) if concept is not None else False,
+            )
+            concept_traits[fact.concept] = traits
+            return traits
+
+        for fact in instance.facts:
+            concept, is_numeric, requires_iso4217 = _traits_for_fact(fact)
+            ctx = instance.contexts.get(fact.context_ref)
+            if ctx is None:
+                unresolved_context_refs.append(
+                    ValidationFinding(
+                        rule_id="structural:unresolved-context-ref",
+                        severity=ValidationSeverity.ERROR,
+                        message=(
+                            f"Fact for concept '{fact.concept}' references context "
+                            f"'{fact.context_ref}' which is not declared in the instance."
+                        ),
+                        source="structural",
+                        concept_qname=fact.concept,
+                        context_ref=fact.context_ref,
+                    )
+                )
+            elif (
+                concept is not None
+                and ctx.period is not None
+                and concept.period_type != ctx.period.period_type
+            ):
+                period_type_mismatches.append(
+                    ValidationFinding(
+                        rule_id="structural:period-type-mismatch",
+                        severity=ValidationSeverity.ERROR,
+                        message=(
+                            f"Fact for concept '{fact.concept}' uses context "
+                            f"'{fact.context_ref}' with period_type "
+                            f"'{ctx.period.period_type}', but the concept declares "
+                            f"period_type '{concept.period_type}'."
+                        ),
+                        source="structural",
+                        concept_qname=fact.concept,
+                        context_ref=fact.context_ref,
+                    )
+                )
+
+            if is_numeric and (fact.unit_ref is None or fact.unit_ref not in instance.units):
+                unresolved_unit_refs.append(
+                    ValidationFinding(
+                        rule_id="structural:unresolved-unit-ref",
+                        severity=ValidationSeverity.ERROR,
+                        message=(
+                            f"Numeric fact for concept '{fact.concept}' "
+                            + (
+                                f"references unit '{fact.unit_ref}' which is not declared "
+                                "in the instance."
+                                if fact.unit_ref is not None
+                                else "is missing a required unit reference."
+                            )
+                        ),
+                        source="structural",
+                        concept_qname=fact.concept,
+                        context_ref=fact.context_ref,
+                    )
+                )
+
+            if requires_iso4217 and fact.unit_ref is not None and fact.unit_ref in instance.units:
+                monetary_finding = self._monetary_unit_finding(
+                    fact,
+                    instance.units[fact.unit_ref],
+                )
+                if monetary_finding is not None:
+                    monetary_iso_units.append(monetary_finding)
+
+            if canonical_context_refs is not None and ctx is not None:
+                ctx_bind = canonical_context_refs.get(fact.context_ref, fact.context_ref)
+                key = (fact.concept, ctx_bind, fact.unit_ref)
+                duplicate_key_values[key].append(fact.value)
+
+        duplicate_facts.extend(self._duplicate_findings_from_key_values(duplicate_key_values))
+        return _FactAnalysis(
+            unresolved_context_refs=unresolved_context_refs,
+            unresolved_unit_refs=unresolved_unit_refs,
+            monetary_iso_units=monetary_iso_units,
+            period_type_mismatches=period_type_mismatches,
+            duplicate_facts=duplicate_facts,
+        )
 
     # ------------------------------------------------------------------
     # Individual checks
@@ -268,62 +425,9 @@ class StructuralConformanceValidator:
                 continue
 
             unit = instance.units[fact.unit_ref]
-            if unit.unit_form == "divide":
-                findings.append(
-                    ValidationFinding(
-                        rule_id="structural:monetary-unit-measure",
-                        severity=ValidationSeverity.ERROR,
-                        message=(
-                            f"Fact for monetary concept '{fact.concept}' uses unit "
-                            f"'{fact.unit_ref}' with xbrli:divide; monetary items require "
-                            "a single ISO 4217 currency measure."
-                        ),
-                        source="structural",
-                        concept_qname=fact.concept,
-                        context_ref=fact.context_ref,
-                    )
-                )
-                continue
-
-            eff_measures = _effective_simple_measure_count(unit)
-            if eff_measures != 1:
-                findings.append(
-                    ValidationFinding(
-                        rule_id="structural:monetary-unit-measure",
-                        severity=ValidationSeverity.ERROR,
-                        message=(
-                            f"Fact for monetary concept '{fact.concept}' uses unit "
-                            f"'{fact.unit_ref}' with {eff_measures} measure "
-                            "element(s); exactly one ISO 4217 measure is required."
-                        ),
-                        source="structural",
-                        concept_qname=fact.concept,
-                        context_ref=fact.context_ref,
-                    )
-                )
-                continue
-
-            mq = _resolved_unit_measure_qname(unit)
-            if (
-                mq is None
-                or mq.namespace != ISO4217_NS
-                or not _is_iso4217_currency_code(mq.local_name)
-            ):
-                got = str(mq) if mq is not None else repr(unit.measure_uri)
-                findings.append(
-                    ValidationFinding(
-                        rule_id="structural:monetary-unit-measure",
-                        severity=ValidationSeverity.ERROR,
-                        message=(
-                            f"Fact for monetary concept '{fact.concept}' must use an "
-                            f"ISO 4217 currency measure in namespace '{ISO4217_NS}' "
-                            f"with a 3-letter currency code; got measure {got!r}."
-                        ),
-                        source="structural",
-                        concept_qname=fact.concept,
-                        context_ref=fact.context_ref,
-                    )
-                )
+            finding = self._monetary_unit_finding(fact, unit)
+            if finding is not None:
+                findings.append(finding)
         return findings
 
     def _check_incomplete_contexts(self, instance: XbrlInstance) -> list[ValidationFinding]:
@@ -400,6 +504,12 @@ class StructuralConformanceValidator:
             key = (fact.concept, ctx_bind, fact.unit_ref)
             key_values[key].append(fact.value)
 
+        return self._duplicate_findings_from_key_values(key_values)
+
+    @staticmethod
+    def _duplicate_findings_from_key_values(
+        key_values: dict[tuple, list[str]],
+    ) -> list[ValidationFinding]:
         findings: list[ValidationFinding] = []
         for key, vals in key_values.items():
             if len(set(vals)) <= 1:
@@ -421,6 +531,54 @@ class StructuralConformanceValidator:
                 )
             )
         return findings
+
+    @staticmethod
+    def _monetary_unit_finding(fact: Fact, unit: XbrlUnit) -> ValidationFinding | None:
+        if unit.unit_form == "divide":
+            return ValidationFinding(
+                rule_id="structural:monetary-unit-measure",
+                severity=ValidationSeverity.ERROR,
+                message=(
+                    f"Fact for monetary concept '{fact.concept}' uses unit "
+                    f"'{fact.unit_ref}' with xbrli:divide; monetary items require "
+                    "a single ISO 4217 currency measure."
+                ),
+                source="structural",
+                concept_qname=fact.concept,
+                context_ref=fact.context_ref,
+            )
+
+        eff_measures = _effective_simple_measure_count(unit)
+        if eff_measures != 1:
+            return ValidationFinding(
+                rule_id="structural:monetary-unit-measure",
+                severity=ValidationSeverity.ERROR,
+                message=(
+                    f"Fact for monetary concept '{fact.concept}' uses unit "
+                    f"'{fact.unit_ref}' with {eff_measures} measure "
+                    "element(s); exactly one ISO 4217 measure is required."
+                ),
+                source="structural",
+                concept_qname=fact.concept,
+                context_ref=fact.context_ref,
+            )
+
+        mq = _resolved_unit_measure_qname(unit)
+        if mq is None or mq.namespace != ISO4217_NS or not _is_iso4217_currency_code(mq.local_name):
+            got = str(mq) if mq is not None else repr(unit.measure_uri)
+            return ValidationFinding(
+                rule_id="structural:monetary-unit-measure",
+                severity=ValidationSeverity.ERROR,
+                message=(
+                    f"Fact for monetary concept '{fact.concept}' must use an "
+                    f"ISO 4217 currency measure in namespace '{ISO4217_NS}' "
+                    f"with a 3-letter currency code; got measure {got!r}."
+                ),
+                source="structural",
+                concept_qname=fact.concept,
+                context_ref=fact.context_ref,
+            )
+        return None
 
     def _check_segment_scenario_substitutions(
         self,

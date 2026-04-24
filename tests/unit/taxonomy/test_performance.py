@@ -22,6 +22,7 @@ from bde_xbrl_editor.instance.models import (
 from bde_xbrl_editor.instance.parser import InstanceParser
 from bde_xbrl_editor.taxonomy import LoaderSettings, TaxonomyCache, TaxonomyLoader
 from bde_xbrl_editor.taxonomy.models import (
+    CalculationArc,
     Concept,
     FactVariableDefinition,
     FormulaAssertionSet,
@@ -31,6 +32,8 @@ from bde_xbrl_editor.taxonomy.models import (
     ValueAssertionDefinition,
 )
 from bde_xbrl_editor.validation import InstanceValidator
+from bde_xbrl_editor.validation.calculation import CalculationConsistencyValidator
+from bde_xbrl_editor.validation.structural import StructuralConformanceValidator
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 BENCHMARK_HISTORY_PATH = REPO_ROOT / ".benchmarks" / "taxonomy_load_history.json"
@@ -181,6 +184,62 @@ def _make_synthetic_basic_instance(fact_count: int = SYNTHETIC_FACT_COUNT) -> Xb
     )
 
 
+def _make_synthetic_calculation_instance(
+    context_count: int = SYNTHETIC_FACT_COUNT,
+) -> XbrlInstance:
+    entity = ReportingEntity(identifier="TEST001", scheme="http://example.com")
+    reporting_period = ReportingPeriod(
+        period_type="instant",
+        instant_date=date(2023, 12, 31),
+    )
+    unit = XbrlUnit(
+        unit_id="EUR",
+        measure_uri="iso4217:EUR",
+        measure_qname=QName(namespace=_ISO4217_NS, local_name="EUR", prefix="iso4217"),
+        simple_measure_count=1,
+    )
+    total = QName(namespace=_SAMPLE_NS, local_name="Total", prefix="tx")
+    item = QName(namespace=_SAMPLE_NS, local_name="Item", prefix="tx")
+    contexts: dict[str, XbrlContext] = {}
+    facts: list[Fact] = []
+    for index in range(context_count):
+        context_id = f"ctx{index}"
+        value = str(index + 1)
+        contexts[context_id] = XbrlContext(
+            context_id=context_id,
+            entity=entity,
+            period=reporting_period,
+        )
+        facts.extend(
+            (
+                Fact(
+                    concept=total,
+                    context_ref=context_id,
+                    unit_ref="EUR",
+                    value=value,
+                    decimals="0",
+                ),
+                Fact(
+                    concept=item,
+                    context_ref=context_id,
+                    unit_ref="EUR",
+                    value=value,
+                    decimals="0",
+                ),
+            )
+        )
+
+    return XbrlInstance(
+        taxonomy_entry_point=_SAMPLE_TAXONOMY_PATH,
+        schema_ref_href=str(_SAMPLE_TAXONOMY_PATH),
+        entity=entity,
+        period=reporting_period,
+        contexts=contexts,
+        units={"EUR": unit},
+        facts=facts,
+    )
+
+
 def _measure_basic_validation_large_instance() -> tuple[float, Any]:
     loader = TaxonomyLoader(cache=TaxonomyCache(), settings=LoaderSettings(allow_network=False))
     taxonomy = loader.load(_SAMPLE_TAXONOMY_PATH)
@@ -242,6 +301,55 @@ def _make_formula_validation_taxonomy() -> TaxonomyStructure:
     )
 
 
+def _make_calculation_validation_taxonomy() -> TaxonomyStructure:
+    total = QName(namespace=_SAMPLE_NS, local_name="Total", prefix="tx")
+    item = QName(namespace=_SAMPLE_NS, local_name="Item", prefix="tx")
+    metadata = TaxonomyMetadata(
+        name="SyntheticCalculationPerformanceTaxonomy",
+        version="1.0",
+        publisher="tests",
+        entry_point_path=_SAMPLE_TAXONOMY_PATH,
+        loaded_at=datetime(2024, 1, 1),
+        declared_languages=("en",),
+    )
+    item_type = QName(namespace=_XBRLI_NS, local_name="monetaryItemType", prefix="xbrli")
+    item_sg = QName(namespace=_XBRLI_NS, local_name="item", prefix="xbrli")
+    concepts = {
+        qname: Concept(
+            qname=qname,
+            data_type=item_type,
+            substitution_group=item_sg,
+            period_type="instant",
+            nillable=True,
+            abstract=False,
+            monetary_item_type=True,
+        )
+        for qname in (total, item)
+    }
+    return TaxonomyStructure(
+        metadata=metadata,
+        concepts=concepts,
+        labels=None,
+        presentation={},
+        calculation={
+            "http://example.com/calculation/performance": (
+                CalculationArc(
+                    parent=total,
+                    child=item,
+                    order=1.0,
+                    weight=1.0,
+                    extended_link_role="http://example.com/calculation/performance",
+                ),
+            )
+        },
+        definition={},
+        hypercubes=[],
+        dimensions={},
+        tables=[],
+        formula_assertion_set=FormulaAssertionSet(),
+    )
+
+
 def _measure_formula_validation_large_instance() -> tuple[float, Any]:
     taxonomy = _make_formula_validation_taxonomy()
     instance = _make_synthetic_basic_instance()
@@ -250,6 +358,26 @@ def _measure_formula_validation_large_instance() -> tuple[float, Any]:
     report = InstanceValidator(taxonomy=taxonomy).validate_sync(instance)
     elapsed = time.perf_counter() - start
     return elapsed, report
+
+
+def _measure_structural_validation_large_instance() -> tuple[float, Any]:
+    taxonomy = _make_formula_validation_taxonomy()
+    instance = _make_synthetic_basic_instance()
+
+    start = time.perf_counter()
+    findings = StructuralConformanceValidator().validate(instance, taxonomy)
+    elapsed = time.perf_counter() - start
+    return elapsed, findings
+
+
+def _measure_calculation_validation_large_instance() -> tuple[float, Any]:
+    taxonomy = _make_calculation_validation_taxonomy()
+    instance = _make_synthetic_calculation_instance()
+
+    start = time.perf_counter()
+    findings = CalculationConsistencyValidator().validate(instance, taxonomy)
+    elapsed = time.perf_counter() - start
+    return elapsed, findings
 
 
 def _record_and_assert_performance(
@@ -387,6 +515,35 @@ def test_basic_large_instance_validation_time_is_not_slower_than_last_run() -> N
             "fact_count": SYNTHETIC_FACT_COUNT,
             "finding_count": len(report.findings),
             "stage_timings": {stage.name: stage.elapsed_seconds for stage in report.stage_timings},
+        },
+    )
+
+
+@pytest.mark.skipif(not _SAMPLE_TAXONOMY_PATH.exists(), reason="Sample taxonomy not present")
+def test_structural_large_instance_validation_time_is_not_slower_than_last_run() -> None:
+    elapsed, findings = _measure_structural_validation_large_instance()
+    _record_and_assert_performance(
+        key="structural_large_instance_validation",
+        label="Structural large synthetic instance validation",
+        elapsed=elapsed,
+        metadata={
+            "fact_count": SYNTHETIC_FACT_COUNT,
+            "finding_count": len(findings),
+        },
+    )
+
+
+@pytest.mark.skipif(not _SAMPLE_TAXONOMY_PATH.exists(), reason="Sample taxonomy not present")
+def test_calculation_large_instance_validation_time_is_not_slower_than_last_run() -> None:
+    elapsed, findings = _measure_calculation_validation_large_instance()
+    _record_and_assert_performance(
+        key="calculation_large_instance_validation",
+        label="Calculation large synthetic instance validation",
+        elapsed=elapsed,
+        metadata={
+            "context_count": SYNTHETIC_FACT_COUNT,
+            "fact_count": SYNTHETIC_FACT_COUNT * 2,
+            "finding_count": len(findings),
         },
     )
 
