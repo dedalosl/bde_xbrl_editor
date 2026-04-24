@@ -1,4 +1,5 @@
 """Unit tests for FormulaEvaluator (validation/formula/evaluator.py)."""
+
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -322,6 +323,43 @@ class TestValueAssertion:
         assert len(findings) == 2
         assert build_calls == ["build"]
 
+    def test_reuses_variable_filter_matches_across_assertions(self, monkeypatch) -> None:
+        """Assertions with the same variable definition should share filtered fact matches."""
+        var_def = FactVariableDefinition(variable_name="v", concept_filter=_qn("Amount"))
+        assertion_a = ValueAssertionDefinition(
+            **_base_assertion_kwargs(assertion_id="VA_CACHE_A", variables=(var_def,)),
+            test_xpath="$v > 0",
+        )
+        assertion_b = ValueAssertionDefinition(
+            **_base_assertion_kwargs(assertion_id="VA_CACHE_B", variables=(var_def,)),
+            test_xpath="$v < 10",
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion_a, assertion_b)))
+        inst = _instance(
+            [_fact("Amount", "ctx1", "1"), _fact("Amount", "ctx2", "2")],
+            contexts={"ctx1": _ctx("ctx1"), "ctx2": _ctx("ctx2")},
+        )
+
+        calls = []
+        original_apply_filters = __import__(
+            "bde_xbrl_editor.validation.formula.evaluator",
+            fromlist=["apply_filters"],
+        ).apply_filters
+
+        def _tracked_apply_filters(*args, **kwargs):
+            calls.append("filter")
+            return original_apply_filters(*args, **kwargs)
+
+        monkeypatch.setattr(
+            "bde_xbrl_editor.validation.formula.evaluator.apply_filters",
+            _tracked_apply_filters,
+        )
+
+        findings = FormulaEvaluator(taxonomy).evaluate(inst)
+
+        assert len(findings) == 4
+        assert calls == ["filter"]
+
     def test_unsatisfied_message_template_is_rendered_with_binding_values(self) -> None:
         """Validation messages render embedded XPath expressions against bound facts."""
         var_def = FactVariableDefinition(variable_name="v", concept_filter=_qn("Amount"))
@@ -397,7 +435,10 @@ class TestValueAssertion:
         findings = FormulaEvaluator(taxonomy).evaluate(inst)
 
         assert len(findings) == 1
-        assert findings[0].rule_message == "{fmt:common(($a))} {fmt:fact($a, ($a))} <= 0 {fmt:threshold(0)}"
+        assert (
+            findings[0].rule_message
+            == "{fmt:common(($a))} {fmt:fact($a, ($a))} <= 0 {fmt:threshold(0)}"
+        )
         assert findings[0].evaluated_rule_message == "1234.43 <= 0\nFALSE"
         assert findings[0].message == "1234.43 <= 0\nFALSE"
 

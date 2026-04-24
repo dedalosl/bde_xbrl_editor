@@ -16,12 +16,16 @@ from lxml import etree
 from bde_xbrl_editor.instance.models import Fact, XbrlInstance
 from bde_xbrl_editor.taxonomy.models import (
     AssertionTextResource,
+    BooleanFilterDefinition,
     ConsistencyAssertionDefinition,
+    DimensionFilter,
     ExistenceAssertionDefinition,
+    FactVariableDefinition,
     FormulaAssertion,
     FormulaAssertionSet,
     TaxonomyStructure,
     ValueAssertionDefinition,
+    XPathFilterDefinition,
 )
 from bde_xbrl_editor.validation.errors import ValidationEngineError
 from bde_xbrl_editor.validation.formula.details import build_formula_display_details
@@ -62,6 +66,7 @@ class FormulaEvaluator:
         self._detail_cache: dict[str, dict[str, str]] = {}
         self._xpath_token_cache: dict[tuple[tuple[tuple[str, str], ...], str], Any] = {}
         self._xpath_filter_token_cache: dict[tuple[tuple[tuple[str, str], ...], str], Any] = {}
+        self._variable_match_cache: dict[tuple[Any, ...], list[Fact]] = {}
         self._progress_interval_seconds = 0.1
 
     # ------------------------------------------------------------------
@@ -84,6 +89,7 @@ class FormulaEvaluator:
         total = len(non_abstract)
         last_progress_at = 0.0
         facts_by_concept = self._facts_by_concept(instance)
+        self._variable_match_cache.clear()
 
         for idx, assertion in enumerate(non_abstract):
             if self._cancel_event and self._cancel_event.is_set():
@@ -469,13 +475,11 @@ class FormulaEvaluator:
 
         per_variable: list[tuple[str, list[list[Fact]]]] = []
         for var_def in assertion.variables:
-            matched = apply_filters(
+            matched = self._matching_facts_for_variable(
                 all_facts,
                 var_def,
                 instance,
-                custom_functions=self._taxonomy.custom_functions,
                 facts_by_concept=facts_by_concept,
-                xpath_token_cache=self._xpath_filter_token_cache,
             )
             # Each fact is one binding candidate for this variable
             # We group as list[list[Fact]] where each inner list is [one_fact]
@@ -500,12 +504,76 @@ class FormulaEvaluator:
             }
             yield binding
 
+    def _matching_facts_for_variable(
+        self,
+        all_facts: list[Fact],
+        var_def: FactVariableDefinition,
+        instance: XbrlInstance,
+        *,
+        facts_by_concept: dict[object, list[Fact]] | None,
+    ) -> list[Fact]:
+        cache_key = self._variable_match_cache_key(var_def)
+        cached = self._variable_match_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        matched = apply_filters(
+            all_facts,
+            var_def,
+            instance,
+            custom_functions=self._taxonomy.custom_functions,
+            facts_by_concept=facts_by_concept,
+            xpath_token_cache=self._xpath_filter_token_cache,
+        )
+        self._variable_match_cache[cache_key] = matched
+        return matched
+
     @staticmethod
     def _facts_by_concept(instance: XbrlInstance) -> dict[object, list[Fact]]:
         by_concept: dict[object, list[Fact]] = {}
         for fact in instance.facts:
             by_concept.setdefault(fact.concept, []).append(fact)
         return by_concept
+
+    @classmethod
+    def _variable_match_cache_key(cls, var_def: FactVariableDefinition) -> tuple[Any, ...]:
+        return (
+            var_def.variable_name,
+            var_def.concept_filter,
+            var_def.period_filter,
+            var_def.dimension_filters,
+            var_def.unit_filter,
+            var_def.fallback_value,
+            tuple(cls._xpath_filter_key(xf) for xf in var_def.xpath_filters),
+            tuple(cls._boolean_filter_key(bf) for bf in var_def.boolean_filters),
+        )
+
+    @staticmethod
+    def _xpath_filter_key(xf: XPathFilterDefinition) -> tuple[Any, ...]:
+        return (xf.xpath_expr, tuple(sorted((xf.namespaces or {}).items())))
+
+    @classmethod
+    def _boolean_filter_key(cls, bf: BooleanFilterDefinition) -> tuple[Any, ...]:
+        return (
+            bf.filter_type,
+            bf.complement,
+            tuple(cls._filter_key(child) for child in bf.children),
+        )
+
+    @classmethod
+    def _filter_key(cls, filter_def: Any) -> tuple[Any, ...]:
+        if isinstance(filter_def, DimensionFilter):
+            return (
+                "dimension",
+                filter_def.dimension_qname,
+                filter_def.member_qnames,
+                filter_def.exclude,
+            )
+        if isinstance(filter_def, XPathFilterDefinition):
+            return ("xpath", *cls._xpath_filter_key(filter_def))
+        if isinstance(filter_def, BooleanFilterDefinition):
+            return ("boolean", *cls._boolean_filter_key(filter_def))
+        return ("unknown", repr(filter_def))
 
     # ------------------------------------------------------------------
     # Assertion evaluators
