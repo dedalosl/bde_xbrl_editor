@@ -393,6 +393,8 @@ class MainWindow(QMainWindow):
         self._table_view = XbrlTableView(parent=self)
         self._table_view.editing_mode_changed.connect(self._on_table_editing_mode_changed)
         self._table_view.layout_ready.connect(self._on_table_layout_ready)
+        self._table_view.cell_info_changed.connect(self._on_cell_info_changed)
+        self._table_view.cell_info_changed.connect(self._on_cell_info_changed)
 
         splitter = QSplitter(self)
         splitter.addWidget(self._sidebar)
@@ -930,6 +932,8 @@ class MainWindow(QMainWindow):
     def _on_table_selected(self, table) -> None:
         if self._table_view is None or self._current_taxonomy is None:
             return
+        if self._sidebar is not None:
+            self._sidebar.set_cell_info_html(None)
         if self._context_title_label is not None:
             table_label = getattr(table, "label", None) or getattr(table, "table_id", "")
             self._context_title_label.setText(table_label)
@@ -948,6 +952,10 @@ class MainWindow(QMainWindow):
             taxonomy=self._current_taxonomy,
             instance=self._current_instance,
         )
+
+    def _on_cell_info_changed(self, html: str) -> None:
+        if self._sidebar is not None:
+            self._sidebar.set_cell_info_html(html)
 
     def _on_table_layout_ready(self, layout) -> None:
         if (

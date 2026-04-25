@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QSizePolicy,
     QSplitter,
     QStackedWidget,
+    QTextBrowser,
     QToolButton,
     QTreeWidget,
     QTreeWidgetItem,
@@ -378,6 +379,24 @@ class _TablesPanel(QWidget):
         info_section = _CollapsibleSection("Taxonomy info", info_widget, expanded=False)
         layout.addWidget(info_section)
 
+        self._cell_info_browser = QTextBrowser()
+        self._cell_info_browser.setOpenExternalLinks(False)
+        self._cell_info_browser.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._cell_info_browser.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self._cell_info_browser.setHtml(
+            f"<div style='color:{theme.TEXT_SUBTLE}; padding:8px;'>Select a table cell to inspect its metadata.</div>"
+        )
+        self._cell_info_browser.setStyleSheet(
+            f"QTextBrowser {{ border: none; background: {theme.SURFACE_BG}; color: {theme.TEXT_MAIN}; }}"
+        )
+        cell_info_section = _CollapsibleSection(
+            "Cell info",
+            self._cell_info_browser,
+            expanded=False,
+            body_stretch=1,
+        )
+        layout.addWidget(cell_info_section, stretch=1)
+
     def _on_item_clicked(self, item: QListWidgetItem) -> None:
         table = item.data(Qt.ItemDataRole.UserRole)
         if table is not None:
@@ -388,6 +407,14 @@ class _TablesPanel(QWidget):
             first = self._list.item(0)
             self._list.setCurrentItem(first)
             self._on_item_clicked(first)
+
+    def set_cell_info_html(self, html: str | None) -> None:
+        if html:
+            self._cell_info_browser.setHtml(html)
+        else:
+            self._cell_info_browser.setHtml(
+                f"<div style='color:{theme.TEXT_SUBTLE}; padding:8px;'>Select a table cell to inspect its metadata.</div>"
+            )
 
     @staticmethod
     def _build_info_widget(meta: object, taxonomy: TaxonomyStructure) -> QWidget:
@@ -1381,6 +1408,10 @@ class ActivitySidebar(QWidget):
     def set_instance_editing_enabled(self, enabled: bool) -> None:
         if self._instance_panel is not None:
             self._instance_panel.set_editing_enabled(enabled)
+
+    def set_cell_info_html(self, html: str | None) -> None:
+        if self._tables_panel is not None:
+            self._tables_panel.set_cell_info_html(html)
 
     def refresh_instance_panel(
         self,

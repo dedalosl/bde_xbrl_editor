@@ -8,8 +8,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from lxml import etree
-from PySide6.QtCore import Qt, QThread, QTimer, Signal
+from PySide6.QtCore import QEvent, QPoint, Qt, QThread, QTimer, Signal
+from PySide6.QtGui import QHelpEvent
 from PySide6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QFrame,
     QHBoxLayout,
@@ -18,6 +20,8 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QTableView,
+    QTextBrowser,
+    QToolTip,
     QVBoxLayout,
     QWidget,
 )
@@ -986,6 +990,19 @@ def _append_open_aspect_rows_to_layout(
     if not aspect_dimensions:
         return layout, [], False
 
+    open_dimension_info = tuple(
+        {
+            "dimension": QName.from_clark(str(candidate["dimension_clark"])),
+            "options": tuple(
+                QName.from_clark(str(option_clark))
+                for option_clark in candidate.get("options", ())
+                if isinstance(option_clark, str)
+            ),
+            "typed": not bool(candidate.get("options")),
+        }
+        for candidate in aspect_dimensions
+    )
+
     key_headers = [
         HeaderCell(
             label=str(candidate["label"]),
@@ -1115,6 +1132,7 @@ def _append_open_aspect_rows_to_layout(
                         for option_clark in candidate.get("options", ())
                         if isinstance(option_clark, str)
                     ),
+                    open_dimension_info=open_dimension_info,
                 )
             )
 
@@ -1123,17 +1141,6 @@ def _append_open_aspect_rows_to_layout(
             for dim_qname, member_qname in selected_dims.items()
         }
         for col_idx, col_cell in enumerate(layout.column_header.ordered_leaves, start=len(aspect_dimensions)):
-            if is_placeholder:
-                row_cells.append(
-                    BodyCell(
-                        row_index=row_idx,
-                        col_index=col_idx,
-                        coordinate=CellCoordinate(),
-                        is_applicable=False,
-                        cell_kind="placeholder",
-                    )
-                )
-                continue
             coord = _build_coordinate(
                 {"explicitDimension": explicit_dims},
                 col_cell.accumulated_aspect_constraints,
@@ -1142,10 +1149,23 @@ def _append_open_aspect_rows_to_layout(
             )
             coord.typed_dimensions = dict(selected_typed_dims)
             coord.typed_dimension_elements = dict(selected_typed_elements)
+            if is_placeholder:
+                row_cells.append(
+                    BodyCell(
+                        row_index=row_idx,
+                        col_index=col_idx,
+                        coordinate=coord,
+                        is_applicable=False,
+                        cell_kind="placeholder",
+                        open_dimension_info=open_dimension_info,
+                    )
+                )
+                continue
             cell = BodyCell(
                 row_index=row_idx,
                 col_index=col_idx,
                 coordinate=coord,
+                open_dimension_info=open_dimension_info,
                 fact_options=_enumeration_fact_options(taxonomy, coord.concept),
             )
             if fact_mapper is not None:
@@ -1559,10 +1579,78 @@ def _build_z_axis_selector_state(
     return dimensions, valid_combinations, {}
 
 
+class _CellInfoTooltipPopup(QWidget):
+    """Small scrollable popup for rich cell metadata."""
+
+    _MAX_WIDTH = 620
+    _MAX_HEIGHT = 420
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(
+            parent,
+            Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint,
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+        self.setStyleSheet(
+            f"""
+            QWidget {{
+                background: {theme.SURFACE_BG};
+                border: 1px solid {theme.BORDER};
+            }}
+            QTextBrowser {{
+                background: {theme.SURFACE_BG};
+                color: {theme.TEXT_MAIN};
+                border: none;
+                padding: 0;
+            }}
+            QScrollBar:vertical {{
+                background: {theme.SURFACE_ALT_BG};
+                width: 10px;
+                margin: 0;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {theme.BORDER};
+                min-height: 28px;
+            }}
+            """
+        )
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self._browser = QTextBrowser(self)
+        self._browser.setOpenExternalLinks(False)
+        self._browser.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._browser.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        layout.addWidget(self._browser)
+
+    def show_html(self, html: str, global_pos: QPoint) -> None:
+        self._browser.setHtml(html)
+        doc = self._browser.document()
+        doc.setTextWidth(self._MAX_WIDTH - 24)
+        content_size = doc.size().toSize()
+        width = min(self._MAX_WIDTH, max(360, content_size.width() + 24))
+        height = min(self._MAX_HEIGHT, max(120, content_size.height() + 20))
+        self.resize(width, height)
+        self._browser.resize(width, height)
+        self.move(self._bounded_position(global_pos + QPoint(14, 18), width, height))
+        self.show()
+        self.raise_()
+        self._browser.setFocus(Qt.FocusReason.PopupFocusReason)
+
+    def _bounded_position(self, pos: QPoint, width: int, height: int) -> QPoint:
+        screen = QApplication.screenAt(pos) or QApplication.primaryScreen()
+        if screen is None:
+            return pos
+        available = screen.availableGeometry()
+        x = min(max(pos.x(), available.left() + 8), available.right() - width - 8)
+        y = min(max(pos.y(), available.top() + 8), available.bottom() - height - 8)
+        return QPoint(x, y)
+
+
 class XbrlTableView(QFrame):
     """Main compound widget for rendering an XBRL table."""
 
     cell_selected = Signal(int, int)
+    cell_info_changed = Signal(str)
     z_index_changed = Signal(int)
     editing_mode_changed = Signal(bool)
     layout_ready = Signal(object)
@@ -1592,6 +1680,7 @@ class XbrlTableView(QFrame):
         self._table_load_worker: TableLayoutLoadWorker | None = None
         self._table_load_request_id = 0
         self._legacy_z_index_map: dict[QName, int] = {}
+        self._cell_selection_connected = False
 
         # Layout
         self._outer_layout = QVBoxLayout(self)
@@ -1705,11 +1794,41 @@ class XbrlTableView(QFrame):
             f"QTableView {{ background: {theme.CELL_BG}; border: none; }}"
         )
         self._body_view.setEditTriggers(QTableView.EditTrigger.NoEditTriggers)
+        self._cell_info_tooltip = _CellInfoTooltipPopup(self._body_view)
+        self._body_view.viewport().installEventFilter(self)
         self._outer_layout.addWidget(self._body_view)
 
         self._table_request_timer = QTimer(self)
         self._table_request_timer.setSingleShot(True)
         self._table_request_timer.timeout.connect(self._apply_requested_table)
+
+    def eventFilter(self, watched: object, event: QEvent) -> bool:
+        if watched is self._body_view.viewport():
+            if event.type() == QEvent.Type.ToolTip:
+                if not isinstance(event, QHelpEvent):
+                    return True
+                index = self._body_view.indexAt(event.pos())
+                tooltip = index.data(Qt.ItemDataRole.ToolTipRole) if index.isValid() else None
+                if isinstance(tooltip, str) and tooltip:
+                    self.cell_info_changed.emit(tooltip)
+                    QToolTip.hideText()
+                    self._cell_info_tooltip.show_html(tooltip, event.globalPos())
+                    return True
+                self._cell_info_tooltip.hide()
+                QToolTip.hideText()
+                return True
+            if event.type() in {
+                QEvent.Type.MouseButtonPress,
+                QEvent.Type.KeyPress,
+                QEvent.Type.Hide,
+            }:
+                self._cell_info_tooltip.hide()
+        return super().eventFilter(watched, event)
+
+    def _emit_cell_selection(self, index) -> None:
+        self.cell_selected.emit(index.row(), index.column())
+        tooltip = index.data(Qt.ItemDataRole.ToolTipRole) if index.isValid() else None
+        self.cell_info_changed.emit(tooltip if isinstance(tooltip, str) else "")
 
     # ------------------------------------------------------------------
     # Properties
@@ -2124,9 +2243,9 @@ class XbrlTableView(QFrame):
         self._body_view.verticalHeader().setMinimumWidth(280)
 
         # Wire cell selection
-        self._body_view.clicked.connect(
-            lambda idx: self.cell_selected.emit(idx.row(), idx.column())
-        )
+        if not self._cell_selection_connected:
+            self._body_view.clicked.connect(self._emit_cell_selection)
+            self._cell_selection_connected = True
         self.layout_ready.emit(layout)
 
     def _on_z_selector_changed(self, assignments: dict[QName, QName]) -> None:
