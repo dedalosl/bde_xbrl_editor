@@ -1319,7 +1319,10 @@ class TaxonomyLoader:
         tables: list[Any] = []
         parsed_table_linkbases = _run_path_jobs(
             table_linkbases,
-            parse_table_linkbase,
+            lambda lb_path: parse_table_linkbase(
+                lb_path,
+                language_preference=tuple(effective_settings.language_preference),
+            ),
             workers=linkbase_workers,
             error_message_factory=lambda exc: f"Unexpected error parsing table linkbase: {exc}",
         )

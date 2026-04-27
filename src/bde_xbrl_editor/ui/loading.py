@@ -93,6 +93,7 @@ def _table_layout_process_entry(
     instance: object,
     z_index: int,
     z_constraints: object,
+    language_preference: object,
     result_queue,
 ) -> None:
     """Compute a table layout in a dedicated process to keep the UI responsive."""
@@ -106,13 +107,21 @@ def _table_layout_process_entry(
 
     try:
         layout = engine.compute(
-            table, instance=instance, z_index=z_index, z_constraints=z_constraints
+            table,
+            instance=instance,
+            z_index=z_index,
+            z_constraints=z_constraints,
+            language_preference=list(language_preference or []),
         )
         result_queue.put(("finished", request_id, layout, ""))
     except TableLayoutError as exc:
         try:
             layout = engine.compute(
-                table, instance=None, z_index=z_index, z_constraints=z_constraints
+                table,
+                instance=None,
+                z_index=z_index,
+                z_constraints=z_constraints,
+                language_preference=list(language_preference or []),
             )
         except Exception:  # noqa: BLE001
             result_queue.put(("error", request_id, f"Table layout warning: {exc.reason}"))
@@ -273,6 +282,7 @@ class TableLayoutLoadWorker(QObject):
         instance: object,
         z_index: int = 0,
         z_constraints: object = None,
+        language_preference: object = None,
     ) -> None:
         super().__init__()
         self._request_id = request_id
@@ -281,6 +291,7 @@ class TableLayoutLoadWorker(QObject):
         self._instance = instance
         self._z_index = z_index
         self._z_constraints = z_constraints
+        self._language_preference = tuple(language_preference or ())
         self._cancelled = False
         self._process = None
 
@@ -302,6 +313,7 @@ class TableLayoutLoadWorker(QObject):
                 self._instance,
                 self._z_index,
                 self._z_constraints,
+                self._language_preference,
                 result_queue,
             ),
             daemon=True,

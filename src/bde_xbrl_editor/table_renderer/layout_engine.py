@@ -36,6 +36,19 @@ _CONCEPT_KEY = "concept"
 _EXPLICIT_DIM_KEY = "explicitDimension"
 
 
+def _preferred_variant(
+    variants: tuple[tuple[str, str], ...],
+    language_preference: list[str],
+) -> str | None:
+    if not variants:
+        return None
+    by_language = {lang: text for lang, text in variants if text}
+    for language in language_preference:
+        if language in by_language:
+            return by_language[language]
+    return next((text for _lang, text in variants if text), None)
+
+
 def _strip_default_member_dimensions(
     explicit_dims: dict[QName, QName],
     taxonomy: TaxonomyStructure,
@@ -81,6 +94,9 @@ def _get_label(
     node: BreakdownNode, taxonomy: TaxonomyStructure, language_preference: list[str]
 ) -> str:
     """Resolve a display label for a breakdown node."""
+    variant = _preferred_variant(getattr(node, "label_variants", ()), language_preference)
+    if variant:
+        return variant
     if node.label:
         return node.label
     # Try to resolve from concept aspect constraint
@@ -728,7 +744,11 @@ class TableLayoutEngine:
                             cell.fact_decimals = result.fact_decimals
                             cell.is_duplicate = result.duplicate_count > 1
 
-            table_label = table.label or table.table_id
+            table_label = (
+                _preferred_variant(getattr(table, "label_variants", ()), lang_pref)
+                or table.label
+                or table.table_id
+            )
 
         except (TableLayoutError, ZIndexOutOfRangeError):
             raise

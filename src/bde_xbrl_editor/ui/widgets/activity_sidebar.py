@@ -170,6 +170,14 @@ def _table_identity(table: object) -> str:
     return "  |  ".join(parts)
 
 
+def _table_label(table: object, language_preference: list[str] | None = None) -> str:
+    variants = dict(getattr(table, "label_variants", ()) or ())
+    for lang in language_preference or []:
+        if lang in variants:
+            return variants[lang]
+    return getattr(table, "label", "") or getattr(table, "table_id", "")
+
+
 def _table_matches_query(table: object, query: str) -> bool:
     if not query:
         return True
@@ -177,6 +185,7 @@ def _table_matches_query(table: object, query: str) -> bool:
         getattr(table, "table_code", "") or "",
         getattr(table, "table_id", "") or "",
         getattr(table, "label", "") or "",
+        " ".join(dict(getattr(table, "label_variants", ()) or {}).values()),
     )).lower()
     return query in haystack
 
@@ -354,6 +363,7 @@ class _TablesPanel(QWidget):
 
     def __init__(self, taxonomy: TaxonomyStructure, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        self._language_preference = ["es", "en"]
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -368,7 +378,9 @@ class _TablesPanel(QWidget):
         self._list = QListWidget()
         self._list.setStyleSheet(_LIST_STYLE)
         for table in taxonomy.tables:
-            item = QListWidgetItem(f"{_table_identity(table)}\n{table.label}")
+            item = QListWidgetItem(
+                f"{_table_identity(table)}\n{_table_label(table, self._language_preference)}"
+            )
             item.setData(Qt.ItemDataRole.UserRole, table)
             self._list.addItem(item)
         self._list.itemClicked.connect(self._on_item_clicked)
@@ -407,6 +419,22 @@ class _TablesPanel(QWidget):
             first = self._list.item(0)
             self._list.setCurrentItem(first)
             self._on_item_clicked(first)
+
+    def set_language_preference(self, language_preference: list[str]) -> None:
+        self._language_preference = list(language_preference or ["es", "en"])
+        selected = self._list.currentItem()
+        selected_id = None
+        if selected is not None:
+            table = selected.data(Qt.ItemDataRole.UserRole)
+            selected_id = getattr(table, "table_id", None)
+        for row in range(self._list.count()):
+            item = self._list.item(row)
+            table = item.data(Qt.ItemDataRole.UserRole)
+            item.setText(
+                f"{_table_identity(table)}\n{_table_label(table, self._language_preference)}"
+            )
+            if selected_id is not None and getattr(table, "table_id", None) == selected_id:
+                self._list.setCurrentItem(item)
 
     def set_cell_info_html(self, html: str | None) -> None:
         if html:
@@ -792,6 +820,7 @@ class _InstancePanel(QWidget):
         self._fi_items_by_template_id: dict[str, QListWidgetItem] = {}
         self._fi_table_lookup: dict[str, object] = {}
         self._editing_enabled = False
+        self._language_preference = ["es", "en"]
         self._data_presence_cache_key: tuple[int, int] | None = None
         self._data_presence_cache: dict[str, bool] = {}
         layout = QVBoxLayout(self)
@@ -881,6 +910,7 @@ class _InstancePanel(QWidget):
         """Fill the panel with data from *instance* and *taxonomy*."""
         self._instance = instance
         self._taxonomy = taxonomy
+        self._language_preference = ["es", "en"]
         # Entity
         entity = instance.entity  # type: ignore[union-attr]
         self._entity_val.setText(f"{entity.identifier}\n{entity.scheme}")
@@ -945,10 +975,11 @@ class _InstancePanel(QWidget):
             if not _table_matches_query(table, query):
                 continue
             status = "Contains data" if has_data else "Empty"
-            item = QListWidgetItem(f"{_table_identity(table)}  |  {status}\n{table.label}")
+            label = _table_label(table, self._language_preference)
+            item = QListWidgetItem(f"{_table_identity(table)}  |  {status}\n{label}")
             item.setData(Qt.ItemDataRole.UserRole, table)
             item.setToolTip(
-                f"{_table_identity(table)}\n{table.label}\n"
+                f"{_table_identity(table)}\n{label}\n"
                 f"{'Contains facts in the current instance.' if has_data else 'No facts matched in the current instance yet.'}"
             )
             font = QFont(self._table_list.font())
@@ -1037,6 +1068,20 @@ class _InstancePanel(QWidget):
         self._editing_enabled = enabled
         self._apply_filing_indicator_editability()
 
+    def set_language_preference(self, language_preference: list[str]) -> None:
+        self._language_preference = list(language_preference or ["es", "en"])
+        self._rebuild_table_list(self._table_search.text().strip().lower())
+        self._refresh_filing_indicator_labels()
+
+    def _refresh_filing_indicator_labels(self) -> None:
+        for row in range(self._fi_list.count()):
+            item = self._fi_list.item(row)
+            template_id = item.data(Qt.ItemDataRole.UserRole)
+            table = self._fi_table_lookup.get(template_id)
+            identity = _table_identity(table) if table is not None else str(template_id)
+            label = _table_label(table, self._language_preference) if table is not None else ""
+            item.setText(f"{identity}\n{label or 'Unknown table'}")
+
     def _populate_filing_indicators(self, instance: object, taxonomy: object) -> None:
         indicators = list(getattr(instance, "filing_indicators", []) or [])
         self._fi_syncing = True
@@ -1074,7 +1119,7 @@ class _InstancePanel(QWidget):
         for fi in indicators:
             table = table_lookup.get(fi.template_id)
             identity = _table_identity(table) if table is not None else fi.template_id
-            label = getattr(table, "label", "") if table is not None else ""
+            label = _table_label(table, self._language_preference) if table is not None else ""
             line = f"{identity}\n{label or 'Unknown table'}"
             item = QListWidgetItem(line)
             item.setData(Qt.ItemDataRole.UserRole, fi.template_id)
@@ -1203,6 +1248,7 @@ class ActivitySidebar(QWidget):
     ) -> None:
         super().__init__(parent)
         self._taxonomy = taxonomy
+        self._language_preference = ["es", "en"]
         self._visible_indexes = tuple(sorted(set(visible_indexes)))
         self._lazy_builders: dict[int, Callable[[], QWidget]] = {}
         self._loaded_indexes: set[int] = set()
@@ -1398,11 +1444,19 @@ class ActivitySidebar(QWidget):
         self._activate(1)
         self._tables_panel.select_first()
 
+    def set_language_preference(self, language_preference: list[str]) -> None:
+        self._language_preference = list(language_preference or ["es", "en"])
+        if self._tables_panel is not None:
+            self._tables_panel.set_language_preference(self._language_preference)
+        if self._instance_panel is not None:
+            self._instance_panel.set_language_preference(self._language_preference)
+
     def set_instance(self, instance: object, taxonomy: object, editor: object | None = None) -> None:
         """Populate the Instance panel with *instance* data and switch to it."""
         if self._instance_panel is None:
             return
         self.refresh_instance_panel(instance, taxonomy, editor)
+        self._instance_panel.set_language_preference(self._language_preference)
         self._activate(3)
 
     def set_instance_editing_enabled(self, enabled: bool) -> None:
@@ -1422,6 +1476,7 @@ class ActivitySidebar(QWidget):
         if self._instance_panel is None:
             return
         self._instance_panel.populate(instance, taxonomy)
+        self._instance_panel.set_language_preference(self._language_preference)
         self._instance_panel.set_editor(editor)
 
     def clear_instance(self) -> None:

@@ -307,6 +307,7 @@ class BreakdownNode:
 
     node_type: Literal["rule", "aspect", "conceptRelationship", "dimensionRelationship"]
     label: str | None = None
+    label_variants: tuple[tuple[str, str], ...] = field(default_factory=tuple)
     rc_code: str | None = None
     fin_code: str | None = (
         None  # http://www.bde.es/xbrl/role/fin-code label for cell-code computation
@@ -330,6 +331,7 @@ class TableDefinitionPWD:
     extended_link_role: str
     x_breakdown: BreakdownNode
     y_breakdown: BreakdownNode
+    label_variants: tuple[tuple[str, str], ...] = field(default_factory=tuple)
     table_code: str | None = None
     z_breakdowns: tuple[BreakdownNode, ...] = field(default_factory=tuple)
 

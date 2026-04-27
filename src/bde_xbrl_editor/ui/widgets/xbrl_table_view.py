@@ -90,6 +90,28 @@ def _table_identity(table: TableDefinitionPWD | None) -> str:
     return table.display_code or table.table_id
 
 
+def _preferred_label_variant(
+    variants: tuple[tuple[str, str], ...],
+    language_preference: list[str],
+) -> str | None:
+    if not variants:
+        return None
+    by_language = {lang: text for lang, text in variants if text}
+    for language in language_preference:
+        if language in by_language:
+            return by_language[language]
+    return next((text for _lang, text in variants if text), None)
+
+
+def _display_table_label(table: TableDefinitionPWD, language_preference: list[str]) -> str:
+    return (
+        _preferred_label_variant(getattr(table, "label_variants", ()), language_preference)
+        or table.label
+        or table.table_id
+        or "Selected table"
+    )
+
+
 def _append_unique_qname(target: list[QName], qname: QName) -> None:
     if qname not in target:
         target.append(qname)
@@ -1502,6 +1524,7 @@ def _build_z_axis_selector_state(
     taxonomy: TaxonomyStructure | None,
     layout: ComputedTableLayout,
     instance: XbrlInstance | None,
+    language_preference: list[str] | None = None,
 ) -> tuple[list[ZAxisDimension], list[dict[QName, QName]], dict[QName, int]]:
     if table is None or taxonomy is None:
         return [], [], {}
@@ -1533,6 +1556,7 @@ def _build_z_axis_selector_state(
     ]
 
     dimensions: list[ZAxisDimension] = []
+    lang_pref = language_preference or ["es", "en"]
     for dim_qname in dimension_candidates:
         allowed_members = _allowed_members_for_dimension(
             dim_qname,
@@ -1558,7 +1582,7 @@ def _build_z_axis_selector_state(
         option_members = tuple(
             ZAxisOption(
                 member_qname=member_qname,
-                label=_display_qname(member_qname, taxonomy, ["es", "en"]),
+                label=_display_qname(member_qname, taxonomy, lang_pref),
                 is_used=member_qname in set(used_members.get(dim_qname, [])),
             )
             for member_qname in ordered_members
@@ -1566,7 +1590,7 @@ def _build_z_axis_selector_state(
         dimensions.append(
             ZAxisDimension(
                 dimension_qname=dim_qname,
-                label=_display_qname(dim_qname, taxonomy, ["es", "en"]),
+                label=_display_qname(dim_qname, taxonomy, lang_pref),
                 options=option_members,
                 selected_member=(
                     selected_member
@@ -1668,6 +1692,7 @@ class XbrlTableView(QFrame):
         self._open_aspect_rows_by_table: dict[str, list[dict[str, str]]] = {}
         self._active_z_index: int = 0
         self._active_z_constraints: dict[QName, QName] = {}
+        self._language_preference: list[str] = ["es", "en"]
         self._editing_enabled: bool = False
         self._pending_table_request: tuple[
             TableDefinitionPWD,
@@ -1857,6 +1882,29 @@ class XbrlTableView(QFrame):
         """Enable or disable inline fact editing for the active instance view."""
         self._set_editing_enabled(enabled)
 
+    def set_language_preference(self, language_preference: list[str]) -> None:
+        """Set the label language preference and refresh the active table."""
+        pref = [lang for lang in language_preference if lang]
+        self._language_preference = pref or ["es", "en"]
+        if self._table is None or self._taxonomy is None:
+            return
+        self._pending_table_request = (
+            self._table,
+            self._taxonomy,
+            self._instance,
+            self._active_z_index,
+            self._active_z_constraints or None,
+        )
+        self._show_loading_state(
+            self._table,
+            self._taxonomy,
+            self._instance,
+            z_index=self._active_z_index,
+            z_constraints=self._active_z_constraints or None,
+            loading_label="Loading labels…",
+        )
+        self._table_request_timer.start(0)
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -1886,6 +1934,7 @@ class XbrlTableView(QFrame):
                 instance=instance,
                 z_index=0,
                 z_constraints=self._active_z_constraints or None,
+                language_preference=self._language_preference,
             )
         except TableLayoutError as exc:
             self._error_banner.setText(f"⚠ Table layout warning: {exc.reason}")
@@ -1897,6 +1946,7 @@ class XbrlTableView(QFrame):
                     instance=None,
                     z_index=0,
                     z_constraints=self._active_z_constraints or None,
+                    language_preference=self._language_preference,
                 )
             except Exception:  # noqa: BLE001
                 return
@@ -1997,6 +2047,7 @@ class XbrlTableView(QFrame):
                     instance=instance,
                     z_index=self._active_z_index,
                     z_constraints=self._active_z_constraints or None,
+                    language_preference=self._language_preference,
                 )
             except (TableLayoutError, ZIndexOutOfRangeError):
                 return
@@ -2029,7 +2080,9 @@ class XbrlTableView(QFrame):
         self._add_open_row_button.hide()
         self._set_editing_enabled(False)
         self._clear_z_selector()
-        self._body_view.setModel(TableBodyModel(_empty_layout(), self))
+        self._body_view.setModel(
+            TableBodyModel(_empty_layout(), self, language_preference=self._language_preference)
+        )
 
     # ------------------------------------------------------------------
     # Internal
@@ -2060,6 +2113,7 @@ class XbrlTableView(QFrame):
             instance=instance,
             z_index=z_index,
             z_constraints=z_constraints,
+            language_preference=self._language_preference,
         )
         thread = QThread(self)
         worker.moveToThread(thread)
@@ -2135,7 +2189,7 @@ class XbrlTableView(QFrame):
             self._z_selector = None
         self._legacy_z_index_map = {}
 
-        title = table.label or table.table_id or "Selected table"
+        title = _display_table_label(table, self._language_preference)
         self._title_label.setText(title)
         subtitle_parts = []
         table_identity = _table_identity(table)
@@ -2152,7 +2206,9 @@ class XbrlTableView(QFrame):
         self._editing_switch.setChecked(False)
         self._editing_switch.blockSignals(False)
         self._editing_switch.setText(loading_label)
-        self._body_view.setModel(TableBodyModel(_empty_layout(), self))
+        self._body_view.setModel(
+            TableBodyModel(_empty_layout(), self, language_preference=self._language_preference)
+        )
 
     def _clear_z_selector(self) -> None:
         if self._z_selector is not None:
@@ -2199,6 +2255,7 @@ class XbrlTableView(QFrame):
             self._taxonomy,
             layout,
             self._instance,
+            self._language_preference,
         )
         self._legacy_z_index_map = legacy_map
         if selector_dimensions:
@@ -2211,7 +2268,7 @@ class XbrlTableView(QFrame):
             self._outer_layout.insertWidget(1, self._z_selector)
 
         # Update body model
-        model = TableBodyModel(layout, self)
+        model = TableBodyModel(layout, self, language_preference=self._language_preference)
         if self._taxonomy is not None:
             from bde_xbrl_editor.table_renderer.fact_formatter import FactFormatter  # noqa: PLC0415
 
@@ -2283,8 +2340,8 @@ class XbrlTableView(QFrame):
             if self._taxonomy is not None:
                 for dim_qname, member_qname in self._active_z_constraints.items():
                     selected_parts.append(
-                        f"{_display_qname(dim_qname, self._taxonomy, ['es', 'en'])}: "
-                        f"{_display_qname(member_qname, self._taxonomy, ['es', 'en'])}"
+                        f"{_display_qname(dim_qname, self._taxonomy, self._language_preference)}: "
+                        f"{_display_qname(member_qname, self._taxonomy, self._language_preference)}"
                     )
             if selected_parts:
                 subtitle_parts.append("  /  ".join(selected_parts))
@@ -2389,7 +2446,10 @@ class XbrlTableView(QFrame):
             )
             return
 
-        labels = [_display_qname(member, self._taxonomy, ["es", "en"]) for member in available_members]
+        labels = [
+            _display_qname(member, self._taxonomy, self._language_preference)
+            for member in available_members
+        ]
         selected_label, accepted = QInputDialog.getItem(
             self,
             "Open row member",

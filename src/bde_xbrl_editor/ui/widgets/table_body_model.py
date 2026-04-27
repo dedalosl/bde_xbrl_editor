@@ -102,10 +102,13 @@ def _display_raw_option(raw_value: str) -> str:
     return raw_value
 
 
-def _resolve_label(taxonomy: Any, qname: Any) -> str:
+def _resolve_label(taxonomy: Any, qname: Any, language_preference: list[str] | None = None) -> str:
     if taxonomy is not None:
         with contextlib.suppress(Exception):
-            resolved = taxonomy.labels.resolve(qname, language_preference=_TOOLTIP_LANG_PREF)
+            resolved = taxonomy.labels.resolve(
+                qname,
+                language_preference=language_preference or _TOOLTIP_LANG_PREF,
+            )
             if resolved and resolved != str(qname):
                 return str(resolved)
     return getattr(qname, "local_name", None) or str(qname)
@@ -195,9 +198,15 @@ def _html_open_dimension_item(taxonomy: Any, item: Any) -> str:
 class TableBodyModel(QAbstractTableModel):
     """Qt model backing the body QTableView."""
 
-    def __init__(self, layout: ComputedTableLayout, parent: Any = None) -> None:
+    def __init__(
+        self,
+        layout: ComputedTableLayout,
+        parent: Any = None,
+        language_preference: list[str] | None = None,
+    ) -> None:
         super().__init__(parent)
         self._layout = layout
+        self._language_preference = list(language_preference or _TOOLTIP_LANG_PREF)
         self._formatter: Any = None  # set by XbrlTableView when taxonomy is available
         self._taxonomy: Any = None
         self._open_key_handler: Any = None
@@ -308,7 +317,7 @@ class TableBodyModel(QAbstractTableModel):
             if cell.cell_kind == "open-key":
                 rows = []
                 if cell.open_key_dimension is not None:
-                    dim_label = _resolve_label(self._taxonomy, cell.open_key_dimension)
+                    dim_label = _resolve_label(self._taxonomy, cell.open_key_dimension, self._language_preference)
                     rows.append(
                         _html_row(
                             "Dimension",
@@ -319,7 +328,7 @@ class TableBodyModel(QAbstractTableModel):
                         )
                     )
                 if cell.open_key_member is not None:
-                    mem_label = _resolve_label(self._taxonomy, cell.open_key_member)
+                    mem_label = _resolve_label(self._taxonomy, cell.open_key_member, self._language_preference)
                     rows.append(
                         _html_row(
                             "Selected member",
@@ -336,7 +345,7 @@ class TableBodyModel(QAbstractTableModel):
                     for option in cell.open_key_options[:_MAX_TOOLTIP_OPTIONS]:
                         option_items.append(
                             "<div style='margin:1px 0;'>"
-                            f"<b>{escape(_resolve_label(self._taxonomy, option))}</b>"
+                            f"<b>{escape(_resolve_label(self._taxonomy, option, self._language_preference))}</b>"
                             f"<span style='color:{theme.TEXT_SUBTLE};'> {escape(_qname_to_clark(option))}</span>"
                             "</div>"
                         )
@@ -363,7 +372,7 @@ class TableBodyModel(QAbstractTableModel):
             if coord.concept is not None:
                 label = ""
                 if self._taxonomy is not None:
-                    label = _resolve_label(self._taxonomy, coord.concept)
+                    label = _resolve_label(self._taxonomy, coord.concept, self._language_preference)
                 data_type = None
                 period_type = None
                 balance = None
@@ -392,8 +401,8 @@ class TableBodyModel(QAbstractTableModel):
             dimension_rows = []
             if coord.explicit_dimensions:
                 for dim, mem in coord.explicit_dimensions.items():
-                    dim_label = _resolve_label(self._taxonomy, dim)
-                    mem_label = _resolve_label(self._taxonomy, mem)
+                    dim_label = _resolve_label(self._taxonomy, dim, self._language_preference)
+                    mem_label = _resolve_label(self._taxonomy, mem, self._language_preference)
                     dimension_rows.append(
                         _html_dimension_item(
                             dim_label,
@@ -403,7 +412,7 @@ class TableBodyModel(QAbstractTableModel):
                     )
             if coord.typed_dimensions:
                 for dim, value in coord.typed_dimensions.items():
-                    dim_label = _resolve_label(self._taxonomy, dim)
+                    dim_label = _resolve_label(self._taxonomy, dim, self._language_preference)
                     typed_element = (coord.typed_dimension_elements or {}).get(dim)
                     detail = f"{_qname_to_clark(dim)}"
                     if typed_element is not None:
@@ -422,7 +431,7 @@ class TableBodyModel(QAbstractTableModel):
                     option_text = str(option)
                     qname = _parse_option_qname(option_text, self._taxonomy)
                     if qname is not None:
-                        label = _resolve_label(self._taxonomy, qname)
+                        label = _resolve_label(self._taxonomy, qname, self._language_preference)
                         detail = _qname_to_clark(qname)
                     else:
                         label = _display_raw_option(option_text)
