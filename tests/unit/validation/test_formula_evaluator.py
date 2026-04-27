@@ -238,6 +238,107 @@ class TestValueAssertion:
         findings = FormulaEvaluator(taxonomy).evaluate(inst)
         assert any(f.rule_id == "VA_VAR" for f in findings)
 
+    def test_value_assertion_with_only_empty_sequence_fallback_is_not_evaluated(self) -> None:
+        var_def = FactVariableDefinition(
+            variable_name="a",
+            concept_filter=_qn("Missing"),
+            fallback_value="()",
+        )
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(assertion_id="VA_EMPTY_FALLBACK", variables=(var_def,)),
+            test_xpath="empty($a)",
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
+        inst = _instance([_fact("Amount", value="42")])
+
+        findings = FormulaEvaluator(taxonomy).evaluate(inst)
+
+        assert len(findings) == 1
+        assert findings[0].status == ValidationStatus.NOT_EVALUATED
+        assert findings[0].severity is None
+
+    def test_value_assertion_with_all_operands_on_fallback_is_not_evaluated(self) -> None:
+        var_a = FactVariableDefinition(
+            variable_name="a",
+            concept_filter=_qn("MissingA"),
+            fallback_value="()",
+        )
+        var_b = FactVariableDefinition(
+            variable_name="b",
+            concept_filter=_qn("MissingB"),
+            fallback_value="0",
+        )
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(
+                assertion_id="VA_ALL_FALLBACK",
+                variables=(var_a, var_b),
+            ),
+            test_xpath="$b = 0",
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
+        inst = _instance([_fact("Amount", value="42")])
+
+        findings = FormulaEvaluator(taxonomy).evaluate(inst)
+
+        assert len(findings) == 1
+        assert findings[0].status == ValidationStatus.NOT_EVALUATED
+        assert findings[0].severity is None
+
+    def test_value_assertion_with_missing_operand_without_fallback_is_not_evaluated(self) -> None:
+        var_a = FactVariableDefinition(
+            variable_name="a",
+            concept_filter=_qn("Amount"),
+        )
+        var_b = FactVariableDefinition(
+            variable_name="b",
+            concept_filter=_qn("Missing"),
+        )
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(
+                assertion_id="VA_MISSING_REQUIRED",
+                variables=(var_a, var_b),
+            ),
+            test_xpath="$a > $b",
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
+        inst = _instance([_fact("Amount", value="42")])
+
+        findings = FormulaEvaluator(taxonomy).evaluate(inst)
+
+        assert len(findings) == 1
+        assert findings[0].status == ValidationStatus.NOT_EVALUATED
+        assert findings[0].severity is None
+
+    def test_value_assertion_compares_prefixed_qname_fact_value(self) -> None:
+        concept = QName(
+            namespace="http://example.com/met",
+            local_name="Treatment",
+            prefix="met",
+        )
+        var_def = FactVariableDefinition(variable_name="a", concept_filter=concept)
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(assertion_id="VA_QNAME", variables=(var_def,)),
+            test_xpath="$a != xs:QName('dom:bad')",
+            namespaces={
+                "xs": "http://www.w3.org/2001/XMLSchema",
+                "dom": "http://example.com/dom",
+            },
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
+        inst = _instance([
+            Fact(
+                concept=concept,
+                context_ref="ctx1",
+                unit_ref=None,
+                value="dom:good",
+            )
+        ])
+
+        findings = FormulaEvaluator(taxonomy).evaluate(inst)
+
+        assert len(findings) == 1
+        assert findings[0].status == ValidationStatus.PASS
+
     def test_formula_finding_carries_rule_details(self) -> None:
         """Failed formula findings include formatted assertion details for the UI."""
         var_def = FactVariableDefinition(

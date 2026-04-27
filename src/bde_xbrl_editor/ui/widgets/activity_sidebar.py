@@ -420,6 +420,16 @@ class _TablesPanel(QWidget):
             self._list.setCurrentItem(first)
             self._on_item_clicked(first)
 
+    def select_table_by_id(self, table_id: str) -> object | None:
+        for row in range(self._list.count()):
+            item = self._list.item(row)
+            table = item.data(Qt.ItemDataRole.UserRole)
+            if getattr(table, "table_id", None) == table_id:
+                self._list.setCurrentItem(item)
+                self._on_item_clicked(item)
+                return table
+        return None
+
     def set_language_preference(self, language_preference: list[str]) -> None:
         self._language_preference = list(language_preference or ["es", "en"])
         selected = self._list.currentItem()
@@ -954,6 +964,34 @@ class _InstancePanel(QWidget):
             self._table_list.setCurrentItem(first)
             self._on_item_clicked(first)
 
+    def select_table_by_id(self, table_id: str) -> object | None:
+        table = next(
+            (
+                table
+                for table, _has_data in self._table_entries
+                if getattr(table, "table_id", None) == table_id
+            ),
+            None,
+        )
+        if table is None:
+            return None
+        for row in range(self._table_list.count()):
+            item = self._table_list.item(row)
+            if item.data(Qt.ItemDataRole.UserRole) is table:
+                self._table_list.setCurrentItem(item)
+                self._on_item_clicked(item)
+                return table
+
+        self._table_search.clear()
+        self._rebuild_table_list()
+        for row in range(self._table_list.count()):
+            item = self._table_list.item(row)
+            if item.data(Qt.ItemDataRole.UserRole) is table:
+                self._table_list.setCurrentItem(item)
+                self._on_item_clicked(item)
+                return table
+        return None
+
     def _on_item_clicked(self, item: QListWidgetItem) -> None:
         table = item.data(Qt.ItemDataRole.UserRole)
         if table is not None:
@@ -1443,6 +1481,17 @@ class ActivitySidebar(QWidget):
             return
         self._activate(1)
         self._tables_panel.select_first()
+
+    def select_table_by_id(self, table_id: str) -> object | None:
+        if self._instance_panel is not None:
+            self._activate(3)
+            table = self._instance_panel.select_table_by_id(table_id)
+            if table is not None:
+                return table
+        if self._tables_panel is not None:
+            self._activate(1)
+            return self._tables_panel.select_table_by_id(table_id)
+        return None
 
     def set_language_preference(self, language_preference: list[str]) -> None:
         self._language_preference = list(language_preference or ["es", "en"])

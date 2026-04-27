@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from lxml import etree
-from PySide6.QtCore import QEvent, QPoint, Qt, QThread, QTimer, Signal
+from PySide6.QtCore import QEvent, QItemSelectionModel, QPoint, Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QHelpEvent
 from PySide6.QtWidgets import (
     QApplication,
@@ -587,6 +587,60 @@ def _find_fact_indexes(
             continue
         matches.append(idx)
     return matches
+
+
+def _normalise_explicit_dimensions(
+    dims: dict[QName, QName],
+    taxonomy: TaxonomyStructure | None,
+) -> dict[QName, QName]:
+    normalised: dict[QName, QName] = {}
+    for dim_qname, member_qname in dims.items():
+        if dim_qname == _AGRUPACION_DIM:
+            continue
+        dim_model = taxonomy.dimensions.get(dim_qname) if taxonomy is not None else None
+        if dim_model is not None and dim_model.default_member == member_qname:
+            continue
+        normalised[dim_qname] = member_qname
+    return normalised
+
+
+def _coordinate_matches_fact_context(
+    coordinate: CellCoordinate,
+    fact: object,
+    instance: XbrlInstance,
+    taxonomy: TaxonomyStructure | None,
+) -> bool:
+    if coordinate.concept is None or getattr(fact, "concept", None) != coordinate.concept:
+        return False
+    context = instance.contexts.get(getattr(fact, "context_ref", ""))
+    if context is None:
+        return False
+
+    context_typed_dims = {
+        dim_qname: value.strip()
+        for dim_qname, value in (getattr(context, "typed_dimensions", {}) or {}).items()
+        if value.strip()
+    }
+    typed_dim_keys = set(context_typed_dims)
+    context_explicit_dims = {
+        dim_qname: member_qname
+        for dim_qname, member_qname in (getattr(context, "dimensions", {}) or {}).items()
+        if dim_qname not in typed_dim_keys
+    }
+    coordinate_explicit_dims = _normalise_explicit_dimensions(
+        coordinate.explicit_dimensions or {},
+        taxonomy,
+    )
+    context_explicit_dims = _normalise_explicit_dimensions(context_explicit_dims, taxonomy)
+    coordinate_typed_dims = {
+        dim_qname: value.strip()
+        for dim_qname, value in (coordinate.typed_dimensions or {}).items()
+        if value.strip()
+    }
+    return (
+        coordinate_explicit_dims == context_explicit_dims
+        and coordinate_typed_dims == context_typed_dims
+    )
 
 
 def _ensure_context_ref_for_dimensions(
@@ -1854,6 +1908,60 @@ class XbrlTableView(QFrame):
         self.cell_selected.emit(index.row(), index.column())
         tooltip = index.data(Qt.ItemDataRole.ToolTipRole) if index.isValid() else None
         self.cell_info_changed.emit(tooltip if isinstance(tooltip, str) else "")
+
+    def navigate_to_fact_cell(
+        self,
+        *,
+        concept_qname: QName | None,
+        context_ref: str | None,
+    ) -> bool:
+        """Select and scroll to the rendered cell for a fact, if present in this table."""
+        if self._layout is None or self._instance is None or not context_ref:
+            return False
+
+        target_facts = [
+            fact
+            for fact in self._instance.facts
+            if fact.context_ref == context_ref
+            and (concept_qname is None or fact.concept == concept_qname)
+        ]
+        if not target_facts:
+            return False
+
+        model = self._body_view.model()
+        selection_model = self._body_view.selectionModel()
+        if model is None or selection_model is None:
+            return False
+
+        for row_idx, row in enumerate(self._layout.body):
+            for col_idx, cell in enumerate(row):
+                if cell.cell_kind != "fact":
+                    continue
+                if concept_qname is not None and cell.coordinate.concept != concept_qname:
+                    continue
+                if not any(
+                    _coordinate_matches_fact_context(
+                        cell.coordinate,
+                        fact,
+                        self._instance,
+                        self._taxonomy,
+                    )
+                    for fact in target_facts
+                ):
+                    continue
+                index = model.index(row_idx, col_idx)
+                if not index.isValid():
+                    return False
+                self._body_view.setCurrentIndex(index)
+                selection_model.select(
+                    index,
+                    QItemSelectionModel.SelectionFlag.ClearAndSelect,
+                )
+                self._body_view.scrollTo(index, QTableView.ScrollHint.PositionAtCenter)
+                self._body_view.setFocus(Qt.FocusReason.OtherFocusReason)
+                self._emit_cell_selection(index)
+                return True
+        return False
 
     # ------------------------------------------------------------------
     # Properties

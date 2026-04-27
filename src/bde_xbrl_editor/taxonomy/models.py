@@ -375,6 +375,14 @@ class DimensionFilter:
 
 
 @dataclass(frozen=True)
+class TypedDimensionFilter:
+    """Filter that restricts a fact variable by typed dimension presence."""
+
+    dimension_qname: QName
+    exclude: bool = False
+
+
+@dataclass(frozen=True)
 class XPathFilterDefinition:
     """An XPath-expression-based filter (gf:general, pf:period test=, etc.)."""
 
@@ -386,13 +394,13 @@ class XPathFilterDefinition:
 class BooleanFilterDefinition:
     """Recursive boolean combination of filters (bf:andFilter / bf:orFilter).
 
-    Children may be DimensionFilter, XPathFilterDefinition, or nested
+    Children may be DimensionFilter, TypedDimensionFilter, XPathFilterDefinition, or nested
     BooleanFilterDefinition instances.  When *complement* is True the result
     of the whole subtree is negated (i.e. the arc had complement="true").
     """
 
     filter_type: Literal["and", "or"]
-    children: tuple[Any, ...]  # DimensionFilter | XPathFilterDefinition | BooleanFilterDefinition
+    children: tuple[Any, ...]  # DimensionFilter | TypedDimensionFilter | XPathFilterDefinition | BooleanFilterDefinition
     complement: bool = False
 
 
@@ -404,6 +412,7 @@ class FactVariableDefinition:
     concept_filter: QName | None = None
     period_filter: Literal["instant", "duration"] | None = None
     dimension_filters: tuple[DimensionFilter, ...] = field(default_factory=tuple)
+    typed_dimension_filters: tuple[TypedDimensionFilter, ...] = field(default_factory=tuple)
     unit_filter: QName | None = None
     fallback_value: str | None = None
     xpath_filters: tuple[XPathFilterDefinition, ...] = field(default_factory=tuple)

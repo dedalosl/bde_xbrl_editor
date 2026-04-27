@@ -76,6 +76,7 @@ class MainWindow(QMainWindow):
         self._validation_thread: QThread | None = None
         self._validation_worker = None  # ValidationWorker | None
         self._validation_panel = None  # ValidationPanel | None
+        self._pending_validation_navigation = None
 
         self._setup_menu()
         self._setup_central()
@@ -1055,6 +1056,10 @@ class MainWindow(QMainWindow):
                         f"{len(self._current_taxonomy.concepts)} concepts, {len(self._current_taxonomy.tables)} tables — {timing_text}"
                     )
             self._pending_initial_table_started_at = None
+        if self._pending_validation_navigation is not None:
+            context_ref, finding = self._pending_validation_navigation
+            self._pending_validation_navigation = None
+            self._on_navigate_to_cell(context_ref, finding)
 
     def _on_changes_made(self) -> None:
         self.setWindowModified(True)
@@ -1289,11 +1294,28 @@ class MainWindow(QMainWindow):
 
     def _on_navigate_to_cell(self, context_ref: str, finding) -> None:
         """Navigate XbrlTableView to the cell for this finding (best-effort)."""
-        # Currently just scrolls to a matching table; full navigation depends on
-        # the table view's ability to locate a context_ref within a rendered cell.
-        if self._table_view is None:
+        if self._table_view is None or not context_ref:
             return
-        # No-op for now; full implementation would locate cell by (concept, context_ref).
+        table_id = getattr(finding, "table_id", None)
+        if (
+            table_id
+            and self._table_view.active_table_id != table_id
+            and self._sidebar is not None
+        ):
+            self._pending_validation_navigation = (context_ref, finding)
+            if self._sidebar.select_table_by_id(table_id) is None:
+                self._pending_validation_navigation = None
+                self._status.showMessage(f"Validation table {table_id} was not found")
+            return
+
+        navigated = self._table_view.navigate_to_fact_cell(
+            concept_qname=getattr(finding, "concept_qname", None),
+            context_ref=context_ref,
+        )
+        if navigated:
+            self._status.showMessage(f"Selected validation cell for context {context_ref}")
+        else:
+            self._status.showMessage(f"No rendered cell found for context {context_ref}")
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
         """Warn if there are unsaved changes before closing (T034)."""

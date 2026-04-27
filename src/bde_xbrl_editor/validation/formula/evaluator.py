@@ -24,6 +24,7 @@ from bde_xbrl_editor.taxonomy.models import (
     FormulaAssertion,
     FormulaAssertionSet,
     TaxonomyStructure,
+    TypedDimensionFilter,
     ValueAssertionDefinition,
     XPathFilterDefinition,
 )
@@ -234,7 +235,7 @@ class FormulaEvaluator:
                 ),
                 None,
             )
-        else:
+        elif status == ValidationStatus.PASS:
             message_resource = next(
                 (
                     resource
@@ -270,7 +271,7 @@ class FormulaEvaluator:
         )
         return ValidationFinding(
             rule_id=assertion.assertion_id,
-            severity=None if status == ValidationStatus.PASS else _sev(assertion),
+            severity=None if status != ValidationStatus.FAIL else _sev(assertion),
             status=status,
             message=display_message,
             source="formula",
@@ -425,6 +426,8 @@ class FormulaEvaluator:
     ) -> str:
         if not isinstance(assertion, (ValueAssertionDefinition, ExistenceAssertionDefinition)):
             return evaluated_message
+        if status == ValidationStatus.NOT_EVALUATED:
+            return evaluated_message
         result_text = "TRUE" if status == ValidationStatus.PASS else "FALSE"
         stripped = evaluated_message.rstrip()
         if stripped.endswith(result_text):
@@ -561,6 +564,7 @@ class FormulaEvaluator:
             var_def.concept_filter,
             var_def.period_filter,
             var_def.dimension_filters,
+            var_def.typed_dimension_filters,
             var_def.unit_filter,
             tuple(cls._xpath_filter_key(xf) for xf in var_def.xpath_filters),
             tuple(cls._boolean_filter_key(bf) for bf in var_def.boolean_filters),
@@ -587,6 +591,12 @@ class FormulaEvaluator:
                 filter_def.member_qnames,
                 filter_def.exclude,
             )
+        if isinstance(filter_def, TypedDimensionFilter):
+            return (
+                "typed-dimension",
+                filter_def.dimension_qname,
+                filter_def.exclude,
+            )
         if isinstance(filter_def, XPathFilterDefinition):
             return ("xpath", *cls._xpath_filter_key(filter_def))
         if isinstance(filter_def, BooleanFilterDefinition):
@@ -610,9 +620,30 @@ class FormulaEvaluator:
 
         pending_publish: list[ValidationFinding] = []
         for binding in bindings:
+            if self._value_assertion_not_evaluated(assertion, binding):
+                self._append_and_maybe_publish(
+                    findings,
+                    pending_publish,
+                    self._finding_for_assertion(
+                        assertion,
+                        status=ValidationStatus.NOT_EVALUATED,
+                        default_message=(
+                            f"Value assertion '{assertion.assertion_id}' not evaluated: "
+                            "no matching facts found for the required operands"
+                        ),
+                        binding=binding,
+                        instance=instance,
+                    ),
+                )
+                continue
+
             try:
                 result = self._eval_xpath(
-                    assertion.test_xpath, binding, instance, assertion.namespaces
+                    assertion.test_xpath,
+                    binding,
+                    instance,
+                    assertion.namespaces,
+                    assertion=assertion,
                 )
                 passed = _to_bool(result)
             except Exception as exc:  # noqa: BLE001
@@ -649,6 +680,23 @@ class FormulaEvaluator:
             )
         self._publish_pending(pending_publish)
         return findings
+
+    @staticmethod
+    def _value_assertion_not_evaluated(
+        assertion: ValueAssertionDefinition,
+        binding: dict[str, list[Fact]],
+    ) -> bool:
+        if not assertion.variables:
+            return False
+
+        has_fact = False
+        for var_def in assertion.variables:
+            facts = binding.get(var_def.variable_name, [])
+            if facts:
+                has_fact = True
+            elif var_def.fallback_value is None:
+                return True
+        return not has_fact
 
     def _evaluate_existence_assertion(
         self,
@@ -704,7 +752,11 @@ class FormulaEvaluator:
                 continue
             try:
                 computed = self._eval_xpath(
-                    assertion.formula_xpath, binding, instance, assertion.namespaces
+                    assertion.formula_xpath,
+                    binding,
+                    instance,
+                    assertion.namespaces,
+                    assertion=assertion,
                 )
                 # elementpath.select returns a list; unwrap single-element results
                 if isinstance(computed, list):
@@ -755,20 +807,33 @@ class FormulaEvaluator:
         binding: dict[str, list[Fact]],
         instance: XbrlInstance,
         namespaces: dict[str, str] | None = None,
+        *,
+        assertion: FormulaAssertion | None = None,
     ) -> Any:
         """Evaluate an XPath 2.0 expression with the current fact binding."""
         import elementpath  # type: ignore[import-untyped]
 
-        # Build a variable map: variable_name → Decimal (or "" for empty bindings).
+        # Build a variable map: variable_name → Decimal, fallback value, or empty sequence.
         # Decimal values support XPath arithmetic; xfi: functions use the global
         # _eval_context for fact-level metadata.
         variables: dict[str, Any] = {}
         first_fact: Fact | None = None
+        fallback_by_name = {
+            var_def.variable_name: var_def.fallback_value
+            for var_def in assertion.variables
+            if var_def.fallback_value is not None
+        } if assertion is not None else {}
         for var_name, facts in binding.items():
             if facts:
-                variables[var_name] = _coerce_value(facts[0].value)
+                variables[var_name] = _coerce_xpath_variable_value(
+                    facts[0].value,
+                    namespaces=namespaces or {},
+                    xpath_expr=xpath_expr,
+                )
                 if first_fact is None:
                     first_fact = facts[0]
+            elif var_name in fallback_by_name:
+                variables[var_name] = _coerce_fallback_value(fallback_by_name[var_name])
             else:
                 variables[var_name] = Decimal(0)
 
@@ -864,6 +929,37 @@ def _coerce_value(raw: str) -> Any:
         return Decimal(raw)
     except InvalidOperation:
         return raw
+
+
+def _coerce_fallback_value(raw: str) -> Any:
+    """Convert formula fallbackValue text to the XPath variable value."""
+    if raw.strip() == "()":
+        return []
+    return _coerce_value(raw)
+
+
+def _coerce_xpath_variable_value(
+    raw: str,
+    *,
+    namespaces: dict[str, str],
+    xpath_expr: str,
+) -> Any:
+    """Convert a fact value to the best Python value for XPath variable binding."""
+    value = _coerce_value(raw)
+    if not isinstance(value, str):
+        return value
+    if "QName(" not in xpath_expr or ":" not in value:
+        return value
+    prefix, _local_name = value.split(":", 1)
+    namespace = namespaces.get(prefix)
+    if not namespace:
+        return value
+    try:
+        from elementpath.datatypes import QName as XPathQName  # type: ignore[import-untyped]
+
+        return XPathQName(namespace, value)
+    except Exception:  # noqa: BLE001
+        return value
 
 
 def _fact_to_message_element(fact: Fact) -> etree._Element:

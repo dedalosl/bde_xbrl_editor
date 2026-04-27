@@ -12,6 +12,7 @@ from bde_xbrl_editor.taxonomy.models import (
     CustomFunctionDefinition,
     DimensionFilter,
     FactVariableDefinition,
+    TypedDimensionFilter,
     XPathFilterDefinition,
 )
 
@@ -89,6 +90,14 @@ def apply_filters(
                         filtered.append(fact)
         result = filtered
 
+    # Typed dimension filters
+    for typed_filter in variable_def.typed_dimension_filters:
+        filtered = []
+        for fact in result:
+            if _passes_typed_dimension_filter(fact, typed_filter, instance):
+                filtered.append(fact)
+        result = filtered
+
     # Boolean filters (bf:andFilter / bf:orFilter)
     for bf in variable_def.boolean_filters:
         result = [
@@ -132,6 +141,18 @@ def _passes_dim_filter(fact: Fact, dim_filter: DimensionFilter, instance: XbrlIn
         return member is not None
 
 
+def _passes_typed_dimension_filter(
+    fact: Fact,
+    typed_filter: TypedDimensionFilter,
+    instance: XbrlInstance,
+) -> bool:
+    ctx = instance.contexts.get(fact.context_ref)
+    if ctx is None:
+        return False
+    present = typed_filter.dimension_qname in (getattr(ctx, "typed_dimensions", {}) or {})
+    return not present if typed_filter.exclude else present
+
+
 def _passes_boolean_filter(
     fact: Fact,
     bf: BooleanFilterDefinition,
@@ -144,6 +165,8 @@ def _passes_boolean_filter(
     for child in bf.children:
         if isinstance(child, DimensionFilter):
             child_results.append(_passes_dim_filter(fact, child, instance))
+        elif isinstance(child, TypedDimensionFilter):
+            child_results.append(_passes_typed_dimension_filter(fact, child, instance))
         elif isinstance(child, BooleanFilterDefinition):
             child_results.append(
                 _passes_boolean_filter(
