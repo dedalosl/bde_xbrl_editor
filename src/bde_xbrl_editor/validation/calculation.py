@@ -108,6 +108,10 @@ def _fact_is_nil_numeric(fact: Fact) -> bool:
     return not (fact.value or "").strip()
 
 
+def _fact_has_zero_precision(fact: Fact) -> bool:
+    return str(fact.precision or "").strip() == "0"
+
+
 def _calc_key(
     fact: Fact,
     canon_ctx: dict[str, str],
@@ -180,8 +184,7 @@ class CalculationConsistencyValidator:
             except (InvalidOperation, AttributeError):
                 continue
             rounded_value = _round_fact(fact, infer_decimals=True)
-            if not rounded_value.is_nan():
-                rounded_numeric_facts_by_key[key].append((fact, rounded_value))
+            rounded_numeric_facts_by_key[key].append((fact, rounded_value))
 
         duplicate_blocked = {key for key, flist in by_key.items() if len(flist) > 1}
         return _CalculationFactIndex(
@@ -250,6 +253,7 @@ class CalculationConsistencyValidator:
                             break
 
                 bound_sum = _ZERO
+                bound_items_have_zero_precision = False
                 if not dup_row:
                     for arc in rel_arcs:
                         w = Decimal(str(arc.weight))
@@ -257,6 +261,10 @@ class CalculationConsistencyValidator:
                         for _item_fact, rounded_item in fact_index.rounded_numeric_facts_by_key.get(
                             item_key, ()
                         ):
+                            bound_items_have_zero_precision = (
+                                bound_items_have_zero_precision
+                                or _fact_has_zero_precision(_item_fact)
+                            )
                             bound_sum += rounded_item * w
 
                 for sum_fact, rounded_sum in sum_facts:
@@ -270,32 +278,38 @@ class CalculationConsistencyValidator:
                         infer_decimals=True,
                         v_decimal=bound_sum,
                     )
-                    if rounded_items_sum.is_nan():
+                    if rounded_items_sum.is_nan() or rounded_sum.is_nan():
+                        if not (
+                            _fact_has_zero_precision(sum_fact)
+                            or bound_items_have_zero_precision
+                        ):
+                            continue
+                    elif rounded_items_sum == rounded_sum:
                         continue
-                    if rounded_items_sum != rounded_sum:
-                        unreported: list[str] = []
-                        for arc in rel_arcs:
-                            ik = (arc.child, ctx_ref, unit_ref)
-                            if ik not in fact_index.by_key or ik not in fact_index.non_nil_keys:
-                                unreported.append(str(arc.child))
 
-                        findings.append(
-                            ValidationFinding(
-                                rule_id="calculation:summation-inconsistent",
-                                severity=ValidationSeverity.ERROR,
-                                message=(
-                                    f"Calculation inconsistent for summation concept "
-                                    f"'{sum_concept}' in link role '{elr}': reported rounded "
-                                    f"total {rounded_sum} vs computed {rounded_items_sum} "
-                                    f"(context '{ctx_ref}', unit '{unit_ref}'). "
-                                    f"Missing or nil contributing facts: "
-                                    f"{', '.join(unreported) if unreported else 'none'}."
-                                ),
-                                source="calculation",
-                                concept_qname=sum_concept,
-                                context_ref=ctx_ref,
-                            )
+                    unreported: list[str] = []
+                    for arc in rel_arcs:
+                        ik = (arc.child, ctx_ref, unit_ref)
+                        if ik not in fact_index.by_key or ik not in fact_index.non_nil_keys:
+                            unreported.append(str(arc.child))
+
+                    findings.append(
+                        ValidationFinding(
+                            rule_id="calculation:summation-inconsistent",
+                            severity=ValidationSeverity.ERROR,
+                            message=(
+                                f"Calculation inconsistent for summation concept "
+                                f"'{sum_concept}' in link role '{elr}': reported rounded "
+                                f"total {rounded_sum} vs computed {rounded_items_sum} "
+                                f"(context '{ctx_ref}', unit '{unit_ref}'). "
+                                f"Missing or nil contributing facts: "
+                                f"{', '.join(unreported) if unreported else 'none'}."
+                            ),
+                            source="calculation",
+                            concept_qname=sum_concept,
+                            context_ref=ctx_ref,
                         )
-                        break
+                    )
+                    break
 
         return findings

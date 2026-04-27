@@ -118,13 +118,10 @@ The simplest way to run it:
   with properly named subdirectories. Create symlinks once:
     
     mkdir -p tests/conformance/suite-data                      
-    ln -sfn "$(pwd)/conformance/XBRL-CONF-2025-07-16"              tests/conformance/suite-data/xbrl-2.1
-    ln -sfn "$(pwd)/conformance/XBRL-XDT-CONF-2025-09-09"
-    tests/conformance/suite-data/dimensions-1.0
-    ln -sfn "$(pwd)/conformance/table-linkbase-conformance-2024-12-17"
-    tests/conformance/suite-data/table-linkbase-1.0
-    ln -sfn "$(pwd)/conformance/formula-conformance-2022-07-21"
-    tests/conformance/suite-data/formula-1.0   
+    ln -sfn "$(pwd)/conformance/XBRL-CONF-2025-07-16" tests/conformance/suite-data/xbrl-2.1
+    ln -sfn "$(pwd)/conformance/XBRL-XDT-CONF-2025-09-09" tests/conformance/suite-data/dimensions-1.0
+    ln -sfn "$(pwd)/conformance/table-linkbase-conformance-2024-12-17" tests/conformance/suite-data/table-linkbase-1.0
+    ln -sfn "$(pwd)/conformance/formula-conformance-2022-07-21" tests/conformance/suite-data/formula-1.0   
 
   Then run:
   # All suites

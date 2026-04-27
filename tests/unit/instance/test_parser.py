@@ -186,6 +186,50 @@ def test_parser_uses_shared_xml_file_helper(monkeypatch, tmp_path: Path) -> None
     assert parsed_paths == [p]
 
 
+def test_footnote_accepts_inherited_xml_lang(tmp_path: Path) -> None:
+    parser, _ = _make_parser()
+    xbrl = _write_xbrl(
+        tmp_path,
+        """
+  <link:footnoteLink xlink:type="extended" xlink:role="http://www.xbrl.org/2003/role/link" xml:lang="en">
+    <link:footnote xlink:type="resource" xlink:label="fn1" xlink:role="http://www.xbrl.org/2003/role/footnote">Inherited language</link:footnote>
+  </link:footnoteLink>
+        """,
+    )
+
+    parser.load(xbrl)
+
+
+def test_footnote_rejects_invalid_standard_resource_role(tmp_path: Path) -> None:
+    parser, _ = _make_parser()
+    xbrl = _write_xbrl(
+        tmp_path,
+        """
+  <link:footnoteLink xlink:type="extended" xlink:role="http://www.xbrl.org/2003/role/link">
+    <link:footnote xlink:type="resource" xlink:label="fn1" xml:lang="en" xlink:role="http://www.xbrl.org/2003/role/link">Bad role</link:footnote>
+  </link:footnoteLink>
+        """,
+    )
+
+    with pytest.raises(InstanceParseError, match="invalid standard xlink:role"):
+        parser.load(xbrl)
+
+
+def test_footnote_link_rejects_standard_footnote_resource_role(tmp_path: Path) -> None:
+    parser, _ = _make_parser()
+    xbrl = _write_xbrl(
+        tmp_path,
+        """
+  <link:footnoteLink xlink:type="extended" xlink:role="http://www.xbrl.org/2003/role/footnote">
+    <link:footnote xlink:type="resource" xlink:label="fn1" xml:lang="en" xlink:role="http://www.xbrl.org/2003/role/footnote">Bad link role</link:footnote>
+  </link:footnoteLink>
+        """,
+    )
+
+    with pytest.raises(InstanceParseError, match="standard footnote resource role"):
+        parser.load(xbrl)
+
+
 # ---------------------------------------------------------------------------
 # Tests: taxonomy resolution
 # ---------------------------------------------------------------------------

@@ -179,6 +179,24 @@ def test_calculation_inconsistent_like_320_17() -> None:
     assert findings[0].source == "calculation"
 
 
+def test_calculation_inconsistent_when_bound_facts_have_zero_precision() -> None:
+    """Conformance 320-07: precision=0 facts still bind and report inconsistency."""
+    tax = _taxonomy_with_abc_calculation()
+    inst = _instance_with_facts(
+        [
+            Fact(_q("A"), "ctx1", "u1", "1.25", precision="0"),
+            Fact(_q("B"), "ctx1", "u1", "1", precision="0"),
+            Fact(_q("C"), "ctx1", "u1", "0.25", precision="0"),
+        ]
+    )
+
+    findings = CalculationConsistencyValidator().validate(inst, tax)
+
+    assert [finding.rule_id for finding in findings] == [
+        "calculation:summation-inconsistent"
+    ]
+
+
 def test_calculation_inconsistent_like_320_16() -> None:
     """Small contributor rounded away at decimals=0."""
     tax = _taxonomy_with_abc_calculation()

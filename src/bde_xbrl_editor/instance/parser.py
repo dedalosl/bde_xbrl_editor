@@ -61,16 +61,21 @@ _XBRLDI_TYPED_MEMBER = f"{{{XBRLDI_NS}}}typedMember"
 _FILING_IND = f"{{{FILING_IND_NS}}}filingIndicator"
 _XLINK_HREF = f"{{{XLINK_NS}}}href"
 _XLINK_TYPE = f"{{{XLINK_NS}}}type"
+_XLINK_ROLE = f"{{{XLINK_NS}}}role"
 _LINK_FOOTNOTE_LINK = f"{{{LINK_NS}}}footnoteLink"
 _LINK_LOC = f"{{{LINK_NS}}}loc"
 _LINK_FOOTNOTE = f"{{{LINK_NS}}}footnote"
 _LINK_FOOTNOTE_ARC = f"{{{LINK_NS}}}footnoteArc"
 _LINK_DOCUMENTATION = f"{{{LINK_NS}}}documentation"
 _ARCROLE_FACT_FOOTNOTE = "http://www.xbrl.org/2003/arcrole/fact-footnote"
+_ROLE_LINK = "http://www.xbrl.org/2003/role/link"
+_ROLE_FOOTNOTE = "http://www.xbrl.org/2003/role/footnote"
+_STANDARD_ROLE_PREFIX = "http://www.xbrl.org/2003/role/"
 _XLINK_LABEL = f"{{{XLINK_NS}}}label"
 _XLINK_FROM = f"{{{XLINK_NS}}}from"
 _XLINK_TO = f"{{{XLINK_NS}}}to"
 _XLINK_ARCROLE = f"{{{XLINK_NS}}}arcrole"
+_XML_LANG = "{http://www.w3.org/XML/1998/namespace}lang"
 _FOOTNOTE_LINK_ALLOWED_CHILD = frozenset(
     {
         _LINK_LOC,
@@ -158,6 +163,15 @@ def _parse_date(text: str) -> date:
     if "T" in stripped:
         stripped = stripped.split("T")[0]
     return date.fromisoformat(stripped)
+
+
+def _has_inherited_xml_lang(el: etree._Element) -> bool:
+    current: etree._Element | None = el
+    while current is not None:
+        if current.get(_XML_LANG) is not None:
+            return True
+        current = current.getparent()
+    return False
 
 
 def _period_s_equal_key(period_el: etree._Element) -> tuple:
@@ -546,6 +560,11 @@ class InstanceParser:
         all_context_ids = set(contexts.keys())
         all_unit_ids = set(units.keys())
         for footnote_link in root.findall(_LINK_FOOTNOTE_LINK):
+            link_role = footnote_link.get(_XLINK_ROLE, "")
+            if link_role == _ROLE_FOOTNOTE:
+                footnote_errors.append(
+                    "link:footnoteLink must not use the standard footnote resource role"
+                )
             loc_labels: dict[str, str] = {}
             footnote_resources: set[str] = set()
             for child_el in footnote_link:
@@ -585,7 +604,16 @@ class InstanceParser:
                 label = fn_el.get(_XLINK_LABEL, "")
                 if label:
                     footnote_resources.add(label)
-                if fn_el.get("{http://www.w3.org/XML/1998/namespace}lang") is None:
+                footnote_role = fn_el.get(_XLINK_ROLE, "")
+                if (
+                    footnote_role.startswith(_STANDARD_ROLE_PREFIX)
+                    and footnote_role != _ROLE_FOOTNOTE
+                ):
+                    footnote_errors.append(
+                        "link:footnote uses an invalid standard xlink:role "
+                        f"'{footnote_role}'"
+                    )
+                if not _has_inherited_xml_lang(fn_el):
                     footnote_errors.append("link:footnote is missing required xml:lang attribute")
             endpoint_labels = set(loc_labels) | footnote_resources
             for arc_el in footnote_link.findall(_LINK_FOOTNOTE_ARC):

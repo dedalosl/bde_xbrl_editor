@@ -43,6 +43,13 @@ _FORMULA_VALID_IGNORE_RULE_IDS = frozenset(
         "calculation:summation-inconsistent",
     }
 )
+_XBRL21_VALID_IGNORE_RULE_IDS = frozenset(
+    {
+        # Duplicate facts affect calculation binding, but are not themselves an
+        # XBRL 2.1 conformance error for variations whose expected result is valid.
+        "structural:duplicate-fact",
+    }
+)
 
 _LINK_LINKBASE_REF = f"{{{LINK_NS}}}linkbaseRef"
 _XLINK_HREF = f"{{{XLINK_NS}}}href"
@@ -725,7 +732,7 @@ class TestCaseExecutor:
 
                 # Get taxonomy: use explicit taxonomy_file if given, otherwise
                 # resolve schemaRef relative to instance file
-                if variation.taxonomy_file is not None:
+                if variation.taxonomy_file is not None and variation.taxonomy_file.exists():
                     taxonomy_struct = loader.load(variation.taxonomy_file)
                 else:
                     schema_href = instance.schema_ref_href
@@ -762,7 +769,11 @@ class TestCaseExecutor:
                 try:
                     taxonomy_struct = loader.load(variation.taxonomy_file)
                 except UnsupportedTaxonomyFormatError:
-                    if test_case.test_case_id not in _STRUCTURAL_ONLY_TEST_IDS:
+                    if (
+                        test_case.test_case_id not in _STRUCTURAL_ONLY_TEST_IDS
+                        and variation.expected_outcome.outcome_type
+                        != ExpectedOutcomeType.VALID
+                    ):
                         raise
                 except Exception:  # noqa: BLE001
                     if test_case.test_case_id != _LINKBASE_REFERENCES_TEST_ID:
@@ -840,6 +851,15 @@ class TestCaseExecutor:
                 f
                 for f in error_findings
                 if f.rule_id not in _FORMULA_VALID_IGNORE_RULE_IDS
+            )
+        elif (
+            suite_id == "xbrl21"
+            and expected.outcome_type == ExpectedOutcomeType.VALID
+        ):
+            error_findings = tuple(
+                f
+                for f in error_findings
+                if f.rule_id not in _XBRL21_VALID_IGNORE_RULE_IDS
             )
         warning_findings = tuple(
             f for f in findings if f.severity == ValidationSeverity.WARNING

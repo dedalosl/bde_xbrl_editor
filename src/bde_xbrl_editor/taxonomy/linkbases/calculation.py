@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from urllib.parse import unquote
 
 from lxml import etree
 
@@ -90,7 +91,7 @@ def parse_calculation_linkbase(
             href = loc.get(_XLINK_HREF, "")
             xlink_label = loc.get(_XLINK_LABEL, "")
             if "#" in href:
-                fragment = href.rsplit("#", 1)[1]
+                fragment = unquote(href.rsplit("#", 1)[1])
                 qname = concept_map.get(fragment)
                 if qname:
                     loc_map[xlink_label] = qname
