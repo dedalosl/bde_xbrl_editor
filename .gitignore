@@ -46,3 +46,4 @@ cache/
 
 #Excluding files:
 !conformance/*.py
+!tests/unit/conformance/*.py
