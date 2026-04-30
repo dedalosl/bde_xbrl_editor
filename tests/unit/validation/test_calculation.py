@@ -45,12 +45,13 @@ def _instant_ctx(ctx_id: str = "ctx1") -> XbrlContext:
     )
 
 
-def _monetary_concept(name: str) -> Concept:
+def _monetary_concept(name: str, balance: str | None = None) -> Concept:
     qn = _q(name)
     return Concept(
         qname=qn,
         data_type=QName(namespace=NS_XBRLI, local_name="monetaryItemType"),
         period_type="instant",
+        balance=balance,  # type: ignore[arg-type]
         monetary_item_type=True,
     )
 
@@ -177,6 +178,111 @@ def test_calculation_inconsistent_like_320_17() -> None:
     assert findings[0].rule_id == "calculation:summation-inconsistent"
     assert findings[0].severity == ValidationSeverity.ERROR
     assert findings[0].source == "calculation"
+
+
+def test_calculation_same_balance_requires_positive_weight() -> None:
+    tax = _taxonomy_summation_a_equals_b()
+    qa, qb = _q("A"), _q("B")
+    tax = TaxonomyStructure(
+        metadata=tax.metadata,
+        concepts={
+            qa: _monetary_concept("A", balance="credit"),
+            qb: _monetary_concept("B", balance="credit"),
+        },
+        labels=tax.labels,
+        presentation=tax.presentation,
+        calculation={
+            _ELR: [
+                CalculationArc(
+                    parent=qa,
+                    child=qb,
+                    order=1.0,
+                    weight=-1.0,
+                    extended_link_role=_ELR,
+                )
+            ]
+        },
+        definition=tax.definition,
+        hypercubes=tax.hypercubes,
+        dimensions=tax.dimensions,
+        tables=tax.tables,
+        formula_assertion_set=tax.formula_assertion_set,
+    )
+    inst = _instance_with_facts(
+        [
+            Fact(qa, "ctx1", "u1", "1", decimals="0"),
+            Fact(qb, "ctx1", "u1", "1", decimals="0"),
+        ]
+    )
+
+    findings = CalculationConsistencyValidator().validate(inst, tax)
+
+    assert any(f.rule_id == "calculation:balance-weight-inconsistent" for f in findings)
+
+
+def test_calculation_weight_must_not_be_zero() -> None:
+    tax = _taxonomy_summation_a_equals_b()
+    qa, qb = _q("A"), _q("B")
+    tax = TaxonomyStructure(
+        metadata=tax.metadata,
+        concepts=tax.concepts,
+        labels=tax.labels,
+        presentation=tax.presentation,
+        calculation={
+            _ELR: [
+                CalculationArc(
+                    parent=qa,
+                    child=qb,
+                    order=1.0,
+                    weight=0.0,
+                    extended_link_role=_ELR,
+                )
+            ]
+        },
+        definition=tax.definition,
+        hypercubes=tax.hypercubes,
+        dimensions=tax.dimensions,
+        tables=tax.tables,
+        formula_assertion_set=tax.formula_assertion_set,
+    )
+    inst = _instance_with_facts(
+        [
+            Fact(qa, "ctx1", "u1", "1", decimals="0"),
+            Fact(qb, "ctx1", "u1", "1", decimals="0"),
+        ]
+    )
+
+    findings = CalculationConsistencyValidator().validate(inst, tax)
+
+    assert any(f.rule_id == "calculation:invalid-weight" for f in findings)
+
+
+def test_calculation_arc_endpoints_must_be_numeric() -> None:
+    tax = _taxonomy_summation_a_equals_b()
+    qa, qb = _q("A"), _q("B")
+    tax = TaxonomyStructure(
+        metadata=tax.metadata,
+        concepts={
+            qa: Concept(
+                qname=qa,
+                data_type=QName(namespace=NS_XBRLI, local_name="stringItemType"),
+                period_type="instant",
+            ),
+            qb: _monetary_concept("B"),
+        },
+        labels=tax.labels,
+        presentation=tax.presentation,
+        calculation=tax.calculation,
+        definition=tax.definition,
+        hypercubes=tax.hypercubes,
+        dimensions=tax.dimensions,
+        tables=tax.tables,
+        formula_assertion_set=tax.formula_assertion_set,
+    )
+
+    findings = CalculationConsistencyValidator().validate_taxonomy(tax)
+
+    assert any(f.rule_id == "calculation:invalid-endpoint" for f in findings)
 
 
 def test_calculation_inconsistent_when_bound_facts_have_zero_precision() -> None:

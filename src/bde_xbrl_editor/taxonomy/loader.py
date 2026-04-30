@@ -142,9 +142,7 @@ def _schema_text_references_xbrl_instance_model(path: Path) -> bool:
         snippet = path.read_text(encoding="utf-8", errors="ignore")[:524_288]
     except OSError:
         return False
-    if _XBRLI_PREFIX_COLON_RE.search(snippet):
-        return True
-    return bool(_XBRLI_INSTANCE_IMPORT_NS_RE.search(snippet))
+    return bool(_XBRLI_PREFIX_COLON_RE.search(snippet))
 
 
 def _sniff_linkbase_type(path: Path) -> str:

@@ -54,6 +54,8 @@ _XBRLI_START = f"{{{XBRLI_NS}}}startDate"
 _XBRLI_END = f"{{{XBRLI_NS}}}endDate"
 _XBRLI_MEASURE = f"{{{XBRLI_NS}}}measure"
 _XBRLI_DIVIDE = f"{{{XBRLI_NS}}}divide"
+_XBRLI_UNIT_NUMERATOR = f"{{{XBRLI_NS}}}unitNumerator"
+_XBRLI_UNIT_DENOMINATOR = f"{{{XBRLI_NS}}}unitDenominator"
 _XBRLI_SCENARIO = f"{{{XBRLI_NS}}}scenario"
 _XBRLI_SEGMENT = f"{{{XBRLI_NS}}}segment"
 _XBRLDI_MEMBER = f"{{{XBRLDI_NS}}}explicitMember"
@@ -77,6 +79,7 @@ _XLINK_TO = f"{{{XLINK_NS}}}to"
 _XLINK_ARCROLE = f"{{{XLINK_NS}}}arcrole"
 _XML_LANG = "{http://www.w3.org/XML/1998/namespace}lang"
 _XSI_NIL = "{http://www.w3.org/2001/XMLSchema-instance}nil"
+_XBRLI_TUPLE_QNAME = QName(namespace=XBRLI_NS, local_name="tuple")
 _FOOTNOTE_LINK_ALLOWED_CHILD = frozenset(
     {
         _LINK_LOC,
@@ -354,16 +357,41 @@ def _parse_unit(el: etree._Element) -> XbrlUnit:
     children = [c for c in el if isinstance(c.tag, str)]
     has_divide = any(c.tag == _XBRLI_DIVIDE for c in children)
     if has_divide:
+        divide_el = next((c for c in children if c.tag == _XBRLI_DIVIDE), None)
+        numerator_qnames: list[QName] = []
+        denominator_qnames: list[QName] = []
+        if divide_el is not None:
+            numerator_el = divide_el.find(_XBRLI_UNIT_NUMERATOR)
+            denominator_el = divide_el.find(_XBRLI_UNIT_DENOMINATOR)
+            if numerator_el is not None:
+                numerator_qnames = [
+                    mq
+                    for m in numerator_el.findall(_XBRLI_MEASURE)
+                    if (mq := _parse_measure_qname(m, (m.text or "").strip())) is not None
+                ]
+            if denominator_el is not None:
+                denominator_qnames = [
+                    mq
+                    for m in denominator_el.findall(_XBRLI_MEASURE)
+                    if (mq := _parse_measure_qname(m, (m.text or "").strip())) is not None
+                ]
         return XbrlUnit(
             unit_id=unit_id,
             measure_uri="",
             measure_qname=None,
             unit_form="divide",
             simple_measure_count=0,
+            numerator_measure_qnames=tuple(numerator_qnames),
+            denominator_measure_qnames=tuple(denominator_qnames),
         )
 
     direct_measures = [c for c in children if c.tag == _XBRLI_MEASURE]
     count = len(direct_measures)
+    measure_qnames = tuple(
+        mq
+        for m in direct_measures
+        if (mq := _parse_measure_qname(m, (m.text or "").strip())) is not None
+    )
     if count != 1:
         joined = " ".join((m.text or "").strip() for m in direct_measures if (m.text or "").strip())
         return XbrlUnit(
@@ -372,6 +400,7 @@ def _parse_unit(el: etree._Element) -> XbrlUnit:
             measure_qname=None,
             unit_form="simple",
             simple_measure_count=count,
+            simple_measure_qnames=measure_qnames,
         )
 
     measure_el = direct_measures[0]
@@ -383,6 +412,7 @@ def _parse_unit(el: etree._Element) -> XbrlUnit:
         measure_qname=mq,
         unit_form="simple",
         simple_measure_count=1,
+        simple_measure_qnames=(mq,) if mq is not None else (),
     )
 
 
@@ -439,6 +469,42 @@ def _parse_dimension_qname(
 def _tag_to_qname(tag: str) -> QName:
     """Convert Clark notation to QName."""
     return QName.from_clark(tag)
+
+
+def _concept_substitution_chain_reaches(
+    concept_qname: QName,
+    taxonomy: TaxonomyStructure,
+    target: QName,
+) -> bool:
+    current = taxonomy.concepts.get(concept_qname)
+    seen: set[QName] = set()
+    while current is not None and current.substitution_group is not None:
+        sg = current.substitution_group
+        if sg == target:
+            return True
+        if sg in seen:
+            return False
+        seen.add(sg)
+        current = taxonomy.concepts.get(sg)
+    return False
+
+
+def _reject_xbrl_defined_attrs_on_tuple_fact(
+    el: etree._Element,
+    concept_qname: QName,
+    taxonomy: TaxonomyStructure,
+    path_str: str,
+) -> None:
+    if not _concept_substitution_chain_reaches(concept_qname, taxonomy, _XBRLI_TUPLE_QNAME):
+        return
+    for raw_name in el.attrib:
+        attr_qname = QName.from_clark(raw_name) if raw_name.startswith("{") else QName("", raw_name)
+        if attr_qname.namespace in {XBRLI_NS, XLINK_NS}:
+            raise InstanceParseError(
+                path_str,
+                "xbrl:schema-validation-error: Tuple fact "
+                f"'{concept_qname}' must not use XBRL-defined attribute '{attr_qname}'",
+            )
 
 
 class InstanceParser:
@@ -713,8 +779,26 @@ class InstanceParser:
                     tag not in _NON_FACT_TAGS
                     and ns not in (FILING_IND_NS, BDE_PBLO_NS)
                     and tag != _LINK_SCHEMA_REF
-                    and "contextRef" in child.attrib
                 ):
+                    try:
+                        concept_qname = _tag_to_qname(tag)
+                    except ValueError as exc:
+                        raise InstanceParseError(
+                            path_str,
+                            f"QName parse error for element '{tag}': {exc}",
+                        ) from exc
+
+                    if concept_qname in known_concepts and taxonomy is not None:
+                        _reject_xbrl_defined_attrs_on_tuple_fact(
+                            child,
+                            concept_qname,
+                            taxonomy,
+                            path_str,
+                        )
+
+                    if "contextRef" not in child.attrib:
+                        continue
+
                     facts_seen += 1
                     context_ref = child.get("contextRef", "")
                     unit_ref = child.get("unitRef")
@@ -725,16 +809,6 @@ class InstanceParser:
                         "1",
                     }
                     value = (child.text or "").strip()
-
-                    concept_tag = child.tag
-                    try:
-                        concept_qname = _tag_to_qname(concept_tag)
-                    except ValueError as exc:
-                        raise InstanceParseError(
-                            path_str,
-                            f"Fact QName parse error in context '{context_ref}' "
-                            f"for element '{concept_tag}': {exc}",
-                        ) from exc
 
                     if concept_qname in known_concepts:
                         facts.append(
@@ -752,7 +826,7 @@ class InstanceParser:
                         raw_xml = etree.tostring(child, encoding="unicode").encode("utf-8")
                         orphaned.append(
                             OrphanedFact(
-                                concept_qname_str=concept_tag,
+                                concept_qname_str=tag,
                                 context_ref=context_ref,
                                 unit_ref=unit_ref,
                                 value=value,

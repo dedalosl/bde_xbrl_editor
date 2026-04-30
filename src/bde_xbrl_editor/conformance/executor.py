@@ -30,6 +30,7 @@ from bde_xbrl_editor.taxonomy.models import (
 )
 from bde_xbrl_editor.taxonomy.settings import LoaderSettings
 from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
+from bde_xbrl_editor.validation.calculation import CalculationConsistencyValidator
 from bde_xbrl_editor.validation.models import ValidationFinding, ValidationSeverity
 from bde_xbrl_editor.validation.orchestrator import InstanceValidator
 
@@ -62,7 +63,6 @@ _LINK_LINKBASE = f"{{{LINK_NS}}}linkbase"
 _LINK_ROLE_REF = f"{{{LINK_NS}}}roleRef"
 _LINK_ARCROLE_REF = f"{{{LINK_NS}}}arcroleRef"
 _XS_SCHEMA = f"{{{NS_XSD}}}schema"
-_XS_ATTRIBUTE = f"{{{NS_XSD}}}attribute"
 _XS_IMPORT = f"{{{NS_XSD}}}import"
 _XS_INCLUDE = f"{{{NS_XSD}}}include"
 _XS_REDEFINE = f"{{{NS_XSD}}}redefine"
@@ -71,6 +71,7 @@ _XS_EXTENSION = f"{{{NS_XSD}}}extension"
 _XS_SIMPLE_TYPE = f"{{{NS_XSD}}}simpleType"
 _XS_COMPLEX_TYPE = f"{{{NS_XSD}}}complexType"
 _XS_SIMPLE_CONTENT = f"{{{NS_XSD}}}simpleContent"
+_XS_ATTRIBUTE = f"{{{NS_XSD}}}attribute"
 _XSI_SCHEMA_LOCATION = "{http://www.w3.org/2001/XMLSchema-instance}schemaLocation"
 _XML_LANG = "{http://www.w3.org/XML/1998/namespace}lang"
 _XML_SPACE = "{http://www.w3.org/XML/1998/namespace}space"
@@ -779,6 +780,10 @@ class TestCaseExecutor:
                     if test_case.test_case_id != _LINKBASE_REFERENCES_TEST_ID:
                         raise
                 findings = _validate_xlink_inputs(variation.input_files)
+                if taxonomy_struct is not None and test_case.suite_id == "xbrl21":
+                    findings = findings + tuple(
+                        CalculationConsistencyValidator().validate_taxonomy(taxonomy_struct)
+                    )
                 if test_case.test_case_id == _LAX_VALIDATION_TEST_ID:
                     findings = findings + _validate_lax_known_declarations(
                         variation.input_files
@@ -801,6 +806,10 @@ class TestCaseExecutor:
                 if taxonomy_struct is None and first_load_error is not None:
                     raise first_load_error
                 findings = _validate_xlink_inputs(variation.input_files)
+                if taxonomy_struct is not None and test_case.suite_id == "xbrl21":
+                    findings = findings + tuple(
+                        CalculationConsistencyValidator().validate_taxonomy(taxonomy_struct)
+                    )
                 if test_case.test_case_id == _LAX_VALIDATION_TEST_ID:
                     findings = findings + _validate_lax_known_declarations(
                         variation.input_files

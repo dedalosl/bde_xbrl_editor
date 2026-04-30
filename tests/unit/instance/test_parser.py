@@ -230,6 +230,30 @@ def test_footnote_link_rejects_standard_footnote_resource_role(tmp_path: Path) -
         parser.load(xbrl)
 
 
+def test_tuple_fact_rejects_xbrl_defined_attribute(tmp_path: Path) -> None:
+    tuple_qname = QName(namespace=_TEST_NS, local_name="Tuple")
+    taxonomy = _make_taxonomy(
+        {
+            tuple_qname: Concept(
+                qname=tuple_qname,
+                data_type=QName(namespace=_XBRLI_NS, local_name="anyType"),
+                period_type="duration",
+                substitution_group=QName(namespace=_XBRLI_NS, local_name="tuple"),
+            )
+        }
+    )
+    parser, _ = _make_parser(taxonomy)
+    xbrl = _write_xbrl(
+        tmp_path,
+        """
+  <test:Tuple xbrli:periodType="duration"/>
+        """,
+    )
+
+    with pytest.raises(InstanceParseError, match="xbrl:schema-validation-error"):
+        parser.load(xbrl)
+
+
 # ---------------------------------------------------------------------------
 # Tests: taxonomy resolution
 # ---------------------------------------------------------------------------

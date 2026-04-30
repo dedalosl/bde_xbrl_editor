@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 
 from lxml import etree
@@ -18,6 +18,7 @@ from bde_xbrl_editor.validation.models import ValidationFinding, ValidationSever
 _NUMERIC_TYPE_KEYWORDS = ("monetary", "decimal", "integer", "float", "double")
 _XBRLI_ITEM = QName(NS_XBRLI, "item")
 _XBRLI_TUPLE = QName(NS_XBRLI, "tuple")
+_ARCROLE_ESSENCE_ALIAS = "http://www.xbrl.org/2003/arcrole/essence-alias"
 
 
 @dataclass
@@ -25,6 +26,7 @@ class _FactAnalysis:
     unresolved_context_refs: list[ValidationFinding]
     unresolved_unit_refs: list[ValidationFinding]
     monetary_iso_units: list[ValidationFinding]
+    unit_consistency: list[ValidationFinding]
     decimals_precision: list[ValidationFinding]
     period_type_mismatches: list[ValidationFinding]
     duplicate_facts: list[ValidationFinding]
@@ -181,6 +183,15 @@ class StructuralConformanceValidator:
 
         try:
             findings.extend(
+                fact_analysis.unit_consistency
+                if fact_analysis is not None
+                else self._check_unit_consistency(instance, taxonomy)
+            )
+        except Exception as exc:  # noqa: BLE001
+            findings.append(self._internal_error("structural:unit-consistency", exc))
+
+        try:
+            findings.extend(
                 fact_analysis.decimals_precision
                 if fact_analysis is not None
                 else self._check_decimals_precision(instance, taxonomy)
@@ -216,6 +227,11 @@ class StructuralConformanceValidator:
         except Exception as exc:  # noqa: BLE001
             findings.append(self._internal_error("structural:segment-scenario-substitution", exc))
 
+        try:
+            findings.extend(self._check_essence_alias_units(instance, taxonomy))
+        except Exception as exc:  # noqa: BLE001
+            findings.append(self._internal_error("structural:essence-alias-unit", exc))
+
         # Check 7 (structural:missing-namespace) is skipped — namespace info not
         # available on the in-memory instance model.
         # Check 8 (structural:root-element) is already covered by check 1.
@@ -231,6 +247,7 @@ class StructuralConformanceValidator:
         unresolved_context_refs: list[ValidationFinding] = []
         unresolved_unit_refs: list[ValidationFinding] = []
         monetary_iso_units: list[ValidationFinding] = []
+        unit_consistency: list[ValidationFinding] = []
         decimals_precision: list[ValidationFinding] = []
         period_type_mismatches: list[ValidationFinding] = []
         duplicate_facts: list[ValidationFinding] = []
@@ -325,6 +342,15 @@ class StructuralConformanceValidator:
                 if monetary_finding is not None:
                     monetary_iso_units.append(monetary_finding)
 
+            if fact.unit_ref is not None and fact.unit_ref in instance.units:
+                unit_consistency.extend(
+                    self._unit_consistency_findings(
+                        fact,
+                        instance.units[fact.unit_ref],
+                        concept,
+                    )
+                )
+
             if is_numeric or fact.unit_ref is not None:
                 finding = self._decimals_precision_finding(fact, is_numeric=is_numeric)
                 if finding is not None:
@@ -340,6 +366,7 @@ class StructuralConformanceValidator:
             unresolved_context_refs=unresolved_context_refs,
             unresolved_unit_refs=unresolved_unit_refs,
             monetary_iso_units=monetary_iso_units,
+            unit_consistency=unit_consistency,
             decimals_precision=decimals_precision,
             period_type_mismatches=period_type_mismatches,
             duplicate_facts=duplicate_facts,
@@ -445,6 +472,26 @@ class StructuralConformanceValidator:
             finding = self._monetary_unit_finding(fact, unit)
             if finding is not None:
                 findings.append(finding)
+        return findings
+
+    def _check_unit_consistency(
+        self,
+        instance: XbrlInstance,
+        taxonomy: TaxonomyStructure | None,
+    ) -> list[ValidationFinding]:
+        """XBRL 2.1 unit-shape checks beyond monetary ISO validation."""
+        findings: list[ValidationFinding] = []
+        for fact in instance.facts:
+            if fact.unit_ref is None or fact.unit_ref not in instance.units:
+                continue
+            concept = taxonomy.concepts.get(fact.concept) if taxonomy is not None else None
+            findings.extend(
+                self._unit_consistency_findings(
+                    fact,
+                    instance.units[fact.unit_ref],
+                    concept,
+                )
+            )
         return findings
 
     def _check_decimals_precision(
@@ -615,6 +662,112 @@ class StructuralConformanceValidator:
         return None
 
     @staticmethod
+    def _unit_measure_qnames(unit: XbrlUnit) -> tuple[QName, ...]:
+        if unit.unit_form == "divide":
+            return tuple(unit.numerator_measure_qnames) + tuple(unit.denominator_measure_qnames)
+        if unit.simple_measure_qnames:
+            return unit.simple_measure_qnames
+        mq = _resolved_unit_measure_qname(unit)
+        return (mq,) if mq is not None else ()
+
+    def _unit_consistency_findings(
+        self,
+        fact: Fact,
+        unit: XbrlUnit,
+        concept: Concept | None,
+    ) -> list[ValidationFinding]:
+        findings: list[ValidationFinding] = []
+        findings.extend(self._xbrli_measure_findings(fact, unit))
+        if self._concept_is_shares_item(concept):
+            finding = self._shares_unit_finding(fact, unit)
+            if finding is not None:
+                findings.append(finding)
+        finding = self._divide_cancellation_finding(fact, unit)
+        if finding is not None:
+            findings.append(finding)
+        return findings
+
+    def _xbrli_measure_findings(
+        self,
+        fact: Fact,
+        unit: XbrlUnit,
+    ) -> list[ValidationFinding]:
+        findings: list[ValidationFinding] = []
+        for measure in self._unit_measure_qnames(unit):
+            if measure.namespace == NS_XBRLI and measure.local_name not in {"pure", "shares"}:
+                findings.append(
+                    ValidationFinding(
+                        rule_id="structural:unit-consistency",
+                        severity=ValidationSeverity.ERROR,
+                        message=(
+                            f"Fact for concept '{fact.concept}' uses unit '{fact.unit_ref}' "
+                            f"with xbrli measure '{measure.local_name}'. XBRL instance "
+                            "measures are limited to xbrli:pure and xbrli:shares."
+                        ),
+                        source="structural",
+                        concept_qname=fact.concept,
+                        context_ref=fact.context_ref,
+                    )
+                )
+        return findings
+
+    @staticmethod
+    def _concept_is_shares_item(concept: Concept | None) -> bool:
+        return (
+            concept is not None
+            and concept.data_type.namespace == NS_XBRLI
+            and concept.data_type.local_name == "sharesItemType"
+        )
+
+    @staticmethod
+    def _shares_unit_finding(fact: Fact, unit: XbrlUnit) -> ValidationFinding | None:
+        expected = QName(namespace=NS_XBRLI, local_name="shares")
+        measure_count = (
+            0 if unit.unit_form != "simple" else _effective_simple_measure_count(unit)
+        )
+        measures = (
+            unit.simple_measure_qnames
+            if unit.simple_measure_qnames
+            else ((_resolved_unit_measure_qname(unit),) if _resolved_unit_measure_qname(unit) else ())
+        )
+        if unit.unit_form != "simple" or measure_count != 1 or tuple(measures) != (expected,):
+            got = ", ".join(str(m) for m in measures) or unit.measure_uri or unit.unit_form
+            return ValidationFinding(
+                rule_id="structural:unit-consistency",
+                severity=ValidationSeverity.ERROR,
+                message=(
+                    f"Fact for shares concept '{fact.concept}' must use a unit "
+                    f"with exactly one xbrli:shares measure; got {got!r}."
+                ),
+                source="structural",
+                concept_qname=fact.concept,
+                context_ref=fact.context_ref,
+            )
+        return None
+
+    @staticmethod
+    def _divide_cancellation_finding(fact: Fact, unit: XbrlUnit) -> ValidationFinding | None:
+        if unit.unit_form != "divide":
+            return None
+        numerator = Counter(unit.numerator_measure_qnames)
+        denominator = Counter(unit.denominator_measure_qnames)
+        cancelled = numerator & denominator
+        if not cancelled:
+            return None
+        cancelled_text = ", ".join(str(qn) for qn in sorted(cancelled, key=str))
+        return ValidationFinding(
+            rule_id="structural:unit-consistency",
+            severity=ValidationSeverity.ERROR,
+            message=(
+                f"Unit '{fact.unit_ref}' for concept '{fact.concept}' is not in "
+                f"simplest form; numerator and denominator both contain {cancelled_text}."
+            ),
+            source="structural",
+            concept_qname=fact.concept,
+            context_ref=fact.context_ref,
+        )
+
+    @staticmethod
     def _decimals_precision_finding(
         fact: Fact,
         *,
@@ -770,6 +923,107 @@ class StructuralConformanceValidator:
                         )
                     )
         return findings
+
+    def _check_essence_alias_units(
+        self,
+        instance: XbrlInstance,
+        taxonomy: TaxonomyStructure | None,
+    ) -> list[ValidationFinding]:
+        """Essence-alias fact pairs must use equivalent units."""
+        if taxonomy is None:
+            return []
+
+        essence_alias_arcs = [
+            arc
+            for arcs in taxonomy.definition.values()
+            for arc in arcs
+            if arc.arcrole == _ARCROLE_ESSENCE_ALIAS
+        ]
+        if not essence_alias_arcs:
+            return []
+
+        try:
+            canonical_context_refs = canonical_context_refs_by_s_equal(instance)
+        except Exception:
+            canonical_context_refs = {}
+
+        facts_by_concept: dict[QName, list[Fact]] = defaultdict(list)
+        for fact in instance.facts:
+            facts_by_concept[fact.concept].append(fact)
+
+        findings: list[ValidationFinding] = []
+        seen_pairs: set[tuple[QName, QName, str, str | None, str | None]] = set()
+        for arc in essence_alias_arcs:
+            source_facts = facts_by_concept.get(arc.source, [])
+            target_facts = facts_by_concept.get(arc.target, [])
+            if not source_facts or not target_facts:
+                continue
+
+            for source_fact in source_facts:
+                source_ctx = canonical_context_refs.get(
+                    source_fact.context_ref,
+                    source_fact.context_ref,
+                )
+                for target_fact in target_facts:
+                    target_ctx = canonical_context_refs.get(
+                        target_fact.context_ref,
+                        target_fact.context_ref,
+                    )
+                    if source_ctx != target_ctx:
+                        continue
+                    key = (
+                        arc.source,
+                        arc.target,
+                        source_ctx,
+                        source_fact.unit_ref,
+                        target_fact.unit_ref,
+                    )
+                    if key in seen_pairs:
+                        continue
+                    seen_pairs.add(key)
+                    if self._unit_signature_for_ref(
+                        instance,
+                        source_fact.unit_ref,
+                    ) == self._unit_signature_for_ref(instance, target_fact.unit_ref):
+                        continue
+                    findings.append(
+                        ValidationFinding(
+                            rule_id="structural:essence-alias-unit",
+                            severity=ValidationSeverity.ERROR,
+                            message=(
+                                f"Essence-alias concepts '{arc.source}' and '{arc.target}' "
+                                f"report facts in context '{source_ctx}' with non-equivalent "
+                                f"units '{source_fact.unit_ref}' and '{target_fact.unit_ref}'."
+                            ),
+                            source="structural",
+                            concept_qname=arc.source,
+                            context_ref=source_ctx,
+                        )
+                    )
+        return findings
+
+    @classmethod
+    def _unit_signature_for_ref(
+        cls,
+        instance: XbrlInstance,
+        unit_ref: str | None,
+    ) -> tuple | None:
+        if unit_ref is None or unit_ref not in instance.units:
+            return None
+        return cls._unit_signature(instance.units[unit_ref])
+
+    @classmethod
+    def _unit_signature(cls, unit: XbrlUnit) -> tuple:
+        def _counter_key(values: tuple[QName, ...]) -> tuple[tuple[QName, int], ...]:
+            return tuple(sorted(Counter(values).items(), key=lambda item: str(item[0])))
+
+        if unit.unit_form == "divide":
+            return (
+                "divide",
+                _counter_key(unit.numerator_measure_qnames),
+                _counter_key(unit.denominator_measure_qnames),
+            )
+        return ("simple", _counter_key(cls._unit_measure_qnames(unit)))
 
     # ------------------------------------------------------------------
     # Helpers

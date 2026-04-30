@@ -130,7 +130,7 @@ class CalculationConsistencyValidator:
         instance: XbrlInstance,
         taxonomy: TaxonomyStructure,
     ) -> list[ValidationFinding]:
-        findings: list[ValidationFinding] = []
+        findings: list[ValidationFinding] = self.validate_taxonomy(taxonomy)
         if not taxonomy.calculation:
             return findings
 
@@ -147,6 +147,13 @@ class CalculationConsistencyValidator:
                     fact_index,
                 )
             )
+        return findings
+
+    def validate_taxonomy(self, taxonomy: TaxonomyStructure) -> list[ValidationFinding]:
+        findings: list[ValidationFinding] = []
+        for elr, arcs in taxonomy.calculation.items():
+            findings.extend(self._validate_arc_endpoint_constraints(elr, arcs, taxonomy))
+            findings.extend(self._validate_arc_balance_constraints(elr, arcs, taxonomy))
         return findings
 
     @staticmethod
@@ -194,6 +201,94 @@ class CalculationConsistencyValidator:
             non_nil_keys=non_nil_keys,
             rounded_numeric_facts_by_key=dict(rounded_numeric_facts_by_key),
         )
+
+    @staticmethod
+    def _validate_arc_balance_constraints(
+        elr: str,
+        arcs: list[CalculationArc],
+        taxonomy: TaxonomyStructure,
+    ) -> list[ValidationFinding]:
+        findings: list[ValidationFinding] = []
+        for arc in arcs:
+            if arc.use == "prohibited":
+                continue
+            parent = taxonomy.concepts.get(arc.parent)
+            child = taxonomy.concepts.get(arc.child)
+            if parent is None or child is None:
+                continue
+            if arc.weight == 0:
+                findings.append(
+                    ValidationFinding(
+                        rule_id="calculation:invalid-weight",
+                        severity=ValidationSeverity.ERROR,
+                        message=(
+                            f"Calculation arc from '{arc.parent}' to '{arc.child}' in "
+                            f"link role '{elr}' has weight 0; summation-item weights "
+                            "must be non-zero."
+                        ),
+                        source="calculation",
+                        concept_qname=arc.parent,
+                    )
+                )
+                continue
+            if parent.balance not in {"debit", "credit"} or child.balance not in {
+                "debit",
+                "credit",
+            }:
+                continue
+            same_balance = parent.balance == child.balance
+            sign_is_positive = arc.weight > 0
+            if same_balance != sign_is_positive:
+                findings.append(
+                    ValidationFinding(
+                        rule_id="calculation:balance-weight-inconsistent",
+                        severity=ValidationSeverity.ERROR,
+                        message=(
+                            f"Calculation arc from '{arc.parent}' ({parent.balance}) to "
+                            f"'{arc.child}' ({child.balance}) in link role '{elr}' has "
+                            f"weight {arc.weight}; same balances require positive "
+                            "weights and opposite balances require negative weights."
+                        ),
+                        source="calculation",
+                        concept_qname=arc.parent,
+                    )
+                )
+        return findings
+
+    @staticmethod
+    def _validate_arc_endpoint_constraints(
+        elr: str,
+        arcs: list[CalculationArc],
+        taxonomy: TaxonomyStructure,
+    ) -> list[ValidationFinding]:
+        findings: list[ValidationFinding] = []
+        for arc in arcs:
+            if arc.use == "prohibited":
+                continue
+            parent = taxonomy.concepts.get(arc.parent)
+            child = taxonomy.concepts.get(arc.child)
+            if parent is None or child is None:
+                continue
+            bad_endpoints: list[str] = []
+            if parent.abstract or not _concept_is_numeric(parent):
+                bad_endpoints.append(f"summation '{arc.parent}'")
+            if child.abstract or not _concept_is_numeric(child):
+                bad_endpoints.append(f"item '{arc.child}'")
+            if not bad_endpoints:
+                continue
+            findings.append(
+                ValidationFinding(
+                    rule_id="calculation:invalid-endpoint",
+                    severity=ValidationSeverity.ERROR,
+                    message=(
+                        f"Calculation arc in link role '{elr}' has non-numeric "
+                        f"endpoint(s): {', '.join(bad_endpoints)}."
+                    ),
+                    source="calculation",
+                    concept_qname=arc.parent,
+                )
+            )
+        return findings
 
     def _validate_elr(
         self,
