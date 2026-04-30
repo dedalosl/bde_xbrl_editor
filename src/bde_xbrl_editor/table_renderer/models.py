@@ -73,6 +73,7 @@ class BodyCell:
     open_key_member: QName | None = None
     open_key_text: str | None = None
     open_key_options: tuple[Any, ...] = field(default_factory=tuple)
+    open_dimension_info: tuple[Any, ...] = field(default_factory=tuple)
     fact_options: tuple[str, ...] = field(default_factory=tuple)
 
 

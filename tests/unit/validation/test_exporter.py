@@ -219,6 +219,7 @@ class TestExportJson:
         assert "run_timestamp" in summary
         assert "passed" in summary
         assert "pass_count" in summary
+        assert "not_evaluated_count" in summary
         assert "error_count" in summary
         assert "warning_count" in summary
 

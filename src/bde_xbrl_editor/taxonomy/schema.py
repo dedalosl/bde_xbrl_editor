@@ -14,6 +14,7 @@ from bde_xbrl_editor.taxonomy.constants import (
     NS_EXTENSIBLE_ENUM_2,
     NS_XBRLDT,
     NS_XBRLI,
+    NS_XLINK,
     NS_XSD,
 )
 from bde_xbrl_editor.taxonomy.models import (
@@ -24,11 +25,14 @@ from bde_xbrl_editor.taxonomy.models import (
 from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
 
 _ELEMENT = f"{{{NS_XSD}}}element"
+_ATTRIBUTE = f"{{{NS_XSD}}}attribute"
 _SIMPLE_TYPE = f"{{{NS_XSD}}}simpleType"
 _COMPLEX_TYPE = f"{{{NS_XSD}}}complexType"
 _SIMPLE_CONTENT = f"{{{NS_XSD}}}simpleContent"
+_COMPLEX_CONTENT = f"{{{NS_XSD}}}complexContent"
 _RESTRICTION = f"{{{NS_XSD}}}restriction"
 _EXTENSION = f"{{{NS_XSD}}}extension"
+_SEQUENCE = f"{{{NS_XSD}}}sequence"
 _ENUMERATION = f"{{{NS_XSD}}}enumeration"
 _UNION = f"{{{NS_XSD}}}union"
 
@@ -150,6 +154,96 @@ def _build_concept(
     return qname, concept, sg
 
 
+def _schema_constraint_error(
+    schema_path_str: str,
+    message: str,
+    el: etree._Element | None = None,
+) -> TaxonomyParseError:
+    return TaxonomyParseError(
+        file_path=schema_path_str,
+        message=f"xbrl:schema-validation-error: {message}",
+        line=el.sourceline if el is not None else None,
+    )
+
+
+def _is_true(raw: str | None) -> bool:
+    return (raw or "").strip().lower() in {"true", "1"}
+
+
+def _validate_xbrl_item_and_tuple_constraints(
+    root: etree._Element,
+    ns_map: dict[str, str],
+    schema_path_str: str,
+) -> None:
+    """Validate XBRL 2.1 schema constraints for directly declared items/tuples."""
+    for el in root.iter(_ELEMENT):
+        if el.getparent() is not root:
+            continue
+
+        name = el.get("name", "<anonymous>")
+        sg = _resolve_qname(el.get("substitutionGroup"), ns_map, schema_path_str)
+        has_period_type = el.get(f"{{{NS_XBRLI}}}periodType") is not None
+
+        if sg == _SG_ITEM:
+            if not has_period_type:
+                raise _schema_constraint_error(
+                    schema_path_str,
+                    f"Item '{name}' is missing required xbrli:periodType",
+                    el,
+                )
+            continue
+
+        if sg != _SG_TUPLE:
+            continue
+
+        if has_period_type:
+            raise _schema_constraint_error(
+                schema_path_str,
+                f"Tuple '{name}' must not declare xbrli:periodType",
+                el,
+            )
+
+        complex_type = next((child for child in el if child.tag == _COMPLEX_TYPE), None)
+        if complex_type is None:
+            continue
+
+        if _is_true(complex_type.get("mixed")):
+            raise _schema_constraint_error(
+                schema_path_str,
+                f"Tuple '{name}' must not declare mixed content",
+                complex_type,
+            )
+
+        for complex_content in complex_type.iter(_COMPLEX_CONTENT):
+            if _is_true(complex_content.get("mixed")):
+                raise _schema_constraint_error(
+                    schema_path_str,
+                    f"Tuple '{name}' must not declare mixed content",
+                    complex_content,
+                )
+
+        for attr_el in complex_type.iter(_ATTRIBUTE):
+            attr_ref = _resolve_qname(attr_el.get("ref"), ns_map, schema_path_str)
+            if attr_ref is not None and attr_ref.namespace in {NS_XBRLI, NS_XLINK}:
+                raise _schema_constraint_error(
+                    schema_path_str,
+                    f"Tuple '{name}' must not allow attribute '{attr_ref}'",
+                    attr_el,
+                )
+
+        for sequence_el in complex_type.iter(_SEQUENCE):
+            for child_el in sequence_el:
+                if child_el.tag != _ELEMENT:
+                    continue
+                if _resolve_qname(child_el.get("ref"), ns_map, schema_path_str) is None:
+                    raise _schema_constraint_error(
+                        schema_path_str,
+                        f"Tuple '{name}' child declarations must reference global item "
+                        "or tuple elements",
+                        child_el,
+                    )
+
+
 def parse_schema_raw(
     schema_path: Path,
     namespace_override: str | None = None,
@@ -184,6 +278,7 @@ def parse_schema_raw(
     # own targetNamespace but inherit it from the including schema.
     target_ns = namespace_override if namespace_override is not None else root.get("targetNamespace", "")
     ns_map: dict[str, str] = {k or "": v for k, v in root.nsmap.items()}
+    _validate_xbrl_item_and_tuple_constraints(root, ns_map, str(schema_path))
 
     candidates: dict[QName, tuple[Concept, QName]] = {}
     for el in root.iter(_ELEMENT):

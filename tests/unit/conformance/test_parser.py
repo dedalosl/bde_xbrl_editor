@@ -13,7 +13,6 @@ from bde_xbrl_editor.conformance.models import ExpectedOutcomeType
 from bde_xbrl_editor.conformance.parser import ConformanceSuiteParser
 from bde_xbrl_editor.conformance.registry import SuiteDefinition
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -195,7 +194,28 @@ def test_parse_variation_valid_expected(tmp_path: Path) -> None:
     assert var.expected_outcome.outcome_type == ExpectedOutcomeType.VALID
     assert var.mandatory is True
     assert var.instance_file is not None
-    assert var.taxonomy_file is not None
+    assert var.taxonomy_file is None
+
+
+def test_parse_variation_uses_readmefirst_schema_as_taxonomy_file(tmp_path: Path) -> None:
+    content = """\
+        <?xml version="1.0"?>
+        <testcase name="MyTest">
+          <variation id="V-01" name="SchemaVariation">
+            <data>
+              <xsd readMeFirst="true">schema.xsd</xsd>
+              <instance readMeFirst="true">instance.xml</instance>
+            </data>
+            <result expected="valid"/>
+          </variation>
+        </testcase>
+    """
+    tc_path = _write(tmp_path, "tc.xml", content)
+    parser = ConformanceSuiteParser(tmp_path)
+    tc = parser._parse_test_case(tc_path, "test-suite")
+
+    var = tc.variations[0]
+    assert var.taxonomy_file == (tmp_path / "schema.xsd").resolve()
 
 
 def test_parse_variation_invalid_expected(tmp_path: Path) -> None:

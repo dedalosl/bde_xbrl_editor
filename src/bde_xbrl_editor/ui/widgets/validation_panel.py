@@ -158,6 +158,7 @@ class ValidationPanel(QWidget):
         self._sev_combo.setMinimumWidth(110)
         self._sev_combo.addItem("All", None)
         self._sev_combo.addItem("Pass", ValidationStatus.PASS)
+        self._sev_combo.addItem("Not Evaluated", ValidationStatus.NOT_EVALUATED)
         self._sev_combo.addItem("Error", ValidationSeverity.ERROR)
         self._sev_combo.addItem("Warning", ValidationSeverity.WARNING)
         self._sev_combo.currentIndexChanged.connect(self._on_severity_filter_changed)
@@ -453,9 +454,15 @@ class ValidationPanel(QWidget):
             return
         visible = self._proxy.rowCount()
         passed = sum(1 for finding in findings if finding.status == ValidationStatus.PASS)
+        not_evaluated = sum(
+            1 for finding in findings if finding.status == ValidationStatus.NOT_EVALUATED
+        )
         errors = sum(1 for finding in findings if finding.severity == ValidationSeverity.ERROR)
         warnings = sum(1 for finding in findings if finding.severity == ValidationSeverity.WARNING)
-        summary = f"{visible} shown | {passed} pass, {errors} error(s), {warnings} warning(s)"
+        summary = (
+            f"{visible} shown | {passed} pass, {not_evaluated} not evaluated, "
+            f"{errors} error(s), {warnings} warning(s)"
+        )
         if self._current_report is not None and self._current_report.stage_timings:
             summary += (
                 f" | {format_duration(self._current_report.total_elapsed_seconds)} total"

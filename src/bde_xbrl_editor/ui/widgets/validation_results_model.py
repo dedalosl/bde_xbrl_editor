@@ -24,6 +24,7 @@ _HEADERS = ["Status", "Rule ID", "Table", "Concept", "Message"]
 _COLOR_ERROR = QColor(200, 50, 50)
 _COLOR_WARNING = QColor(200, 150, 0)
 _COLOR_PASS = QColor(34, 139, 34)
+_COLOR_NOT_EVALUATED = QColor(128, 128, 128)
 
 SeverityFilterValue = ValidationSeverity | ValidationStatus | None
 
@@ -68,6 +69,9 @@ class ValidationResultsModel(QStandardItemModel):
         if finding.status == ValidationStatus.PASS:
             sev_text = "PASS"
             color = _COLOR_PASS
+        elif finding.status == ValidationStatus.NOT_EVALUATED:
+            sev_text = "NOT EVALUATED"
+            color = _COLOR_NOT_EVALUATED
         else:
             sev_text = finding.severity.value.upper() if finding.severity else "FAIL"
             color = _COLOR_ERROR if finding.severity == ValidationSeverity.ERROR else _COLOR_WARNING
@@ -134,7 +138,12 @@ class ValidationFilterProxy(QSortFilterProxyModel):
                 return False
             return self._table_filter is None or finding.table_id == self._table_filter
 
-        if self._severity_filter == ValidationStatus.PASS:
+        if finding.status == ValidationStatus.NOT_EVALUATED:
+            if self._severity_filter not in (None, ValidationStatus.NOT_EVALUATED):
+                return False
+            return self._table_filter is None or finding.table_id == self._table_filter
+
+        if self._severity_filter in (ValidationStatus.PASS, ValidationStatus.NOT_EVALUATED):
             return False
         if self._severity_filter is not None and finding.severity != self._severity_filter:
             return False

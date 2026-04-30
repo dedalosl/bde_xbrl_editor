@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from urllib.parse import unquote
 
 from lxml import etree
 
@@ -22,11 +23,14 @@ _XLINK_ARCROLE = f"{{{NS_XLINK}}}arcrole"
 _XLINK_ROLE = f"{{{NS_XLINK}}}role"
 _XLINK_TYPE = f"{{{NS_XLINK}}}type"
 _XLINK_TITLE = f"{{{NS_XLINK}}}title"
+_ARCROLE_CALCULATION_11 = "https://xbrl.org/2023/arcrole/summation-item"
 
 _RELATIONSHIP_EQUIVALENCE_EXCLUDED_ATTRS = frozenset(
     {
         _XLINK_TYPE,
         _XLINK_TITLE,
+        _XLINK_FROM,
+        _XLINK_TO,
         "use",
         "priority",
     }
@@ -51,8 +55,15 @@ def _normalise_equivalence_value(raw: str) -> tuple[str, str]:
         return ("str", s)
 
 
-def _relationship_equivalence_key(arc: etree._Element) -> tuple:
-    attrs = []
+def _relationship_equivalence_key(
+    arc: etree._Element,
+    parent: QName,
+    child: QName,
+) -> tuple:
+    attrs = [
+        ("parent", ("qname", str(parent))),
+        ("child", ("qname", str(child))),
+    ]
     for name in sorted(arc.attrib):
         if name in _RELATIONSHIP_EQUIVALENCE_EXCLUDED_ATTRS:
             continue
@@ -90,19 +101,23 @@ def parse_calculation_linkbase(
             href = loc.get(_XLINK_HREF, "")
             xlink_label = loc.get(_XLINK_LABEL, "")
             if "#" in href:
-                fragment = href.rsplit("#", 1)[1]
+                fragment = unquote(href.rsplit("#", 1)[1])
                 qname = concept_map.get(fragment)
                 if qname:
                     loc_map[xlink_label] = qname
 
         for arc in link_el.iter(_CALC_ARC):
             arcrole = arc.get(_XLINK_ARCROLE, "")
-            if arcrole != ARCROLE_CALCULATION:
+            if arcrole not in {ARCROLE_CALCULATION, _ARCROLE_CALCULATION_11}:
                 continue
             frm = arc.get(_XLINK_FROM, "")
             to = arc.get(_XLINK_TO, "")
-            parent = loc_map.get(frm)
-            child = loc_map.get(to)
+            if arcrole == _ARCROLE_CALCULATION_11:
+                parent = loc_map.get(to)
+                child = loc_map.get(frm)
+            else:
+                parent = loc_map.get(frm)
+                child = loc_map.get(to)
             if not parent or not child:
                 continue
             try:
@@ -122,7 +137,7 @@ def parse_calculation_linkbase(
                     weight=weight,
                     extended_link_role=elr,
                     use=use,
-                    equivalence_key=_relationship_equivalence_key(arc),
+                    equivalence_key=_relationship_equivalence_key(arc, parent, child),
                 )
             )
 

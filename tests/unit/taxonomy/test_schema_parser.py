@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from bde_xbrl_editor.taxonomy.models import QName
+from bde_xbrl_editor.taxonomy.models import QName, TaxonomyParseError
 from bde_xbrl_editor.taxonomy.schema import (
     build_global_named_type_registry,
     extract_concept_enumerations_for_schema,
@@ -137,6 +137,125 @@ class TestConceptAttributes:
         concepts = parse_schema(sample_xsd)
         assets = concepts[QName(NS_TEST, "Assets")]
         assert assets.data_type.local_name == "monetaryItemType"
+
+
+def _write_tuple_schema(path: Path, tuple_body: str) -> None:
+    path.write_text(
+        f"""<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:xbrli="http://www.xbrl.org/2003/instance"
+           xmlns:xlink="http://www.w3.org/1999/xlink"
+           xmlns:ex="http://example.com/tuple"
+           targetNamespace="http://example.com/tuple"
+           elementFormDefault="qualified">
+  <xs:element name="child" type="xbrli:stringItemType" substitutionGroup="xbrli:item" xbrli:periodType="instant"/>
+  <xs:element name="tuple" substitutionGroup="xbrli:tuple">
+    {tuple_body}
+  </xs:element>
+</xs:schema>
+""",
+        encoding="utf-8",
+    )
+
+
+class TestXbrlSchemaConstraints:
+    def test_tuple_schema_rejects_explicit_xbrl_attribute(self, tmp_path: Path) -> None:
+        schema_path = tmp_path / "tuple.xsd"
+        _write_tuple_schema(
+            schema_path,
+            """<xs:complexType>
+      <xs:complexContent>
+        <xs:restriction base="xs:anyType">
+          <xs:sequence><xs:element ref="ex:child"/></xs:sequence>
+          <xs:attribute ref="xbrli:periodType" use="optional"/>
+        </xs:restriction>
+      </xs:complexContent>
+    </xs:complexType>""",
+        )
+
+        with pytest.raises(TaxonomyParseError, match="xbrl:schema-validation-error"):
+            parse_schema(schema_path)
+
+    def test_tuple_schema_rejects_explicit_xlink_attribute(self, tmp_path: Path) -> None:
+        schema_path = tmp_path / "tuple.xsd"
+        _write_tuple_schema(
+            schema_path,
+            """<xs:complexType>
+      <xs:complexContent>
+        <xs:restriction base="xs:anyType">
+          <xs:sequence><xs:element ref="ex:child"/></xs:sequence>
+          <xs:attribute ref="xlink:href" use="optional"/>
+        </xs:restriction>
+      </xs:complexContent>
+    </xs:complexType>""",
+        )
+
+        with pytest.raises(TaxonomyParseError, match="xbrl:schema-validation-error"):
+            parse_schema(schema_path)
+
+    def test_tuple_schema_rejects_mixed_content(self, tmp_path: Path) -> None:
+        schema_path = tmp_path / "tuple.xsd"
+        _write_tuple_schema(
+            schema_path,
+            """<xs:complexType mixed="true">
+      <xs:complexContent>
+        <xs:restriction base="xs:anyType">
+          <xs:sequence><xs:element ref="ex:child"/></xs:sequence>
+        </xs:restriction>
+      </xs:complexContent>
+    </xs:complexType>""",
+        )
+
+        with pytest.raises(TaxonomyParseError, match="mixed content"):
+            parse_schema(schema_path)
+
+    def test_tuple_schema_rejects_local_child_declaration(self, tmp_path: Path) -> None:
+        schema_path = tmp_path / "tuple.xsd"
+        _write_tuple_schema(
+            schema_path,
+            """<xs:complexType>
+      <xs:complexContent>
+        <xs:restriction base="xs:anyType">
+          <xs:sequence><xs:element name="localChild" type="xs:string"/></xs:sequence>
+        </xs:restriction>
+      </xs:complexContent>
+    </xs:complexType>""",
+        )
+
+        with pytest.raises(TaxonomyParseError, match="child declarations"):
+            parse_schema(schema_path)
+
+    def test_item_schema_rejects_missing_period_type(self, tmp_path: Path) -> None:
+        schema_path = tmp_path / "items.xsd"
+        schema_path.write_text(
+            """<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:xbrli="http://www.xbrl.org/2003/instance"
+           targetNamespace="http://example.com/item">
+  <xs:element name="itemWithoutPeriod" type="xbrli:stringItemType" substitutionGroup="xbrli:item"/>
+</xs:schema>
+""",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(TaxonomyParseError, match="missing required xbrli:periodType"):
+            parse_schema(schema_path)
+
+    def test_tuple_schema_rejects_period_type(self, tmp_path: Path) -> None:
+        schema_path = tmp_path / "items.xsd"
+        schema_path.write_text(
+            """<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:xbrli="http://www.xbrl.org/2003/instance"
+           targetNamespace="http://example.com/item">
+  <xs:element name="tupleWithPeriod" substitutionGroup="xbrli:tuple" xbrli:periodType="instant"/>
+</xs:schema>
+""",
+            encoding="utf-8",
+        )
+
+        with pytest.raises(TaxonomyParseError, match="must not declare xbrli:periodType"):
+            parse_schema(schema_path)
 
 
 XSD_QNAME_ENUM = textwrap.dedent("""\

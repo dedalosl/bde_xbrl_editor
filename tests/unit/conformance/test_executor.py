@@ -335,6 +335,15 @@ def test_formula_valid_ignores_s_equal_structural_and_calc_errors() -> None:
     assert codes == ()
 
 
+def test_xbrl21_valid_ignores_duplicate_fact_product_finding() -> None:
+    executor = _make_executor()
+    expected = ExpectedOutcome(outcome_type=ExpectedOutcomeType.VALID)
+    findings = (_error_finding("structural:duplicate-fact"),)
+    outcome, codes = executor._match_outcome(expected, findings, None, "xbrl21")
+    assert outcome == TestResultOutcome.PASS
+    assert codes == ()
+
+
 def test_formula_valid_still_fails_on_other_structural_errors() -> None:
     executor = _make_executor()
     expected = ExpectedOutcome(outcome_type=ExpectedOutcomeType.VALID)

@@ -248,6 +248,7 @@ class ConformanceSuiteParser:
                             elif (
                                 local_name in ("xsd", "schema")
                                 and taxonomy_file is None
+                                and file_el.get("readMeFirst", "").lower() == "true"
                             ):
                                 taxonomy_file = resolved
                 break

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, QTimer
 from PySide6.QtWidgets import (
+    QComboBox,
     QDialog,
     QDockWidget,
     QFileDialog,
@@ -63,6 +64,7 @@ class MainWindow(QMainWindow):
         self._table_chip_label: QLabel | None = None
         self._context_title_label: QLabel | None = None
         self._context_meta_label: QLabel | None = None
+        self._language_combo: QComboBox | None = None
         self._loading_dialog: TaxonomyProgressDialog | None = None
         self._instance_open_thread: QThread | None = None
         self._instance_open_worker: InstanceLoadWorker | None = None
@@ -74,6 +76,7 @@ class MainWindow(QMainWindow):
         self._validation_thread: QThread | None = None
         self._validation_worker = None  # ValidationWorker | None
         self._validation_panel = None  # ValidationPanel | None
+        self._pending_validation_navigation = None
 
         self._setup_menu()
         self._setup_central()
@@ -278,6 +281,7 @@ class MainWindow(QMainWindow):
         self._table_chip_label = None
         self._context_title_label = None
         self._context_meta_label = None
+        self._language_combo = None
 
     def _show_loader_widget(self, path: str | None = None) -> None:
         """Create a fresh TaxonomyLoaderWidget and set it as the central widget.
@@ -387,12 +391,16 @@ class MainWindow(QMainWindow):
             visible_indexes=(1, 2),
             initial_index=1,
         )
+        self._sidebar.set_language_preference(self._current_language_preference())
         self._sidebar.table_selected.connect(self._on_table_selected)
         self._sidebar.width_changed.connect(self._on_sidebar_width_changed)
 
         self._table_view = XbrlTableView(parent=self)
+        self._table_view.set_language_preference(self._current_language_preference())
         self._table_view.editing_mode_changed.connect(self._on_table_editing_mode_changed)
         self._table_view.layout_ready.connect(self._on_table_layout_ready)
+        self._table_view.cell_info_changed.connect(self._on_cell_info_changed)
+        self._table_view.cell_info_changed.connect(self._on_cell_info_changed)
 
         splitter = QSplitter(self)
         splitter.addWidget(self._sidebar)
@@ -487,6 +495,7 @@ class MainWindow(QMainWindow):
 
         self._table_chip_label = None
         self._table_chip_sep = None
+        self._language_combo = None
 
         layout.addWidget(info_group, stretch=0)
 
@@ -509,6 +518,10 @@ class MainWindow(QMainWindow):
         action_layout = QHBoxLayout(action_group)
         action_layout.setContentsMargins(0, 0, 0, 0)
         action_layout.setSpacing(8)
+
+        if self._current_taxonomy is not None:
+            self._language_combo = self._build_language_combo(bar)
+            action_layout.addWidget(self._language_combo)
 
         if instance is not None:
             back_btn = QPushButton("Back")
@@ -583,6 +596,50 @@ class MainWindow(QMainWindow):
             self._context_meta_label.setText("")
 
         return bar
+
+    def _current_language_preference(self) -> list[str]:
+        combo = self._language_combo
+        if combo is not None:
+            selected = combo.currentData()
+            if isinstance(selected, str) and selected:
+                return [selected, *[lang for lang in self._settings.language_preference if lang != selected]]
+        return list(self._settings.language_preference or ["es", "en"])
+
+    def _build_language_combo(self, parent: QWidget) -> QComboBox:
+        combo = QComboBox(parent)
+        combo.setFixedHeight(28)
+        combo.setToolTip("Table label language")
+        combo.setStyleSheet(
+            f"QComboBox {{ color: {theme.TEXT_MAIN}; background: {theme.SURFACE_BG};"
+            f" border: 1px solid {theme.BORDER}; border-radius: 8px;"
+            " font-size: 10px; font-weight: 600; padding: 0 8px; min-width: 72px; }"
+        )
+        languages: list[str] = []
+        for lang in self._settings.language_preference:
+            if lang and lang not in languages:
+                languages.append(lang)
+        if self._current_taxonomy is not None:
+            for lang in self._current_taxonomy.metadata.declared_languages:
+                if lang and lang not in languages:
+                    languages.append(lang)
+        for lang in languages or ["es", "en"]:
+            combo.addItem(lang.upper(), lang)
+        combo.currentIndexChanged.connect(self._on_language_changed)
+        return combo
+
+    def _on_language_changed(self) -> None:
+        table = getattr(self._table_view, "_table", None) if self._table_view is not None else None
+        if table is not None and self._context_title_label is not None:
+            variants = dict(getattr(table, "label_variants", ()) or ())
+            label = next(
+                (variants[lang] for lang in self._current_language_preference() if lang in variants),
+                getattr(table, "label", None) or getattr(table, "table_id", ""),
+            )
+            self._context_title_label.setText(label)
+        if self._table_view is not None:
+            self._table_view.set_language_preference(self._current_language_preference())
+        if self._sidebar is not None:
+            self._sidebar.set_language_preference(self._current_language_preference())
 
     # ------------------------------------------------------------------
     # Close taxonomy / instance
@@ -930,8 +987,14 @@ class MainWindow(QMainWindow):
     def _on_table_selected(self, table) -> None:
         if self._table_view is None or self._current_taxonomy is None:
             return
+        if self._sidebar is not None:
+            self._sidebar.set_cell_info_html(None)
         if self._context_title_label is not None:
-            table_label = getattr(table, "label", None) or getattr(table, "table_id", "")
+            variants = dict(getattr(table, "label_variants", ()) or ())
+            table_label = next(
+                (variants[lang] for lang in self._current_language_preference() if lang in variants),
+                getattr(table, "label", None) or getattr(table, "table_id", ""),
+            )
             self._context_title_label.setText(table_label)
         if self._context_meta_label is not None and self._current_taxonomy is not None:
             meta = self._current_taxonomy.metadata
@@ -948,6 +1011,10 @@ class MainWindow(QMainWindow):
             taxonomy=self._current_taxonomy,
             instance=self._current_instance,
         )
+
+    def _on_cell_info_changed(self, html: str) -> None:
+        if self._sidebar is not None:
+            self._sidebar.set_cell_info_html(html)
 
     def _on_table_layout_ready(self, layout) -> None:
         if (
@@ -989,6 +1056,10 @@ class MainWindow(QMainWindow):
                         f"{len(self._current_taxonomy.concepts)} concepts, {len(self._current_taxonomy.tables)} tables — {timing_text}"
                     )
             self._pending_initial_table_started_at = None
+        if self._pending_validation_navigation is not None:
+            context_ref, finding = self._pending_validation_navigation
+            self._pending_validation_navigation = None
+            self._on_navigate_to_cell(context_ref, finding)
 
     def _on_changes_made(self) -> None:
         self.setWindowModified(True)
@@ -1223,11 +1294,28 @@ class MainWindow(QMainWindow):
 
     def _on_navigate_to_cell(self, context_ref: str, finding) -> None:
         """Navigate XbrlTableView to the cell for this finding (best-effort)."""
-        # Currently just scrolls to a matching table; full navigation depends on
-        # the table view's ability to locate a context_ref within a rendered cell.
-        if self._table_view is None:
+        if self._table_view is None or not context_ref:
             return
-        # No-op for now; full implementation would locate cell by (concept, context_ref).
+        table_id = getattr(finding, "table_id", None)
+        if (
+            table_id
+            and self._table_view.active_table_id != table_id
+            and self._sidebar is not None
+        ):
+            self._pending_validation_navigation = (context_ref, finding)
+            if self._sidebar.select_table_by_id(table_id) is None:
+                self._pending_validation_navigation = None
+                self._status.showMessage(f"Validation table {table_id} was not found")
+            return
+
+        navigated = self._table_view.navigate_to_fact_cell(
+            concept_qname=getattr(finding, "concept_qname", None),
+            context_ref=context_ref,
+        )
+        if navigated:
+            self._status.showMessage(f"Selected validation cell for context {context_ref}")
+        else:
+            self._status.showMessage(f"No rendered cell found for context {context_ref}")
 
     def closeEvent(self, event) -> None:  # type: ignore[override]
         """Warn if there are unsaved changes before closing (T034)."""

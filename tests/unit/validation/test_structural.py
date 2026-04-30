@@ -1,4 +1,5 @@
 """Unit tests for StructuralConformanceValidator (validation/structural.py)."""
+
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -16,6 +17,7 @@ from bde_xbrl_editor.instance.s_equal import effective_s_equal_key
 from bde_xbrl_editor.taxonomy.constants import NS_XBRLI
 from bde_xbrl_editor.taxonomy.models import (
     Concept,
+    DefinitionArc,
     FormulaAssertionSet,
     QName,
     TaxonomyMetadata,
@@ -87,8 +89,13 @@ def _minimal_taxonomy(
         declared_languages=("en",),
     )
     concept_qn = _qname("MyConcept")
-    if type_local == "monetaryItemType":
-        dt = QName(namespace=NS_XBRLI, local_name="monetaryItemType")
+    if type_local in {
+        "monetaryItemType",
+        "sharesItemType",
+        "pureItemType",
+        "decimalItemType",
+    }:
+        dt = QName(namespace=NS_XBRLI, local_name=type_local)
     else:
         dt = QName(namespace=_XSD_NS, local_name=type_local)
     concept = Concept(
@@ -169,9 +176,7 @@ class TestUnresolvedContextRef:
         """A fact with a valid context_ref produces no unresolved-context-ref finding."""
         inst = _minimal_instance()
         concept = _qname("Amount")
-        inst.facts.append(
-            Fact(concept=concept, context_ref="ctx1", unit_ref=None, value="100")
-        )
+        inst.facts.append(Fact(concept=concept, context_ref="ctx1", unit_ref=None, value="100"))
         findings = StructuralConformanceValidator().validate(inst)
         assert not any(f.rule_id == "structural:unresolved-context-ref" for f in findings)
 
@@ -201,9 +206,7 @@ class TestUnresolvedUnitRef:
         """A numeric fact with no unit_ref triggers unresolved-unit-ref."""
         inst = _minimal_instance()
         concept_qn = _qname("MyConcept")
-        inst.facts.append(
-            Fact(concept=concept_qn, context_ref="ctx1", unit_ref=None, value="1000")
-        )
+        inst.facts.append(Fact(concept=concept_qn, context_ref="ctx1", unit_ref=None, value="1000"))
         taxonomy = _minimal_taxonomy(type_local="monetaryItemType")
         findings = StructuralConformanceValidator().validate(inst, taxonomy)
         assert any(f.rule_id == "structural:unresolved-unit-ref" for f in findings)
@@ -235,9 +238,7 @@ class TestUnresolvedUnitRef:
         """When taxonomy=None, check 3 is skipped entirely."""
         inst = _minimal_instance()
         concept_qn = _qname("MyConcept")
-        inst.facts.append(
-            Fact(concept=concept_qn, context_ref="ctx1", unit_ref=None, value="1000")
-        )
+        inst.facts.append(Fact(concept=concept_qn, context_ref="ctx1", unit_ref=None, value="1000"))
         findings = StructuralConformanceValidator().validate(inst, taxonomy=None)
         assert not any(f.rule_id == "structural:unresolved-unit-ref" for f in findings)
 
@@ -245,9 +246,7 @@ class TestUnresolvedUnitRef:
         """A numeric fact referencing an undeclared unit_id triggers check 3."""
         inst = _minimal_instance()
         concept_qn = _qname("MyConcept")
-        inst.facts.append(
-            Fact(concept=concept_qn, context_ref="ctx1", unit_ref="USD", value="42")
-        )
+        inst.facts.append(Fact(concept=concept_qn, context_ref="ctx1", unit_ref="USD", value="42"))
         taxonomy = _minimal_taxonomy(type_local="monetaryItemType")
         findings = StructuralConformanceValidator().validate(inst, taxonomy)
         assert any(f.rule_id == "structural:unresolved-unit-ref" for f in findings)
@@ -316,9 +315,7 @@ class TestPeriodTypeMismatch:
         inst.contexts["ctx1"] = _context("ctx1", period=_duration_period())
 
         concept_qn = _qname("MyConcept")
-        inst.facts.append(
-            Fact(concept=concept_qn, context_ref="ctx1", unit_ref=None, value="val")
-        )
+        inst.facts.append(Fact(concept=concept_qn, context_ref="ctx1", unit_ref=None, value="val"))
         taxonomy = _minimal_taxonomy(period_type="instant", type_local="stringItemType")
         findings = StructuralConformanceValidator().validate(inst, taxonomy)
         assert any(f.rule_id == "structural:period-type-mismatch" for f in findings)
@@ -327,9 +324,7 @@ class TestPeriodTypeMismatch:
         """A concept declared as duration used with an instant context triggers mismatch."""
         inst = _minimal_instance()
         concept_qn = _qname("MyConcept")
-        inst.facts.append(
-            Fact(concept=concept_qn, context_ref="ctx1", unit_ref=None, value="val")
-        )
+        inst.facts.append(Fact(concept=concept_qn, context_ref="ctx1", unit_ref=None, value="val"))
         taxonomy = _minimal_taxonomy(period_type="duration", type_local="stringItemType")
         findings = StructuralConformanceValidator().validate(inst, taxonomy)
         assert any(f.rule_id == "structural:period-type-mismatch" for f in findings)
@@ -338,9 +333,7 @@ class TestPeriodTypeMismatch:
         """A concept and context with matching period_type produce no mismatch finding."""
         inst = _minimal_instance()
         concept_qn = _qname("MyConcept")
-        inst.facts.append(
-            Fact(concept=concept_qn, context_ref="ctx1", unit_ref=None, value="val")
-        )
+        inst.facts.append(Fact(concept=concept_qn, context_ref="ctx1", unit_ref=None, value="val"))
         taxonomy = _minimal_taxonomy(period_type="instant", type_local="stringItemType")
         findings = StructuralConformanceValidator().validate(inst, taxonomy)
         assert not any(f.rule_id == "structural:period-type-mismatch" for f in findings)
@@ -349,9 +342,7 @@ class TestPeriodTypeMismatch:
         """When taxonomy=None, check 5 is skipped."""
         inst = _minimal_instance()
         concept_qn = _qname("MyConcept")
-        inst.facts.append(
-            Fact(concept=concept_qn, context_ref="ctx1", unit_ref=None, value="val")
-        )
+        inst.facts.append(Fact(concept=concept_qn, context_ref="ctx1", unit_ref=None, value="val"))
         findings = StructuralConformanceValidator().validate(inst, taxonomy=None)
         assert not any(f.rule_id == "structural:period-type-mismatch" for f in findings)
 
@@ -401,7 +392,9 @@ class TestDuplicateFact:
         inst.contexts["ctx_other"] = ctx2
         concept = _qname("Revenue")
         inst.facts.append(Fact(concept=concept, context_ref="ctx1", unit_ref=None, value="100"))
-        inst.facts.append(Fact(concept=concept, context_ref="ctx_other", unit_ref=None, value="200"))
+        inst.facts.append(
+            Fact(concept=concept, context_ref="ctx_other", unit_ref=None, value="200")
+        )
         findings = StructuralConformanceValidator().validate(inst)
         assert any(f.rule_id == "structural:duplicate-fact" for f in findings)
 
@@ -435,7 +428,9 @@ class TestMonetaryIsoUnitMeasure:
     def test_monetary_with_pure_measure_fails(self) -> None:
         """Monetary facts must not use xbrli:pure as the unit measure."""
         inst = _minimal_instance()
-        inst.units["pure"] = XbrlUnit(unit_id="pure", measure_uri="http://www.xbrl.org/2003/instance:pure")
+        inst.units["pure"] = XbrlUnit(
+            unit_id="pure", measure_uri="http://www.xbrl.org/2003/instance:pure"
+        )
         concept_qn = _qname("MyConcept")
         inst.facts.append(
             Fact(concept=concept_qn, context_ref="ctx1", unit_ref="pure", value="100")
@@ -453,9 +448,7 @@ class TestMonetaryIsoUnitMeasure:
             simple_measure_count=0,
         )
         concept_qn = _qname("MyConcept")
-        inst.facts.append(
-            Fact(concept=concept_qn, context_ref="ctx1", unit_ref="u1", value="100")
-        )
+        inst.facts.append(Fact(concept=concept_qn, context_ref="ctx1", unit_ref="u1", value="100"))
         taxonomy = _minimal_taxonomy(type_local="monetaryItemType")
         findings = StructuralConformanceValidator().validate(inst, taxonomy)
         assert any(
@@ -499,9 +492,7 @@ class TestMonetaryIsoUnitMeasure:
             tables=[],
             formula_assertion_set=FormulaAssertionSet(),
         )
-        inst.facts.append(
-            Fact(concept=concept_qn, context_ref="ctx1", unit_ref="EUR", value="500")
-        )
+        inst.facts.append(Fact(concept=concept_qn, context_ref="ctx1", unit_ref="EUR", value="500"))
         findings = StructuralConformanceValidator().validate(inst, taxonomy)
         assert not any(f.rule_id == "structural:monetary-unit-measure" for f in findings)
 
@@ -515,9 +506,7 @@ class TestMonetaryIsoUnitMeasure:
             simple_measure_count=1,
         )
         concept_qn = _qname("MyConcept")
-        inst.facts.append(
-            Fact(concept=concept_qn, context_ref="ctx1", unit_ref="u1", value="1")
-        )
+        inst.facts.append(Fact(concept=concept_qn, context_ref="ctx1", unit_ref="u1", value="1"))
         taxonomy = _minimal_taxonomy(type_local="monetaryItemType")
         findings = StructuralConformanceValidator().validate(inst, taxonomy)
         assert any(f.rule_id == "structural:monetary-unit-measure" for f in findings)
@@ -605,9 +594,7 @@ class TestSegmentScenarioSubstitutionChecks:
         )
 
         findings = StructuralConformanceValidator().validate(inst, taxonomy)
-        assert not any(
-            f.rule_id == "structural:segment-scenario-substitution" for f in findings
-        )
+        assert not any(f.rule_id == "structural:segment-scenario-substitution" for f in findings)
 
     def test_schema_based_substitution_check_flags_element_not_in_concepts(
         self, tmp_path: Path
@@ -662,6 +649,348 @@ class TestSegmentScenarioSubstitutionChecks:
             for f in findings
         )
 
+    def test_schema_substitution_groups_from_taxonomy_are_reused(self, monkeypatch) -> None:
+        inst = _minimal_instance()
+        ctx = inst.contexts["ctx1"]
+        ctx.segment_xml = (
+            b'<xbrli:segment xmlns:xbrli="http://www.xbrl.org/2003/instance" '
+            b'xmlns:ex="http://example.com/taxonomy"><ex:BadFromSchemaMap/></xbrli:segment>'
+        )
+
+        def _fail_parse_schema_raw(*_args, **_kwargs):
+            raise AssertionError("schema XML should not be reparsed")
+
+        monkeypatch.setattr(
+            "bde_xbrl_editor.validation.structural.parse_schema_raw",
+            _fail_parse_schema_raw,
+        )
+
+        bad_qn = QName("http://example.com/taxonomy", "BadFromSchemaMap")
+        taxonomy = _minimal_taxonomy(type_local="stringItemType")
+        taxonomy = TaxonomyStructure(
+            metadata=taxonomy.metadata,
+            concepts=taxonomy.concepts,
+            labels=taxonomy.labels,
+            presentation=taxonomy.presentation,
+            calculation=taxonomy.calculation,
+            definition=taxonomy.definition,
+            hypercubes=taxonomy.hypercubes,
+            dimensions=taxonomy.dimensions,
+            tables=taxonomy.tables,
+            formula_assertion_set=taxonomy.formula_assertion_set,
+            schema_files=(Path("would-have-been-reparsed.xsd"),),
+            schema_substitution_groups={
+                bad_qn: QName(namespace=NS_XBRLI, local_name="item"),
+            },
+        )
+
+        findings = StructuralConformanceValidator().validate(inst, taxonomy)
+        assert any(
+            f.rule_id == "structural:segment-scenario-substitution"
+            and f.context_ref == "ctx1"
+            and f.concept_qname == bad_qn
+            for f in findings
+        )
+
+
+# ---------------------------------------------------------------------------
+# Decimals / precision checks (structural:decimals-precision)
+# ---------------------------------------------------------------------------
+
+
+class TestDecimalsPrecisionChecks:
+    def test_numeric_fact_without_decimals_or_precision_is_flagged(self) -> None:
+        inst = _minimal_instance()
+        concept_qn = _qname("MyConcept")
+        inst.units["pure"] = XbrlUnit(unit_id="pure", measure_uri="xbrli:pure")
+        inst.facts.append(Fact(concept=concept_qn, context_ref="ctx1", unit_ref="pure", value="5.6"))
+        taxonomy = _minimal_taxonomy(type_local="decimalItemType")
+
+        findings = StructuralConformanceValidator().validate(inst, taxonomy)
+
+        assert any(f.rule_id == "structural:decimals-precision" for f in findings)
+
+    def test_numeric_fact_with_both_decimals_and_precision_is_flagged(self) -> None:
+        inst = _minimal_instance()
+        concept_qn = _qname("MyConcept")
+        inst.units["pure"] = XbrlUnit(unit_id="pure", measure_uri="xbrli:pure")
+        inst.facts.append(
+            Fact(
+                concept=concept_qn,
+                context_ref="ctx1",
+                unit_ref="pure",
+                value="5.6",
+                decimals="3",
+                precision="4",
+            )
+        )
+        taxonomy = _minimal_taxonomy(type_local="decimalItemType")
+
+        findings = StructuralConformanceValidator().validate(inst, taxonomy)
+
+        assert any(
+            f.rule_id == "structural:decimals-precision"
+            and "both decimals and precision" in f.message
+            for f in findings
+        )
+
+    def test_nil_fact_with_decimals_or_precision_is_flagged(self) -> None:
+        inst = _minimal_instance()
+        concept_qn = _qname("MyConcept")
+        inst.units["pure"] = XbrlUnit(unit_id="pure", measure_uri="xbrli:pure")
+        inst.facts.append(
+            Fact(
+                concept=concept_qn,
+                context_ref="ctx1",
+                unit_ref="pure",
+                value="",
+                decimals="3",
+                is_nil=True,
+            )
+        )
+        taxonomy = _minimal_taxonomy(type_local="decimalItemType")
+
+        findings = StructuralConformanceValidator().validate(inst, taxonomy)
+
+        assert any(
+            f.rule_id == "structural:decimals-precision" and "Nil fact" in f.message
+            for f in findings
+        )
+
+    def test_numeric_fact_with_only_decimals_has_no_decimals_precision_finding(self) -> None:
+        inst = _minimal_instance()
+        concept_qn = _qname("MyConcept")
+        inst.units["pure"] = XbrlUnit(unit_id="pure", measure_uri="xbrli:pure")
+        inst.facts.append(
+            Fact(
+                concept=concept_qn,
+                context_ref="ctx1",
+                unit_ref="pure",
+                value="5.6",
+                decimals="4",
+            )
+        )
+        taxonomy = _minimal_taxonomy(type_local="decimalItemType")
+
+        findings = StructuralConformanceValidator().validate(inst, taxonomy)
+
+        assert not any(f.rule_id == "structural:decimals-precision" for f in findings)
+
+
+# ---------------------------------------------------------------------------
+# Unit consistency checks (structural:unit-consistency)
+# ---------------------------------------------------------------------------
+
+
+class TestUnitConsistencyChecks:
+    def test_invalid_xbrli_measure_local_name_is_flagged(self) -> None:
+        inst = _minimal_instance()
+        concept_qn = _qname("MyConcept")
+        inst.units["u1"] = XbrlUnit(
+            unit_id="u1",
+            measure_uri="xbrli:impure",
+            measure_qname=QName(namespace=NS_XBRLI, local_name="impure"),
+            simple_measure_count=1,
+            simple_measure_qnames=(QName(namespace=NS_XBRLI, local_name="impure"),),
+        )
+        inst.facts.append(
+            Fact(
+                concept=concept_qn,
+                context_ref="ctx1",
+                unit_ref="u1",
+                value="5.6",
+                precision="4",
+            )
+        )
+        taxonomy = _minimal_taxonomy(type_local="pureItemType")
+
+        findings = StructuralConformanceValidator().validate(inst, taxonomy)
+
+        assert any(
+            f.rule_id == "structural:unit-consistency" and "xbrli measure 'impure'" in f.message
+            for f in findings
+        )
+
+    def test_shares_item_requires_single_xbrli_shares_measure(self) -> None:
+        inst = _minimal_instance()
+        concept_qn = _qname("MyConcept")
+        pure = QName(namespace=NS_XBRLI, local_name="pure")
+        inst.units["u1"] = XbrlUnit(
+            unit_id="u1",
+            measure_uri="xbrli:pure xbrli:pure",
+            simple_measure_count=2,
+            simple_measure_qnames=(pure, pure),
+        )
+        inst.facts.append(
+            Fact(
+                concept=concept_qn,
+                context_ref="ctx1",
+                unit_ref="u1",
+                value="1000",
+                precision="4",
+            )
+        )
+        taxonomy = _minimal_taxonomy(type_local="sharesItemType")
+
+        findings = StructuralConformanceValidator().validate(inst, taxonomy)
+
+        assert any(
+            f.rule_id == "structural:unit-consistency"
+            and "exactly one xbrli:shares" in f.message
+            for f in findings
+        )
+
+    def test_shares_item_rejects_unqualified_shares_measure(self) -> None:
+        inst = _minimal_instance()
+        concept_qn = _qname("MyConcept")
+        inst.units["u1"] = XbrlUnit(
+            unit_id="u1",
+            measure_uri="shares",
+            measure_qname=QName(namespace="", local_name="shares"),
+            simple_measure_count=1,
+            simple_measure_qnames=(QName(namespace="", local_name="shares"),),
+        )
+        inst.facts.append(
+            Fact(
+                concept=concept_qn,
+                context_ref="ctx1",
+                unit_ref="u1",
+                value="1000",
+                precision="4",
+            )
+        )
+        taxonomy = _minimal_taxonomy(type_local="sharesItemType")
+
+        findings = StructuralConformanceValidator().validate(inst, taxonomy)
+
+        assert any(f.rule_id == "structural:unit-consistency" for f in findings)
+
+    def test_divide_unit_with_cancelled_measures_is_flagged(self) -> None:
+        inst = _minimal_instance()
+        concept_qn = _qname("MyConcept")
+        feet = _qname("feet")
+        inst.units["u1"] = XbrlUnit(
+            unit_id="u1",
+            measure_uri="",
+            unit_form="divide",
+            numerator_measure_qnames=(_qname("pure"), feet),
+            denominator_measure_qnames=(feet,),
+        )
+        inst.facts.append(
+            Fact(
+                concept=concept_qn,
+                context_ref="ctx1",
+                unit_ref="u1",
+                value="5.6",
+                precision="4",
+            )
+        )
+        taxonomy = _minimal_taxonomy(type_local="decimalItemType")
+
+        findings = StructuralConformanceValidator().validate(inst, taxonomy)
+
+        assert any(
+            f.rule_id == "structural:unit-consistency" and "simplest form" in f.message
+            for f in findings
+        )
+
+    def test_valid_shares_unit_has_no_unit_consistency_finding(self) -> None:
+        inst = _minimal_instance()
+        concept_qn = _qname("MyConcept")
+        shares = QName(namespace=NS_XBRLI, local_name="shares")
+        inst.units["shares"] = XbrlUnit(
+            unit_id="shares",
+            measure_uri="xbrli:shares",
+            measure_qname=shares,
+            simple_measure_count=1,
+            simple_measure_qnames=(shares,),
+        )
+        inst.facts.append(
+            Fact(
+                concept=concept_qn,
+                context_ref="ctx1",
+                unit_ref="shares",
+                value="1000",
+                precision="4",
+            )
+        )
+        taxonomy = _minimal_taxonomy(type_local="sharesItemType")
+
+        findings = StructuralConformanceValidator().validate(inst, taxonomy)
+
+        assert not any(f.rule_id == "structural:unit-consistency" for f in findings)
+
+
+# ---------------------------------------------------------------------------
+# Essence-alias unit checks (structural:essence-alias-unit)
+# ---------------------------------------------------------------------------
+
+
+class TestEssenceAliasUnitChecks:
+    def test_essence_alias_facts_with_different_units_are_flagged(self) -> None:
+        inst = _minimal_instance()
+        concept_a = _qname("ConceptA")
+        concept_b = _qname("ConceptB")
+        inst.units["feet"] = XbrlUnit(
+            unit_id="feet",
+            measure_uri="ex:feet",
+            measure_qname=_qname("feet"),
+            simple_measure_count=1,
+            simple_measure_qnames=(_qname("feet"),),
+        )
+        inst.units["pounds"] = XbrlUnit(
+            unit_id="pounds",
+            measure_uri="ex:pounds",
+            measure_qname=_qname("pounds"),
+            simple_measure_count=1,
+            simple_measure_qnames=(_qname("pounds"),),
+        )
+        inst.facts.extend(
+            [
+                Fact(concept_a, "ctx1", "feet", "5.6", precision="4"),
+                Fact(concept_b, "ctx1", "pounds", "5.6", precision="4"),
+            ]
+        )
+        taxonomy = _minimal_taxonomy(type_local="decimalItemType")
+        base = taxonomy.concepts[_qname("MyConcept")]
+        taxonomy = TaxonomyStructure(
+            metadata=taxonomy.metadata,
+            concepts={
+                concept_a: Concept(
+                    qname=concept_a,
+                    data_type=base.data_type,
+                    period_type=base.period_type,
+                ),
+                concept_b: Concept(
+                    qname=concept_b,
+                    data_type=base.data_type,
+                    period_type=base.period_type,
+                ),
+            },
+            labels=taxonomy.labels,
+            presentation=taxonomy.presentation,
+            calculation=taxonomy.calculation,
+            definition={
+                "http://www.xbrl.org/2003/role/link": [
+                    DefinitionArc(
+                        arcrole="http://www.xbrl.org/2003/arcrole/essence-alias",
+                        source=concept_a,
+                        target=concept_b,
+                        order=1.0,
+                        extended_link_role="http://www.xbrl.org/2003/role/link",
+                    )
+                ]
+            },
+            hypercubes=taxonomy.hypercubes,
+            dimensions=taxonomy.dimensions,
+            tables=taxonomy.tables,
+            formula_assertion_set=taxonomy.formula_assertion_set,
+        )
+
+        findings = StructuralConformanceValidator().validate(inst, taxonomy)
+
+        assert any(f.rule_id == "structural:essence-alias-unit" for f in findings)
+
 
 # ---------------------------------------------------------------------------
 # Clean instance: all checks pass
@@ -675,7 +1004,13 @@ class TestCleanInstance:
         concept_qn = _qname("MyConcept")
         inst.units["EUR"] = XbrlUnit(unit_id="EUR", measure_uri="iso4217:EUR")
         inst.facts.append(
-            Fact(concept=concept_qn, context_ref="ctx1", unit_ref="EUR", value="500")
+            Fact(
+                concept=concept_qn,
+                context_ref="ctx1",
+                unit_ref="EUR",
+                value="500",
+                decimals="0",
+            )
         )
         taxonomy = _minimal_taxonomy(period_type="instant", type_local="monetaryItemType")
         findings = StructuralConformanceValidator().validate(inst, taxonomy)

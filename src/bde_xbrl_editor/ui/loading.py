@@ -39,7 +39,6 @@ def _instance_load_process_entry(
     def on_taxonomy_ready(taxonomy: object) -> None:
         nonlocal resolved_taxonomy
         resolved_taxonomy = taxonomy
-        result_queue.put(("taxonomy_resolved", taxonomy))
 
     try:
         instance, orphaned_facts = parser.load(
@@ -61,6 +60,32 @@ def _instance_load_process_entry(
         result_queue.put(("error", f"Unexpected error: {exc}"))
 
 
+def _parse_instance_with_preloaded_taxonomy(
+    path: str,
+    settings: LoaderSettings,
+    preloaded_taxonomy: object,
+    *,
+    progress_callback,
+) -> tuple[object, object, int]:
+    """Parse an instance in the current worker thread when taxonomy is already loaded.
+
+    This avoids serializing a large TaxonomyStructure into and back out of a
+    spawned process for the common "open another instance for the current
+    taxonomy" workflow.
+    """
+    from bde_xbrl_editor.instance.parser import InstanceParser  # noqa: PLC0415
+
+    loader = TaxonomyLoader(cache=TaxonomyCache(), settings=settings)
+    parser = InstanceParser(taxonomy_loader=loader)
+    instance, orphaned_facts = parser.load(
+        path,
+        progress_callback=progress_callback,
+        preloaded_taxonomy=preloaded_taxonomy,
+    )
+
+    return instance, preloaded_taxonomy, len(orphaned_facts)
+
+
 def _table_layout_process_entry(
     request_id: int,
     table: object,
@@ -68,6 +93,7 @@ def _table_layout_process_entry(
     instance: object,
     z_index: int,
     z_constraints: object,
+    language_preference: object,
     result_queue,
 ) -> None:
     """Compute a table layout in a dedicated process to keep the UI responsive."""
@@ -80,11 +106,23 @@ def _table_layout_process_entry(
     engine = TableLayoutEngine(taxonomy)
 
     try:
-        layout = engine.compute(table, instance=instance, z_index=z_index, z_constraints=z_constraints)
+        layout = engine.compute(
+            table,
+            instance=instance,
+            z_index=z_index,
+            z_constraints=z_constraints,
+            language_preference=list(language_preference or []),
+        )
         result_queue.put(("finished", request_id, layout, ""))
     except TableLayoutError as exc:
         try:
-            layout = engine.compute(table, instance=None, z_index=z_index, z_constraints=z_constraints)
+            layout = engine.compute(
+                table,
+                instance=None,
+                z_index=z_index,
+                z_constraints=z_constraints,
+                language_preference=list(language_preference or []),
+            )
         except Exception:  # noqa: BLE001
             result_queue.put(("error", request_id, f"Table layout warning: {exc.reason}"))
         else:
@@ -141,6 +179,10 @@ class InstanceLoadWorker(QObject):
         self._preloaded_taxonomy = taxonomy
 
     def run(self) -> None:
+        if self._preloaded_taxonomy is not None:
+            self._run_with_preloaded_taxonomy()
+            return
+
         ctx = multiprocessing.get_context("spawn")
         result_queue = ctx.Queue()
         process = ctx.Process(
@@ -201,6 +243,30 @@ class InstanceLoadWorker(QObject):
                 process.join(timeout=0.5)
             result_queue.close()
 
+    def _run_with_preloaded_taxonomy(self) -> None:
+        """Load an instance in this worker thread when the taxonomy is already warm."""
+
+        def on_progress(message: str, current: int, total: int) -> None:
+            self.progress.emit(message, current, total)
+
+        try:
+            instance, taxonomy, orphaned_count = _parse_instance_with_preloaded_taxonomy(
+                self._path,
+                self._settings,
+                self._preloaded_taxonomy,
+                progress_callback=on_progress,
+            )
+            if orphaned_count:
+                self.orphaned.emit(orphaned_count)
+            self.progress.emit(
+                f"Instance ready — {len(instance.facts)} facts, {len(instance.contexts)} contexts",
+                100,
+                100,
+            )
+            self.finished.emit(instance, taxonomy)
+        except Exception as exc:  # noqa: BLE001
+            self.error.emit(str(exc))
+
 
 class TableLayoutLoadWorker(QObject):
     """Supervisor that computes a table layout in a separate process."""
@@ -216,6 +282,7 @@ class TableLayoutLoadWorker(QObject):
         instance: object,
         z_index: int = 0,
         z_constraints: object = None,
+        language_preference: object = None,
     ) -> None:
         super().__init__()
         self._request_id = request_id
@@ -224,6 +291,7 @@ class TableLayoutLoadWorker(QObject):
         self._instance = instance
         self._z_index = z_index
         self._z_constraints = z_constraints
+        self._language_preference = tuple(language_preference or ())
         self._cancelled = False
         self._process = None
 
@@ -245,6 +313,7 @@ class TableLayoutLoadWorker(QObject):
                 self._instance,
                 self._z_index,
                 self._z_constraints,
+                self._language_preference,
                 result_queue,
             ),
             daemon=True,
