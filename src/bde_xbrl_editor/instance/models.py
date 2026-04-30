@@ -300,6 +300,7 @@ class Fact:
     value: str
     decimals: str | None = None
     precision: str | None = None
+    is_nil: bool = False
 
 
 @dataclass

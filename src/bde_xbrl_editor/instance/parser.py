@@ -76,6 +76,7 @@ _XLINK_FROM = f"{{{XLINK_NS}}}from"
 _XLINK_TO = f"{{{XLINK_NS}}}to"
 _XLINK_ARCROLE = f"{{{XLINK_NS}}}arcrole"
 _XML_LANG = "{http://www.w3.org/XML/1998/namespace}lang"
+_XSI_NIL = "{http://www.w3.org/2001/XMLSchema-instance}nil"
 _FOOTNOTE_LINK_ALLOWED_CHILD = frozenset(
     {
         _LINK_LOC,
@@ -719,6 +720,10 @@ class InstanceParser:
                     unit_ref = child.get("unitRef")
                     decimals = child.get("decimals")
                     precision = child.get("precision")
+                    is_nil = (child.get(_XSI_NIL, "") or "").strip().lower() in {
+                        "true",
+                        "1",
+                    }
                     value = (child.text or "").strip()
 
                     concept_tag = child.tag
@@ -740,6 +745,7 @@ class InstanceParser:
                                 value=value,
                                 decimals=decimals,
                                 precision=precision,
+                                is_nil=is_nil,
                             )
                         )
                     else:

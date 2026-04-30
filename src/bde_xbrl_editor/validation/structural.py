@@ -25,6 +25,7 @@ class _FactAnalysis:
     unresolved_context_refs: list[ValidationFinding]
     unresolved_unit_refs: list[ValidationFinding]
     monetary_iso_units: list[ValidationFinding]
+    decimals_precision: list[ValidationFinding]
     period_type_mismatches: list[ValidationFinding]
     duplicate_facts: list[ValidationFinding]
 
@@ -179,6 +180,15 @@ class StructuralConformanceValidator:
             findings.append(self._internal_error("structural:monetary-unit-measure", exc))
 
         try:
+            findings.extend(
+                fact_analysis.decimals_precision
+                if fact_analysis is not None
+                else self._check_decimals_precision(instance, taxonomy)
+            )
+        except Exception as exc:  # noqa: BLE001
+            findings.append(self._internal_error("structural:decimals-precision", exc))
+
+        try:
             findings.extend(self._check_incomplete_contexts(instance))
         except Exception as exc:  # noqa: BLE001
             findings.append(self._internal_error("structural:incomplete-context", exc))
@@ -221,6 +231,7 @@ class StructuralConformanceValidator:
         unresolved_context_refs: list[ValidationFinding] = []
         unresolved_unit_refs: list[ValidationFinding] = []
         monetary_iso_units: list[ValidationFinding] = []
+        decimals_precision: list[ValidationFinding] = []
         period_type_mismatches: list[ValidationFinding] = []
         duplicate_facts: list[ValidationFinding] = []
         duplicate_key_values: dict[tuple, list[str]] = defaultdict(list)
@@ -314,6 +325,11 @@ class StructuralConformanceValidator:
                 if monetary_finding is not None:
                     monetary_iso_units.append(monetary_finding)
 
+            if is_numeric or fact.unit_ref is not None:
+                finding = self._decimals_precision_finding(fact, is_numeric=is_numeric)
+                if finding is not None:
+                    decimals_precision.append(finding)
+
             if canonical_context_refs is not None and ctx is not None:
                 ctx_bind = canonical_context_refs.get(fact.context_ref, fact.context_ref)
                 key = (fact.concept, ctx_bind, fact.unit_ref)
@@ -324,6 +340,7 @@ class StructuralConformanceValidator:
             unresolved_context_refs=unresolved_context_refs,
             unresolved_unit_refs=unresolved_unit_refs,
             monetary_iso_units=monetary_iso_units,
+            decimals_precision=decimals_precision,
             period_type_mismatches=period_type_mismatches,
             duplicate_facts=duplicate_facts,
         )
@@ -426,6 +443,23 @@ class StructuralConformanceValidator:
 
             unit = instance.units[fact.unit_ref]
             finding = self._monetary_unit_finding(fact, unit)
+            if finding is not None:
+                findings.append(finding)
+        return findings
+
+    def _check_decimals_precision(
+        self,
+        instance: XbrlInstance,
+        taxonomy: TaxonomyStructure | None,
+    ) -> list[ValidationFinding]:
+        """Numeric facts must use exactly one of decimals/precision unless nil."""
+        findings: list[ValidationFinding] = []
+        for fact in instance.facts:
+            concept = taxonomy.concepts.get(fact.concept) if taxonomy is not None else None
+            is_numeric = _is_numeric_concept(concept) if concept is not None else False
+            if not is_numeric and fact.unit_ref is None:
+                continue
+            finding = self._decimals_precision_finding(fact, is_numeric=is_numeric)
             if finding is not None:
                 findings.append(finding)
         return findings
@@ -573,6 +607,81 @@ class StructuralConformanceValidator:
                     f"Fact for monetary concept '{fact.concept}' must use an "
                     f"ISO 4217 currency measure in namespace '{ISO4217_NS}' "
                     f"with a 3-letter currency code; got measure {got!r}."
+                ),
+                source="structural",
+                concept_qname=fact.concept,
+                context_ref=fact.context_ref,
+            )
+        return None
+
+    @staticmethod
+    def _decimals_precision_finding(
+        fact: Fact,
+        *,
+        is_numeric: bool,
+    ) -> ValidationFinding | None:
+        has_decimals = fact.decimals is not None
+        has_precision = fact.precision is not None
+        is_nil = getattr(fact, "is_nil", False)
+
+        if is_nil:
+            if has_decimals or has_precision:
+                present = " and ".join(
+                    name
+                    for name, present_attr in (
+                        ("decimals", has_decimals),
+                        ("precision", has_precision),
+                    )
+                    if present_attr
+                )
+                return ValidationFinding(
+                    rule_id="structural:decimals-precision",
+                    severity=ValidationSeverity.ERROR,
+                    message=(
+                        f"Nil fact for concept '{fact.concept}' must not specify "
+                        f"{present}."
+                    ),
+                    source="structural",
+                    concept_qname=fact.concept,
+                    context_ref=fact.context_ref,
+                )
+            if fact.unit_ref is not None and not is_numeric:
+                return ValidationFinding(
+                    rule_id="structural:decimals-precision",
+                    severity=ValidationSeverity.ERROR,
+                    message=(
+                        f"Nil fact for concept '{fact.concept}' has unitRef "
+                        f"'{fact.unit_ref}' but no explicit decimals or precision; "
+                        "the item type may contribute fixed precision/decimals, which "
+                        "is not allowed for nil facts."
+                    ),
+                    source="structural",
+                    concept_qname=fact.concept,
+                    context_ref=fact.context_ref,
+                )
+            return None
+
+        if not is_numeric:
+            return None
+        if has_decimals and has_precision:
+            return ValidationFinding(
+                rule_id="structural:decimals-precision",
+                severity=ValidationSeverity.ERROR,
+                message=(
+                    f"Numeric fact for concept '{fact.concept}' specifies both "
+                    "decimals and precision; XBRL 2.1 allows only one."
+                ),
+                source="structural",
+                concept_qname=fact.concept,
+                context_ref=fact.context_ref,
+            )
+        if not has_decimals and not has_precision:
+            return ValidationFinding(
+                rule_id="structural:decimals-precision",
+                severity=ValidationSeverity.ERROR,
+                message=(
+                    f"Numeric fact for concept '{fact.concept}' must specify either "
+                    "decimals or precision."
                 ),
                 source="structural",
                 concept_qname=fact.concept,

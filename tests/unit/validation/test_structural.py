@@ -688,6 +688,90 @@ class TestSegmentScenarioSubstitutionChecks:
 
 
 # ---------------------------------------------------------------------------
+# Decimals / precision checks (structural:decimals-precision)
+# ---------------------------------------------------------------------------
+
+
+class TestDecimalsPrecisionChecks:
+    def test_numeric_fact_without_decimals_or_precision_is_flagged(self) -> None:
+        inst = _minimal_instance()
+        concept_qn = _qname("MyConcept")
+        inst.units["pure"] = XbrlUnit(unit_id="pure", measure_uri="xbrli:pure")
+        inst.facts.append(Fact(concept=concept_qn, context_ref="ctx1", unit_ref="pure", value="5.6"))
+        taxonomy = _minimal_taxonomy(type_local="decimalItemType")
+
+        findings = StructuralConformanceValidator().validate(inst, taxonomy)
+
+        assert any(f.rule_id == "structural:decimals-precision" for f in findings)
+
+    def test_numeric_fact_with_both_decimals_and_precision_is_flagged(self) -> None:
+        inst = _minimal_instance()
+        concept_qn = _qname("MyConcept")
+        inst.units["pure"] = XbrlUnit(unit_id="pure", measure_uri="xbrli:pure")
+        inst.facts.append(
+            Fact(
+                concept=concept_qn,
+                context_ref="ctx1",
+                unit_ref="pure",
+                value="5.6",
+                decimals="3",
+                precision="4",
+            )
+        )
+        taxonomy = _minimal_taxonomy(type_local="decimalItemType")
+
+        findings = StructuralConformanceValidator().validate(inst, taxonomy)
+
+        assert any(
+            f.rule_id == "structural:decimals-precision"
+            and "both decimals and precision" in f.message
+            for f in findings
+        )
+
+    def test_nil_fact_with_decimals_or_precision_is_flagged(self) -> None:
+        inst = _minimal_instance()
+        concept_qn = _qname("MyConcept")
+        inst.units["pure"] = XbrlUnit(unit_id="pure", measure_uri="xbrli:pure")
+        inst.facts.append(
+            Fact(
+                concept=concept_qn,
+                context_ref="ctx1",
+                unit_ref="pure",
+                value="",
+                decimals="3",
+                is_nil=True,
+            )
+        )
+        taxonomy = _minimal_taxonomy(type_local="decimalItemType")
+
+        findings = StructuralConformanceValidator().validate(inst, taxonomy)
+
+        assert any(
+            f.rule_id == "structural:decimals-precision" and "Nil fact" in f.message
+            for f in findings
+        )
+
+    def test_numeric_fact_with_only_decimals_has_no_decimals_precision_finding(self) -> None:
+        inst = _minimal_instance()
+        concept_qn = _qname("MyConcept")
+        inst.units["pure"] = XbrlUnit(unit_id="pure", measure_uri="xbrli:pure")
+        inst.facts.append(
+            Fact(
+                concept=concept_qn,
+                context_ref="ctx1",
+                unit_ref="pure",
+                value="5.6",
+                decimals="4",
+            )
+        )
+        taxonomy = _minimal_taxonomy(type_local="decimalItemType")
+
+        findings = StructuralConformanceValidator().validate(inst, taxonomy)
+
+        assert not any(f.rule_id == "structural:decimals-precision" for f in findings)
+
+
+# ---------------------------------------------------------------------------
 # Clean instance: all checks pass
 # ---------------------------------------------------------------------------
 
@@ -698,7 +782,15 @@ class TestCleanInstance:
         inst = _minimal_instance()
         concept_qn = _qname("MyConcept")
         inst.units["EUR"] = XbrlUnit(unit_id="EUR", measure_uri="iso4217:EUR")
-        inst.facts.append(Fact(concept=concept_qn, context_ref="ctx1", unit_ref="EUR", value="500"))
+        inst.facts.append(
+            Fact(
+                concept=concept_qn,
+                context_ref="ctx1",
+                unit_ref="EUR",
+                value="500",
+                decimals="0",
+            )
+        )
         taxonomy = _minimal_taxonomy(period_type="instant", type_local="monetaryItemType")
         findings = StructuralConformanceValidator().validate(inst, taxonomy)
         assert findings == []
