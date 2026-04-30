@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import date, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -507,6 +508,39 @@ def _reject_xbrl_defined_attrs_on_tuple_fact(
             )
 
 
+def _merge_taxonomies(
+    primary: TaxonomyStructure,
+    additional: TaxonomyStructure,
+) -> TaxonomyStructure:
+    presentation = dict(primary.presentation)
+    presentation.update(additional.presentation)
+
+    calculation = {elr: list(arcs) for elr, arcs in primary.calculation.items()}
+    for elr, arcs in additional.calculation.items():
+        calculation.setdefault(elr, []).extend(arcs)
+
+    definition = {elr: list(arcs) for elr, arcs in primary.definition.items()}
+    for elr, arcs in additional.definition.items():
+        definition.setdefault(elr, []).extend(arcs)
+
+    return replace(
+        primary,
+        concepts={**primary.concepts, **additional.concepts},
+        presentation=presentation,
+        calculation=calculation,
+        definition=definition,
+        hypercubes=tuple(primary.hypercubes) + tuple(additional.hypercubes),
+        dimensions={**primary.dimensions, **additional.dimensions},
+        tables=tuple(primary.tables) + tuple(additional.tables),
+        schema_files=tuple(sorted(set(primary.schema_files) | set(additional.schema_files))),
+        linkbase_files=tuple(sorted(set(primary.linkbase_files) | set(additional.linkbase_files))),
+        schema_substitution_groups={
+            **primary.schema_substitution_groups,
+            **additional.schema_substitution_groups,
+        },
+    )
+
+
 class InstanceParser:
     """Parses an XBRL 2.1 XML file into a populated XbrlInstance."""
 
@@ -553,9 +587,10 @@ class InstanceParser:
             )
 
         # Stage 2: Extract schemaRef and load taxonomy
-        schema_ref_el = root.find(_LINK_SCHEMA_REF)
-        if schema_ref_el is None:
+        schema_ref_els = root.findall(_LINK_SCHEMA_REF)
+        if not schema_ref_els:
             raise InstanceParseError(path_str, "Missing link:schemaRef element")
+        schema_ref_el = schema_ref_els[0]
         schema_href = schema_ref_el.get(_XLINK_HREF, "")
         if not schema_href:
             raise InstanceParseError(path_str, "link:schemaRef missing xlink:href")
@@ -586,6 +621,19 @@ class InstanceParser:
                 progress_callback=taxonomy_progress,
                 resolved_taxonomy_path=resolved_taxonomy_path,
             )
+            for extra_schema_ref_el in schema_ref_els[1:]:
+                extra_href = extra_schema_ref_el.get(_XLINK_HREF, "")
+                if not extra_href:
+                    continue
+                extra_resolved_path = self._resolve_taxonomy_path(path, extra_href)
+                extra_taxonomy = self._resolve_taxonomy(
+                    path,
+                    extra_href,
+                    path_str,
+                    progress_callback=taxonomy_progress,
+                    resolved_taxonomy_path=extra_resolved_path,
+                )
+                taxonomy = _merge_taxonomies(taxonomy, extra_taxonomy)
         if taxonomy_resolved_callback is not None:
             taxonomy_resolved_callback(taxonomy)
         progress(

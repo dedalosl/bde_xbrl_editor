@@ -66,6 +66,18 @@ def _parse_expected_outcome(result_el: etree._Element | None) -> ExpectedOutcome
     return ExpectedOutcome(outcome_type=ExpectedOutcomeType.VALID)
 
 
+def _resolve_suite_file(base_dir: Path, filename: str) -> Path:
+    resolved = (base_dir / filename).resolve()
+    if resolved.exists() or "_" not in filename:
+        return resolved
+
+    # Some historical XBRL conformance manifests use underscores where the
+    # distributed file uses hyphens. Normalize only when the exact path is
+    # missing and the normalized file exists beside it.
+    hyphen_candidate = (base_dir / filename.replace("_", "-")).resolve()
+    return hyphen_candidate if hyphen_candidate.exists() else resolved
+
+
 class ConformanceSuiteParser:
     """Parses a conformance suite index and all referenced test case files."""
 
@@ -241,7 +253,7 @@ class ConformanceSuiteParser:
                     if local_name in _DATA_FILE_TAGS:
                         filename = (file_el.text or "").strip()
                         if filename:
-                            resolved = (tc_path.parent / filename).resolve()
+                            resolved = _resolve_suite_file(tc_path.parent, filename)
                             input_files.append(resolved)
                             if local_name == "instance" and instance_file is None:
                                 instance_file = resolved

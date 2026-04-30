@@ -24,6 +24,7 @@ from bde_xbrl_editor.validation.models import (
     ValidationReport,
     ValidationSeverity,
 )
+from bde_xbrl_editor.validation.relationships import RelationshipSetValidator
 from bde_xbrl_editor.validation.structural import StructuralConformanceValidator
 
 ProgressCallback = Callable[[int, int, str], None]
@@ -80,6 +81,23 @@ class InstanceValidator:
             stage_timings.append(
                 StageTiming("structural", time.perf_counter() - stage_started_at)
             )
+
+        # --- 1b. Taxonomy relationship-set checks ---------------------------
+        if not (self._cancel_event and self._cancel_event.is_set()):
+            try:
+                rv = RelationshipSetValidator()
+                stage_findings = tuple(rv.validate_taxonomy(self._taxonomy))
+                findings.extend(stage_findings)
+                self._publish_findings(stage_findings)
+            except Exception as exc:  # noqa: BLE001
+                stage_findings = (ValidationFinding(
+                    rule_id="internal:relationship-error",
+                    severity=ValidationSeverity.ERROR,
+                    message=f"Relationship-set validator failed unexpectedly: {exc}",
+                    source="relationships",
+                ),)
+                findings.extend(stage_findings)
+                self._publish_findings(stage_findings)
 
         # --- 2. Calculation (summation-item) checks -------------------------
         if not (self._cancel_event and self._cancel_event.is_set()):

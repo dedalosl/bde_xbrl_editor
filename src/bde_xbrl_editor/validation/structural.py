@@ -13,12 +13,14 @@ from bde_xbrl_editor.instance.s_equal import canonical_context_refs_by_s_equal
 from bde_xbrl_editor.taxonomy.constants import NS_XBRLI
 from bde_xbrl_editor.taxonomy.models import Concept, QName, TaxonomyStructure
 from bde_xbrl_editor.taxonomy.schema import parse_schema_raw
+from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
 from bde_xbrl_editor.validation.models import ValidationFinding, ValidationSeverity
 
 _NUMERIC_TYPE_KEYWORDS = ("monetary", "decimal", "integer", "float", "double")
 _XBRLI_ITEM = QName(NS_XBRLI, "item")
 _XBRLI_TUPLE = QName(NS_XBRLI, "tuple")
 _ARCROLE_ESSENCE_ALIAS = "http://www.xbrl.org/2003/arcrole/essence-alias"
+_ARCROLE_REQUIRES_ELEMENT = "http://www.xbrl.org/2003/arcrole/requires-element"
 
 
 @dataclass
@@ -231,6 +233,11 @@ class StructuralConformanceValidator:
             findings.extend(self._check_essence_alias_units(instance, taxonomy))
         except Exception as exc:  # noqa: BLE001
             findings.append(self._internal_error("structural:essence-alias-unit", exc))
+
+        try:
+            findings.extend(self._check_requires_element(instance, taxonomy))
+        except Exception as exc:  # noqa: BLE001
+            findings.append(self._internal_error("structural:requires-element", exc))
 
         # Check 7 (structural:missing-namespace) is skipped — namespace info not
         # available on the in-memory instance model.
@@ -1000,6 +1007,51 @@ class StructuralConformanceValidator:
                             context_ref=source_ctx,
                         )
                     )
+        return findings
+
+    def _check_requires_element(
+        self,
+        instance: XbrlInstance,
+        taxonomy: TaxonomyStructure | None,
+    ) -> list[ValidationFinding]:
+        if taxonomy is None or instance.source_path is None:
+            return []
+
+        requires_arcs = [
+            arc
+            for arcs in taxonomy.definition.values()
+            for arc in arcs
+            if arc.arcrole == _ARCROLE_REQUIRES_ELEMENT
+        ]
+        if not requires_arcs:
+            return []
+
+        present = {fact.concept for fact in instance.facts}
+        try:
+            root = parse_xml_file(instance.source_path).getroot()
+            for child in root:
+                if isinstance(child.tag, str) and child.tag.startswith("{"):
+                    qname = QName.from_clark(child.tag)
+                    if qname in taxonomy.concepts:
+                        present.add(qname)
+        except Exception:
+            pass
+
+        findings: list[ValidationFinding] = []
+        for arc in requires_arcs:
+            if arc.source in present and arc.target not in present:
+                findings.append(
+                    ValidationFinding(
+                        rule_id="structural:requires-element",
+                        severity=ValidationSeverity.ERROR,
+                        message=(
+                            f"Concept '{arc.source}' is present, so required concept "
+                            f"'{arc.target}' must also be present."
+                        ),
+                        source="structural",
+                        concept_qname=arc.source,
+                    )
+                )
         return findings
 
     @classmethod

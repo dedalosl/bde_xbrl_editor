@@ -156,6 +156,59 @@ class TestMissingSchemaref:
                 assert f.severity == ValidationSeverity.ERROR
 
 
+def test_requires_element_arc_reports_missing_required_concept(tmp_path: Path) -> None:
+    source = _qname("TupleFlag")
+    target = _qname("RequiredAmount")
+    instance_path = tmp_path / "instance.xbrl"
+    instance_path.write_text(
+        f"""<xbrli:xbrl xmlns:xbrli="{NS_XBRLI}" xmlns:t="{_NS}">
+  <t:TupleFlag/>
+</xbrli:xbrl>""",
+        encoding="utf-8",
+    )
+    inst = _minimal_instance()
+    inst.source_path = instance_path
+
+    taxonomy = _minimal_taxonomy()
+    taxonomy = TaxonomyStructure(
+        metadata=taxonomy.metadata,
+        concepts={
+            source: Concept(
+                qname=source,
+                data_type=QName(namespace=NS_XBRLI, local_name="tuple"),
+                period_type="duration",
+                substitution_group=QName(namespace=NS_XBRLI, local_name="tuple"),
+            ),
+            target: Concept(
+                qname=target,
+                data_type=QName(namespace=NS_XBRLI, local_name="monetaryItemType"),
+                period_type="instant",
+            ),
+        },
+        labels=taxonomy.labels,
+        presentation={},
+        calculation={},
+        definition={
+            "http://www.xbrl.org/2003/role/link": (
+                DefinitionArc(
+                    arcrole="http://www.xbrl.org/2003/arcrole/requires-element",
+                    source=source,
+                    target=target,
+                    order=1.0,
+                    extended_link_role="http://www.xbrl.org/2003/role/link",
+                ),
+            )
+        },
+        hypercubes=[],
+        dimensions={},
+        tables=[],
+    )
+
+    findings = StructuralConformanceValidator().validate(inst, taxonomy)
+
+    assert any(f.rule_id == "structural:requires-element" for f in findings)
+
+
 # ---------------------------------------------------------------------------
 # Check 2: unresolved-context-ref
 # ---------------------------------------------------------------------------

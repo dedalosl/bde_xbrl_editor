@@ -33,6 +33,7 @@ from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
 from bde_xbrl_editor.validation.calculation import CalculationConsistencyValidator
 from bde_xbrl_editor.validation.models import ValidationFinding, ValidationSeverity
 from bde_xbrl_editor.validation.orchestrator import InstanceValidator
+from bde_xbrl_editor.validation.relationships import RelationshipSetValidator
 
 # Formula conformance measures formula assertions, not full XBRL 2.1 instance
 # validation.  S-equal–aware duplicate-fact / calculation checks (added for
@@ -729,12 +730,18 @@ class TestCaseExecutor:
             if variation.instance_file is not None:
                 # Parse instance (also loads taxonomy via schemaRef)
                 inst_parser = InstanceParser(loader)
-                instance, _ = inst_parser.load(variation.instance_file)
+                parsed_taxonomies: list[TaxonomyStructure] = []
+                instance, _ = inst_parser.load(
+                    variation.instance_file,
+                    taxonomy_resolved_callback=parsed_taxonomies.append,
+                )
 
                 # Get taxonomy: use explicit taxonomy_file if given, otherwise
                 # resolve schemaRef relative to instance file
                 if variation.taxonomy_file is not None and variation.taxonomy_file.exists():
                     taxonomy_struct = loader.load(variation.taxonomy_file)
+                elif parsed_taxonomies:
+                    taxonomy_struct = parsed_taxonomies[-1]
                 else:
                     schema_href = instance.schema_ref_href
                     if schema_href and not schema_href.startswith(
@@ -784,6 +791,9 @@ class TestCaseExecutor:
                     findings = findings + tuple(
                         CalculationConsistencyValidator().validate_taxonomy(taxonomy_struct)
                     )
+                    findings = findings + tuple(
+                        RelationshipSetValidator().validate_taxonomy(taxonomy_struct)
+                    )
                 if test_case.test_case_id == _LAX_VALIDATION_TEST_ID:
                     findings = findings + _validate_lax_known_declarations(
                         variation.input_files
@@ -809,6 +819,9 @@ class TestCaseExecutor:
                 if taxonomy_struct is not None and test_case.suite_id == "xbrl21":
                     findings = findings + tuple(
                         CalculationConsistencyValidator().validate_taxonomy(taxonomy_struct)
+                    )
+                    findings = findings + tuple(
+                        RelationshipSetValidator().validate_taxonomy(taxonomy_struct)
                     )
                 if test_case.test_case_id == _LAX_VALIDATION_TEST_ID:
                     findings = findings + _validate_lax_known_declarations(
