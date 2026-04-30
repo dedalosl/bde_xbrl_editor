@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
+from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
 
 from bde_xbrl_editor.instance.models import Fact, XbrlInstance
@@ -23,6 +24,19 @@ _ZERO = Decimal(0)
 _ONE = Decimal(1)
 _TEN = Decimal(10)
 _NAN = Decimal("NaN")
+
+
+_CalcKey = tuple[QName, str, str | None]
+_BindKey = tuple[str, str | None]
+
+
+@dataclass
+class _CalculationFactIndex:
+    by_key: dict[_CalcKey, list[Fact]]
+    duplicate_blocked: set[_CalcKey]
+    bind_keys_by_concept: dict[QName, set[_BindKey]]
+    non_nil_keys: set[_CalcKey]
+    rounded_numeric_facts_by_key: dict[_CalcKey, list[tuple[Fact, Decimal]]]
 
 
 def _concept_is_numeric(concept: Concept) -> bool:
@@ -94,10 +108,14 @@ def _fact_is_nil_numeric(fact: Fact) -> bool:
     return not (fact.value or "").strip()
 
 
+def _fact_has_zero_precision(fact: Fact) -> bool:
+    return str(fact.precision or "").strip() == "0"
+
+
 def _calc_key(
     fact: Fact,
     canon_ctx: dict[str, str],
-) -> tuple[QName, str, str | None] | None:
+) -> _CalcKey | None:
     if fact.unit_ref is None:
         return None
     ctx_bind = canon_ctx.get(fact.context_ref, fact.context_ref)
@@ -112,29 +130,13 @@ class CalculationConsistencyValidator:
         instance: XbrlInstance,
         taxonomy: TaxonomyStructure,
     ) -> list[ValidationFinding]:
-        findings: list[ValidationFinding] = []
+        findings: list[ValidationFinding] = self.validate_taxonomy(taxonomy)
         if not taxonomy.calculation:
             return findings
 
         canon_ctx = canonical_context_refs_by_s_equal(instance)
 
-        # Index numeric facts by (concept, S-equal canonical context_ref, unit_ref)
-        by_key: dict[tuple[QName, str, str | None], list[Fact]] = defaultdict(list)
-        for fact in instance.facts:
-            concept = taxonomy.concepts.get(fact.concept)
-            if concept is None or concept.abstract or not _concept_is_numeric(concept):
-                continue
-            if fact.context_ref not in instance.contexts:
-                continue
-            key = _calc_key(fact, canon_ctx)
-            if key is None:
-                continue
-            by_key[key].append(fact)
-
-        duplicate_blocked: set[tuple[QName, str, str | None]] = set()
-        for key, flist in by_key.items():
-            if len(flist) > 1:
-                duplicate_blocked.add(key)
+        fact_index = self._build_fact_index(instance, taxonomy, canon_ctx)
 
         for elr, arcs in taxonomy.calculation.items():
             findings.extend(
@@ -142,8 +144,148 @@ class CalculationConsistencyValidator:
                     elr,
                     arcs,
                     taxonomy,
-                    by_key,
-                    duplicate_blocked,
+                    fact_index,
+                )
+            )
+        return findings
+
+    def validate_taxonomy(self, taxonomy: TaxonomyStructure) -> list[ValidationFinding]:
+        findings: list[ValidationFinding] = []
+        for elr, arcs in taxonomy.calculation.items():
+            findings.extend(self._validate_arc_endpoint_constraints(elr, arcs, taxonomy))
+            findings.extend(self._validate_arc_balance_constraints(elr, arcs, taxonomy))
+        return findings
+
+    @staticmethod
+    def _build_fact_index(
+        instance: XbrlInstance,
+        taxonomy: TaxonomyStructure,
+        canon_ctx: dict[str, str],
+    ) -> _CalculationFactIndex:
+        by_key: dict[_CalcKey, list[Fact]] = defaultdict(list)
+        bind_keys_by_concept: dict[QName, set[_BindKey]] = defaultdict(set)
+        non_nil_keys: set[_CalcKey] = set()
+        rounded_numeric_facts_by_key: dict[_CalcKey, list[tuple[Fact, Decimal]]] = defaultdict(list)
+        numeric_concepts = {
+            qname
+            for qname, concept in taxonomy.concepts.items()
+            if not concept.abstract and _concept_is_numeric(concept)
+        }
+
+        for fact in instance.facts:
+            if fact.concept not in numeric_concepts:
+                continue
+            if fact.context_ref not in instance.contexts:
+                continue
+            key = _calc_key(fact, canon_ctx)
+            if key is None:
+                continue
+            by_key[key].append(fact)
+            _concept, ctx_ref, unit_ref = key
+            bind_keys_by_concept[fact.concept].add((ctx_ref, unit_ref))
+            if _fact_is_nil_numeric(fact):
+                continue
+            non_nil_keys.add(key)
+            try:
+                Decimal(fact.value.strip())
+            except (InvalidOperation, AttributeError):
+                continue
+            rounded_value = _round_fact(fact, infer_decimals=True)
+            rounded_numeric_facts_by_key[key].append((fact, rounded_value))
+
+        duplicate_blocked = {key for key, flist in by_key.items() if len(flist) > 1}
+        return _CalculationFactIndex(
+            by_key=dict(by_key),
+            duplicate_blocked=duplicate_blocked,
+            bind_keys_by_concept=dict(bind_keys_by_concept),
+            non_nil_keys=non_nil_keys,
+            rounded_numeric_facts_by_key=dict(rounded_numeric_facts_by_key),
+        )
+
+    @staticmethod
+    def _validate_arc_balance_constraints(
+        elr: str,
+        arcs: list[CalculationArc],
+        taxonomy: TaxonomyStructure,
+    ) -> list[ValidationFinding]:
+        findings: list[ValidationFinding] = []
+        for arc in arcs:
+            if arc.use == "prohibited":
+                continue
+            parent = taxonomy.concepts.get(arc.parent)
+            child = taxonomy.concepts.get(arc.child)
+            if parent is None or child is None:
+                continue
+            if arc.weight == 0:
+                findings.append(
+                    ValidationFinding(
+                        rule_id="calculation:invalid-weight",
+                        severity=ValidationSeverity.ERROR,
+                        message=(
+                            f"Calculation arc from '{arc.parent}' to '{arc.child}' in "
+                            f"link role '{elr}' has weight 0; summation-item weights "
+                            "must be non-zero."
+                        ),
+                        source="calculation",
+                        concept_qname=arc.parent,
+                    )
+                )
+                continue
+            if parent.balance not in {"debit", "credit"} or child.balance not in {
+                "debit",
+                "credit",
+            }:
+                continue
+            same_balance = parent.balance == child.balance
+            sign_is_positive = arc.weight > 0
+            if same_balance != sign_is_positive:
+                findings.append(
+                    ValidationFinding(
+                        rule_id="calculation:balance-weight-inconsistent",
+                        severity=ValidationSeverity.ERROR,
+                        message=(
+                            f"Calculation arc from '{arc.parent}' ({parent.balance}) to "
+                            f"'{arc.child}' ({child.balance}) in link role '{elr}' has "
+                            f"weight {arc.weight}; same balances require positive "
+                            "weights and opposite balances require negative weights."
+                        ),
+                        source="calculation",
+                        concept_qname=arc.parent,
+                    )
+                )
+        return findings
+
+    @staticmethod
+    def _validate_arc_endpoint_constraints(
+        elr: str,
+        arcs: list[CalculationArc],
+        taxonomy: TaxonomyStructure,
+    ) -> list[ValidationFinding]:
+        findings: list[ValidationFinding] = []
+        for arc in arcs:
+            if arc.use == "prohibited":
+                continue
+            parent = taxonomy.concepts.get(arc.parent)
+            child = taxonomy.concepts.get(arc.child)
+            if parent is None or child is None:
+                continue
+            bad_endpoints: list[str] = []
+            if parent.abstract or not _concept_is_numeric(parent):
+                bad_endpoints.append(f"summation '{arc.parent}'")
+            if child.abstract or not _concept_is_numeric(child):
+                bad_endpoints.append(f"item '{arc.child}'")
+            if not bad_endpoints:
+                continue
+            findings.append(
+                ValidationFinding(
+                    rule_id="calculation:invalid-endpoint",
+                    severity=ValidationSeverity.ERROR,
+                    message=(
+                        f"Calculation arc in link role '{elr}' has non-numeric "
+                        f"endpoint(s): {', '.join(bad_endpoints)}."
+                    ),
+                    source="calculation",
+                    concept_qname=arc.parent,
                 )
             )
         return findings
@@ -153,17 +295,14 @@ class CalculationConsistencyValidator:
         elr: str,
         arcs: list[CalculationArc],
         taxonomy: TaxonomyStructure,
-        by_key: dict[tuple[QName, str, str | None], list[Fact]],
-        duplicate_blocked: set[tuple[QName, str, str | None]],
+        fact_index: _CalculationFactIndex,
     ) -> list[ValidationFinding]:
         findings: list[ValidationFinding] = []
         if not arcs:
             return findings
 
         prohibited = {
-            arc.equivalence_key
-            for arc in arcs
-            if arc.use == "prohibited" and arc.equivalence_key
+            arc.equivalence_key for arc in arcs if arc.use == "prohibited" and arc.equivalence_key
         }
         active_arcs = [
             arc
@@ -178,14 +317,6 @@ class CalculationConsistencyValidator:
                 continue
             by_parent[arc.parent].append(arc)
 
-        item_bind_keys: dict[QName, set[tuple[str, str | None]]] = defaultdict(set)
-        sum_bind_keys: dict[QName, set[tuple[str, str | None]]] = defaultdict(set)
-
-        for key in by_key:
-            concept, ctx_ref, unit_ref = key
-            item_bind_keys[concept].add((ctx_ref, unit_ref))
-            sum_bind_keys[concept].add((ctx_ref, unit_ref))
-
         for sum_concept, rel_arcs in by_parent.items():
             if sum_concept not in taxonomy.concepts:
                 continue
@@ -198,87 +329,82 @@ class CalculationConsistencyValidator:
                 child = arc.child
                 if child not in taxonomy.concepts:
                     continue
-                bound_sum_keys |= sum_bind_keys[sum_concept] & item_bind_keys[child]
+                bound_sum_keys |= fact_index.bind_keys_by_concept.get(
+                    sum_concept, set()
+                ) & fact_index.bind_keys_by_concept.get(child, set())
 
             for ctx_ref, unit_ref in bound_sum_keys:
                 key_sum = (sum_concept, ctx_ref, unit_ref)
-                sum_facts = by_key.get(key_sum, [])
+                sum_facts = fact_index.rounded_numeric_facts_by_key.get(key_sum, [])
                 if not sum_facts:
                     continue
 
-                dup_row = key_sum in duplicate_blocked
+                dup_row = key_sum in fact_index.duplicate_blocked
                 if not dup_row:
                     for arc in rel_arcs:
                         ik = (arc.child, ctx_ref, unit_ref)
-                        if ik in duplicate_blocked:
+                        if ik in fact_index.duplicate_blocked:
                             dup_row = True
                             break
 
                 bound_sum = _ZERO
+                bound_items_have_zero_precision = False
                 if not dup_row:
                     for arc in rel_arcs:
                         w = Decimal(str(arc.weight))
                         item_key = (arc.child, ctx_ref, unit_ref)
-                        for item_fact in by_key.get(item_key, ()):
-                            if _fact_is_nil_numeric(item_fact):
-                                continue
-                            try:
-                                _ = Decimal(item_fact.value.strip())
-                            except (InvalidOperation, AttributeError):
-                                continue
-                            rounded_item = _round_fact(item_fact, infer_decimals=True)
-                            if rounded_item.is_nan():
-                                continue
+                        for _item_fact, rounded_item in fact_index.rounded_numeric_facts_by_key.get(
+                            item_key, ()
+                        ):
+                            bound_items_have_zero_precision = (
+                                bound_items_have_zero_precision
+                                or _fact_has_zero_precision(_item_fact)
+                            )
                             bound_sum += rounded_item * w
 
-                for sum_fact in sum_facts:
-                    if _fact_is_nil_numeric(sum_fact):
-                        continue
-                    if key_sum in duplicate_blocked:
-                        continue
-                    try:
-                        _ = Decimal(sum_fact.value.strip())
-                    except (InvalidOperation, AttributeError):
+                for sum_fact, rounded_sum in sum_facts:
+                    if key_sum in fact_index.duplicate_blocked:
                         continue
                     if dup_row:
                         continue
 
-                    rounded_sum = _round_fact(sum_fact, infer_decimals=True)
-                    if rounded_sum.is_nan():
-                        continue
                     rounded_items_sum = _round_fact(
                         sum_fact,
                         infer_decimals=True,
                         v_decimal=bound_sum,
                     )
-                    if rounded_items_sum.is_nan():
+                    if rounded_items_sum.is_nan() or rounded_sum.is_nan():
+                        if not (
+                            _fact_has_zero_precision(sum_fact)
+                            or bound_items_have_zero_precision
+                        ):
+                            continue
+                    elif rounded_items_sum == rounded_sum:
                         continue
-                    if rounded_items_sum != rounded_sum:
-                        unreported: list[str] = []
-                        for arc in rel_arcs:
-                            ik = (arc.child, ctx_ref, unit_ref)
-                            if ik not in by_key or not any(
-                                not _fact_is_nil_numeric(f) for f in by_key[ik]
-                            ):
-                                unreported.append(str(arc.child))
 
-                        findings.append(
-                            ValidationFinding(
-                                rule_id="calculation:summation-inconsistent",
-                                severity=ValidationSeverity.ERROR,
-                                message=(
-                                    f"Calculation inconsistent for summation concept "
-                                    f"'{sum_concept}' in link role '{elr}': reported rounded "
-                                    f"total {rounded_sum} vs computed {rounded_items_sum} "
-                                    f"(context '{ctx_ref}', unit '{unit_ref}'). "
-                                    f"Missing or nil contributing facts: "
-                                    f"{', '.join(unreported) if unreported else 'none'}."
-                                ),
-                                source="calculation",
-                                concept_qname=sum_concept,
-                                context_ref=ctx_ref,
-                            )
+                    unreported: list[str] = []
+                    for arc in rel_arcs:
+                        ik = (arc.child, ctx_ref, unit_ref)
+                        if ik not in fact_index.by_key or ik not in fact_index.non_nil_keys:
+                            unreported.append(str(arc.child))
+
+                    findings.append(
+                        ValidationFinding(
+                            rule_id="calculation:summation-inconsistent",
+                            severity=ValidationSeverity.ERROR,
+                            message=(
+                                f"Calculation inconsistent for summation concept "
+                                f"'{sum_concept}' in link role '{elr}': reported rounded "
+                                f"total {rounded_sum} vs computed {rounded_items_sum} "
+                                f"(context '{ctx_ref}', unit '{unit_ref}'). "
+                                f"Missing or nil contributing facts: "
+                                f"{', '.join(unreported) if unreported else 'none'}."
+                            ),
+                            source="calculation",
+                            concept_qname=sum_concept,
+                            context_ref=ctx_ref,
                         )
-                        break
+                    )
+                    break
 
         return findings

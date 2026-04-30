@@ -142,9 +142,7 @@ def _schema_text_references_xbrl_instance_model(path: Path) -> bool:
         snippet = path.read_text(encoding="utf-8", errors="ignore")[:524_288]
     except OSError:
         return False
-    if _XBRLI_PREFIX_COLON_RE.search(snippet):
-        return True
-    return bool(_XBRLI_INSTANCE_IMPORT_NS_RE.search(snippet))
+    return bool(_XBRLI_PREFIX_COLON_RE.search(snippet))
 
 
 def _sniff_linkbase_type(path: Path) -> str:
@@ -304,9 +302,7 @@ def _preferred_group_table_results(
     ]
     if tab_results:
         return tab_results
-    return [
-        result for _path, result in presentation_results if result.group_table_children
-    ]
+    return [result for _path, result in presentation_results if result.group_table_children]
 
 
 def _find_cache_root(entry_point: Path) -> Path | None:
@@ -360,6 +356,7 @@ def _build_concept_id_map(concepts: dict[QName, Concept]) -> dict[str, QName]:
     Achieve this by sorting so dimensional concepts are written last and
     therefore overwrite any earlier entry with the same key.
     """
+
     def _sg_priority(item: tuple[QName, Concept]) -> int:
         sg = item[1].substitution_group
         return 1 if (sg and sg.namespace == NS_XBRLDT) else 0
@@ -434,41 +431,43 @@ _SG_HYPERCUBE = QName(NS_XBRLDT, "hypercubeItem")
 _SG_DIMENSION = QName(NS_XBRLDT, "dimensionItem")
 
 # XBRL 2.1 §5.1.3 — predefined roles that are always resolved without needing a roleRef.
-_PREDEFINED_XBRL_ROLES: frozenset[str] = frozenset({
-    "http://www.xbrl.org/2003/role/link",
-    "http://www.xbrl.org/2003/role/label",
-    "http://www.xbrl.org/2003/role/terseLabel",
-    "http://www.xbrl.org/2003/role/verboseLabel",
-    "http://www.xbrl.org/2003/role/positiveLabel",
-    "http://www.xbrl.org/2003/role/positiveTerseLabel",
-    "http://www.xbrl.org/2003/role/positiveVerboseLabel",
-    "http://www.xbrl.org/2003/role/negativeLabel",
-    "http://www.xbrl.org/2003/role/negativeTerseLabel",
-    "http://www.xbrl.org/2003/role/negativeVerboseLabel",
-    "http://www.xbrl.org/2003/role/zeroLabel",
-    "http://www.xbrl.org/2003/role/zeroTerseLabel",
-    "http://www.xbrl.org/2003/role/zeroVerboseLabel",
-    "http://www.xbrl.org/2003/role/totalLabel",
-    "http://www.xbrl.org/2003/role/periodStartLabel",
-    "http://www.xbrl.org/2003/role/periodEndLabel",
-    "http://www.xbrl.org/2003/role/documentation",
-    "http://www.xbrl.org/2003/role/definitionGuidance",
-    "http://www.xbrl.org/2003/role/disclosureGuidance",
-    "http://www.xbrl.org/2003/role/presentationGuidance",
-    "http://www.xbrl.org/2003/role/measurementGuidance",
-    "http://www.xbrl.org/2003/role/commentaryGuidance",
-    "http://www.xbrl.org/2003/role/exampleGuidance",
-    "http://www.xbrl.org/2003/role/reference",
-    "http://www.xbrl.org/2003/role/definitionRef",
-    "http://www.xbrl.org/2003/role/disclosureRef",
-    "http://www.xbrl.org/2003/role/mandatoryDisclosureRef",
-    "http://www.xbrl.org/2003/role/recommendedDisclosureRef",
-    "http://www.xbrl.org/2003/role/unspecifiedDisclosureRef",
-    "http://www.xbrl.org/2003/role/presentationRef",
-    "http://www.xbrl.org/2003/role/measurementRef",
-    "http://www.xbrl.org/2003/role/commentaryRef",
-    "http://www.xbrl.org/2003/role/exampleRef",
-})
+_PREDEFINED_XBRL_ROLES: frozenset[str] = frozenset(
+    {
+        "http://www.xbrl.org/2003/role/link",
+        "http://www.xbrl.org/2003/role/label",
+        "http://www.xbrl.org/2003/role/terseLabel",
+        "http://www.xbrl.org/2003/role/verboseLabel",
+        "http://www.xbrl.org/2003/role/positiveLabel",
+        "http://www.xbrl.org/2003/role/positiveTerseLabel",
+        "http://www.xbrl.org/2003/role/positiveVerboseLabel",
+        "http://www.xbrl.org/2003/role/negativeLabel",
+        "http://www.xbrl.org/2003/role/negativeTerseLabel",
+        "http://www.xbrl.org/2003/role/negativeVerboseLabel",
+        "http://www.xbrl.org/2003/role/zeroLabel",
+        "http://www.xbrl.org/2003/role/zeroTerseLabel",
+        "http://www.xbrl.org/2003/role/zeroVerboseLabel",
+        "http://www.xbrl.org/2003/role/totalLabel",
+        "http://www.xbrl.org/2003/role/periodStartLabel",
+        "http://www.xbrl.org/2003/role/periodEndLabel",
+        "http://www.xbrl.org/2003/role/documentation",
+        "http://www.xbrl.org/2003/role/definitionGuidance",
+        "http://www.xbrl.org/2003/role/disclosureGuidance",
+        "http://www.xbrl.org/2003/role/presentationGuidance",
+        "http://www.xbrl.org/2003/role/measurementGuidance",
+        "http://www.xbrl.org/2003/role/commentaryGuidance",
+        "http://www.xbrl.org/2003/role/exampleGuidance",
+        "http://www.xbrl.org/2003/role/reference",
+        "http://www.xbrl.org/2003/role/definitionRef",
+        "http://www.xbrl.org/2003/role/disclosureRef",
+        "http://www.xbrl.org/2003/role/mandatoryDisclosureRef",
+        "http://www.xbrl.org/2003/role/recommendedDisclosureRef",
+        "http://www.xbrl.org/2003/role/unspecifiedDisclosureRef",
+        "http://www.xbrl.org/2003/role/presentationRef",
+        "http://www.xbrl.org/2003/role/measurementRef",
+        "http://www.xbrl.org/2003/role/commentaryRef",
+        "http://www.xbrl.org/2003/role/exampleRef",
+    }
+)
 
 
 def _check_dimensional_constraints(
@@ -484,9 +483,7 @@ def _check_dimensional_constraints(
     """
     # Build substitution group chain map for transitive closure computation.
     sg_map: dict[QName, QName] = {
-        q: c.substitution_group
-        for q, c in concepts.items()
-        if c.substitution_group is not None
+        q: c.substitution_group for q, c in concepts.items() if c.substitution_group is not None
     }
 
     # Compute transitive hypercube and dimension sets — a concept is a hypercube
@@ -736,7 +733,6 @@ def _check_dimensional_constraints(
                     )
 
 
-
 def _rebuild_dimensions(
     definition_arcs: dict[str, list],
     concepts: dict[QName, Concept],
@@ -790,10 +786,7 @@ def _rebuild_dimensions(
         visited: set[QName] = set()
         # queue entries: (concept, parent, order, usable)
         queue: list[tuple[QName, QName | None, float, bool]] = sorted(
-            [
-                (domain_q, None, order, domain_usable)
-                for domain_q, order, domain_usable in roots
-            ],
+            [(domain_q, None, order, domain_usable) for domain_q, order, domain_usable in roots],
             key=lambda item: item[2],
         )
         while queue:
@@ -810,7 +803,9 @@ def _rebuild_dimensions(
 
         dimensions[dim_q] = DimensionModel(
             qname=dim_q,
-            dimension_type="typed" if concepts.get(dim_q) and concepts[dim_q].typed_domain_ref else "explicit",
+            dimension_type="typed"
+            if concepts.get(dim_q) and concepts[dim_q].typed_domain_ref
+            else "explicit",
             default_member=dim_defaults.get(dim_q),
             domain=roots[0][0],
             members=tuple(all_members),
@@ -1046,9 +1041,7 @@ class TaxonomyLoader:
         schema_paths, linkbase_paths, skipped_urls, include_ns_map, discovered_roles = discover_dts(
             entry_point,
             effective_settings,
-            progress_callback=(
-                lambda message, _current, _total: progress(message, 1)
-            ),
+            progress_callback=(lambda message, _current, _total: progress(message, 1)),
         )
         companion_tab_linkbases = _find_companion_tab_presentation_linkbases(
             entry_point,
@@ -1100,15 +1093,17 @@ class TaxonomyLoader:
             all_candidates.update(raw)
             if target_ns:
                 schema_path_to_ns[str(schema_path)] = target_ns
+        schema_substitution_groups = {
+            qname: substitution_group
+            for qname, (_concept, substitution_group) in all_candidates.items()
+        }
 
         # Transitive closure: start with concepts whose SG is a known XBRL root,
         # then iteratively promote candidates whose SG is already resolved.
         concepts: dict[QName, Concept] = {
             qn: c for qn, (c, sg) in all_candidates.items() if sg in XBRL_SG_ROOTS
         }
-        pending = [
-            (qn, c, sg) for qn, (c, sg) in all_candidates.items() if sg not in XBRL_SG_ROOTS
-        ]
+        pending = [(qn, c, sg) for qn, (c, sg) in all_candidates.items() if sg not in XBRL_SG_ROOTS]
         prev = -1
         while prev != len(concepts):
             prev = len(concepts)
@@ -1244,15 +1239,18 @@ class TaxonomyLoader:
             for qname, labels in parsed.items():
                 generic_labels.setdefault(qname, []).extend(labels)
 
-        declared_languages: list[str] = list({
-            lb.language
-            for labels in list(standard_labels.values()) + list(generic_labels.values())
-            for lb in labels
-            if lb.language
-        })
+        declared_languages: list[str] = list(
+            {
+                lb.language
+                for labels in list(standard_labels.values()) + list(generic_labels.values())
+                for lb in labels
+                if lb.language
+            }
+        )
 
         label_resolver = LabelResolver.build(
-            standard_labels, generic_labels,
+            standard_labels,
+            generic_labels,
             self._settings.language_preference,
         )
         progress(f"Labels resolved — {len(declared_languages)} language set(s) available", 3)
@@ -1319,7 +1317,10 @@ class TaxonomyLoader:
         tables: list[Any] = []
         parsed_table_linkbases = _run_path_jobs(
             table_linkbases,
-            parse_table_linkbase,
+            lambda lb_path: parse_table_linkbase(
+                lb_path,
+                language_preference=tuple(effective_settings.language_preference),
+            ),
             workers=linkbase_workers,
             error_message_factory=lambda exc: f"Unexpected error parsing table linkbase: {exc}",
         )
@@ -1373,8 +1374,7 @@ class TaxonomyLoader:
                     assertion_table_ids.setdefault(assertion_id, table_id)
 
             table_labels = {
-                table.table_id: (table.display_code or table.table_id)
-                for table in tables
+                table.table_id: (table.display_code or table.table_id) for table in tables
             }
 
             language_preference = [*declared_languages, "es", "en"]
@@ -1444,6 +1444,7 @@ class TaxonomyLoader:
             custom_functions=tuple(custom_functions),
             schema_files=tuple(sorted(schema_paths)),
             linkbase_files=tuple(sorted(all_linkbase_paths)),
+            schema_substitution_groups=schema_substitution_groups,
         )
 
         progress("Taxonomy loaded successfully", _TOTAL_STEPS)

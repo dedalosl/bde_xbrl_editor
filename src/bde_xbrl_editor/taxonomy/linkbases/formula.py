@@ -19,6 +19,7 @@ from bde_xbrl_editor.taxonomy.models import (
     FormulaAssertion,
     FormulaAssertionSet,
     QName,
+    TypedDimensionFilter,
     ValueAssertionDefinition,
     XPathFilterDefinition,
 )
@@ -58,6 +59,7 @@ _TAG_PF_INSTANT = f"{{{_NS_PF}}}instant"
 _TAG_PF_DURATION = f"{{{_NS_PF}}}duration"
 _TAG_PF_PERIOD = f"{{{_NS_PF}}}period"          # pf:period test="..." — XPath period filter
 _TAG_DF_EXPLICIT_DIMENSION = f"{{{_NS_DF}}}explicitDimension"
+_TAG_DF_TYPED_DIMENSION = f"{{{_NS_DF}}}typedDimension"
 _TAG_DF_DIMENSION = f"{{{_NS_DF}}}dimension"
 _TAG_DF_MEMBER = f"{{{_NS_DF}}}member"
 _TAG_DF_QNAME = f"{{{_NS_DF}}}qname"
@@ -214,6 +216,23 @@ def _extract_dimension_filter(filter_el: etree._Element) -> DimensionFilter | No
     )
 
 
+def _extract_typed_dimension_filter(filter_el: etree._Element) -> TypedDimensionFilter | None:
+    """Extract a TypedDimensionFilter from a df:typedDimension element."""
+    if filter_el.tag != _TAG_DF_TYPED_DIMENSION:
+        return None
+
+    nsmap = _element_nsmap(filter_el)
+    dim_el = filter_el.find(_TAG_DF_DIMENSION)
+    if dim_el is None:
+        return None
+    dimension_qname = _parse_qname_element(dim_el, _TAG_DF_QNAME)
+    if dimension_qname is None:
+        dimension_qname = _clark_to_qname((dim_el.text or "").strip(), nsmap)
+    if dimension_qname is None:
+        return None
+    return TypedDimensionFilter(dimension_qname=dimension_qname)
+
+
 # ---------------------------------------------------------------------------
 # Variable extraction
 # ---------------------------------------------------------------------------
@@ -338,6 +357,16 @@ def _build_boolean_filter(
                     )
                 children.append(df)
 
+        elif child_el.tag == _TAG_DF_TYPED_DIMENSION:
+            tf = _extract_typed_dimension_filter(child_el)
+            if tf is not None:
+                if child_complement:
+                    tf = TypedDimensionFilter(
+                        dimension_qname=tf.dimension_qname,
+                        exclude=True,
+                    )
+                children.append(tf)
+
         elif child_el.tag == _TAG_GF_GENERAL:
             test_expr = (child_el.get("test") or "").strip()
             if test_expr:
@@ -370,6 +399,7 @@ _FILTER_TAGS = [
     _TAG_PF_DURATION,
     _TAG_PF_PERIOD,
     _TAG_DF_EXPLICIT_DIMENSION,
+    _TAG_DF_TYPED_DIMENSION,
     _TAG_GF_GENERAL,
     _TAG_BF_AND_FILTER,
     _TAG_BF_OR_FILTER,
@@ -393,7 +423,9 @@ def _parse_fact_variable(
     filter_index: dict[str, etree._Element],
     bool_arc_map: dict[str, list[tuple[str, bool]]],
     arc_name: str = "",
+    global_concept_filter: QName | None = None,
     global_dimension_filters: list[DimensionFilter] | None = None,
+    global_typed_dimension_filters: list[TypedDimensionFilter] | None = None,
     global_boolean_filters: list[BooleanFilterDefinition] | None = None,
 ) -> FactVariableDefinition:
     """Build a FactVariableDefinition from a variable:factVariable element.
@@ -409,6 +441,7 @@ def _parse_fact_variable(
     concept_filter: QName | None = None
     period_filter: Literal["instant", "duration"] | None = None
     dimension_filters: list[DimensionFilter] = []
+    typed_dimension_filters: list[TypedDimensionFilter] = []
     xpath_filters: list[XPathFilterDefinition] = []
     boolean_filters: list[BooleanFilterDefinition] = []
 
@@ -446,6 +479,11 @@ def _parse_fact_variable(
             if df is not None:
                 dimension_filters.append(df)
 
+        elif filter_el.tag == _TAG_DF_TYPED_DIMENSION:
+            tf = _extract_typed_dimension_filter(filter_el)
+            if tf is not None:
+                typed_dimension_filters.append(tf)
+
         # Boolean filter (bf:andFilter / bf:orFilter)
         elif filter_el.tag in _BOOLEAN_FILTER_TAGS:
             bf = _build_boolean_filter(filter_label, filter_index, bool_arc_map)
@@ -463,12 +501,20 @@ def _parse_fact_variable(
                     )
                 )
 
-    # Append assertion-level dimension filters (from variableSetFilterArc)
+    # Append assertion-level filters (from variableSetFilterArc)
+    if global_concept_filter is not None and concept_filter is None:
+        concept_filter = global_concept_filter
+
     if global_dimension_filters:
         for gdf in global_dimension_filters:
             # Only add if not already covered by a variable-specific filter for the same dimension
             if not any(df.dimension_qname == gdf.dimension_qname for df in dimension_filters):
                 dimension_filters.append(gdf)
+
+    if global_typed_dimension_filters:
+        for gtf in global_typed_dimension_filters:
+            if not any(tf.dimension_qname == gtf.dimension_qname for tf in typed_dimension_filters):
+                typed_dimension_filters.append(gtf)
 
     # Append assertion-level boolean filters
     if global_boolean_filters:
@@ -481,6 +527,7 @@ def _parse_fact_variable(
         concept_filter=concept_filter,
         period_filter=period_filter,
         dimension_filters=tuple(dimension_filters),
+        typed_dimension_filters=tuple(typed_dimension_filters),
         fallback_value=fallback_value,
         xpath_filters=tuple(xpath_filters),
         boolean_filters=tuple(boolean_filters),
@@ -562,7 +609,9 @@ def _parse_assertion(
     )
 
     # Collect assertion-level filters from variableSetFilterArc
+    global_concept_filter: QName | None = None
     global_dimension_filters: list[DimensionFilter] = []
+    global_typed_dimension_filters: list[TypedDimensionFilter] = []
     global_boolean_filters: list[BooleanFilterDefinition] = []
     if variable_set_filter_arc_map is not None:
         _bool_arc = bool_arc_map or {}
@@ -579,10 +628,18 @@ def _parse_assertion(
             filter_el = filter_index.get(set_filter_label)
             if filter_el is None:
                 continue
-            if filter_el.tag == _TAG_DF_EXPLICIT_DIMENSION:
+            if filter_el.tag in (_TAG_CF_CONCEPT_NAME, _TAG_CF_CONCEPT):
+                qn = _extract_concept_filter(filter_el)
+                if qn is not None and global_concept_filter is None:
+                    global_concept_filter = qn
+            elif filter_el.tag == _TAG_DF_EXPLICIT_DIMENSION:
                 df = _extract_dimension_filter(filter_el)
                 if df is not None:
                     global_dimension_filters.append(df)
+            elif filter_el.tag == _TAG_DF_TYPED_DIMENSION:
+                tf = _extract_typed_dimension_filter(filter_el)
+                if tf is not None:
+                    global_typed_dimension_filters.append(tf)
             elif filter_el.tag in _BOOLEAN_FILTER_TAGS:
                 bf = _build_boolean_filter(set_filter_label, filter_index, _bool_arc)
                 if bf is not None:
@@ -601,7 +658,9 @@ def _parse_assertion(
                     var_el, filter_arc_map, filter_index,
                     bool_arc_map=bool_arc_map or {},
                     arc_name=arc_name,
+                    global_concept_filter=global_concept_filter,
                     global_dimension_filters=global_dimension_filters or None,
+                    global_typed_dimension_filters=global_typed_dimension_filters or None,
                     global_boolean_filters=global_boolean_filters or None,
                 )
             )

@@ -17,6 +17,7 @@ from bde_xbrl_editor.taxonomy.models import (
     DimensionFilter,
     FactVariableDefinition,
     QName,
+    TypedDimensionFilter,
 )
 from bde_xbrl_editor.validation.formula.filters import apply_filters
 
@@ -66,6 +67,15 @@ def _ctx(ctx_id: str, period: ReportingPeriod | None = None, dims: dict | None =
         entity=_entity(),
         period=period or _instant_period(),
         dimensions=dims or {},
+    )
+
+
+def _typed_ctx(ctx_id: str, typed_dims: dict[QName, str]) -> XbrlContext:
+    return XbrlContext(
+        context_id=ctx_id,
+        entity=_entity(),
+        period=_instant_period(),
+        typed_dimensions=typed_dims,
     )
 
 
@@ -260,6 +270,28 @@ class TestDimensionFilterInclude:
         var = _var_def(dimension_filters=(dim_filter,))
         result = apply_filters(facts, var, inst)
         assert result == []
+
+
+class TestTypedDimensionFilter:
+    def test_typed_dimension_filter_keeps_facts_with_typed_dimension(self) -> None:
+        typed_dim = _qn("OpenRowDim", _DIM_NS)
+        ctx_open = _typed_ctx("ctx_open", {typed_dim: "row-1"})
+        ctx_closed = _ctx("ctx_closed")
+        facts = [
+            Fact(concept=CONCEPT_A, context_ref="ctx_open", unit_ref=None, value="1"),
+            Fact(concept=CONCEPT_A, context_ref="ctx_closed", unit_ref=None, value="2"),
+        ]
+        inst = _instance(facts, {"ctx_open": ctx_open, "ctx_closed": ctx_closed})
+        var = FactVariableDefinition(
+            variable_name="a",
+            concept_filter=CONCEPT_A,
+            typed_dimension_filters=(TypedDimensionFilter(typed_dim),),
+        )
+
+        result = apply_filters(facts, var, inst)
+
+        assert len(result) == 1
+        assert result[0].context_ref == "ctx_open"
 
 
 # ---------------------------------------------------------------------------

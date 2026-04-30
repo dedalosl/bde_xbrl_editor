@@ -181,6 +181,80 @@ def test_instance_open_passes_current_taxonomy_for_reuse(qtbot, qapp, monkeypatc
     assert window._current_taxonomy is current_taxonomy
 
 
+def test_instance_load_worker_uses_thread_path_for_preloaded_taxonomy(qapp, monkeypatch) -> None:
+    from bde_xbrl_editor.taxonomy import LoaderSettings, TaxonomyCache
+    from bde_xbrl_editor.ui.loading import InstanceLoadWorker
+
+    taxonomy = _taxonomy()
+    instance = _instance()
+    finished = []
+
+    def fake_parse(path, settings, preloaded_taxonomy, *, progress_callback):
+        progress_callback("Parsing with warm taxonomy", 50, 100)
+        assert path == "sample-instance.xbrl"
+        assert preloaded_taxonomy is taxonomy
+        return instance, taxonomy, 0
+
+    def fail_get_context(_method):
+        raise AssertionError("warm taxonomy opens should not spawn a process")
+
+    monkeypatch.setattr(
+        "bde_xbrl_editor.ui.loading._parse_instance_with_preloaded_taxonomy",
+        fake_parse,
+    )
+    monkeypatch.setattr("bde_xbrl_editor.ui.loading.multiprocessing.get_context", fail_get_context)
+
+    worker = InstanceLoadWorker(TaxonomyCache(), LoaderSettings(), "sample-instance.xbrl")
+    worker.set_preloaded_taxonomy(taxonomy)
+    worker.finished.connect(lambda inst, tax: finished.append((inst, tax)))
+
+    worker.run()
+
+    assert finished == [(instance, taxonomy)]
+
+
+def test_instance_process_entry_does_not_queue_duplicate_taxonomy(monkeypatch) -> None:
+    from bde_xbrl_editor.taxonomy import LoaderSettings
+    from bde_xbrl_editor.ui.loading import _instance_load_process_entry
+
+    taxonomy = _taxonomy()
+    instance = _instance()
+    messages = []
+
+    class QueueStub:
+        def put(self, message):
+            messages.append(message)
+
+    class ParserStub:
+        def __init__(self, taxonomy_loader):
+            self.taxonomy_loader = taxonomy_loader
+
+        def load(
+            self,
+            path,
+            *,
+            progress_callback,
+            taxonomy_resolved_callback,
+            preloaded_taxonomy,
+        ):
+            assert preloaded_taxonomy is None
+            progress_callback("Loading taxonomy…", 12, 100)
+            taxonomy_resolved_callback(taxonomy)
+            return instance, []
+
+    monkeypatch.setattr("bde_xbrl_editor.instance.parser.InstanceParser", ParserStub)
+
+    _instance_load_process_entry(
+        "sample-instance.xbrl",
+        LoaderSettings(),
+        None,
+        QueueStub(),
+    )
+
+    assert [message[0] for message in messages] == ["progress", "finished"]
+    assert messages[-1][2] is taxonomy
+
+
 def test_taxonomy_open_uses_tabs_and_validations_sidebar_only(qtbot, qapp) -> None:
     window = MainWindow()
     qtbot.addWidget(window)
@@ -259,7 +333,9 @@ def test_validation_done_status_shows_timing_breakdown(qtbot, qapp) -> None:
     assert "structural" in window.statusBar().currentMessage()
 
 
-def test_workspace_initial_table_render_is_deferred_beyond_current_event_loop(qtbot, qapp, monkeypatch) -> None:
+def test_workspace_initial_table_render_is_deferred_beyond_current_event_loop(
+    qtbot, qapp, monkeypatch
+) -> None:
     delays: list[int] = []
 
     monkeypatch.setattr(
@@ -278,7 +354,9 @@ def test_workspace_initial_table_render_is_deferred_beyond_current_event_loop(qt
     assert MainWindow._INITIAL_TABLE_RENDER_DELAY_MS in delays
 
 
-def test_reload_to_loader_then_reopen_instance_rebuilds_browser_views(qtbot, qapp, monkeypatch) -> None:
+def test_reload_to_loader_then_reopen_instance_rebuilds_browser_views(
+    qtbot, qapp, monkeypatch
+) -> None:
     """Reloading back to the loader must not reuse Qt widgets deleted with the old workspace."""
     monkeypatch.setattr(TaxonomyLoaderWidget, "_on_load", lambda self: None)
 

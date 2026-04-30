@@ -122,6 +122,59 @@ def test_parse_value_assertion_uses_xlink_label_when_id_absent(tmp_path: Path) -
     assert fas.assertions[0].assertion_id == "rule-A"
 
 
+def test_parse_value_assertion_keeps_variable_set_concept_and_typed_dimension_filters(
+    tmp_path: Path,
+) -> None:
+    lb = tmp_path / "bde-open-row-rule.xml"
+    lb.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:gen="http://xbrl.org/2008/generic"
+  xmlns:va="http://xbrl.org/2008/assertion/value"
+  xmlns:cf="http://xbrl.org/2008/filter/concept"
+  xmlns:df="http://xbrl.org/2008/filter/dimension"
+  xmlns:variable="http://xbrl.org/2008/variable"
+  xmlns:xlink="http://www.w3.org/1999/xlink"
+  xmlns:met="http://example.com/met"
+  xmlns:dim="http://example.com/dim">
+  <gen:link xlink:type="extended" xlink:role="http://www.xbrl.org/2003/role/link">
+    <va:valueAssertion xlink:type="resource" xlink:label="es_b0299" id="es_b0299" test="$a != xs:QName('dom:bad')"/>
+    <cf:conceptName xlink:type="resource" xlink:label="es_b0299.metric">
+      <cf:concept>
+        <cf:qname>met:qBVQ</cf:qname>
+      </cf:concept>
+    </cf:conceptName>
+    <variable:variableSetFilterArc xlink:type="arc"
+      xlink:arcrole="http://xbrl.org/arcrole/2008/variable-set-filter"
+      xlink:from="es_b0299" xlink:to="es_b0299.metric"/>
+    <variable:factVariable xlink:type="resource" xlink:label="es_b0299.a"/>
+    <df:typedDimension xlink:type="resource" xlink:label="es_b0299.a.typed">
+      <df:dimension>
+        <df:qname>dim:qLIN</df:qname>
+      </df:dimension>
+    </df:typedDimension>
+    <variable:variableFilterArc xlink:type="arc"
+      xlink:arcrole="http://xbrl.org/arcrole/2008/variable-filter"
+      xlink:from="es_b0299.a" xlink:to="es_b0299.a.typed"/>
+    <variable:variableArc xlink:type="arc"
+      xlink:arcrole="http://xbrl.org/arcrole/2008/variable-set"
+      xlink:from="es_b0299" xlink:to="es_b0299.a" name="a"/>
+  </gen:link>
+</link:linkbase>
+""",
+        encoding="utf-8",
+    )
+
+    fas = parse_formula_linkbase(lb)
+
+    assertion = fas.assertions[0]
+    variable = assertion.variables[0]
+    assert variable.concept_filter is not None
+    assert variable.concept_filter.local_name == "qBVQ"
+    assert len(variable.typed_dimension_filters) == 1
+    assert variable.typed_dimension_filters[0].dimension_qname.local_name == "qLIN"
+
+
 def test_parse_assertion_table_mappings_resolves_applies_to_table(tmp_path: Path) -> None:
     lb = tmp_path / "assertion-set.xml"
     lb.write_text(

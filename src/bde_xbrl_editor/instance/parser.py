@@ -54,6 +54,8 @@ _XBRLI_START = f"{{{XBRLI_NS}}}startDate"
 _XBRLI_END = f"{{{XBRLI_NS}}}endDate"
 _XBRLI_MEASURE = f"{{{XBRLI_NS}}}measure"
 _XBRLI_DIVIDE = f"{{{XBRLI_NS}}}divide"
+_XBRLI_UNIT_NUMERATOR = f"{{{XBRLI_NS}}}unitNumerator"
+_XBRLI_UNIT_DENOMINATOR = f"{{{XBRLI_NS}}}unitDenominator"
 _XBRLI_SCENARIO = f"{{{XBRLI_NS}}}scenario"
 _XBRLI_SEGMENT = f"{{{XBRLI_NS}}}segment"
 _XBRLDI_MEMBER = f"{{{XBRLDI_NS}}}explicitMember"
@@ -61,16 +63,23 @@ _XBRLDI_TYPED_MEMBER = f"{{{XBRLDI_NS}}}typedMember"
 _FILING_IND = f"{{{FILING_IND_NS}}}filingIndicator"
 _XLINK_HREF = f"{{{XLINK_NS}}}href"
 _XLINK_TYPE = f"{{{XLINK_NS}}}type"
+_XLINK_ROLE = f"{{{XLINK_NS}}}role"
 _LINK_FOOTNOTE_LINK = f"{{{LINK_NS}}}footnoteLink"
 _LINK_LOC = f"{{{LINK_NS}}}loc"
 _LINK_FOOTNOTE = f"{{{LINK_NS}}}footnote"
 _LINK_FOOTNOTE_ARC = f"{{{LINK_NS}}}footnoteArc"
 _LINK_DOCUMENTATION = f"{{{LINK_NS}}}documentation"
 _ARCROLE_FACT_FOOTNOTE = "http://www.xbrl.org/2003/arcrole/fact-footnote"
+_ROLE_LINK = "http://www.xbrl.org/2003/role/link"
+_ROLE_FOOTNOTE = "http://www.xbrl.org/2003/role/footnote"
+_STANDARD_ROLE_PREFIX = "http://www.xbrl.org/2003/role/"
 _XLINK_LABEL = f"{{{XLINK_NS}}}label"
 _XLINK_FROM = f"{{{XLINK_NS}}}from"
 _XLINK_TO = f"{{{XLINK_NS}}}to"
 _XLINK_ARCROLE = f"{{{XLINK_NS}}}arcrole"
+_XML_LANG = "{http://www.w3.org/XML/1998/namespace}lang"
+_XSI_NIL = "{http://www.w3.org/2001/XMLSchema-instance}nil"
+_XBRLI_TUPLE_QNAME = QName(namespace=XBRLI_NS, local_name="tuple")
 _FOOTNOTE_LINK_ALLOWED_CHILD = frozenset(
     {
         _LINK_LOC,
@@ -126,9 +135,7 @@ def _catalog_path_candidates(local_root: Path, rel: str) -> list[Path]:
     return candidates
 
 
-def _reject_xbrli_in_segment_or_scenario(
-    container: etree._Element, context_id: ContextId
-) -> None:
+def _reject_xbrli_in_segment_or_scenario(container: etree._Element, context_id: ContextId) -> None:
     """XBRL 2.1: segment and scenario open content must not use xbrli:* elements."""
     for el in container.iter():
         if el is container:
@@ -162,6 +169,15 @@ def _parse_date(text: str) -> date:
     return date.fromisoformat(stripped)
 
 
+def _has_inherited_xml_lang(el: etree._Element) -> bool:
+    current: etree._Element | None = el
+    while current is not None:
+        if current.get(_XML_LANG) is not None:
+            return True
+        current = current.getparent()
+    return False
+
+
 def _period_s_equal_key(period_el: etree._Element) -> tuple:
     instant_el = period_el.find(_XBRLI_INSTANT)
     if instant_el is not None:
@@ -177,9 +193,7 @@ def _period_s_equal_key(period_el: etree._Element) -> tuple:
     end_el = period_el.find(_XBRLI_END)
     return (
         "duration",
-        _parse_date_boundary(
-            (start_el.text or "") if start_el is not None else ""
-        ).isoformat(),
+        _parse_date_boundary((start_el.text or "") if start_el is not None else "").isoformat(),
         _parse_date_boundary(
             (end_el.text or "") if end_el is not None else "",
             date_only_is_end_boundary=True,
@@ -343,16 +357,41 @@ def _parse_unit(el: etree._Element) -> XbrlUnit:
     children = [c for c in el if isinstance(c.tag, str)]
     has_divide = any(c.tag == _XBRLI_DIVIDE for c in children)
     if has_divide:
+        divide_el = next((c for c in children if c.tag == _XBRLI_DIVIDE), None)
+        numerator_qnames: list[QName] = []
+        denominator_qnames: list[QName] = []
+        if divide_el is not None:
+            numerator_el = divide_el.find(_XBRLI_UNIT_NUMERATOR)
+            denominator_el = divide_el.find(_XBRLI_UNIT_DENOMINATOR)
+            if numerator_el is not None:
+                numerator_qnames = [
+                    mq
+                    for m in numerator_el.findall(_XBRLI_MEASURE)
+                    if (mq := _parse_measure_qname(m, (m.text or "").strip())) is not None
+                ]
+            if denominator_el is not None:
+                denominator_qnames = [
+                    mq
+                    for m in denominator_el.findall(_XBRLI_MEASURE)
+                    if (mq := _parse_measure_qname(m, (m.text or "").strip())) is not None
+                ]
         return XbrlUnit(
             unit_id=unit_id,
             measure_uri="",
             measure_qname=None,
             unit_form="divide",
             simple_measure_count=0,
+            numerator_measure_qnames=tuple(numerator_qnames),
+            denominator_measure_qnames=tuple(denominator_qnames),
         )
 
     direct_measures = [c for c in children if c.tag == _XBRLI_MEASURE]
     count = len(direct_measures)
+    measure_qnames = tuple(
+        mq
+        for m in direct_measures
+        if (mq := _parse_measure_qname(m, (m.text or "").strip())) is not None
+    )
     if count != 1:
         joined = " ".join((m.text or "").strip() for m in direct_measures if (m.text or "").strip())
         return XbrlUnit(
@@ -361,6 +400,7 @@ def _parse_unit(el: etree._Element) -> XbrlUnit:
             measure_qname=None,
             unit_form="simple",
             simple_measure_count=count,
+            simple_measure_qnames=measure_qnames,
         )
 
     measure_el = direct_measures[0]
@@ -372,6 +412,7 @@ def _parse_unit(el: etree._Element) -> XbrlUnit:
         measure_qname=mq,
         unit_form="simple",
         simple_measure_count=1,
+        simple_measure_qnames=(mq,) if mq is not None else (),
     )
 
 
@@ -428,6 +469,42 @@ def _parse_dimension_qname(
 def _tag_to_qname(tag: str) -> QName:
     """Convert Clark notation to QName."""
     return QName.from_clark(tag)
+
+
+def _concept_substitution_chain_reaches(
+    concept_qname: QName,
+    taxonomy: TaxonomyStructure,
+    target: QName,
+) -> bool:
+    current = taxonomy.concepts.get(concept_qname)
+    seen: set[QName] = set()
+    while current is not None and current.substitution_group is not None:
+        sg = current.substitution_group
+        if sg == target:
+            return True
+        if sg in seen:
+            return False
+        seen.add(sg)
+        current = taxonomy.concepts.get(sg)
+    return False
+
+
+def _reject_xbrl_defined_attrs_on_tuple_fact(
+    el: etree._Element,
+    concept_qname: QName,
+    taxonomy: TaxonomyStructure,
+    path_str: str,
+) -> None:
+    if not _concept_substitution_chain_reaches(concept_qname, taxonomy, _XBRLI_TUPLE_QNAME):
+        return
+    for raw_name in el.attrib:
+        attr_qname = QName.from_clark(raw_name) if raw_name.startswith("{") else QName("", raw_name)
+        if attr_qname.namespace in {XBRLI_NS, XLINK_NS}:
+            raise InstanceParseError(
+                path_str,
+                "xbrl:schema-validation-error: Tuple fact "
+                f"'{concept_qname}' must not use XBRL-defined attribute '{attr_qname}'",
+            )
 
 
 class InstanceParser:
@@ -549,11 +626,12 @@ class InstanceParser:
         footnote_errors: list[str] = []
         all_context_ids = set(contexts.keys())
         all_unit_ids = set(units.keys())
-        all_fact_ids: set[str] = set()
-        for child in root:
-            if isinstance(child.tag, str) and child.get("id"):
-                all_fact_ids.add(child.get("id"))
         for footnote_link in root.findall(_LINK_FOOTNOTE_LINK):
+            link_role = footnote_link.get(_XLINK_ROLE, "")
+            if link_role == _ROLE_FOOTNOTE:
+                footnote_errors.append(
+                    "link:footnoteLink must not use the standard footnote resource role"
+                )
             loc_labels: dict[str, str] = {}
             footnote_resources: set[str] = set()
             for child_el in footnote_link:
@@ -593,7 +671,16 @@ class InstanceParser:
                 label = fn_el.get(_XLINK_LABEL, "")
                 if label:
                     footnote_resources.add(label)
-                if fn_el.get("{http://www.w3.org/XML/1998/namespace}lang") is None:
+                footnote_role = fn_el.get(_XLINK_ROLE, "")
+                if (
+                    footnote_role.startswith(_STANDARD_ROLE_PREFIX)
+                    and footnote_role != _ROLE_FOOTNOTE
+                ):
+                    footnote_errors.append(
+                        "link:footnote uses an invalid standard xlink:role "
+                        f"'{footnote_role}'"
+                    )
+                if not _has_inherited_xml_lang(fn_el):
                     footnote_errors.append("link:footnote is missing required xml:lang attribute")
             endpoint_labels = set(loc_labels) | footnote_resources
             for arc_el in footnote_link.findall(_LINK_FOOTNOTE_ARC):
@@ -625,10 +712,9 @@ class InstanceParser:
                 path_str, "xbrli:InvalidFootnoteLinkReference: " + "; ".join(footnote_errors)
             )
 
-        # Stage 5: Scan top-level children once so large filings keep reporting
-        # progress before fact indexing begins.
-        root_children = [child for child in root if isinstance(child.tag, str)]
-        total_root_children = len(root_children)
+        # Stage 5: Scan top-level children without materialising a second list of
+        # elements. Large filings can have many fact elements under the root.
+        total_root_children = sum(1 for child in root if isinstance(child.tag, str))
         if total_root_children:
             progress(f"Reading filing metadata… 0/{total_root_children}", 88)
         else:
@@ -648,7 +734,11 @@ class InstanceParser:
         metadata_progress_every = max(total_root_children // 20, 1) if total_root_children else 1
         blanco_attr = f"{{{BDE_PBLO_NS}}}blanco"
 
-        for index, child in enumerate(root_children, start=1):
+        index = 0
+        for child in root:
+            if not isinstance(child.tag, str):
+                continue
+            index += 1
             tag = child.tag
 
             if tag == _BDE_ENTIDAD:
@@ -689,24 +779,36 @@ class InstanceParser:
                     tag not in _NON_FACT_TAGS
                     and ns not in (FILING_IND_NS, BDE_PBLO_NS)
                     and tag != _LINK_SCHEMA_REF
-                    and "contextRef" in child.attrib
                 ):
+                    try:
+                        concept_qname = _tag_to_qname(tag)
+                    except ValueError as exc:
+                        raise InstanceParseError(
+                            path_str,
+                            f"QName parse error for element '{tag}': {exc}",
+                        ) from exc
+
+                    if concept_qname in known_concepts and taxonomy is not None:
+                        _reject_xbrl_defined_attrs_on_tuple_fact(
+                            child,
+                            concept_qname,
+                            taxonomy,
+                            path_str,
+                        )
+
+                    if "contextRef" not in child.attrib:
+                        continue
+
                     facts_seen += 1
                     context_ref = child.get("contextRef", "")
                     unit_ref = child.get("unitRef")
                     decimals = child.get("decimals")
                     precision = child.get("precision")
+                    is_nil = (child.get(_XSI_NIL, "") or "").strip().lower() in {
+                        "true",
+                        "1",
+                    }
                     value = (child.text or "").strip()
-
-                    concept_tag = child.tag
-                    try:
-                        concept_qname = _tag_to_qname(concept_tag)
-                    except ValueError as exc:
-                        raise InstanceParseError(
-                            path_str,
-                            f"Fact QName parse error in context '{context_ref}' "
-                            f"for element '{concept_tag}': {exc}",
-                        ) from exc
 
                     if concept_qname in known_concepts:
                         facts.append(
@@ -717,13 +819,14 @@ class InstanceParser:
                                 value=value,
                                 decimals=decimals,
                                 precision=precision,
+                                is_nil=is_nil,
                             )
                         )
                     else:
                         raw_xml = etree.tostring(child, encoding="unicode").encode("utf-8")
                         orphaned.append(
                             OrphanedFact(
-                                concept_qname_str=concept_tag,
+                                concept_qname_str=tag,
                                 context_ref=context_ref,
                                 unit_ref=unit_ref,
                                 value=value,

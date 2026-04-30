@@ -12,6 +12,7 @@ from bde_xbrl_editor.taxonomy.models import (
     FactVariableDefinition,
     FormulaAssertion,
     QName,
+    TypedDimensionFilter,
     ValueAssertionDefinition,
     XPathFilterDefinition,
 )
@@ -37,11 +38,18 @@ def format_dimension_filter(filter_def: DimensionFilter) -> str:
     return f"{filter_def.dimension_qname} {operator} {members}"
 
 
+def format_typed_dimension_filter(filter_def: TypedDimensionFilter) -> str:
+    operator = "absent" if filter_def.exclude else "present"
+    return f"{filter_def.dimension_qname} is {operator}"
+
+
 def format_boolean_filter(filter_def: BooleanFilterDefinition) -> str:
     parts: list[str] = []
     for child in filter_def.children:
         if isinstance(child, DimensionFilter):
             parts.append(format_dimension_filter(child))
+        elif isinstance(child, TypedDimensionFilter):
+            parts.append(f"typed dimension: {format_typed_dimension_filter(child)}")
         elif isinstance(child, XPathFilterDefinition):
             parts.append(f"xpath: {child.xpath_expr}")
         elif isinstance(child, BooleanFilterDefinition):
@@ -75,6 +83,9 @@ def format_operand_details(variables: tuple[FactVariableDefinition, ...]) -> str
             details_added = True
         for filter_def in variable.dimension_filters:
             lines.append(f"  dimension: {format_dimension_filter(filter_def)}")
+            details_added = True
+        for filter_def in variable.typed_dimension_filters:
+            lines.append(f"  typed dimension: {format_typed_dimension_filter(filter_def)}")
             details_added = True
         for filter_def in variable.xpath_filters:
             lines.append(f"  xpath: {filter_def.xpath_expr}")

@@ -159,6 +159,21 @@ class TestValidationReportPassed:
         report = _report(findings)
         assert report.pass_count == 1
 
+    def test_not_evaluated_count_counts_only_not_evaluated_rows(self) -> None:
+        findings = (
+            dataclasses.replace(
+                _finding(rule_id="formula:not-evaluated", severity=None, source="formula"),
+                status=ValidationStatus.NOT_EVALUATED,
+            ),
+            dataclasses.replace(
+                _finding(rule_id="formula:pass", severity=None, source="formula"),
+                status=ValidationStatus.PASS,
+            ),
+            _finding(rule_id="formula:fail", severity=ValidationSeverity.ERROR, source="formula"),
+        )
+        report = _report(findings)
+        assert report.not_evaluated_count == 1
+
     def test_total_elapsed_seconds_sums_stage_timings(self) -> None:
         report = ValidationReport(
             instance_path="/some/instance.xbrl",
@@ -335,6 +350,18 @@ class TestValidationFilterProxy:
         proxy.set_severity_filter(ValidationSeverity.ERROR)
         proxy.clear_filters()
         assert proxy.rowCount() == 2
+
+    def test_status_filter_shows_only_not_evaluated(self) -> None:
+        findings = (
+            _finding("r1", ValidationSeverity.ERROR),
+            dataclasses.replace(
+                _finding("r2", severity=None, source="formula"),
+                status=ValidationStatus.NOT_EVALUATED,
+            ),
+        )
+        source, proxy = self._make_model_and_proxy(findings)
+        proxy.set_severity_filter(ValidationStatus.NOT_EVALUATED)
+        assert proxy.rowCount() == 1
 
     def test_table_column_reuses_compact_table_identity_without_duplication(self) -> None:
         """Table column should reuse the compact table identity string as-is."""

@@ -28,6 +28,13 @@ from bde_xbrl_editor.instance.models import (
     ReportingPeriod,
     XbrlInstance,
 )
+from bde_xbrl_editor.table_renderer.models import (
+    BodyCell,
+    CellCoordinate,
+    ComputedTableLayout,
+    HeaderCell,
+    HeaderGrid,
+)
 from bde_xbrl_editor.taxonomy.constants import ARCROLE_DOMAIN_MEMBER
 from bde_xbrl_editor.taxonomy.models import (
     BreakdownNode,
@@ -552,6 +559,69 @@ def test_instance_panel_data_presence_checks_only_active_z_slice(qtbot, monkeypa
 
     assert presence == {table.table_id: True}
     assert calls == [(0, {dim_qname: member_qname})]
+
+
+def test_xbrl_table_view_navigates_to_fact_cell_ignoring_report_level_agrupacion(qtbot) -> None:
+    concept_qname = QName(namespace="http://example.com/met", local_name="Amount", prefix="met")
+    row_dim_qname = QName(namespace="http://example.com/dim", local_name="RowDim", prefix="dim")
+    row_member = QName(namespace="http://example.com/mem", local_name="MemberA", prefix="mem")
+    agrupacion_dim = QName(namespace=BDE_DIM_NS, local_name="Agrupacion", prefix="bde")
+    agrupacion_member = QName(namespace="http://example.com/bde", local_name="Solo", prefix="bde")
+    instance = SimpleNamespace(
+        facts=[
+            SimpleNamespace(
+                concept=concept_qname,
+                context_ref="ctx_target",
+                value="123",
+                decimals=None,
+            )
+        ],
+        contexts={
+            "ctx_target": SimpleNamespace(
+                dimensions={
+                    row_dim_qname: row_member,
+                    agrupacion_dim: agrupacion_member,
+                },
+                typed_dimensions={},
+            )
+        },
+    )
+    leaf_node = _leaf("Cell")
+    column = HeaderCell("Column", None, 1, 0, True, False, leaf_node)
+    row = HeaderCell("Row", None, 1, 0, True, False, leaf_node)
+    layout = ComputedTableLayout(
+        table_id="T01",
+        table_label="Table 01",
+        column_header=HeaderGrid([[column]], 1, 1, [column]),
+        row_header=HeaderGrid([[row]], 1, 1, [row]),
+        z_members=[],
+        active_z_index=0,
+        body=[
+            [
+                BodyCell(
+                    row_index=0,
+                    col_index=0,
+                    coordinate=CellCoordinate(
+                        concept=concept_qname,
+                        explicit_dimensions={row_dim_qname: row_member},
+                    ),
+                    fact_value="123",
+                )
+            ]
+        ],
+    )
+    view = XbrlTableView()
+    qtbot.addWidget(view)
+    view._instance = instance
+    view._taxonomy = _taxonomy_with_tables(_table("T01", "Table 01"))
+    view._install_layout(layout)
+
+    assert view.navigate_to_fact_cell(
+        concept_qname=concept_qname,
+        context_ref="ctx_target",
+    )
+    assert view._body_view.currentIndex().row() == 0
+    assert view._body_view.currentIndex().column() == 0
 
 
 @pytest.mark.qt

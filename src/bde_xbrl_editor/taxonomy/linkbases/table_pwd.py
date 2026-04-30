@@ -142,6 +142,7 @@ _VALID_PCO = frozenset(("parent-first", "children-first"))
 def _build_breakdown_node(
     el: etree._Element,
     label_map: dict[str, str],  # xlink:label → display label
+    label_variants_map: dict[str, tuple[tuple[str, str], ...]],  # xlink:label → ((lang, label), ...)
     rc_map: dict[str, str],     # xlink:label → rc_code (eurofiling roles)
     fin_map: dict[str, str],    # xlink:label → fin_code (bde fin-code role)
     child_map: dict[str, list[etree._Element]],  # xlink:label → child elements
@@ -151,6 +152,7 @@ def _build_breakdown_node(
     xlink_label = el.get(_XLINK_LABEL_ATTR, "")
     node_type = _node_type_from_tag(el.tag)
     label = label_map.get(xlink_label)
+    label_variants = label_variants_map.get(xlink_label, ())
     rc_code = rc_map.get(xlink_label)
     fin_code = fin_map.get(xlink_label)
     is_abstract = el.get("abstract", "false").lower() == "true"
@@ -219,6 +221,7 @@ def _build_breakdown_node(
             _build_breakdown_node(
                 child_el,
                 label_map,
+                label_variants_map,
                 rc_map,
                 fin_map,
                 child_map,
@@ -230,6 +233,7 @@ def _build_breakdown_node(
     return BreakdownNode(
         node_type=node_type,
         label=label,
+        label_variants=label_variants,
         rc_code=rc_code,
         fin_code=fin_code,
         is_abstract=is_abstract,
@@ -312,27 +316,24 @@ def _candidate_label_files_for_rend_path(
     cache_root = _cache_root_for(linkbase_path)
     if cache_root is None:
         return candidates
+    cache_root = cache_root.resolve()
 
-    eba_prefix = (
-        cache_root
-        / "www.eba.europa.eu"
-        / "eu"
-        / "fr"
-        / "xbrl"
-        / "crr"
-        / "fws"
-        / "corep"
+    eba_prefixes = (
+        cache_root / "www.eba.europa.eu" / "eu" / "fr" / "xbrl" / "crr" / "fws" / "corep",
+        cache_root / "www.eba.europa.eu" / "fr" / "xbrl" / "crr" / "fws" / "corep",
     )
-    bde_prefix = cache_root / "www.bde.es" / "es" / "xbrl" / "fws" / "ebacrr_corep"
-    try:
-        rel_to_eba = linkbase_path.resolve().relative_to(eba_prefix)
-    except ValueError:
-        return candidates
+    bde_prefix = cache_root / "www.bde.es" / "es" / "fr" / "xbrl" / "fws" / "ebacrr_corep"
+    for eba_prefix in eba_prefixes:
+        try:
+            rel_to_eba = linkbase_path.resolve().relative_to(eba_prefix)
+        except ValueError:
+            continue
 
-    bde_dir = (bde_prefix / rel_to_eba.parent).resolve()
-    for lang in language_preference:
-        _add(bde_dir / f"{base}-lab-{lang}.xml")
-    _add(bde_dir / f"{base}-lab-codes.xml")
+        bde_dir = (bde_prefix / rel_to_eba.parent).resolve()
+        for lang in language_preference:
+            _add(bde_dir / f"{base}-lab-{lang}.xml")
+        _add(bde_dir / f"{base}-lab-codes.xml")
+        break
     return candidates
 
 
@@ -506,6 +507,7 @@ def _parse_explicit_dimension_filter_resource(
 def _parse_node_label_file(
     lb_path: Path,
     id_label_map: dict[str, str],  # node id → display label (first language wins)
+    id_label_variants: dict[str, dict[str, str]],  # node id → language → display label
     id_rc_map: dict[str, str],     # node id → rc-code (eurofiling rc/row/col-code roles)
     id_fin_map: dict[str, str],    # node id → fin-code (bde fin-code role only)
     language_preference: tuple[str, ...] = ("es", "en"),
@@ -562,15 +564,19 @@ def _parse_node_label_file(
             elif role in _RC_CODE_ROLES:
                 if node_id not in id_rc_map:
                     id_rc_map[node_id] = text
-            elif node_id not in id_label_map or (
-                language_preference and lang == language_preference[0]
-            ):
-                id_label_map[node_id] = text
+            else:
+                if lang:
+                    id_label_variants.setdefault(node_id, {}).setdefault(lang, text)
+                if node_id not in id_label_map or (
+                    language_preference and lang == language_preference[0]
+                ):
+                    id_label_map[node_id] = text
 
 
 def parse_table_linkbase(
     linkbase_path: Path,
     label_lookup: dict[QName, list] | None = None,  # QName → list[Label]
+    language_preference: tuple[str, ...] = ("es", "en"),
 ) -> list[TableDefinitionPWD]:
     """Parse a PWD Table Linkbase file and return all table definitions.
 
@@ -602,10 +608,21 @@ def parse_table_linkbase(
     # file comes from the EBA mirror, also look for BDE Spanish labels that point
     # back to the same render-node ids.
     id_label_map: dict[str, str] = {}
+    id_label_variants: dict[str, dict[str, str]] = {}
     id_rc_map: dict[str, str] = {}
     id_fin_map: dict[str, str] = {}
-    for candidate in _candidate_label_files_for_rend_path(linkbase_path):
-        _parse_node_label_file(candidate, id_label_map, id_rc_map, id_fin_map)
+    for candidate in _candidate_label_files_for_rend_path(
+        linkbase_path,
+        language_preference=language_preference,
+    ):
+        _parse_node_label_file(
+            candidate,
+            id_label_map,
+            id_label_variants,
+            id_rc_map,
+            id_fin_map,
+            language_preference=language_preference,
+        )
 
     role_href_map: dict[str, str] = {
         role_ref.get("roleURI", ""): role_ref.get(_XLINK_HREF_ATTR, "")
@@ -618,6 +635,7 @@ def parse_table_linkbase(
             lb_el,
             tables,
             id_label_map,
+            id_label_variants,
             id_rc_map,
             id_fin_map,
             role_href_map,
@@ -630,6 +648,7 @@ def parse_table_linkbase(
             root,
             tables,
             id_label_map,
+            id_label_variants,
             id_rc_map,
             id_fin_map,
             role_href_map,
@@ -643,6 +662,7 @@ def _parse_linkbase_element(
     container: etree._Element,
     tables: list[TableDefinitionPWD],
     id_label_map: dict[str, str] | None = None,
+    id_label_variants: dict[str, dict[str, str]] | None = None,
     id_rc_map: dict[str, str] | None = None,
     id_fin_map: dict[str, str] | None = None,
     role_href_map: dict[str, str] | None = None,
@@ -726,6 +746,7 @@ def _parse_linkbase_element(
         # Primary source: sibling *-lab-*.xml files, keyed by element id attribute.
         # We build a id→xlink:label reverse map first, then translate.
         label_map: dict[str, str] = {}
+        label_variants_map: dict[str, tuple[tuple[str, str], ...]] = {}
         rc_map: dict[str, str] = {}
         fin_map: dict[str, str] = {}
         if id_label_map or id_rc_map or id_fin_map:
@@ -738,6 +759,10 @@ def _parse_linkbase_element(
                 xl = id_to_xl.get(elem_id)
                 if xl:
                     label_map[xl] = lbl
+            for elem_id, variants in (id_label_variants or {}).items():
+                xl = id_to_xl.get(elem_id)
+                if xl:
+                    label_variants_map[xl] = tuple(variants.items())
             for elem_id, rc in (id_rc_map or {}).items():
                 xl = id_to_xl.get(elem_id)
                 if xl:
@@ -757,6 +782,7 @@ def _parse_linkbase_element(
                             break
                 if lbl:
                     label_map[xl] = lbl
+                    label_variants_map.setdefault(xl, (("", lbl),))
 
         # Build child element map for recursion
         child_elem_map: dict[str, list[etree._Element]] = {}
@@ -795,6 +821,7 @@ def _parse_linkbase_element(
         def make_root_node(
             node_pco_pairs: list[tuple[etree._Element, str]],
             _lm: dict[str, str] = label_map,
+            _lvm: dict[str, tuple[tuple[str, str], ...]] = label_variants_map,
             _rm: dict[str, str] = rc_map,
             _fm: dict[str, str] = fin_map,
             _cem: dict[str, list[etree._Element]] = child_elem_map,
@@ -804,11 +831,11 @@ def _parse_linkbase_element(
                 return BreakdownNode(node_type="rule", label=None)
             if len(node_pco_pairs) == 1:
                 n, pco = node_pco_pairs[0]
-                return _build_breakdown_node(n, _lm, _rm, _fm, _cem, _afm, pco)
+                return _build_breakdown_node(n, _lm, _lvm, _rm, _fm, _cem, _afm, pco)
             # Multiple root nodes — wrap in abstract parent
             root = BreakdownNode(node_type="rule", is_abstract=True)
             root.children = [
-                _build_breakdown_node(n, _lm, _rm, _fm, _cem, _afm, pco)
+                _build_breakdown_node(n, _lm, _lvm, _rm, _fm, _cem, _afm, pco)
                 for n, pco in node_pco_pairs
             ]
             return root
@@ -819,6 +846,7 @@ def _parse_linkbase_element(
             _build_breakdown_node(
                 n,
                 label_map,
+                label_variants_map,
                 rc_map,
                 fin_map,
                 child_elem_map,
@@ -829,6 +857,7 @@ def _parse_linkbase_element(
         )
 
         table_label = label_map.get(table_xl, table_id)
+        table_label_variants = label_variants_map.get(table_xl, ())
         table_code = fin_map.get(table_xl)
 
         tables.append(TableDefinitionPWD(
@@ -837,6 +866,7 @@ def _parse_linkbase_element(
             extended_link_role=elr,
             x_breakdown=x_bd,
             y_breakdown=y_bd,
+            label_variants=table_label_variants,
             table_code=table_code,
             z_breakdowns=z_bds,
         ))

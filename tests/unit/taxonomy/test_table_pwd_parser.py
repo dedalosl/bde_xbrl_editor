@@ -359,6 +359,7 @@ class TestMinimalTableParsing:
             / "cache"
             / "www.bde.es"
             / "es"
+            / "fr"
             / "xbrl"
             / "fws"
             / "ebacrr_corep"
@@ -383,6 +384,13 @@ class TestMinimalTableParsing:
 
         assert len(tables) == 1
         assert tables[0].label == "Tabla en espanol"
+        assert dict(tables[0].label_variants) == {
+            "en": "English table",
+            "es": "Tabla en espanol",
+        }
+
+        tables = parse_table_linkbase(rend, language_preference=("en", "es"))
+        assert tables[0].label == "English table"
 
 
 class TestBreakdownNodeTypes:

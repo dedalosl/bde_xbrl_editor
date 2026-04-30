@@ -30,6 +30,7 @@ from bde_xbrl_editor.taxonomy.models import (
 )
 from bde_xbrl_editor.taxonomy.settings import LoaderSettings
 from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
+from bde_xbrl_editor.validation.calculation import CalculationConsistencyValidator
 from bde_xbrl_editor.validation.models import ValidationFinding, ValidationSeverity
 from bde_xbrl_editor.validation.orchestrator import InstanceValidator
 
@@ -41,6 +42,13 @@ _FORMULA_VALID_IGNORE_RULE_IDS = frozenset(
     {
         "structural:duplicate-fact",
         "calculation:summation-inconsistent",
+    }
+)
+_XBRL21_VALID_IGNORE_RULE_IDS = frozenset(
+    {
+        # Duplicate facts affect calculation binding, but are not themselves an
+        # XBRL 2.1 conformance error for variations whose expected result is valid.
+        "structural:duplicate-fact",
     }
 )
 
@@ -55,7 +63,6 @@ _LINK_LINKBASE = f"{{{LINK_NS}}}linkbase"
 _LINK_ROLE_REF = f"{{{LINK_NS}}}roleRef"
 _LINK_ARCROLE_REF = f"{{{LINK_NS}}}arcroleRef"
 _XS_SCHEMA = f"{{{NS_XSD}}}schema"
-_XS_ATTRIBUTE = f"{{{NS_XSD}}}attribute"
 _XS_IMPORT = f"{{{NS_XSD}}}import"
 _XS_INCLUDE = f"{{{NS_XSD}}}include"
 _XS_REDEFINE = f"{{{NS_XSD}}}redefine"
@@ -64,6 +71,7 @@ _XS_EXTENSION = f"{{{NS_XSD}}}extension"
 _XS_SIMPLE_TYPE = f"{{{NS_XSD}}}simpleType"
 _XS_COMPLEX_TYPE = f"{{{NS_XSD}}}complexType"
 _XS_SIMPLE_CONTENT = f"{{{NS_XSD}}}simpleContent"
+_XS_ATTRIBUTE = f"{{{NS_XSD}}}attribute"
 _XSI_SCHEMA_LOCATION = "{http://www.w3.org/2001/XMLSchema-instance}schemaLocation"
 _XML_LANG = "{http://www.w3.org/XML/1998/namespace}lang"
 _XML_SPACE = "{http://www.w3.org/XML/1998/namespace}space"
@@ -725,7 +733,7 @@ class TestCaseExecutor:
 
                 # Get taxonomy: use explicit taxonomy_file if given, otherwise
                 # resolve schemaRef relative to instance file
-                if variation.taxonomy_file is not None:
+                if variation.taxonomy_file is not None and variation.taxonomy_file.exists():
                     taxonomy_struct = loader.load(variation.taxonomy_file)
                 else:
                     schema_href = instance.schema_ref_href
@@ -762,12 +770,20 @@ class TestCaseExecutor:
                 try:
                     taxonomy_struct = loader.load(variation.taxonomy_file)
                 except UnsupportedTaxonomyFormatError:
-                    if test_case.test_case_id not in _STRUCTURAL_ONLY_TEST_IDS:
+                    if (
+                        test_case.test_case_id not in _STRUCTURAL_ONLY_TEST_IDS
+                        and variation.expected_outcome.outcome_type
+                        != ExpectedOutcomeType.VALID
+                    ):
                         raise
                 except Exception:  # noqa: BLE001
                     if test_case.test_case_id != _LINKBASE_REFERENCES_TEST_ID:
                         raise
                 findings = _validate_xlink_inputs(variation.input_files)
+                if taxonomy_struct is not None and test_case.suite_id == "xbrl21":
+                    findings = findings + tuple(
+                        CalculationConsistencyValidator().validate_taxonomy(taxonomy_struct)
+                    )
                 if test_case.test_case_id == _LAX_VALIDATION_TEST_ID:
                     findings = findings + _validate_lax_known_declarations(
                         variation.input_files
@@ -790,6 +806,10 @@ class TestCaseExecutor:
                 if taxonomy_struct is None and first_load_error is not None:
                     raise first_load_error
                 findings = _validate_xlink_inputs(variation.input_files)
+                if taxonomy_struct is not None and test_case.suite_id == "xbrl21":
+                    findings = findings + tuple(
+                        CalculationConsistencyValidator().validate_taxonomy(taxonomy_struct)
+                    )
                 if test_case.test_case_id == _LAX_VALIDATION_TEST_ID:
                     findings = findings + _validate_lax_known_declarations(
                         variation.input_files
@@ -840,6 +860,15 @@ class TestCaseExecutor:
                 f
                 for f in error_findings
                 if f.rule_id not in _FORMULA_VALID_IGNORE_RULE_IDS
+            )
+        elif (
+            suite_id == "xbrl21"
+            and expected.outcome_type == ExpectedOutcomeType.VALID
+        ):
+            error_findings = tuple(
+                f
+                for f in error_findings
+                if f.rule_id not in _XBRL21_VALID_IGNORE_RULE_IDS
             )
         warning_findings = tuple(
             f for f in findings if f.severity == ValidationSeverity.WARNING

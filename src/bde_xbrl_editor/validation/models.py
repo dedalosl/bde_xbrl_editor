@@ -19,6 +19,7 @@ class ValidationSeverity(enum.StrEnum):
 class ValidationStatus(enum.StrEnum):
     PASS = "pass"
     FAIL = "fail"
+    NOT_EVALUATED = "not_evaluated"
 
 
 @dataclass(frozen=True)
@@ -76,6 +77,10 @@ class ValidationReport:
     @property
     def pass_count(self) -> int:
         return sum(1 for f in self.findings if f.status == ValidationStatus.PASS)
+
+    @property
+    def not_evaluated_count(self) -> int:
+        return sum(1 for f in self.findings if f.status == ValidationStatus.NOT_EVALUATED)
 
     @property
     def total_elapsed_seconds(self) -> float:

@@ -1,4 +1,5 @@
 """Unit tests for FormulaEvaluator (validation/formula/evaluator.py)."""
+
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -237,6 +238,107 @@ class TestValueAssertion:
         findings = FormulaEvaluator(taxonomy).evaluate(inst)
         assert any(f.rule_id == "VA_VAR" for f in findings)
 
+    def test_value_assertion_with_only_empty_sequence_fallback_is_not_evaluated(self) -> None:
+        var_def = FactVariableDefinition(
+            variable_name="a",
+            concept_filter=_qn("Missing"),
+            fallback_value="()",
+        )
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(assertion_id="VA_EMPTY_FALLBACK", variables=(var_def,)),
+            test_xpath="empty($a)",
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
+        inst = _instance([_fact("Amount", value="42")])
+
+        findings = FormulaEvaluator(taxonomy).evaluate(inst)
+
+        assert len(findings) == 1
+        assert findings[0].status == ValidationStatus.NOT_EVALUATED
+        assert findings[0].severity is None
+
+    def test_value_assertion_with_all_operands_on_fallback_is_not_evaluated(self) -> None:
+        var_a = FactVariableDefinition(
+            variable_name="a",
+            concept_filter=_qn("MissingA"),
+            fallback_value="()",
+        )
+        var_b = FactVariableDefinition(
+            variable_name="b",
+            concept_filter=_qn("MissingB"),
+            fallback_value="0",
+        )
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(
+                assertion_id="VA_ALL_FALLBACK",
+                variables=(var_a, var_b),
+            ),
+            test_xpath="$b = 0",
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
+        inst = _instance([_fact("Amount", value="42")])
+
+        findings = FormulaEvaluator(taxonomy).evaluate(inst)
+
+        assert len(findings) == 1
+        assert findings[0].status == ValidationStatus.NOT_EVALUATED
+        assert findings[0].severity is None
+
+    def test_value_assertion_with_missing_operand_without_fallback_is_not_evaluated(self) -> None:
+        var_a = FactVariableDefinition(
+            variable_name="a",
+            concept_filter=_qn("Amount"),
+        )
+        var_b = FactVariableDefinition(
+            variable_name="b",
+            concept_filter=_qn("Missing"),
+        )
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(
+                assertion_id="VA_MISSING_REQUIRED",
+                variables=(var_a, var_b),
+            ),
+            test_xpath="$a > $b",
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
+        inst = _instance([_fact("Amount", value="42")])
+
+        findings = FormulaEvaluator(taxonomy).evaluate(inst)
+
+        assert len(findings) == 1
+        assert findings[0].status == ValidationStatus.NOT_EVALUATED
+        assert findings[0].severity is None
+
+    def test_value_assertion_compares_prefixed_qname_fact_value(self) -> None:
+        concept = QName(
+            namespace="http://example.com/met",
+            local_name="Treatment",
+            prefix="met",
+        )
+        var_def = FactVariableDefinition(variable_name="a", concept_filter=concept)
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(assertion_id="VA_QNAME", variables=(var_def,)),
+            test_xpath="$a != xs:QName('dom:bad')",
+            namespaces={
+                "xs": "http://www.w3.org/2001/XMLSchema",
+                "dom": "http://example.com/dom",
+            },
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
+        inst = _instance([
+            Fact(
+                concept=concept,
+                context_ref="ctx1",
+                unit_ref=None,
+                value="dom:good",
+            )
+        ])
+
+        findings = FormulaEvaluator(taxonomy).evaluate(inst)
+
+        assert len(findings) == 1
+        assert findings[0].status == ValidationStatus.PASS
+
     def test_formula_finding_carries_rule_details(self) -> None:
         """Failed formula findings include formatted assertion details for the UI."""
         var_def = FactVariableDefinition(
@@ -322,6 +424,50 @@ class TestValueAssertion:
         assert len(findings) == 2
         assert build_calls == ["build"]
 
+    def test_reuses_variable_filter_matches_across_assertions(self, monkeypatch) -> None:
+        """Equivalent filters should share fact matches even with different variable names."""
+        var_def = FactVariableDefinition(variable_name="v", concept_filter=_qn("Amount"))
+        same_filter_different_name = FactVariableDefinition(
+            variable_name="amount",
+            concept_filter=_qn("Amount"),
+        )
+        assertion_a = ValueAssertionDefinition(
+            **_base_assertion_kwargs(assertion_id="VA_CACHE_A", variables=(var_def,)),
+            test_xpath="$v > 0",
+        )
+        assertion_b = ValueAssertionDefinition(
+            **_base_assertion_kwargs(
+                assertion_id="VA_CACHE_B",
+                variables=(same_filter_different_name,),
+            ),
+            test_xpath="$amount < 10",
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion_a, assertion_b)))
+        inst = _instance(
+            [_fact("Amount", "ctx1", "1"), _fact("Amount", "ctx2", "2")],
+            contexts={"ctx1": _ctx("ctx1"), "ctx2": _ctx("ctx2")},
+        )
+
+        calls = []
+        original_apply_filters = __import__(
+            "bde_xbrl_editor.validation.formula.evaluator",
+            fromlist=["apply_filters"],
+        ).apply_filters
+
+        def _tracked_apply_filters(*args, **kwargs):
+            calls.append("filter")
+            return original_apply_filters(*args, **kwargs)
+
+        monkeypatch.setattr(
+            "bde_xbrl_editor.validation.formula.evaluator.apply_filters",
+            _tracked_apply_filters,
+        )
+
+        findings = FormulaEvaluator(taxonomy).evaluate(inst)
+
+        assert len(findings) == 4
+        assert calls == ["filter"]
+
     def test_unsatisfied_message_template_is_rendered_with_binding_values(self) -> None:
         """Validation messages render embedded XPath expressions against bound facts."""
         var_def = FactVariableDefinition(variable_name="v", concept_filter=_qn("Amount"))
@@ -397,7 +543,10 @@ class TestValueAssertion:
         findings = FormulaEvaluator(taxonomy).evaluate(inst)
 
         assert len(findings) == 1
-        assert findings[0].rule_message == "{fmt:common(($a))} {fmt:fact($a, ($a))} <= 0 {fmt:threshold(0)}"
+        assert (
+            findings[0].rule_message
+            == "{fmt:common(($a))} {fmt:fact($a, ($a))} <= 0 {fmt:threshold(0)}"
+        )
         assert findings[0].evaluated_rule_message == "1234.43 <= 0\nFALSE"
         assert findings[0].message == "1234.43 <= 0\nFALSE"
 

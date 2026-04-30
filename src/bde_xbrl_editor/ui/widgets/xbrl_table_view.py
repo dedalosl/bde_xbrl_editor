@@ -8,8 +8,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from lxml import etree
-from PySide6.QtCore import Qt, QThread, QTimer, Signal
+from PySide6.QtCore import QEvent, QItemSelectionModel, QPoint, Qt, QThread, QTimer, Signal
+from PySide6.QtGui import QHelpEvent
 from PySide6.QtWidgets import (
+    QApplication,
     QCheckBox,
     QFrame,
     QHBoxLayout,
@@ -18,6 +20,8 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QTableView,
+    QTextBrowser,
+    QToolTip,
     QVBoxLayout,
     QWidget,
 )
@@ -84,6 +88,28 @@ def _table_identity(table: TableDefinitionPWD | None) -> str:
     if table is None:
         return ""
     return table.display_code or table.table_id
+
+
+def _preferred_label_variant(
+    variants: tuple[tuple[str, str], ...],
+    language_preference: list[str],
+) -> str | None:
+    if not variants:
+        return None
+    by_language = {lang: text for lang, text in variants if text}
+    for language in language_preference:
+        if language in by_language:
+            return by_language[language]
+    return next((text for _lang, text in variants if text), None)
+
+
+def _display_table_label(table: TableDefinitionPWD, language_preference: list[str]) -> str:
+    return (
+        _preferred_label_variant(getattr(table, "label_variants", ()), language_preference)
+        or table.label
+        or table.table_id
+        or "Selected table"
+    )
 
 
 def _append_unique_qname(target: list[QName], qname: QName) -> None:
@@ -563,6 +589,60 @@ def _find_fact_indexes(
     return matches
 
 
+def _normalise_explicit_dimensions(
+    dims: dict[QName, QName],
+    taxonomy: TaxonomyStructure | None,
+) -> dict[QName, QName]:
+    normalised: dict[QName, QName] = {}
+    for dim_qname, member_qname in dims.items():
+        if dim_qname == _AGRUPACION_DIM:
+            continue
+        dim_model = taxonomy.dimensions.get(dim_qname) if taxonomy is not None else None
+        if dim_model is not None and dim_model.default_member == member_qname:
+            continue
+        normalised[dim_qname] = member_qname
+    return normalised
+
+
+def _coordinate_matches_fact_context(
+    coordinate: CellCoordinate,
+    fact: object,
+    instance: XbrlInstance,
+    taxonomy: TaxonomyStructure | None,
+) -> bool:
+    if coordinate.concept is None or getattr(fact, "concept", None) != coordinate.concept:
+        return False
+    context = instance.contexts.get(getattr(fact, "context_ref", ""))
+    if context is None:
+        return False
+
+    context_typed_dims = {
+        dim_qname: value.strip()
+        for dim_qname, value in (getattr(context, "typed_dimensions", {}) or {}).items()
+        if value.strip()
+    }
+    typed_dim_keys = set(context_typed_dims)
+    context_explicit_dims = {
+        dim_qname: member_qname
+        for dim_qname, member_qname in (getattr(context, "dimensions", {}) or {}).items()
+        if dim_qname not in typed_dim_keys
+    }
+    coordinate_explicit_dims = _normalise_explicit_dimensions(
+        coordinate.explicit_dimensions or {},
+        taxonomy,
+    )
+    context_explicit_dims = _normalise_explicit_dimensions(context_explicit_dims, taxonomy)
+    coordinate_typed_dims = {
+        dim_qname: value.strip()
+        for dim_qname, value in (coordinate.typed_dimensions or {}).items()
+        if value.strip()
+    }
+    return (
+        coordinate_explicit_dims == context_explicit_dims
+        and coordinate_typed_dims == context_typed_dims
+    )
+
+
 def _ensure_context_ref_for_dimensions(
     instance: XbrlInstance,
     *,
@@ -986,6 +1066,19 @@ def _append_open_aspect_rows_to_layout(
     if not aspect_dimensions:
         return layout, [], False
 
+    open_dimension_info = tuple(
+        {
+            "dimension": QName.from_clark(str(candidate["dimension_clark"])),
+            "options": tuple(
+                QName.from_clark(str(option_clark))
+                for option_clark in candidate.get("options", ())
+                if isinstance(option_clark, str)
+            ),
+            "typed": not bool(candidate.get("options")),
+        }
+        for candidate in aspect_dimensions
+    )
+
     key_headers = [
         HeaderCell(
             label=str(candidate["label"]),
@@ -1115,6 +1208,7 @@ def _append_open_aspect_rows_to_layout(
                         for option_clark in candidate.get("options", ())
                         if isinstance(option_clark, str)
                     ),
+                    open_dimension_info=open_dimension_info,
                 )
             )
 
@@ -1123,17 +1217,6 @@ def _append_open_aspect_rows_to_layout(
             for dim_qname, member_qname in selected_dims.items()
         }
         for col_idx, col_cell in enumerate(layout.column_header.ordered_leaves, start=len(aspect_dimensions)):
-            if is_placeholder:
-                row_cells.append(
-                    BodyCell(
-                        row_index=row_idx,
-                        col_index=col_idx,
-                        coordinate=CellCoordinate(),
-                        is_applicable=False,
-                        cell_kind="placeholder",
-                    )
-                )
-                continue
             coord = _build_coordinate(
                 {"explicitDimension": explicit_dims},
                 col_cell.accumulated_aspect_constraints,
@@ -1142,10 +1225,23 @@ def _append_open_aspect_rows_to_layout(
             )
             coord.typed_dimensions = dict(selected_typed_dims)
             coord.typed_dimension_elements = dict(selected_typed_elements)
+            if is_placeholder:
+                row_cells.append(
+                    BodyCell(
+                        row_index=row_idx,
+                        col_index=col_idx,
+                        coordinate=coord,
+                        is_applicable=False,
+                        cell_kind="placeholder",
+                        open_dimension_info=open_dimension_info,
+                    )
+                )
+                continue
             cell = BodyCell(
                 row_index=row_idx,
                 col_index=col_idx,
                 coordinate=coord,
+                open_dimension_info=open_dimension_info,
                 fact_options=_enumeration_fact_options(taxonomy, coord.concept),
             )
             if fact_mapper is not None:
@@ -1482,6 +1578,7 @@ def _build_z_axis_selector_state(
     taxonomy: TaxonomyStructure | None,
     layout: ComputedTableLayout,
     instance: XbrlInstance | None,
+    language_preference: list[str] | None = None,
 ) -> tuple[list[ZAxisDimension], list[dict[QName, QName]], dict[QName, int]]:
     if table is None or taxonomy is None:
         return [], [], {}
@@ -1513,6 +1610,7 @@ def _build_z_axis_selector_state(
     ]
 
     dimensions: list[ZAxisDimension] = []
+    lang_pref = language_preference or ["es", "en"]
     for dim_qname in dimension_candidates:
         allowed_members = _allowed_members_for_dimension(
             dim_qname,
@@ -1538,7 +1636,7 @@ def _build_z_axis_selector_state(
         option_members = tuple(
             ZAxisOption(
                 member_qname=member_qname,
-                label=_display_qname(member_qname, taxonomy, ["es", "en"]),
+                label=_display_qname(member_qname, taxonomy, lang_pref),
                 is_used=member_qname in set(used_members.get(dim_qname, [])),
             )
             for member_qname in ordered_members
@@ -1546,7 +1644,7 @@ def _build_z_axis_selector_state(
         dimensions.append(
             ZAxisDimension(
                 dimension_qname=dim_qname,
-                label=_display_qname(dim_qname, taxonomy, ["es", "en"]),
+                label=_display_qname(dim_qname, taxonomy, lang_pref),
                 options=option_members,
                 selected_member=(
                     selected_member
@@ -1559,10 +1657,78 @@ def _build_z_axis_selector_state(
     return dimensions, valid_combinations, {}
 
 
+class _CellInfoTooltipPopup(QWidget):
+    """Small scrollable popup for rich cell metadata."""
+
+    _MAX_WIDTH = 620
+    _MAX_HEIGHT = 420
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(
+            parent,
+            Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint,
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+        self.setStyleSheet(
+            f"""
+            QWidget {{
+                background: {theme.SURFACE_BG};
+                border: 1px solid {theme.BORDER};
+            }}
+            QTextBrowser {{
+                background: {theme.SURFACE_BG};
+                color: {theme.TEXT_MAIN};
+                border: none;
+                padding: 0;
+            }}
+            QScrollBar:vertical {{
+                background: {theme.SURFACE_ALT_BG};
+                width: 10px;
+                margin: 0;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {theme.BORDER};
+                min-height: 28px;
+            }}
+            """
+        )
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        self._browser = QTextBrowser(self)
+        self._browser.setOpenExternalLinks(False)
+        self._browser.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._browser.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        layout.addWidget(self._browser)
+
+    def show_html(self, html: str, global_pos: QPoint) -> None:
+        self._browser.setHtml(html)
+        doc = self._browser.document()
+        doc.setTextWidth(self._MAX_WIDTH - 24)
+        content_size = doc.size().toSize()
+        width = min(self._MAX_WIDTH, max(360, content_size.width() + 24))
+        height = min(self._MAX_HEIGHT, max(120, content_size.height() + 20))
+        self.resize(width, height)
+        self._browser.resize(width, height)
+        self.move(self._bounded_position(global_pos + QPoint(14, 18), width, height))
+        self.show()
+        self.raise_()
+        self._browser.setFocus(Qt.FocusReason.PopupFocusReason)
+
+    def _bounded_position(self, pos: QPoint, width: int, height: int) -> QPoint:
+        screen = QApplication.screenAt(pos) or QApplication.primaryScreen()
+        if screen is None:
+            return pos
+        available = screen.availableGeometry()
+        x = min(max(pos.x(), available.left() + 8), available.right() - width - 8)
+        y = min(max(pos.y(), available.top() + 8), available.bottom() - height - 8)
+        return QPoint(x, y)
+
+
 class XbrlTableView(QFrame):
     """Main compound widget for rendering an XBRL table."""
 
     cell_selected = Signal(int, int)
+    cell_info_changed = Signal(str)
     z_index_changed = Signal(int)
     editing_mode_changed = Signal(bool)
     layout_ready = Signal(object)
@@ -1580,6 +1746,7 @@ class XbrlTableView(QFrame):
         self._open_aspect_rows_by_table: dict[str, list[dict[str, str]]] = {}
         self._active_z_index: int = 0
         self._active_z_constraints: dict[QName, QName] = {}
+        self._language_preference: list[str] = ["es", "en"]
         self._editing_enabled: bool = False
         self._pending_table_request: tuple[
             TableDefinitionPWD,
@@ -1592,6 +1759,7 @@ class XbrlTableView(QFrame):
         self._table_load_worker: TableLayoutLoadWorker | None = None
         self._table_load_request_id = 0
         self._legacy_z_index_map: dict[QName, int] = {}
+        self._cell_selection_connected = False
 
         # Layout
         self._outer_layout = QVBoxLayout(self)
@@ -1705,11 +1873,95 @@ class XbrlTableView(QFrame):
             f"QTableView {{ background: {theme.CELL_BG}; border: none; }}"
         )
         self._body_view.setEditTriggers(QTableView.EditTrigger.NoEditTriggers)
+        self._cell_info_tooltip = _CellInfoTooltipPopup(self._body_view)
+        self._body_view.viewport().installEventFilter(self)
         self._outer_layout.addWidget(self._body_view)
 
         self._table_request_timer = QTimer(self)
         self._table_request_timer.setSingleShot(True)
         self._table_request_timer.timeout.connect(self._apply_requested_table)
+
+    def eventFilter(self, watched: object, event: QEvent) -> bool:
+        if watched is self._body_view.viewport():
+            if event.type() == QEvent.Type.ToolTip:
+                if not isinstance(event, QHelpEvent):
+                    return True
+                index = self._body_view.indexAt(event.pos())
+                tooltip = index.data(Qt.ItemDataRole.ToolTipRole) if index.isValid() else None
+                if isinstance(tooltip, str) and tooltip:
+                    self.cell_info_changed.emit(tooltip)
+                    QToolTip.hideText()
+                    self._cell_info_tooltip.show_html(tooltip, event.globalPos())
+                    return True
+                self._cell_info_tooltip.hide()
+                QToolTip.hideText()
+                return True
+            if event.type() in {
+                QEvent.Type.MouseButtonPress,
+                QEvent.Type.KeyPress,
+                QEvent.Type.Hide,
+            }:
+                self._cell_info_tooltip.hide()
+        return super().eventFilter(watched, event)
+
+    def _emit_cell_selection(self, index) -> None:
+        self.cell_selected.emit(index.row(), index.column())
+        tooltip = index.data(Qt.ItemDataRole.ToolTipRole) if index.isValid() else None
+        self.cell_info_changed.emit(tooltip if isinstance(tooltip, str) else "")
+
+    def navigate_to_fact_cell(
+        self,
+        *,
+        concept_qname: QName | None,
+        context_ref: str | None,
+    ) -> bool:
+        """Select and scroll to the rendered cell for a fact, if present in this table."""
+        if self._layout is None or self._instance is None or not context_ref:
+            return False
+
+        target_facts = [
+            fact
+            for fact in self._instance.facts
+            if fact.context_ref == context_ref
+            and (concept_qname is None or fact.concept == concept_qname)
+        ]
+        if not target_facts:
+            return False
+
+        model = self._body_view.model()
+        selection_model = self._body_view.selectionModel()
+        if model is None or selection_model is None:
+            return False
+
+        for row_idx, row in enumerate(self._layout.body):
+            for col_idx, cell in enumerate(row):
+                if cell.cell_kind != "fact":
+                    continue
+                if concept_qname is not None and cell.coordinate.concept != concept_qname:
+                    continue
+                if not any(
+                    _coordinate_matches_fact_context(
+                        cell.coordinate,
+                        fact,
+                        self._instance,
+                        self._taxonomy,
+                    )
+                    for fact in target_facts
+                ):
+                    continue
+                index = model.index(row_idx, col_idx)
+                if not index.isValid():
+                    return False
+                self._body_view.setCurrentIndex(index)
+                selection_model.select(
+                    index,
+                    QItemSelectionModel.SelectionFlag.ClearAndSelect,
+                )
+                self._body_view.scrollTo(index, QTableView.ScrollHint.PositionAtCenter)
+                self._body_view.setFocus(Qt.FocusReason.OtherFocusReason)
+                self._emit_cell_selection(index)
+                return True
+        return False
 
     # ------------------------------------------------------------------
     # Properties
@@ -1737,6 +1989,29 @@ class XbrlTableView(QFrame):
     def set_editing_enabled(self, enabled: bool) -> None:
         """Enable or disable inline fact editing for the active instance view."""
         self._set_editing_enabled(enabled)
+
+    def set_language_preference(self, language_preference: list[str]) -> None:
+        """Set the label language preference and refresh the active table."""
+        pref = [lang for lang in language_preference if lang]
+        self._language_preference = pref or ["es", "en"]
+        if self._table is None or self._taxonomy is None:
+            return
+        self._pending_table_request = (
+            self._table,
+            self._taxonomy,
+            self._instance,
+            self._active_z_index,
+            self._active_z_constraints or None,
+        )
+        self._show_loading_state(
+            self._table,
+            self._taxonomy,
+            self._instance,
+            z_index=self._active_z_index,
+            z_constraints=self._active_z_constraints or None,
+            loading_label="Loading labels…",
+        )
+        self._table_request_timer.start(0)
 
     # ------------------------------------------------------------------
     # Public API
@@ -1767,6 +2042,7 @@ class XbrlTableView(QFrame):
                 instance=instance,
                 z_index=0,
                 z_constraints=self._active_z_constraints or None,
+                language_preference=self._language_preference,
             )
         except TableLayoutError as exc:
             self._error_banner.setText(f"⚠ Table layout warning: {exc.reason}")
@@ -1778,6 +2054,7 @@ class XbrlTableView(QFrame):
                     instance=None,
                     z_index=0,
                     z_constraints=self._active_z_constraints or None,
+                    language_preference=self._language_preference,
                 )
             except Exception:  # noqa: BLE001
                 return
@@ -1878,6 +2155,7 @@ class XbrlTableView(QFrame):
                     instance=instance,
                     z_index=self._active_z_index,
                     z_constraints=self._active_z_constraints or None,
+                    language_preference=self._language_preference,
                 )
             except (TableLayoutError, ZIndexOutOfRangeError):
                 return
@@ -1910,7 +2188,9 @@ class XbrlTableView(QFrame):
         self._add_open_row_button.hide()
         self._set_editing_enabled(False)
         self._clear_z_selector()
-        self._body_view.setModel(TableBodyModel(_empty_layout(), self))
+        self._body_view.setModel(
+            TableBodyModel(_empty_layout(), self, language_preference=self._language_preference)
+        )
 
     # ------------------------------------------------------------------
     # Internal
@@ -1941,6 +2221,7 @@ class XbrlTableView(QFrame):
             instance=instance,
             z_index=z_index,
             z_constraints=z_constraints,
+            language_preference=self._language_preference,
         )
         thread = QThread(self)
         worker.moveToThread(thread)
@@ -2016,7 +2297,7 @@ class XbrlTableView(QFrame):
             self._z_selector = None
         self._legacy_z_index_map = {}
 
-        title = table.label or table.table_id or "Selected table"
+        title = _display_table_label(table, self._language_preference)
         self._title_label.setText(title)
         subtitle_parts = []
         table_identity = _table_identity(table)
@@ -2033,7 +2314,9 @@ class XbrlTableView(QFrame):
         self._editing_switch.setChecked(False)
         self._editing_switch.blockSignals(False)
         self._editing_switch.setText(loading_label)
-        self._body_view.setModel(TableBodyModel(_empty_layout(), self))
+        self._body_view.setModel(
+            TableBodyModel(_empty_layout(), self, language_preference=self._language_preference)
+        )
 
     def _clear_z_selector(self) -> None:
         if self._z_selector is not None:
@@ -2080,6 +2363,7 @@ class XbrlTableView(QFrame):
             self._taxonomy,
             layout,
             self._instance,
+            self._language_preference,
         )
         self._legacy_z_index_map = legacy_map
         if selector_dimensions:
@@ -2092,7 +2376,7 @@ class XbrlTableView(QFrame):
             self._outer_layout.insertWidget(1, self._z_selector)
 
         # Update body model
-        model = TableBodyModel(layout, self)
+        model = TableBodyModel(layout, self, language_preference=self._language_preference)
         if self._taxonomy is not None:
             from bde_xbrl_editor.table_renderer.fact_formatter import FactFormatter  # noqa: PLC0415
 
@@ -2124,9 +2408,9 @@ class XbrlTableView(QFrame):
         self._body_view.verticalHeader().setMinimumWidth(280)
 
         # Wire cell selection
-        self._body_view.clicked.connect(
-            lambda idx: self.cell_selected.emit(idx.row(), idx.column())
-        )
+        if not self._cell_selection_connected:
+            self._body_view.clicked.connect(self._emit_cell_selection)
+            self._cell_selection_connected = True
         self.layout_ready.emit(layout)
 
     def _on_z_selector_changed(self, assignments: dict[QName, QName]) -> None:
@@ -2164,8 +2448,8 @@ class XbrlTableView(QFrame):
             if self._taxonomy is not None:
                 for dim_qname, member_qname in self._active_z_constraints.items():
                     selected_parts.append(
-                        f"{_display_qname(dim_qname, self._taxonomy, ['es', 'en'])}: "
-                        f"{_display_qname(member_qname, self._taxonomy, ['es', 'en'])}"
+                        f"{_display_qname(dim_qname, self._taxonomy, self._language_preference)}: "
+                        f"{_display_qname(member_qname, self._taxonomy, self._language_preference)}"
                     )
             if selected_parts:
                 subtitle_parts.append("  /  ".join(selected_parts))
@@ -2270,7 +2554,10 @@ class XbrlTableView(QFrame):
             )
             return
 
-        labels = [_display_qname(member, self._taxonomy, ["es", "en"]) for member in available_members]
+        labels = [
+            _display_qname(member, self._taxonomy, self._language_preference)
+            for member in available_members
+        ]
         selected_label, accepted = QInputDialog.getItem(
             self,
             "Open row member",

@@ -242,6 +242,10 @@ class XbrlUnit:
     unit_form: Literal["simple", "divide"] = "simple"
     # Number of direct child xbrli:measure elements when unit_form is "simple".
     simple_measure_count: int = 0
+    # Resolved direct measures, preserving namespaces even when more than one exists.
+    simple_measure_qnames: tuple[QName, ...] = field(default_factory=tuple)
+    numerator_measure_qnames: tuple[QName, ...] = field(default_factory=tuple)
+    denominator_measure_qnames: tuple[QName, ...] = field(default_factory=tuple)
 
 
 @dataclass
@@ -300,6 +304,7 @@ class Fact:
     value: str
     decimals: str | None = None
     precision: str | None = None
+    is_nil: bool = False
 
 
 @dataclass
