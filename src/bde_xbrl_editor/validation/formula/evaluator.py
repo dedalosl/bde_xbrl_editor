@@ -219,6 +219,7 @@ class FormulaEvaluator:
         *,
         status: ValidationStatus,
         default_message: str,
+        rule_id: str | None = None,
         fact: Fact | None = None,
         binding: dict[str, list[Fact]] | None = None,
         instance: XbrlInstance | None = None,
@@ -270,7 +271,7 @@ class FormulaEvaluator:
             or default_message
         )
         return ValidationFinding(
-            rule_id=assertion.assertion_id,
+            rule_id=rule_id or assertion.assertion_id,
             severity=None if status != ValidationStatus.FAIL else _sev(assertion),
             status=status,
             message=display_message,
@@ -654,6 +655,7 @@ class FormulaEvaluator:
                         assertion,
                         status=ValidationStatus.FAIL,
                         default_message=f"XPath evaluation failed: {exc}",
+                        rule_id=_xpath_error_code(exc),
                         binding=binding,
                         instance=instance,
                     ),
@@ -694,7 +696,8 @@ class FormulaEvaluator:
             facts = binding.get(var_def.variable_name, [])
             if facts:
                 has_fact = True
-            elif var_def.fallback_value is None:
+                continue
+            if var_def.fallback_value is None:
                 return True
         return not has_fact
 
@@ -929,6 +932,13 @@ def _coerce_value(raw: str) -> Any:
         return Decimal(raw)
     except InvalidOperation:
         return raw
+
+
+def _xpath_error_code(exc: Exception) -> str | None:
+    code = getattr(exc, "code", None)
+    if isinstance(code, str) and code:
+        return code
+    return None
 
 
 def _coerce_fallback_value(raw: str) -> Any:

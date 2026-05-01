@@ -175,6 +175,78 @@ def test_parse_value_assertion_keeps_variable_set_concept_and_typed_dimension_fi
     assert variable.typed_dimension_filters[0].dimension_qname.local_name == "qLIN"
 
 
+def test_parse_variable_set_resources_includes_general_variable_parameter_and_precondition(
+    tmp_path: Path,
+) -> None:
+    lb = tmp_path / "variable-set-resources.xml"
+    lb.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:gen="http://xbrl.org/2008/generic"
+  xmlns:va="http://xbrl.org/2008/assertion/value"
+  xmlns:variable="http://xbrl.org/2008/variable"
+  xmlns:xlink="http://www.w3.org/1999/xlink">
+  <gen:link xlink:type="extended" xlink:role="http://www.xbrl.org/2003/role/link">
+    <va:valueAssertion xlink:type="resource" xlink:label="a1" id="a1" test="$g gt $threshold"/>
+    <variable:generalVariable xlink:type="resource" xlink:label="gvar" select="$threshold + 1" fallbackValue="0"/>
+    <variable:parameter xlink:type="resource" xlink:label="thresholdParam" name="threshold" select="10" as="xs:decimal"/>
+    <variable:precondition xlink:type="resource" xlink:label="pre1" test="$threshold gt 0"/>
+    <variable:variableArc xlink:type="arc" xlink:from="a1" xlink:to="gvar" name="g" order="2" priority="3"/>
+    <variable:parameterArc xlink:type="arc" xlink:from="a1" xlink:to="thresholdParam" name="threshold"/>
+    <variable:preconditionArc xlink:type="arc"
+      xlink:arcrole="http://xbrl.org/arcrole/2008/variable-set-precondition"
+      xlink:from="a1" xlink:to="pre1"/>
+  </gen:link>
+</link:linkbase>
+""",
+        encoding="utf-8",
+    )
+
+    fas = parse_formula_linkbase(lb)
+    assert len(fas.assertions) == 1
+    assertion = fas.assertions[0]
+    assert len(assertion.general_variables) == 1
+    assert assertion.general_variables[0].variable_name == "g"
+    assert assertion.general_variables[0].select_xpath == "$threshold + 1"
+    assert "threshold" in assertion.general_variables[0].referenced_names
+    assert len(assertion.parameters) == 1
+    assert assertion.parameters[0].parameter_name == "threshold"
+    assert assertion.parameters[0].scope == "local"
+    assert len(assertion.preconditions) == 1
+    assert assertion.precondition_xpath == "$threshold gt 0"
+    assert assertion.preconditions[0].test_xpath == "$threshold gt 0"
+    assert assertion.referenced_names == ("g", "threshold")
+    assert len(assertion.variable_arcs) == 1
+    assert assertion.variable_arcs[0].order == 2.0
+    assert assertion.variable_arcs[0].priority == 3
+    assert len(assertion.parameter_arcs) == 1
+    assert len(assertion.precondition_arcs) == 1
+
+
+def test_parse_global_parameters_when_not_bound_locally(tmp_path: Path) -> None:
+    lb = tmp_path / "global-parameter.xml"
+    lb.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:gen="http://xbrl.org/2008/generic"
+  xmlns:va="http://xbrl.org/2008/assertion/value"
+  xmlns:variable="http://xbrl.org/2008/variable"
+  xmlns:xlink="http://www.w3.org/1999/xlink">
+  <gen:link xlink:type="extended" xlink:role="http://www.xbrl.org/2003/role/link">
+    <va:valueAssertion xlink:type="resource" xlink:label="a1" id="a1" test="true()"/>
+    <variable:parameter xlink:type="resource" xlink:label="p_global" name="globalP" select="42"/>
+  </gen:link>
+</link:linkbase>
+""",
+        encoding="utf-8",
+    )
+
+    fas = parse_formula_linkbase(lb)
+    assert len(fas.global_parameters) == 1
+    assert fas.global_parameters[0].parameter_name == "globalP"
+    assert fas.global_parameters[0].scope == "global"
+
+
 def test_parse_assertion_table_mappings_resolves_applies_to_table(tmp_path: Path) -> None:
     lb = tmp_path / "assertion-set.xml"
     lb.write_text(

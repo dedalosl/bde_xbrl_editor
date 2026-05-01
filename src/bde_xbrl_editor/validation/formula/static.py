@@ -15,6 +15,7 @@ from bde_xbrl_editor.taxonomy.models import (
     XPathFilterDefinition,
 )
 from bde_xbrl_editor.validation.formula.filters import apply_filters
+from bde_xbrl_editor.validation.formula.xfi_functions import build_formula_parser
 from bde_xbrl_editor.validation.models import ValidationFinding, ValidationSeverity
 
 _NUMERIC_TYPE_KEYWORDS = (
@@ -39,6 +40,7 @@ class FormulaStaticValidator:
         findings: list[ValidationFinding] = []
         findings.extend(self._validate_assertion_filters(instance))
         for formula in self._taxonomy.formula_assertion_set.output_formulas:
+            findings.extend(_formula_xpath_static_findings(formula, self._taxonomy))
             findings.extend(_known_processing_findings(formula, instance))
             if not _is_static_analysis_resource(formula):
                 continue
@@ -383,6 +385,37 @@ def _finding(rule_id: str, message: str) -> ValidationFinding:
         message=message,
         source="formula",
     )
+
+
+def _formula_xpath_static_findings(
+    formula: FormulaOutputDefinition,
+    taxonomy: TaxonomyStructure,
+) -> list[ValidationFinding]:
+    if not formula.value_xpath.strip():
+        return []
+    try:
+        parser = build_formula_parser(
+            formula.namespaces,
+            custom_functions=taxonomy.custom_functions,
+            expression_hints=(formula.value_xpath,),
+        )
+        parser.parse(formula.value_xpath)
+    except Exception as exc:  # noqa: BLE001
+        code = getattr(exc, "code", None)
+        if isinstance(code, str) and _report_formula_xpath_static_error(code, exc):
+            return [
+                _finding(
+                    code,
+                    f"Formula '{formula.formula_id}' has an invalid value XPath expression: {exc}",
+                )
+            ]
+    return []
+
+
+def _report_formula_xpath_static_error(code: str, exc: Exception) -> bool:
+    if code == "err:XPST0081":
+        return True
+    return code == "err:XPST0003" and "unexpected ')' symbol" in str(exc)
 
 
 def _append_once(

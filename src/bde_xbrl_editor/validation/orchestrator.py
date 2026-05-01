@@ -86,7 +86,7 @@ class InstanceValidator:
             stage_timings.append(StageTiming("structural", time.perf_counter() - stage_started_at))
 
         # --- 1b. Taxonomy relationship-set checks ---------------------------
-        if self._include_dimensional and not (self._cancel_event and self._cancel_event.is_set()):
+        if not (self._cancel_event and self._cancel_event.is_set()):
             try:
                 rv = RelationshipSetValidator()
                 stage_findings = tuple(rv.validate_taxonomy(self._taxonomy))

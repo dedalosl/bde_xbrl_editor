@@ -9,6 +9,7 @@ from bde_xbrl_editor.taxonomy.linkbases.formula import parse_formula_linkbase
 from bde_xbrl_editor.taxonomy.models import (
     Concept,
     FormulaAssertionSet,
+    FormulaOutputDefinition,
     QName,
     TaxonomyMetadata,
     TaxonomyStructure,
@@ -157,3 +158,39 @@ def test_formula_static_validation_reports_conflicting_unit_for_non_numeric_conc
     )
 
     assert "xbrlfe:conflictingAspectRules" in _rule_ids(assertion_set)
+
+
+def test_formula_static_validation_reports_invalid_output_value_xpath() -> None:
+    assertion_set = FormulaAssertionSet(
+        output_formulas=(
+            FormulaOutputDefinition(
+                formula_id="formula1",
+                label=None,
+                value_xpath="count($v:c1))",
+                source="v:c1",
+                aspect_model="non-dimensional",
+                implicit_filtering=True,
+                namespaces={"v": "http://example.com/vars"},
+            ),
+        )
+    )
+
+    assert "err:XPST0003" in _rule_ids(assertion_set)
+
+
+def test_formula_static_validation_reports_undeclared_output_value_xpath_prefix() -> None:
+    assertion_set = FormulaAssertionSet(
+        output_formulas=(
+            FormulaOutputDefinition(
+                formula_id="formula1",
+                label=None,
+                value_xpath="$missing:var + 1",
+                source=None,
+                aspect_model="non-dimensional",
+                implicit_filtering=True,
+                namespaces={},
+            ),
+        )
+    )
+
+    assert "err:XPST0081" in _rule_ids(assertion_set)

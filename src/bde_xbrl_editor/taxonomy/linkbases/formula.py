@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Literal
@@ -16,10 +17,14 @@ from bde_xbrl_editor.taxonomy.models import (
     DimensionFilter,
     ExistenceAssertionDefinition,
     FactVariableDefinition,
+    FormulaArc,
     FormulaAspectRule,
     FormulaAssertion,
     FormulaAssertionSet,
     FormulaOutputDefinition,
+    GeneralVariableDefinition,
+    ParameterDefinition,
+    PreconditionDefinition,
     QName,
     TypedDimensionFilter,
     ValueAssertionDefinition,
@@ -64,7 +69,12 @@ _TAG_FORMULA_TYPED_DIMENSION = f"{{{_NS_FORMULA}}}typedDimension"
 _TAG_EXISTENCE_ASSERTION = f"{{{_NS_EA}}}existenceAssertion"
 _TAG_CONSISTENCY_ASSERTION = f"{{{_NS_CA}}}consistencyAssertion"
 _TAG_FACT_VARIABLE = f"{{{_NS_VARIABLE}}}factVariable"
+_TAG_GENERAL_VARIABLE = f"{{{_NS_VARIABLE}}}generalVariable"
+_TAG_PARAMETER = f"{{{_NS_VARIABLE}}}parameter"
+_TAG_PRECONDITION = f"{{{_NS_VARIABLE}}}precondition"
 _TAG_VARIABLE_ARC = f"{{{_NS_VARIABLE}}}variableArc"
+_TAG_PARAMETER_ARC = f"{{{_NS_VARIABLE}}}parameterArc"
+_TAG_PRECONDITION_ARC = f"{{{_NS_VARIABLE}}}preconditionArc"
 _TAG_VARIABLE_FILTER_ARC = f"{{{_NS_VARIABLE}}}variableFilterArc"
 _TAG_CF_CONCEPT_NAME = f"{{{_NS_CF}}}conceptName"
 _TAG_CF_CONCEPT = f"{{{_NS_CF}}}concept"
@@ -94,11 +104,14 @@ _ARCROLE_VARIABLE_SET = "http://xbrl.org/arcrole/2008/variable-set"
 _ARCROLE_VARIABLE_FILTER = "http://xbrl.org/arcrole/2008/variable-filter"
 _ARCROLE_VARIABLE_SET_FILTER = "http://xbrl.org/arcrole/2008/variable-set-filter"
 _ARCROLE_BOOLEAN_FILTER = "http://xbrl.org/arcrole/2008/boolean-filter"
+_ARCROLE_VARIABLE_SET_PRECONDITION = "http://xbrl.org/arcrole/2008/variable-set-precondition"
+_ARCROLE_VARIABLE_SET_PARAMETER = "http://xbrl.org/arcrole/2008/variable-set"
 _ARCROLE_ASSERTION_SET = "http://xbrl.org/arcrole/2008/assertion-set"
 _ARCROLE_APPLIES_TO_TABLE = "http://www.eurofiling.info/xbrl/arcrole/applies-to-table"
 
 _TAG_VARIABLE_SET_FILTER_ARC = f"{{{_NS_VARIABLE}}}variableSetFilterArc"
 _TAG_LINK_LOC = f"{{{_NS_LINK}}}loc"
+_VAR_REF_RE = re.compile(r"\$([A-Za-z_][A-Za-z0-9_.:-]*)")
 
 
 # ---------------------------------------------------------------------------
@@ -142,6 +155,15 @@ def _clark_to_qname(clark: str, nsmap: dict[str, str] | None = None) -> QName | 
 def _element_nsmap(el: etree._Element) -> dict[str, str]:
     """Return the namespace map (str → URI) for an element, filtering None keys."""
     return {k: v for k, v in el.nsmap.items() if k is not None}
+
+
+def _extract_referenced_names(*expressions: str | None) -> tuple[str, ...]:
+    names: set[str] = set()
+    for expr in expressions:
+        if not expr:
+            continue
+        names.update(_VAR_REF_RE.findall(expr))
+    return tuple(sorted(names))
 
 
 def _parse_qname_element(parent: etree._Element, tag: str) -> QName | None:
@@ -264,6 +286,15 @@ def _build_label_to_element(root: etree._Element, tag: str) -> dict[str, etree._
     return index
 
 
+def _build_label_to_element_for_tags(
+    root: etree._Element, tags: tuple[str, ...]
+) -> dict[str, etree._Element]:
+    index: dict[str, etree._Element] = {}
+    for tag in tags:
+        index.update(_build_label_to_element(root, tag))
+    return index
+
+
 def _build_arc_map(root: etree._Element, arc_tags: list[str]) -> dict[str, list[str]]:
     """Build a from→[to, …] mapping for all arcs matching *arc_tags*."""
     arc_map: dict[str, list[str]] = {}
@@ -286,6 +317,54 @@ def _build_filter_arc_map(root: etree._Element) -> dict[str, list[str]]:
         if frm and to:
             arc_map.setdefault(frm, []).append(to)
     return arc_map
+
+
+def _parse_arc_float(value: str | None) -> float | None:
+    try:
+        return float(value) if value not in (None, "") else None
+    except ValueError:
+        return None
+
+
+def _parse_arc_int(value: str | None) -> int | None:
+    try:
+        return int(value) if value not in (None, "") else None
+    except ValueError:
+        return None
+
+
+def _collect_formula_arc(arc: etree._Element) -> FormulaArc | None:
+    frm = arc.get(_ATTR_XLINK_FROM, "")
+    to = arc.get(_ATTR_XLINK_TO, "")
+    if not frm or not to:
+        return None
+    return FormulaArc(
+        from_label=frm,
+        to_label=to,
+        arcrole=arc.get(_ATTR_XLINK_ARCROLE, ""),
+        name=(arc.get("name") or "").strip() or None,
+        order=_parse_arc_float(arc.get("order")),
+        priority=_parse_arc_int(arc.get("priority")),
+        use=(arc.get("use") or "optional").strip() or "optional",
+    )
+
+
+def _build_resource_arc_map(
+    root: etree._Element,
+    *,
+    tag: str,
+) -> tuple[dict[str, list[FormulaArc]], dict[str, list[tuple[str, str]]]]:
+    arc_meta_map: dict[str, list[FormulaArc]] = {}
+    arc_name_map: dict[str, list[tuple[str, str]]] = {}
+    for arc in root.iter(tag):
+        parsed = _collect_formula_arc(arc)
+        if parsed is None:
+            continue
+        arc_meta_map.setdefault(parsed.from_label, []).append(parsed)
+        arc_name_map.setdefault(parsed.from_label, []).append(
+            (parsed.to_label, parsed.name or "")
+        )
+    return arc_meta_map, arc_name_map
 
 
 def _build_variable_set_filter_arc_map(root: etree._Element) -> dict[str, list[str]]:
@@ -492,6 +571,7 @@ def _parse_fact_variable(
                     XPathFilterDefinition(
                         xpath_expr=test_expr,
                         namespaces=_element_nsmap(filter_el),
+                        filter_type="period",
                     )
                 )
 
@@ -520,6 +600,7 @@ def _parse_fact_variable(
                     XPathFilterDefinition(
                         xpath_expr=test_expr,
                         namespaces=_element_nsmap(filter_el),
+                        filter_type="general",
                     )
                 )
 
@@ -555,6 +636,64 @@ def _parse_fact_variable(
         fallback_value=fallback_value,
         xpath_filters=tuple(xpath_filters),
         boolean_filters=tuple(boolean_filters),
+        arc_name=arc_name or None,
+        referenced_names=_extract_referenced_names(
+            fallback_value, *(xpath_filter.xpath_expr for xpath_filter in xpath_filters)
+        ),
+    )
+
+
+def _parse_general_variable(var_el: etree._Element, arc_name: str = "") -> GeneralVariableDefinition:
+    variable_name = arc_name or var_el.get("name", "") or var_el.get(_ATTR_XLINK_LABEL, "")
+    select_xpath = (var_el.get("select") or ".").strip() or "."
+    fallback_value = (var_el.get("fallbackValue") or "").strip() or None
+    return GeneralVariableDefinition(
+        variable_name=variable_name,
+        select_xpath=select_xpath,
+        bind_as_sequence=(var_el.get("bindAsSequence") or "false").lower() == "true",
+        fallback_value=fallback_value,
+        arc_name=arc_name or None,
+        namespaces=_element_nsmap(var_el),
+        referenced_names=_extract_referenced_names(select_xpath, fallback_value),
+    )
+
+
+def _parse_parameter(
+    parameter_el: etree._Element,
+    *,
+    arc_name: str = "",
+    scope: Literal["global", "local"] = "global",
+) -> ParameterDefinition:
+    parameter_name = arc_name or parameter_el.get("name", "") or parameter_el.get(_ATTR_XLINK_LABEL, "")
+    select_xpath = (parameter_el.get("select") or "").strip() or None
+    as_type = (parameter_el.get("as") or "").strip() or None
+    return ParameterDefinition(
+        parameter_name=parameter_name,
+        select_xpath=select_xpath,
+        as_type=as_type,
+        required=(parameter_el.get("required") or "false").lower() == "true",
+        arc_name=arc_name or None,
+        scope=scope,
+        namespaces=_element_nsmap(parameter_el),
+        referenced_names=_extract_referenced_names(select_xpath),
+    )
+
+
+def _parse_precondition(precondition_el: etree._Element) -> PreconditionDefinition | None:
+    precondition_id = (
+        (precondition_el.get("id") or "").strip()
+        or (precondition_el.get(_ATTR_XLINK_LABEL) or "").strip()
+    )
+    if not precondition_id:
+        return None
+    test_xpath = (precondition_el.get("test") or "").strip()
+    if not test_xpath:
+        return None
+    return PreconditionDefinition(
+        precondition_id=precondition_id,
+        test_xpath=test_xpath,
+        namespaces=_element_nsmap(precondition_el),
+        referenced_names=_extract_referenced_names(test_xpath),
     )
 
 
@@ -609,7 +748,15 @@ def linkbase_contains_formula_assertions(path: Path) -> bool:
 def _parse_assertion(
     assertion_el: etree._Element,
     variable_arc_map: dict[str, list[tuple[str, str]]],
+    variable_arc_meta_map: dict[str, list[FormulaArc]],
+    parameter_arc_map: dict[str, list[tuple[str, str]]],
+    parameter_arc_meta_map: dict[str, list[FormulaArc]],
+    precondition_arc_map: dict[str, list[tuple[str, str]]],
+    precondition_arc_meta_map: dict[str, list[FormulaArc]],
     fact_variable_index: dict[str, etree._Element],
+    general_variable_index: dict[str, etree._Element],
+    parameter_index: dict[str, etree._Element],
+    precondition_index: dict[str, etree._Element],
     filter_arc_map: dict[str, list[str]],
     filter_index: dict[str, etree._Element],
     variable_set_filter_arc_map: dict[str, list[str]] | None = None,
@@ -625,7 +772,7 @@ def _parse_assertion(
     abstract = _parse_abstract(assertion_el.get("abstract"))
     severity = _parse_severity(assertion_el.get("severity"))
     label = _xlabel or _id or None
-    precondition_xpath: str | None = None  # preconditions not yet parsed
+    precondition_xpath: str | None = None
 
     # Collect bound fact variables via variable arcs (from=assertion_id or from=xlink:label)
     # variable_arc_map values are (to_label, arc_name) tuples where arc_name is the XPath
@@ -633,6 +780,28 @@ def _parse_assertion(
     assertion_label = _xlabel or assertion_id
     variable_entries = variable_arc_map.get(assertion_id, []) + (
         variable_arc_map.get(assertion_label, []) if assertion_label != assertion_id else []
+    )
+    variable_arcs = tuple(
+        variable_arc_meta_map.get(assertion_id, [])
+        + (variable_arc_meta_map.get(assertion_label, []) if assertion_label != assertion_id else [])
+    )
+    parameter_entries = parameter_arc_map.get(assertion_id, []) + (
+        parameter_arc_map.get(assertion_label, []) if assertion_label != assertion_id else []
+    )
+    parameter_arcs = tuple(
+        parameter_arc_meta_map.get(assertion_id, [])
+        + (parameter_arc_meta_map.get(assertion_label, []) if assertion_label != assertion_id else [])
+    )
+    precondition_entries = precondition_arc_map.get(assertion_id, []) + (
+        precondition_arc_map.get(assertion_label, []) if assertion_label != assertion_id else []
+    )
+    precondition_arcs = tuple(
+        precondition_arc_meta_map.get(assertion_id, [])
+        + (
+            precondition_arc_meta_map.get(assertion_label, [])
+            if assertion_label != assertion_id
+            else []
+        )
     )
 
     # Collect assertion-level filters from variableSetFilterArc
@@ -674,6 +843,7 @@ def _parse_assertion(
                     global_boolean_filters.append(bf)
 
     variables: list[FactVariableDefinition] = []
+    general_variables: list[GeneralVariableDefinition] = []
     seen_var_labels: set[str] = set()
     for var_label, arc_name in variable_entries:
         if var_label in seen_var_labels:
@@ -694,6 +864,38 @@ def _parse_assertion(
                     global_boolean_filters=global_boolean_filters or None,
                 )
             )
+            continue
+        general_el = general_variable_index.get(var_label)
+        if general_el is not None:
+            general_variables.append(_parse_general_variable(general_el, arc_name=arc_name))
+
+    local_parameters: list[ParameterDefinition] = []
+    seen_param_labels: set[str] = set()
+    for parameter_label, arc_name in parameter_entries:
+        if parameter_label in seen_param_labels:
+            continue
+        seen_param_labels.add(parameter_label)
+        parameter_el = parameter_index.get(parameter_label)
+        if parameter_el is None:
+            continue
+        local_parameters.append(
+            _parse_parameter(parameter_el, arc_name=arc_name, scope="local")
+        )
+
+    preconditions: list[PreconditionDefinition] = []
+    seen_precondition_labels: set[str] = set()
+    for precondition_label, _arc_name in precondition_entries:
+        if precondition_label in seen_precondition_labels:
+            continue
+        seen_precondition_labels.add(precondition_label)
+        precondition_el = precondition_index.get(precondition_label)
+        if precondition_el is None:
+            continue
+        parsed_precondition = _parse_precondition(precondition_el)
+        if parsed_precondition is not None:
+            preconditions.append(parsed_precondition)
+            if precondition_xpath is None:
+                precondition_xpath = parsed_precondition.test_xpath
 
     tag = assertion_el.tag
 
@@ -705,7 +907,18 @@ def _parse_assertion(
         severity=severity,
         abstract=abstract,
         variables=tuple(variables),
+        general_variables=tuple(general_variables),
+        parameters=tuple(local_parameters),
+        preconditions=tuple(preconditions),
         precondition_xpath=precondition_xpath,
+        variable_arcs=variable_arcs,
+        parameter_arcs=parameter_arcs,
+        precondition_arcs=precondition_arcs,
+        referenced_names=_extract_referenced_names(
+            assertion_el.get("test"),
+            assertion_el.get("formula"),
+            precondition_xpath,
+        ),
         namespaces=namespaces,
     )
 
@@ -845,7 +1058,15 @@ def _parse_formula_aspect_rules(formula_el: etree._Element) -> tuple[FormulaAspe
 def _parse_output_formula(
     formula_el: etree._Element,
     variable_arc_map: dict[str, list[tuple[str, str]]],
+    variable_arc_meta_map: dict[str, list[FormulaArc]],
+    parameter_arc_map: dict[str, list[tuple[str, str]]],
+    parameter_arc_meta_map: dict[str, list[FormulaArc]],
+    precondition_arc_map: dict[str, list[tuple[str, str]]],
+    precondition_arc_meta_map: dict[str, list[FormulaArc]],
     fact_variable_index: dict[str, etree._Element],
+    general_variable_index: dict[str, etree._Element],
+    parameter_index: dict[str, etree._Element],
+    precondition_index: dict[str, etree._Element],
     filter_arc_map: dict[str, list[str]],
     filter_index: dict[str, etree._Element],
     variable_set_filter_arc_map: dict[str, list[str]] | None = None,
@@ -861,7 +1082,30 @@ def _parse_output_formula(
     variable_entries = variable_arc_map.get(formula_id, []) + (
         variable_arc_map.get(_xlabel, []) if _xlabel and _xlabel != formula_id else []
     )
+    variable_arcs = tuple(
+        variable_arc_meta_map.get(formula_id, [])
+        + (variable_arc_meta_map.get(_xlabel, []) if _xlabel and _xlabel != formula_id else [])
+    )
+    parameter_entries = parameter_arc_map.get(formula_id, []) + (
+        parameter_arc_map.get(_xlabel, []) if _xlabel and _xlabel != formula_id else []
+    )
+    parameter_arcs = tuple(
+        parameter_arc_meta_map.get(formula_id, [])
+        + (parameter_arc_meta_map.get(_xlabel, []) if _xlabel and _xlabel != formula_id else [])
+    )
+    precondition_entries = precondition_arc_map.get(formula_id, []) + (
+        precondition_arc_map.get(_xlabel, []) if _xlabel and _xlabel != formula_id else []
+    )
+    precondition_arcs = tuple(
+        precondition_arc_meta_map.get(formula_id, [])
+        + (
+            precondition_arc_meta_map.get(_xlabel, [])
+            if _xlabel and _xlabel != formula_id
+            else []
+        )
+    )
     variables: list[FactVariableDefinition] = []
+    general_variables: list[GeneralVariableDefinition] = []
     seen_var_labels: set[str] = set()
     for var_label, arc_name in variable_entries:
         if var_label in seen_var_labels:
@@ -869,6 +1113,9 @@ def _parse_output_formula(
         seen_var_labels.add(var_label)
         var_el = fact_variable_index.get(var_label)
         if var_el is None:
+            general_el = general_variable_index.get(var_label)
+            if general_el is not None:
+                general_variables.append(_parse_general_variable(general_el, arc_name=arc_name))
             continue
         variables.append(
             _parse_fact_variable(
@@ -880,6 +1127,30 @@ def _parse_output_formula(
             )
         )
 
+    parameters: list[ParameterDefinition] = []
+    seen_param_labels: set[str] = set()
+    for parameter_label, arc_name in parameter_entries:
+        if parameter_label in seen_param_labels:
+            continue
+        seen_param_labels.add(parameter_label)
+        parameter_el = parameter_index.get(parameter_label)
+        if parameter_el is None:
+            continue
+        parameters.append(_parse_parameter(parameter_el, arc_name=arc_name, scope="local"))
+
+    preconditions: list[PreconditionDefinition] = []
+    seen_precondition_labels: set[str] = set()
+    for precondition_label, _arc_name in precondition_entries:
+        if precondition_label in seen_precondition_labels:
+            continue
+        seen_precondition_labels.add(precondition_label)
+        precondition_el = precondition_index.get(precondition_label)
+        if precondition_el is None:
+            continue
+        parsed_precondition = _parse_precondition(precondition_el)
+        if parsed_precondition is not None:
+            preconditions.append(parsed_precondition)
+
     return FormulaOutputDefinition(
         formula_id=formula_id,
         label=_xlabel or _id or None,
@@ -888,7 +1159,14 @@ def _parse_output_formula(
         aspect_model=(formula_el.get("aspectModel") or "").strip() or None,
         implicit_filtering=(formula_el.get("implicitFiltering") or "true").lower() != "false",
         variables=tuple(variables),
+        general_variables=tuple(general_variables),
+        parameters=tuple(parameters),
+        preconditions=tuple(preconditions),
         aspect_rules=_parse_formula_aspect_rules(formula_el),
+        variable_arcs=variable_arcs,
+        parameter_arcs=parameter_arcs,
+        precondition_arcs=precondition_arcs,
+        referenced_names=_extract_referenced_names(formula_el.get("value")),
         namespaces=_element_nsmap(formula_el),
         source_path=str(source_path) if source_path is not None else None,
     )
@@ -1012,18 +1290,21 @@ def _parse_formula_root(
 ) -> FormulaAssertionSet:
     """Parse assertions from a link:linkbase root (including under gen:link / assertionSet)."""
     fact_variable_index = _build_label_to_element(root, _TAG_FACT_VARIABLE)
+    general_variable_index = _build_label_to_element(root, _TAG_GENERAL_VARIABLE)
+    parameter_index = _build_label_to_element(root, _TAG_PARAMETER)
+    precondition_index = _build_label_to_element(root, _TAG_PRECONDITION)
     filter_index = _build_filter_label_index(root)
     filter_arc_map = _build_filter_arc_map(root)
     variable_set_filter_arc_map = _build_variable_set_filter_arc_map(root)
     bool_arc_map = _build_boolean_filter_arc_map(root)
 
-    variable_arc_map: dict[str, list[tuple[str, str]]] = {}
-    for arc in root.iter(_TAG_VARIABLE_ARC):
-        frm = arc.get(_ATTR_XLINK_FROM, "")
-        to = arc.get(_ATTR_XLINK_TO, "")
-        arc_name = arc.get("name", "")
-        if frm and to:
-            variable_arc_map.setdefault(frm, []).append((to, arc_name))
+    variable_arc_meta_map, variable_arc_map = _build_resource_arc_map(root, tag=_TAG_VARIABLE_ARC)
+    parameter_arc_meta_map, parameter_arc_map = _build_resource_arc_map(
+        root, tag=_TAG_PARAMETER_ARC
+    )
+    precondition_arc_meta_map, precondition_arc_map = _build_resource_arc_map(
+        root, tag=_TAG_PRECONDITION_ARC
+    )
 
     assertions: list[FormulaAssertion] = []
     output_formulas: list[FormulaOutputDefinition] = []
@@ -1034,7 +1315,15 @@ def _parse_formula_root(
             result = _parse_assertion(
                 assertion_el,
                 variable_arc_map,
+                variable_arc_meta_map,
+                parameter_arc_map,
+                parameter_arc_meta_map,
+                precondition_arc_map,
+                precondition_arc_meta_map,
                 fact_variable_index,
+                general_variable_index,
+                parameter_index,
+                precondition_index,
                 filter_arc_map,
                 filter_index,
                 variable_set_filter_arc_map=variable_set_filter_arc_map,
@@ -1049,7 +1338,15 @@ def _parse_formula_root(
         result = _parse_output_formula(
             formula_el,
             variable_arc_map,
+            variable_arc_meta_map,
+            parameter_arc_map,
+            parameter_arc_meta_map,
+            precondition_arc_map,
+            precondition_arc_meta_map,
             fact_variable_index,
+            general_variable_index,
+            parameter_index,
+            precondition_index,
             filter_arc_map,
             filter_index,
             variable_set_filter_arc_map=variable_set_filter_arc_map,
@@ -1059,8 +1356,18 @@ def _parse_formula_root(
         if result is not None:
             output_formulas.append(result)
 
+    global_parameter_targets: set[str] = {
+        to_label for arc_entries in parameter_arc_map.values() for to_label, _name in arc_entries
+    }
+    global_parameters = tuple(
+        _parse_parameter(parameter_el, scope="global")
+        for label, parameter_el in parameter_index.items()
+        if label not in global_parameter_targets
+    )
+
     return FormulaAssertionSet(
         assertions=tuple(assertions),
         output_formulas=tuple(output_formulas),
+        global_parameters=global_parameters,
         abstract_count=abstract_count,
     )

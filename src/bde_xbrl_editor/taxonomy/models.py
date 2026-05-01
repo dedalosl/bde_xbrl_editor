@@ -388,6 +388,7 @@ class XPathFilterDefinition:
 
     xpath_expr: str
     namespaces: dict[str, str] = field(default_factory=dict)
+    filter_type: str = "general"
 
 
 @dataclass(frozen=True)
@@ -421,6 +422,58 @@ class FactVariableDefinition:
     fallback_value: str | None = None
     xpath_filters: tuple[XPathFilterDefinition, ...] = field(default_factory=tuple)
     boolean_filters: tuple[BooleanFilterDefinition, ...] = field(default_factory=tuple)
+    arc_name: str | None = None
+    referenced_names: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True)
+class GeneralVariableDefinition:
+    """A variable:generalVariable resource bound through variable-set arcs."""
+
+    variable_name: str
+    select_xpath: str = "."
+    bind_as_sequence: bool = False
+    fallback_value: str | None = None
+    arc_name: str | None = None
+    namespaces: dict[str, str] = field(default_factory=dict)
+    referenced_names: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True)
+class ParameterDefinition:
+    """A variable:parameter resource (global or local)."""
+
+    parameter_name: str
+    select_xpath: str | None = None
+    as_type: str | None = None
+    required: bool = False
+    arc_name: str | None = None
+    scope: Literal["global", "local"] = "global"
+    namespaces: dict[str, str] = field(default_factory=dict)
+    referenced_names: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True)
+class PreconditionDefinition:
+    """A variable:precondition resource attached to a variable set."""
+
+    precondition_id: str
+    test_xpath: str
+    namespaces: dict[str, str] = field(default_factory=dict)
+    referenced_names: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True)
+class FormulaArc:
+    """Formula linkbase relationship metadata used for effective graph resolution."""
+
+    from_label: str
+    to_label: str
+    arcrole: str
+    name: str | None = None
+    order: float | None = None
+    priority: int | None = None
+    use: str = "optional"
 
 
 @dataclass(frozen=True)
@@ -432,7 +485,14 @@ class FormulaAssertion:
     severity: Any  # ValidationSeverity — late-bound to avoid circular import
     abstract: bool
     variables: tuple[FactVariableDefinition, ...]
-    precondition_xpath: str | None
+    general_variables: tuple[GeneralVariableDefinition, ...] = field(default_factory=tuple)
+    parameters: tuple[ParameterDefinition, ...] = field(default_factory=tuple)
+    preconditions: tuple[PreconditionDefinition, ...] = field(default_factory=tuple)
+    precondition_xpath: str | None = None
+    variable_arcs: tuple[FormulaArc, ...] = field(default_factory=tuple)
+    parameter_arcs: tuple[FormulaArc, ...] = field(default_factory=tuple)
+    precondition_arcs: tuple[FormulaArc, ...] = field(default_factory=tuple)
+    referenced_names: tuple[str, ...] = field(default_factory=tuple)
     table_id: str | None = None
     table_label: str | None = None
     label_resources: tuple[AssertionTextResource, ...] = field(default_factory=tuple)
@@ -489,7 +549,14 @@ class FormulaOutputDefinition:
     aspect_model: str | None
     implicit_filtering: bool
     variables: tuple[FactVariableDefinition, ...] = field(default_factory=tuple)
+    general_variables: tuple[GeneralVariableDefinition, ...] = field(default_factory=tuple)
+    parameters: tuple[ParameterDefinition, ...] = field(default_factory=tuple)
+    preconditions: tuple[PreconditionDefinition, ...] = field(default_factory=tuple)
     aspect_rules: tuple[FormulaAspectRule, ...] = field(default_factory=tuple)
+    variable_arcs: tuple[FormulaArc, ...] = field(default_factory=tuple)
+    parameter_arcs: tuple[FormulaArc, ...] = field(default_factory=tuple)
+    precondition_arcs: tuple[FormulaArc, ...] = field(default_factory=tuple)
+    referenced_names: tuple[str, ...] = field(default_factory=tuple)
     namespaces: dict[str, str] = field(default_factory=dict)
     source_path: str | None = None
 
@@ -500,6 +567,7 @@ class FormulaAssertionSet:
 
     assertions: tuple[FormulaAssertion, ...] = field(default_factory=tuple)
     output_formulas: tuple[FormulaOutputDefinition, ...] = field(default_factory=tuple)
+    global_parameters: tuple[ParameterDefinition, ...] = field(default_factory=tuple)
     abstract_count: int = 0
 
 

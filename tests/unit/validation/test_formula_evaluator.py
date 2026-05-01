@@ -284,6 +284,51 @@ class TestValueAssertion:
         assert findings[0].status == ValidationStatus.NOT_EVALUATED
         assert findings[0].severity is None
 
+    def test_value_assertion_evaluates_present_operand_with_missing_fallback_operand(self) -> None:
+        var_a = FactVariableDefinition(
+            variable_name="a",
+            concept_filter=_qn("Amount"),
+        )
+        var_b = FactVariableDefinition(
+            variable_name="b",
+            concept_filter=_qn("MissingB"),
+            fallback_value="0",
+        )
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(
+                assertion_id="VA_PARTIAL_FALLBACK",
+                variables=(var_a, var_b),
+            ),
+            test_xpath="$a + $b = 42",
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
+        inst = _instance([_fact("Amount", value="42")])
+
+        findings = FormulaEvaluator(taxonomy).evaluate(inst)
+
+        assert len(findings) == 1
+        assert findings[0].status == ValidationStatus.PASS
+        assert findings[0].severity is None
+
+    def test_value_assertion_xpath_error_uses_xpath_error_code(self) -> None:
+        var_def = FactVariableDefinition(
+            variable_name="fact",
+            concept_filter=_qn("Amount"),
+        )
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(assertion_id="VA_XPATH_ERROR", variables=(var_def,)),
+            test_xpath="$fact != true()",
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
+        inst = _instance([_fact("Amount", value="0")])
+
+        findings = FormulaEvaluator(taxonomy).evaluate(inst)
+
+        assert len(findings) == 1
+        assert findings[0].rule_id == "err:XPTY0004"
+        assert findings[0].status == ValidationStatus.FAIL
+        assert findings[0].severity == ValidationSeverity.ERROR
+
     def test_value_assertion_with_missing_operand_without_fallback_is_not_evaluated(self) -> None:
         var_a = FactVariableDefinition(
             variable_name="a",
