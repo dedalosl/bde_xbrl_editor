@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from urllib.parse import unquote
 
 from lxml import etree
 
@@ -67,6 +68,7 @@ def _parse_expected_outcome(result_el: etree._Element | None) -> ExpectedOutcome
 
 
 def _resolve_suite_file(base_dir: Path, filename: str) -> Path:
+    filename = unquote(filename)
     resolved = (base_dir / filename).resolve()
     if resolved.exists() or "_" not in filename:
         return resolved
@@ -118,9 +120,7 @@ class ConformanceSuiteParser:
 
         return test_cases
 
-    def _parse_index(
-        self, index_path: Path, suite_def: SuiteDefinition
-    ) -> list[Path]:
+    def _parse_index(self, index_path: Path, suite_def: SuiteDefinition) -> list[Path]:
         """Parse the index XML and return absolute paths to all test case files."""
         try:
             tree = parse_xml_file(index_path)
@@ -202,9 +202,7 @@ class ConformanceSuiteParser:
                 variations.append(variation)
             except Exception as exc:  # noqa: BLE001
                 var_id = var_el.get("id", "?")
-                log.warning(
-                    "Skipping variation '%s' in '%s': %s", var_id, tc_path, exc
-                )
+                log.warning("Skipping variation '%s' in '%s': %s", var_id, tc_path, exc)
 
         return TestCase(
             test_case_id=test_case_id,

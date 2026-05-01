@@ -547,6 +547,7 @@ def _parse_fact_variable(
     return FactVariableDefinition(
         variable_name=variable_name,
         bind_as_sequence=(var_el.get("bindAsSequence") or "false").lower() == "true",
+        matches=(var_el.get("matches") or "false").lower() == "true",
         concept_filter=concept_filter,
         period_filter=period_filter,
         dimension_filters=tuple(dimension_filters),

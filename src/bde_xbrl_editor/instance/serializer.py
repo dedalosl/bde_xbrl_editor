@@ -116,12 +116,12 @@ def _collect_extra_nsmap(instance: XbrlInstance) -> dict[str, str]:
 
     # Build initial hint per namespace
     hints: dict[str, str] = {
-        ns: (preferred or _last_segment(ns))
-        for ns, preferred in ns_to_best.items()
+        ns: (preferred or _last_segment(ns)) for ns, preferred in ns_to_best.items()
     }
 
     # Detect clashing hints — promote clashing namespaces to org_segment
     from collections import Counter  # noqa: PLC0415
+
     clash = {hint for hint, count in Counter(hints.values()).items() if count > 1}
     final_hints: dict[str, str] = {}
     for ns, hint in hints.items():
@@ -152,6 +152,7 @@ def _qname_str(qname: QName, ns_to_prefix: dict[str, str]) -> str:
     if prefix:
         return f"{prefix}:{qname.local_name}"
     return str(qname)  # fallback (should not normally be reached)
+
 
 _XLINK_HREF = f"{{{XLINK_NS}}}href"
 _XLINK_TYPE = f"{{{XLINK_NS}}}type"
@@ -202,9 +203,7 @@ def _build_context_el(ctx: XbrlContext, ns_to_prefix: dict[str, str]) -> etree._
         if not container_dims[container_name] and not container_typed[container_name]:
             continue
         container_tag = (
-            f"{{{XBRLI_NS}}}segment"
-            if container_name == "segment"
-            else f"{{{XBRLI_NS}}}scenario"
+            f"{{{XBRLI_NS}}}segment" if container_name == "segment" else f"{{{XBRLI_NS}}}scenario"
         )
         container_el = etree.SubElement(ctx_el, container_tag)
         for dim_qname, member_qname in sorted(
@@ -225,7 +224,9 @@ def _build_context_el(ctx: XbrlContext, ns_to_prefix: dict[str, str]) -> etree._
                 attrib={"dimension": _qname_str(dim_qname, ns_to_prefix)},
             )
             typed_element_qname = (ctx.typed_dimension_elements or {}).get(dim_qname, dim_qname)
-            typed_el = etree.SubElement(tm, etree.QName(typed_element_qname.namespace, typed_element_qname.local_name))
+            typed_el = etree.SubElement(
+                tm, etree.QName(typed_element_qname.namespace, typed_element_qname.local_name)
+            )
             typed_el.text = typed_value
 
     return ctx_el
@@ -235,11 +236,13 @@ def _fill_period(period_el: etree._Element, period: ReportingPeriod) -> None:
     if period.period_type == "instant":
         inst_el = etree.SubElement(period_el, f"{{{XBRLI_NS}}}instant")
         inst_el.text = _date_str(period.instant_date)
-    else:
+    elif period.period_type == "duration":
         start_el = etree.SubElement(period_el, f"{{{XBRLI_NS}}}startDate")
         start_el.text = _date_str(period.start_date)
         end_el = etree.SubElement(period_el, f"{{{XBRLI_NS}}}endDate")
         end_el.text = _date_str(period.end_date)
+    else:
+        etree.SubElement(period_el, f"{{{XBRLI_NS}}}forever")
 
 
 def _build_unit_el(unit: XbrlUnit) -> etree._Element:
@@ -260,10 +263,10 @@ def _build_unit_el(unit: XbrlUnit) -> etree._Element:
     # Normalise measure URI to prefixed form if possible
     measure_uri = unit.measure_uri
     if measure_uri.startswith(ISO4217_NS + ":"):
-        currency = measure_uri[len(ISO4217_NS) + 1:]
+        currency = measure_uri[len(ISO4217_NS) + 1 :]
         measure_el.text = f"iso4217:{currency}"
     elif measure_uri.startswith(XBRLI_NS + ":"):
-        local = measure_uri[len(XBRLI_NS) + 1:]
+        local = measure_uri[len(XBRLI_NS) + 1 :]
         measure_el.text = f"xbrli:{local}"
     else:
         measure_el.text = measure_uri
@@ -311,15 +314,9 @@ def _build_bde_preambulo_from_filing_indicators(instance: XbrlInstance) -> BdePr
         or next(iter(instance.contexts), "")
     )
     entidad_presentadora = (
-        instance.bde_preambulo.entidad_presentadora
-        if instance.bde_preambulo is not None
-        else ""
+        instance.bde_preambulo.entidad_presentadora if instance.bde_preambulo is not None else ""
     )
-    tipo_envio = (
-        instance.bde_preambulo.tipo_envio
-        if instance.bde_preambulo is not None
-        else ""
-    )
+    tipo_envio = instance.bde_preambulo.tipo_envio if instance.bde_preambulo is not None else ""
     estados = [
         BdeEstadoReportado(
             codigo=fi.template_id,
@@ -389,9 +386,7 @@ class InstanceSerializer:
             or is_bde_schema_ref(instance.schema_ref_href)
         )
         if use_eurofiling_indicators and instance.filing_indicators:
-            fi_wrapper = etree.SubElement(
-                root, f"{{{FILING_IND_NS}}}fIndicators"
-            )
+            fi_wrapper = etree.SubElement(root, f"{{{FILING_IND_NS}}}fIndicators")
             for fi in instance.filing_indicators:
                 fi_el = etree.SubElement(
                     fi_wrapper,

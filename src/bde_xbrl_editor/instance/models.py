@@ -40,8 +40,7 @@ class InvalidReportingPeriodError(InstanceCreationError):
         self.reason = reason
         super().__init__(
             f"Invalid reporting period: taxonomy requires '{period_type_required}', "
-            f"got '{period_type_provided}'"
-            + (f" — {reason}" if reason else "")
+            f"got '{period_type_provided}'" + (f" — {reason}" if reason else "")
         )
 
 
@@ -95,6 +94,7 @@ class InstanceSaveError(Exception):
 
 
 # Feature 004 error types
+
 
 class InstanceParseError(Exception):
     """XML not well-formed, missing xbrli:xbrl root, or missing link:schemaRef."""
@@ -164,7 +164,7 @@ class ReportingEntity:
 class ReportingPeriod:
     """The time interval this instance covers."""
 
-    period_type: Literal["instant", "duration"]
+    period_type: Literal["instant", "duration", "forever"]
     instant_date: date | None = None
     start_date: date | None = None
     end_date: date | None = None
@@ -188,9 +188,20 @@ class ReportingPeriod:
                     "duration",
                     f"end_date ({self.end_date}) must be >= start_date ({self.start_date})",
                 )
+        elif self.period_type == "forever":
+            if (
+                self.instant_date is not None
+                or self.start_date is not None
+                or self.end_date is not None
+            ):
+                raise InvalidReportingPeriodError(
+                    "forever",
+                    "forever",
+                    "forever periods must not set instant_date, start_date, or end_date",
+                )
         else:
             raise InvalidReportingPeriodError(
-                "instant or duration",
+                "instant, duration, or forever",
                 str(self.period_type),
                 f"Unknown period_type: '{self.period_type}'",
             )
@@ -217,9 +228,7 @@ class XbrlContext:
     context_element: Literal["scenario", "segment"] = "scenario"
     # Per-dimension container: "segment" or "scenario" for each dimension QName.
     # Used to validate xbrldt:contextElement constraints on hypercubes.
-    dim_containers: dict[QName, Literal["segment", "scenario"]] = field(
-        default_factory=dict
-    )
+    dim_containers: dict[QName, Literal["segment", "scenario"]] = field(default_factory=dict)
     # Immutable S-equal fingerprint (XBRL 2.1); set at parse time or by context_builder.
     # When None, validation uses :func:`bde_xbrl_editor.instance.s_equal.effective_s_equal_key`.
     s_equal_key: tuple | None = None

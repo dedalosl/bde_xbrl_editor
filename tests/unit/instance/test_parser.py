@@ -552,6 +552,29 @@ def test_parses_duration_context(tmp_path: Path) -> None:
     assert ctx.period.end_date == date(2023, 12, 31)
 
 
+def test_parses_forever_context(tmp_path: Path) -> None:
+    body = textwrap.dedent("""\
+        <xbrli:context id="F1">
+          <xbrli:entity>
+            <xbrli:identifier scheme="http://bde.es">ES9999</xbrli:identifier>
+          </xbrli:entity>
+          <xbrli:period>
+            <xbrli:forever/>
+          </xbrli:period>
+        </xbrli:context>
+    """)
+    p = _write_xbrl(tmp_path, body)
+    parser, _ = _make_parser()
+
+    instance, _ = parser.load(p)
+
+    ctx = instance.contexts["F1"]
+    assert ctx.period.period_type == "forever"
+    assert ctx.period.instant_date is None
+    assert ctx.period.start_date is None
+    assert ctx.period.end_date is None
+
+
 # ---------------------------------------------------------------------------
 # Tests: unit parsing
 # ---------------------------------------------------------------------------

@@ -69,6 +69,7 @@ def clear_evaluation_context() -> None:
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+
 def _current_fact() -> Any:
     return _eval_context.get("_current_fact")
 
@@ -126,8 +127,10 @@ def _context_from_arg(arg: Any) -> Any:
 def _to_xsd_date(d: Any) -> Any:
     """Convert a Python date/datetime to elementpath Date10."""
     from datetime import date, datetime
+
     try:
         from elementpath.datatypes import Date10
+
         if isinstance(d, datetime):
             return Date10.fromstring(d.date().isoformat())
         if isinstance(d, date):
@@ -140,8 +143,10 @@ def _to_xsd_date(d: Any) -> Any:
 def _to_xsd_datetime(d: Any) -> Any:
     """Convert a Python date/datetime to elementpath DateTime10."""
     from datetime import date, datetime
+
     try:
         from elementpath.datatypes import DateTime10
+
         if isinstance(d, datetime):
             return DateTime10.fromstring(d.isoformat())
         if isinstance(d, date):
@@ -156,6 +161,7 @@ def _to_xsd_datetime(d: Any) -> Any:
 # ---------------------------------------------------------------------------
 
 # ── Period functions ──────────────────────────────────────────────────────
+
 
 def xfi_context(fact_arg: Any) -> Any:
     """xfi:context($item) → context identifier string."""
@@ -223,6 +229,8 @@ def xfi_is_forever_period(period_arg: Any) -> bool:
         p = _period_of(ctx)
     if p is None:
         return False
+    if getattr(p, "period_type", "") == "forever":
+        return True
     return (
         getattr(p, "period_type", "") == "duration"
         and getattr(p, "start_date", None) is None
@@ -270,6 +278,7 @@ def xfi_period_end(period_arg: Any) -> Any:
 
 
 # ── Entity / identifier functions ─────────────────────────────────────────
+
 
 def xfi_entity(fact_arg: Any) -> str:
     """xfi:entity($item) → entity identifier string."""
@@ -374,6 +383,7 @@ def xfi_context_scenario(context_arg: Any) -> list:
 
 # ── Numeric fact properties ───────────────────────────────────────────────
 
+
 def xfi_decimals(fact_arg: Any) -> int:
     """xfi:decimals($fact) → xs:integer @decimals attribute."""
     fact = _fact_from_arg(fact_arg)
@@ -422,6 +432,7 @@ def xfi_is_fraction(fact_arg: Any) -> bool:
 
 # ── Unit functions ────────────────────────────────────────────────────────
 
+
 def xfi_unit(fact_arg: Any) -> str:
     """xfi:unit($fact) → unit measure URI string."""
     unit = _current_unit()
@@ -453,6 +464,7 @@ def xfi_measure_name(measure_arg: Any) -> str:
 
 
 # ── Dimension functions ───────────────────────────────────────────────────
+
 
 def _get_context_dimensions(fact_arg: Any) -> dict:
     """Return explicit dimensions for the relevant context."""
@@ -486,6 +498,7 @@ def _qname_from_arg(qname_arg: Any) -> Any:
     if s.startswith("{"):
         try:
             from bde_xbrl_editor.taxonomy.models import QName
+
             return QName.from_clark(s)
         except ValueError as exc:
             log.debug("Could not parse QName argument %r: %s", qname_arg, exc)
@@ -564,9 +577,7 @@ def xfi_fact_typed_dimensions(fact_arg: Any) -> list[str]:
     return [str(k) for k in dims]
 
 
-def xfi_fact_dimension_s_equal(
-    fact_arg: Any, dim_qname_arg: Any, value_arg: Any
-) -> bool:
+def xfi_fact_dimension_s_equal(fact_arg: Any, dim_qname_arg: Any, value_arg: Any) -> bool:
     """xfi:fact-dimension-s-equal($fact, $dim, $value) → boolean equality check."""
     return xfi_fact_has_explicit_dimension_value(fact_arg, dim_qname_arg, value_arg)
 
@@ -593,6 +604,7 @@ def xfi_fact_scenario_remainder(fact_arg: Any) -> list:
 
 
 # ── Fact equality / comparison ────────────────────────────────────────────
+
 
 def _fact_value_decimal(fact_arg: Any) -> Decimal | None:
     fact = _fact_from_arg(fact_arg)
@@ -701,6 +713,7 @@ def xfi_duplicate_tuple(fact1_arg: Any, fact2_arg: Any) -> bool:
 
 # ── Set variants (variadic) ───────────────────────────────────────────────
 
+
 def xfi_identical_node_set(*args: Any) -> bool:
     """xfi:identical-node-set($nodes) → true if all nodes identical."""
     items = list(args)
@@ -740,6 +753,7 @@ def xfi_u_equal_set(*args: Any) -> bool:
 
 
 # ── Facts / instance access ───────────────────────────────────────────────
+
 
 def xfi_facts() -> list[Any]:
     """xfi:facts() → all facts in the instance."""
@@ -886,6 +900,7 @@ def xfi_single_unique_instant_date() -> Any:
 
 # ── Filing indicators ─────────────────────────────────────────────────────
 
+
 def xfi_positive_filing_indicators() -> list[str]:
     """xfi:positive-filing-indicators() → sequence of template codes."""
     instance = _eval_context.get("_instance")
@@ -923,6 +938,7 @@ def xfi_negative_filing_indicator(indicators_arg: Any, template_code_arg: Any) -
 
 
 # ── Linkbase / taxonomy access ────────────────────────────────────────────
+
 
 def xfi_linkbase_link_roles(linkbase_arg: Any = None) -> list[str]:
     """xfi:linkbase-link-roles($linkbase) → empty (not modelled)."""
@@ -991,6 +1007,7 @@ def xfi_relationship_link_name(rel_arg: Any) -> str:
 
 # ── Concept properties ────────────────────────────────────────────────────
 
+
 def xfi_concept_balance(concept_arg: Any) -> str:
     """xfi:concept-balance($concept) → balance type string."""
     return ""
@@ -1028,6 +1045,7 @@ def xfi_filter_member_network_selection(*args: Any) -> list:
 
 # ── Formatting ────────────────────────────────────────────────────────────
 
+
 def xfi_format_number(value_arg: Any, picture_arg: Any) -> str:
     """xfi:format-number($value, $picture) → formatted string."""
     try:
@@ -1053,12 +1071,14 @@ def xfi_distinct_entity_strings() -> list[str]:
 # Backward-compatible aliases (old no-arg forms used before registry rewrite)
 # ---------------------------------------------------------------------------
 
+
 def xfi_decimal(*_args: Any) -> int:
     """Legacy alias: xfi_decimal() → same as xfi_decimals(None)."""
     return xfi_decimals(None)
 
 
 # ── Tuples (not used in BDE, stubs only) ─────────────────────────────────
+
 
 def xfi_items_in_tuple(tuple_arg: Any) -> list:
     """xfi:items-in-tuple($tuple) → empty (tuples not used in BDE)."""
@@ -1078,124 +1098,124 @@ def xfi_tuples_in_tuple(tuple_arg: Any) -> list:
 # nargs_hint: None = variadic, int = fixed
 _XFI_FUNCTIONS: list[tuple[str, Any]] = [
     # Period
-    ("context",                        xfi_context),
-    ("context-period",                 xfi_context_period),
-    ("period",                         xfi_period),
-    ("is-instant-period",              xfi_is_instant_period),
-    ("is-duration-period",             xfi_is_duration_period),
-    ("is-start-end-period",            xfi_is_start_end_period),
-    ("is-forever-period",              xfi_is_forever_period),
-    ("period-instant",                 xfi_period_instant),
-    ("period-start",                   xfi_period_start),
-    ("period-end",                     xfi_period_end),
+    ("context", xfi_context),
+    ("context-period", xfi_context_period),
+    ("period", xfi_period),
+    ("is-instant-period", xfi_is_instant_period),
+    ("is-duration-period", xfi_is_duration_period),
+    ("is-start-end-period", xfi_is_start_end_period),
+    ("is-forever-period", xfi_is_forever_period),
+    ("period-instant", xfi_period_instant),
+    ("period-start", xfi_period_start),
+    ("period-end", xfi_period_end),
     # Entity / identifier
-    ("entity",                         xfi_entity),
-    ("context-entity",                 xfi_context_entity),
-    ("identifier",                     xfi_identifier),
-    ("context-identifier",             xfi_context_identifier),
-    ("entity-identifier",              xfi_entity_identifier),
-    ("identifier-value",               xfi_identifier_value),
-    ("identifier-scheme",              xfi_identifier_scheme),
-    ("fact-identifier-value",          xfi_fact_identifier_value),
-    ("fact-identifier-scheme",         xfi_fact_identifier_scheme),
-    ("segment",                        xfi_segment),
-    ("entity-segment",                 xfi_entity_segment),
-    ("context-segment",                xfi_context_segment),
-    ("scenario",                       xfi_scenario),
-    ("context-scenario",               xfi_context_scenario),
+    ("entity", xfi_entity),
+    ("context-entity", xfi_context_entity),
+    ("identifier", xfi_identifier),
+    ("context-identifier", xfi_context_identifier),
+    ("entity-identifier", xfi_entity_identifier),
+    ("identifier-value", xfi_identifier_value),
+    ("identifier-scheme", xfi_identifier_scheme),
+    ("fact-identifier-value", xfi_fact_identifier_value),
+    ("fact-identifier-scheme", xfi_fact_identifier_scheme),
+    ("segment", xfi_segment),
+    ("entity-segment", xfi_entity_segment),
+    ("context-segment", xfi_context_segment),
+    ("scenario", xfi_scenario),
+    ("context-scenario", xfi_context_scenario),
     # Numeric properties
-    ("decimals",                       xfi_decimals),
-    ("precision",                      xfi_precision),
-    ("is-numeric",                     xfi_is_numeric),
-    ("is-non-numeric",                 xfi_is_non_numeric),
-    ("is-fraction",                    xfi_is_fraction),
+    ("decimals", xfi_decimals),
+    ("precision", xfi_precision),
+    ("is-numeric", xfi_is_numeric),
+    ("is-non-numeric", xfi_is_non_numeric),
+    ("is-fraction", xfi_is_fraction),
     # Unit
-    ("unit",                           xfi_unit),
-    ("unit-numerator",                 xfi_unit_numerator),
-    ("unit-denominator",               xfi_unit_denominator),
-    ("measure-name",                   xfi_measure_name),
+    ("unit", xfi_unit),
+    ("unit-numerator", xfi_unit_numerator),
+    ("unit-denominator", xfi_unit_denominator),
+    ("measure-name", xfi_measure_name),
     # Dimensions
-    ("fact-has-explicit-dimension",    xfi_fact_has_explicit_dimension),
-    ("fact-has-typed-dimension",       xfi_fact_has_typed_dimension),
+    ("fact-has-explicit-dimension", xfi_fact_has_explicit_dimension),
+    ("fact-has-typed-dimension", xfi_fact_has_typed_dimension),
     ("fact-has-explicit-dimension-value", xfi_fact_has_explicit_dimension_value),
-    ("fact-explicit-dimension-value",  xfi_fact_explicit_dimension_value),
-    ("fact-typed-dimension-value",     xfi_fact_typed_dimension_value),
+    ("fact-explicit-dimension-value", xfi_fact_explicit_dimension_value),
+    ("fact-typed-dimension-value", xfi_fact_typed_dimension_value),
     ("fact-typed-dimension-simple-value", xfi_fact_typed_dimension_simple_value),
-    ("fact-explicit-dimensions",       xfi_fact_explicit_dimensions),
-    ("fact-typed-dimensions",          xfi_fact_typed_dimensions),
-    ("fact-dimension-s-equal",         xfi_fact_dimension_s_equal),
-    ("fact-dimension-s-equal2",        xfi_fact_dimension_s_equal2),
-    ("fact-segment-remainder",         xfi_fact_segment_remainder),
-    ("fact-scenario-remainder",        xfi_fact_scenario_remainder),
+    ("fact-explicit-dimensions", xfi_fact_explicit_dimensions),
+    ("fact-typed-dimensions", xfi_fact_typed_dimensions),
+    ("fact-dimension-s-equal", xfi_fact_dimension_s_equal),
+    ("fact-dimension-s-equal2", xfi_fact_dimension_s_equal2),
+    ("fact-segment-remainder", xfi_fact_segment_remainder),
+    ("fact-scenario-remainder", xfi_fact_scenario_remainder),
     # Equality / comparison
-    ("v-equal",                        xfi_v_equal),
-    ("c-equal",                        xfi_c_equal),
-    ("p-equal",                        xfi_p_equal),
-    ("u-equal",                        xfi_u_equal),
-    ("s-equal",                        xfi_s_equal),
-    ("cu-equal",                       xfi_cu_equal),
-    ("pc-equal",                       xfi_pc_equal),
-    ("pcu-equal",                      xfi_pcu_equal),
-    ("x-equal",                        xfi_x_equal),
-    ("start-equal",                    xfi_start_equal),
-    ("end-equal",                      xfi_end_equal),
-    ("identical-nodes",                xfi_identical_nodes),
-    ("duplicate-item",                 xfi_duplicate_item),
-    ("duplicate-tuple",                xfi_duplicate_tuple),
+    ("v-equal", xfi_v_equal),
+    ("c-equal", xfi_c_equal),
+    ("p-equal", xfi_p_equal),
+    ("u-equal", xfi_u_equal),
+    ("s-equal", xfi_s_equal),
+    ("cu-equal", xfi_cu_equal),
+    ("pc-equal", xfi_pc_equal),
+    ("pcu-equal", xfi_pcu_equal),
+    ("x-equal", xfi_x_equal),
+    ("start-equal", xfi_start_equal),
+    ("end-equal", xfi_end_equal),
+    ("identical-nodes", xfi_identical_nodes),
+    ("duplicate-item", xfi_duplicate_item),
+    ("duplicate-tuple", xfi_duplicate_tuple),
     # Set equality
-    ("identical-node-set",             xfi_identical_node_set),
-    ("s-equal-set",                    xfi_s_equal_set),
-    ("v-equal-set",                    xfi_v_equal_set),
-    ("c-equal-set",                    xfi_c_equal_set),
-    ("u-equal-set",                    xfi_u_equal_set),
+    ("identical-node-set", xfi_identical_node_set),
+    ("s-equal-set", xfi_s_equal_set),
+    ("v-equal-set", xfi_v_equal_set),
+    ("c-equal-set", xfi_c_equal_set),
+    ("u-equal-set", xfi_u_equal_set),
     # Facts / instance
-    ("facts",                          xfi_facts),
-    ("taxonomy-refs",                  xfi_taxonomy_refs),
-    ("any-identifier",                 xfi_any_identifier),
-    ("unique-identifiers",             xfi_unique_identifiers),
-    ("single-unique-identifier",       xfi_single_unique_identifier),
-    ("any-start-date",                 xfi_any_start_date),
-    ("any-end-date",                   xfi_any_end_date),
-    ("any-instant-date",               xfi_any_instant_date),
-    ("unique-start-dates",             xfi_unique_start_dates),
-    ("unique-end-dates",               xfi_unique_end_dates),
-    ("unique-instant-dates",           xfi_unique_instant_dates),
-    ("single-unique-start-date",       xfi_single_unique_start_date),
-    ("single-unique-end-date",         xfi_single_unique_end_date),
-    ("single-unique-instant-date",     xfi_single_unique_instant_date),
+    ("facts", xfi_facts),
+    ("taxonomy-refs", xfi_taxonomy_refs),
+    ("any-identifier", xfi_any_identifier),
+    ("unique-identifiers", xfi_unique_identifiers),
+    ("single-unique-identifier", xfi_single_unique_identifier),
+    ("any-start-date", xfi_any_start_date),
+    ("any-end-date", xfi_any_end_date),
+    ("any-instant-date", xfi_any_instant_date),
+    ("unique-start-dates", xfi_unique_start_dates),
+    ("unique-end-dates", xfi_unique_end_dates),
+    ("unique-instant-dates", xfi_unique_instant_dates),
+    ("single-unique-start-date", xfi_single_unique_start_date),
+    ("single-unique-end-date", xfi_single_unique_end_date),
+    ("single-unique-instant-date", xfi_single_unique_instant_date),
     # Filing indicators
-    ("positive-filing-indicators",     xfi_positive_filing_indicators),
-    ("negative-filing-indicators",     xfi_negative_filing_indicators),
-    ("positive-filing-indicator",      xfi_positive_filing_indicator),
-    ("negative-filing-indicator",      xfi_negative_filing_indicator),
+    ("positive-filing-indicators", xfi_positive_filing_indicators),
+    ("negative-filing-indicators", xfi_negative_filing_indicators),
+    ("positive-filing-indicator", xfi_positive_filing_indicator),
+    ("negative-filing-indicator", xfi_negative_filing_indicator),
     # Linkbase / taxonomy
-    ("linkbase-link-roles",            xfi_linkbase_link_roles),
-    ("concept-label",                  xfi_concept_label),
-    ("arcrole-definition",             xfi_arcrole_definition),
-    ("role-definition",                xfi_role_definition),
-    ("fact-footnotes",                 xfi_fact_footnotes),
-    ("concept-relationships",          xfi_concept_relationships),
-    ("relationship-from-concept",      xfi_relationship_from_concept),
-    ("relationship-to-concept",        xfi_relationship_to_concept),
+    ("linkbase-link-roles", xfi_linkbase_link_roles),
+    ("concept-label", xfi_concept_label),
+    ("arcrole-definition", xfi_arcrole_definition),
+    ("role-definition", xfi_role_definition),
+    ("fact-footnotes", xfi_fact_footnotes),
+    ("concept-relationships", xfi_concept_relationships),
+    ("relationship-from-concept", xfi_relationship_from_concept),
+    ("relationship-to-concept", xfi_relationship_to_concept),
     ("distinct-nonAbstract-parent-concepts", xfi_distinct_nonabstract_parent_concepts),
-    ("relationship-attribute",         xfi_relationship_attribute),
-    ("relationship-link-attribute",    xfi_relationship_link_attribute),
-    ("relationship-name",              xfi_relationship_name),
-    ("relationship-link-name",         xfi_relationship_link_name),
+    ("relationship-attribute", xfi_relationship_attribute),
+    ("relationship-link-attribute", xfi_relationship_link_attribute),
+    ("relationship-name", xfi_relationship_name),
+    ("relationship-link-name", xfi_relationship_link_name),
     # Concept properties
-    ("concept-balance",                xfi_concept_balance),
-    ("concept-period-type",            xfi_concept_period_type),
-    ("concept-custom-attribute",       xfi_concept_custom_attribute),
-    ("concept-data-type",              xfi_concept_data_type),
+    ("concept-balance", xfi_concept_balance),
+    ("concept-period-type", xfi_concept_period_type),
+    ("concept-custom-attribute", xfi_concept_custom_attribute),
+    ("concept-data-type", xfi_concept_data_type),
     ("concept-data-type-derived-from", xfi_concept_data_type_derived_from),
-    ("concept-substitutions",          xfi_concept_substitutions),
+    ("concept-substitutions", xfi_concept_substitutions),
     ("filter-member-network-selection", xfi_filter_member_network_selection),
     # Formatting
-    ("format-number",                  xfi_format_number),
-    ("distinct-entity-strings",        xfi_distinct_entity_strings),
+    ("format-number", xfi_format_number),
+    ("distinct-entity-strings", xfi_distinct_entity_strings),
     # Tuples
-    ("items-in-tuple",                 xfi_items_in_tuple),
-    ("tuples-in-tuple",                xfi_tuples_in_tuple),
+    ("items-in-tuple", xfi_items_in_tuple),
+    ("tuples-in-tuple", xfi_tuples_in_tuple),
 ]
 
 
@@ -1306,6 +1326,7 @@ _IAF_FUNCTIONS: list[tuple[str, Any, tuple[str, ...]]] = [
 # Eurofiling extra functions (efn: namespace)
 # ---------------------------------------------------------------------------
 
+
 def efn_imp(*args: Any) -> bool:
     """efn:imp(P, Q) — logical implication: if P then Q (i.e. not P or Q)."""
     if len(args) < 2:
@@ -1380,7 +1401,9 @@ def _select_custom_functions(
         key = queue.pop()
         for definition in by_name.get(key, []):
             for step in definition.steps:
-                for nested_prefix, nested_local in _CUSTOM_FUNCTION_CALL_RE.findall(step.expression):
+                for nested_prefix, nested_local in _CUSTOM_FUNCTION_CALL_RE.findall(
+                    step.expression
+                ):
                     nested_key = (nested_prefix, nested_local)
                     if nested_key in by_name and nested_key not in selected_keys:
                         selected_keys.add(nested_key)
@@ -1468,10 +1491,14 @@ def build_formula_parser(
     ns.setdefault("iaf", _IAF_NS)
     parser = cls(namespaces=ns)
     if custom_functions:
-        selected_functions = _select_custom_functions(
-            custom_functions,
-            tuple(expression_hints),
-        ) if expression_hints else custom_functions
+        selected_functions = (
+            _select_custom_functions(
+                custom_functions,
+                tuple(expression_hints),
+            )
+            if expression_hints
+            else custom_functions
+        )
         if selected_functions:
             register_custom_functions(
                 parser,

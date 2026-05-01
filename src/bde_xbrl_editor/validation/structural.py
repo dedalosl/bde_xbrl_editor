@@ -34,6 +34,12 @@ class _FactAnalysis:
     duplicate_facts: list[ValidationFinding]
 
 
+def _period_type_matches_concept(concept_period_type: str, context_period_type: str) -> bool:
+    if concept_period_type == context_period_type:
+        return True
+    return concept_period_type == "duration" and context_period_type == "forever"
+
+
 def _is_iso4217_currency_code(local_name: str) -> bool:
     """ISO 4217 alphabetic codes are three letters (case-insensitive)."""
     code = local_name.strip().upper()
@@ -303,7 +309,7 @@ class StructuralConformanceValidator:
             elif (
                 concept is not None
                 and ctx.period is not None
-                and concept.period_type != ctx.period.period_type
+                and not _period_type_matches_concept(concept.period_type, ctx.period.period_type)
             ):
                 period_type_mismatches.append(
                     ValidationFinding(
@@ -558,7 +564,7 @@ class StructuralConformanceValidator:
             ctx = instance.contexts.get(fact.context_ref)
             if ctx is None or ctx.period is None:
                 continue
-            if concept.period_type != ctx.period.period_type:
+            if not _period_type_matches_concept(concept.period_type, ctx.period.period_type):
                 findings.append(
                     ValidationFinding(
                         rule_id="structural:period-type-mismatch",
@@ -729,13 +735,13 @@ class StructuralConformanceValidator:
     @staticmethod
     def _shares_unit_finding(fact: Fact, unit: XbrlUnit) -> ValidationFinding | None:
         expected = QName(namespace=NS_XBRLI, local_name="shares")
-        measure_count = (
-            0 if unit.unit_form != "simple" else _effective_simple_measure_count(unit)
-        )
+        measure_count = 0 if unit.unit_form != "simple" else _effective_simple_measure_count(unit)
         measures = (
             unit.simple_measure_qnames
             if unit.simple_measure_qnames
-            else ((_resolved_unit_measure_qname(unit),) if _resolved_unit_measure_qname(unit) else ())
+            else (
+                (_resolved_unit_measure_qname(unit),) if _resolved_unit_measure_qname(unit) else ()
+            )
         )
         if unit.unit_form != "simple" or measure_count != 1 or tuple(measures) != (expected,):
             got = ", ".join(str(m) for m in measures) or unit.measure_uri or unit.unit_form
@@ -797,10 +803,7 @@ class StructuralConformanceValidator:
                 return ValidationFinding(
                     rule_id="structural:decimals-precision",
                     severity=ValidationSeverity.ERROR,
-                    message=(
-                        f"Nil fact for concept '{fact.concept}' must not specify "
-                        f"{present}."
-                    ),
+                    message=(f"Nil fact for concept '{fact.concept}' must not specify {present}."),
                     source="structural",
                     concept_qname=fact.concept,
                     context_ref=fact.context_ref,

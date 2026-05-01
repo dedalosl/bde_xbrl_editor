@@ -44,11 +44,13 @@ class InstanceValidator:
         progress_callback: ProgressCallback | None = None,
         finding_callback: FindingCallback | None = None,
         cancel_event: threading.Event | None = None,
+        include_dimensional: bool = True,
     ) -> None:
         self._taxonomy = taxonomy
         self._progress_callback = progress_callback
         self._finding_callback = finding_callback
         self._cancel_event = cancel_event
+        self._include_dimensional = include_dimensional
 
     def validate_sync(self, instance: XbrlInstance) -> ValidationReport:
         """Run structural + dimensional + formula validation synchronously.
@@ -84,7 +86,7 @@ class InstanceValidator:
             stage_timings.append(StageTiming("structural", time.perf_counter() - stage_started_at))
 
         # --- 1b. Taxonomy relationship-set checks ---------------------------
-        if not (self._cancel_event and self._cancel_event.is_set()):
+        if self._include_dimensional and not (self._cancel_event and self._cancel_event.is_set()):
             try:
                 rv = RelationshipSetValidator()
                 stage_findings = tuple(rv.validate_taxonomy(self._taxonomy))
@@ -127,7 +129,7 @@ class InstanceValidator:
             stage_timings.append(StageTiming("calculation", time.perf_counter() - stage_started_at))
 
         # --- 3. Dimensional checks -------------------------------------------
-        if not (self._cancel_event and self._cancel_event.is_set()):
+        if self._include_dimensional and not (self._cancel_event and self._cancel_event.is_set()):
             stage_started_at = time.perf_counter()
             if self._progress_callback:
                 with contextlib.suppress(Exception):

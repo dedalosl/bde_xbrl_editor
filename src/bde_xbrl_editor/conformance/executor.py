@@ -796,7 +796,10 @@ class TestCaseExecutor:
                             taxonomy_struct,
                             variation.input_files,
                         )
-                    validator = InstanceValidator(taxonomy_struct)
+                    validator = InstanceValidator(
+                        taxonomy_struct,
+                        include_dimensional=test_case.suite_id != "formula",
+                    )
                     report = validator.validate_sync(instance)
                     findings = report.findings
                 if test_case.suite_id == "formula" and taxonomy_struct is not None:

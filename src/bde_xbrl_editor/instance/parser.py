@@ -53,6 +53,7 @@ _XBRLI_PERIOD = f"{{{XBRLI_NS}}}period"
 _XBRLI_INSTANT = f"{{{XBRLI_NS}}}instant"
 _XBRLI_START = f"{{{XBRLI_NS}}}startDate"
 _XBRLI_END = f"{{{XBRLI_NS}}}endDate"
+_XBRLI_FOREVER = f"{{{XBRLI_NS}}}forever"
 _XBRLI_MEASURE = f"{{{XBRLI_NS}}}measure"
 _XBRLI_DIVIDE = f"{{{XBRLI_NS}}}divide"
 _XBRLI_UNIT_NUMERATOR = f"{{{XBRLI_NS}}}unitNumerator"
@@ -221,6 +222,9 @@ def _period_s_equal_key(period_el: etree._Element) -> tuple:
             ).isoformat(),
         )
 
+    if period_el.find(_XBRLI_FOREVER) is not None:
+        return ("forever",)
+
     start_el = period_el.find(_XBRLI_START)
     end_el = period_el.find(_XBRLI_END)
     return (
@@ -256,6 +260,8 @@ def _parse_context(el: etree._Element) -> XbrlContext:
             period_type="instant",
             instant_date=_parse_date(instant_el.text or ""),
         )
+    elif period_el.find(_XBRLI_FOREVER) is not None:
+        period = ReportingPeriod(period_type="forever")
     else:
         start_el = period_el.find(_XBRLI_START)
         end_el = period_el.find(_XBRLI_END)

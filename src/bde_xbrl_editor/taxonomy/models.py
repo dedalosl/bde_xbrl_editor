@@ -412,6 +412,7 @@ class FactVariableDefinition:
 
     variable_name: str
     bind_as_sequence: bool = False
+    matches: bool = False
     concept_filter: QName | None = None
     period_filter: Literal["instant", "duration"] | None = None
     dimension_filters: tuple[DimensionFilter, ...] = field(default_factory=tuple)

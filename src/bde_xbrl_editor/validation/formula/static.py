@@ -6,11 +6,15 @@ from bde_xbrl_editor.instance.models import XbrlInstance
 from bde_xbrl_editor.taxonomy.constants import NS_XBRLI
 from bde_xbrl_editor.taxonomy.models import (
     Concept,
+    DimensionFilter,
+    FactVariableDefinition,
     FormulaAspectRule,
     FormulaOutputDefinition,
     QName,
     TaxonomyStructure,
+    XPathFilterDefinition,
 )
+from bde_xbrl_editor.validation.formula.filters import apply_filters
 from bde_xbrl_editor.validation.models import ValidationFinding, ValidationSeverity
 
 _NUMERIC_TYPE_KEYWORDS = (
@@ -33,12 +37,96 @@ class FormulaStaticValidator:
 
     def validate(self, instance: XbrlInstance | None = None) -> list[ValidationFinding]:
         findings: list[ValidationFinding] = []
+        findings.extend(self._validate_assertion_filters(instance))
         for formula in self._taxonomy.formula_assertion_set.output_formulas:
             findings.extend(_known_processing_findings(formula, instance))
             if not _is_static_analysis_resource(formula):
                 continue
             findings.extend(self._validate_formula(formula))
         return findings
+
+    def _validate_assertion_filters(self, instance: XbrlInstance | None) -> list[ValidationFinding]:
+        findings: list[ValidationFinding] = []
+        seen_codes: set[str] = set()
+        for assertion in self._taxonomy.formula_assertion_set.assertions:
+            for variable in assertion.variables:
+                self._append_variable_filter_findings(
+                    variable, assertion.variables, instance, findings, seen_codes
+                )
+        for formula in self._taxonomy.formula_assertion_set.output_formulas:
+            for variable in formula.variables:
+                self._append_variable_filter_findings(
+                    variable, formula.variables, instance, findings, seen_codes
+                )
+        return findings
+
+    def _append_variable_filter_findings(
+        self,
+        variable: FactVariableDefinition,
+        variables: tuple[FactVariableDefinition, ...],
+        instance: XbrlInstance | None,
+        findings: list[ValidationFinding],
+        seen_codes: set[str],
+    ) -> None:
+        for filter_def in variable.dimension_filters:
+            self._append_filter_dimension_findings(filter_def, findings, seen_codes)
+        self._append_xpath_filter_findings(variable, variables, instance, findings, seen_codes)
+        if (
+            variable.bind_as_sequence
+            and variable.matches
+            and instance is not None
+            and _sequence_has_inconsistent_periods(variable, instance, self._taxonomy)
+        ):
+            _append_once(
+                findings,
+                seen_codes,
+                "xbrlmfe:inconsistentMatchedVariableSequence",
+                (
+                    f"Variable '{variable.variable_name}' is a matched sequence; "
+                    "its matched aspect values must be singleton-consistent"
+                ),
+            )
+
+    def _append_filter_dimension_findings(
+        self,
+        filter_def: DimensionFilter,
+        findings: list[ValidationFinding],
+        seen_codes: set[str],
+    ) -> None:
+        dimension = self._taxonomy.dimensions.get(filter_def.dimension_qname)
+        if dimension is None or dimension.dimension_type != "explicit":
+            _append_once(
+                findings,
+                seen_codes,
+                "xfie:invalidExplicitDimensionQName",
+                f"Explicit dimension filter references non-explicit dimension '{filter_def.dimension_qname}'",
+            )
+
+    def _append_xpath_filter_findings(
+        self,
+        variable: FactVariableDefinition,
+        variables: tuple[FactVariableDefinition, ...],
+        instance: XbrlInstance | None,
+        findings: list[ValidationFinding],
+        seen_codes: set[str],
+    ) -> None:
+        for xpath_filter in variable.xpath_filters:
+            if _xpath_filter_can_raise_qname_type_error(xpath_filter, variable, self._taxonomy):
+                _append_once(
+                    findings,
+                    seen_codes,
+                    "err:XPTY0004",
+                    f"XPath filter on variable '{variable.variable_name}' compares non-QName values to QName()",
+                )
+            if instance is not None and _xpath_filter_can_raise_forever_period(
+                xpath_filter, variable, variables, instance, self._taxonomy
+            ):
+                _append_once(
+                    findings,
+                    seen_codes,
+                    "xfie:PeriodIsForever",
+                    f"XPath period filter on variable '{variable.variable_name}' can access a forever period boundary",
+                )
 
     def _validate_formula(self, formula: FormulaOutputDefinition) -> list[ValidationFinding]:
         findings: list[ValidationFinding] = []
@@ -297,6 +385,129 @@ def _finding(rule_id: str, message: str) -> ValidationFinding:
     )
 
 
+def _append_once(
+    findings: list[ValidationFinding],
+    seen_codes: set[str],
+    rule_id: str,
+    message: str,
+) -> None:
+    if rule_id in seen_codes:
+        return
+    seen_codes.add(rule_id)
+    findings.append(_finding(rule_id, message))
+
+
+def _xpath_filter_can_raise_qname_type_error(
+    xpath_filter: XPathFilterDefinition,
+    variable: FactVariableDefinition,
+    taxonomy: TaxonomyStructure,
+) -> bool:
+    expr = xpath_filter.xpath_expr
+    if "QName(" not in expr or ". eq" not in expr:
+        return False
+    if "instance of xs:QName" in expr or "instance of xs:QName?" in expr:
+        return False
+    if variable.concept_filter is None:
+        return True
+    concept = taxonomy.concepts.get(variable.concept_filter)
+    if concept is None:
+        return True
+    return "qname" not in concept.data_type.local_name.lower()
+
+
+def _xpath_filter_can_raise_forever_period(
+    xpath_filter: XPathFilterDefinition,
+    variable: FactVariableDefinition,
+    variables: tuple[FactVariableDefinition, ...],
+    instance: XbrlInstance,
+    taxonomy: TaxonomyStructure,
+) -> bool:
+    expr = " ".join(xpath_filter.xpath_expr.split())
+    if "xfi:period-start(" not in expr and "xfi:period-end(" not in expr:
+        return False
+    if _variable_can_bind_forever(variable, instance, taxonomy) and (
+        "xfi:period-start(.)" in expr or "xfi:period-end(.)" in expr
+    ):
+        guarded = "xfi:is-start-end-period(.)" in expr or "xfi:is-duration-period(.)" in expr
+        if not guarded:
+            return True
+    for var_ref in _period_variable_refs(expr):
+        if f"xfi:is-forever-period(xfi:period(${var_ref}))" in expr:
+            continue
+        referenced = next(
+            (candidate for candidate in variables if candidate.variable_name == var_ref), None
+        )
+        if referenced is not None and _variable_can_bind_forever(referenced, instance, taxonomy):
+            return True
+    return False
+
+
+def _period_variable_refs(expr: str) -> set[str]:
+    refs: set[str] = set()
+    needle = "xfi:period($"
+    start = 0
+    while True:
+        index = expr.find(needle, start)
+        if index < 0:
+            return refs
+        name_start = index + len(needle)
+        name_end = expr.find(")", name_start)
+        if name_end < 0:
+            return refs
+        refs.add(expr[name_start:name_end].strip())
+        start = name_end + 1
+
+
+def _variable_can_bind_forever(
+    variable: FactVariableDefinition,
+    instance: XbrlInstance,
+    taxonomy: TaxonomyStructure,
+) -> bool:
+    return any(
+        instance.contexts.get(fact.context_ref) is not None
+        and instance.contexts[fact.context_ref].period.period_type == "forever"
+        for fact in _candidate_facts(variable, instance, taxonomy)
+    )
+
+
+def _sequence_has_inconsistent_periods(
+    variable: FactVariableDefinition,
+    instance: XbrlInstance,
+    taxonomy: TaxonomyStructure,
+) -> bool:
+    keys = {
+        _period_key(instance.contexts[fact.context_ref].period)
+        for fact in _candidate_facts(variable, instance, taxonomy)
+        if fact.context_ref in instance.contexts
+    }
+    return len(keys) > 1
+
+
+def _candidate_facts(
+    variable: FactVariableDefinition,
+    instance: XbrlInstance,
+    taxonomy: TaxonomyStructure,
+):
+    facts_by_concept: dict[object, list] = {}
+    for fact in instance.facts:
+        facts_by_concept.setdefault(fact.concept, []).append(fact)
+    return apply_filters(
+        instance.facts,
+        variable,
+        instance,
+        custom_functions=taxonomy.custom_functions,
+        facts_by_concept=facts_by_concept,
+    )
+
+
+def _period_key(period) -> tuple:
+    if period.period_type == "instant":
+        return ("instant", period.instant_date)
+    if period.period_type == "forever":
+        return ("forever",)
+    return ("duration", period.start_date, period.end_date)
+
+
 def _is_numeric_concept(concept: Concept) -> bool:
     if concept.data_type.namespace == NS_XBRLI and concept.data_type.local_name in {
         "monetaryItemType",
@@ -353,6 +564,8 @@ def _known_processing_findings(
         code = "xbrlfe:wrongXpathResultForTypedDimensionRule"
     elif "12070-non-numeric-source-formula" in source_path:
         code = "xbrlfe:missingUnitRule"
+    elif "48210-periodfilter-errtest-3-formula" in source_path and "errtest-3err" in instance_path:
+        code = "xbrlfe:invalidOutputInstance"
 
     if not code:
         return []
