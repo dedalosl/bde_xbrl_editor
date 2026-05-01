@@ -19,6 +19,7 @@ from bde_xbrl_editor.taxonomy.models import TaxonomyStructure
 from bde_xbrl_editor.validation.calculation import CalculationConsistencyValidator
 from bde_xbrl_editor.validation.dimensional import DimensionalConstraintValidator
 from bde_xbrl_editor.validation.formula.evaluator import FormulaEvaluator
+from bde_xbrl_editor.validation.formula.static import FormulaStaticValidator
 from bde_xbrl_editor.validation.models import (
     ValidationFinding,
     ValidationReport,
@@ -70,17 +71,17 @@ class InstanceValidator:
                 findings.extend(stage_findings)
                 self._publish_findings(stage_findings)
             except Exception as exc:  # noqa: BLE001
-                stage_findings = (ValidationFinding(
-                    rule_id="internal:structural-error",
-                    severity=ValidationSeverity.ERROR,
-                    message=f"Structural validator failed unexpectedly: {exc}",
-                    source="structural",
-                ),)
+                stage_findings = (
+                    ValidationFinding(
+                        rule_id="internal:structural-error",
+                        severity=ValidationSeverity.ERROR,
+                        message=f"Structural validator failed unexpectedly: {exc}",
+                        source="structural",
+                    ),
+                )
                 findings.extend(stage_findings)
                 self._publish_findings(stage_findings)
-            stage_timings.append(
-                StageTiming("structural", time.perf_counter() - stage_started_at)
-            )
+            stage_timings.append(StageTiming("structural", time.perf_counter() - stage_started_at))
 
         # --- 1b. Taxonomy relationship-set checks ---------------------------
         if not (self._cancel_event and self._cancel_event.is_set()):
@@ -90,12 +91,14 @@ class InstanceValidator:
                 findings.extend(stage_findings)
                 self._publish_findings(stage_findings)
             except Exception as exc:  # noqa: BLE001
-                stage_findings = (ValidationFinding(
-                    rule_id="internal:relationship-error",
-                    severity=ValidationSeverity.ERROR,
-                    message=f"Relationship-set validator failed unexpectedly: {exc}",
-                    source="relationships",
-                ),)
+                stage_findings = (
+                    ValidationFinding(
+                        rule_id="internal:relationship-error",
+                        severity=ValidationSeverity.ERROR,
+                        message=f"Relationship-set validator failed unexpectedly: {exc}",
+                        source="relationships",
+                    ),
+                )
                 findings.extend(stage_findings)
                 self._publish_findings(stage_findings)
 
@@ -111,17 +114,17 @@ class InstanceValidator:
                 findings.extend(stage_findings)
                 self._publish_findings(stage_findings)
             except Exception as exc:  # noqa: BLE001
-                stage_findings = (ValidationFinding(
-                    rule_id="internal:calculation-error",
-                    severity=ValidationSeverity.ERROR,
-                    message=f"Calculation validator failed unexpectedly: {exc}",
-                    source="calculation",
-                ),)
+                stage_findings = (
+                    ValidationFinding(
+                        rule_id="internal:calculation-error",
+                        severity=ValidationSeverity.ERROR,
+                        message=f"Calculation validator failed unexpectedly: {exc}",
+                        source="calculation",
+                    ),
+                )
                 findings.extend(stage_findings)
                 self._publish_findings(stage_findings)
-            stage_timings.append(
-                StageTiming("calculation", time.perf_counter() - stage_started_at)
-            )
+            stage_timings.append(StageTiming("calculation", time.perf_counter() - stage_started_at))
 
         # --- 3. Dimensional checks -------------------------------------------
         if not (self._cancel_event and self._cancel_event.is_set()):
@@ -135,28 +138,29 @@ class InstanceValidator:
                 findings.extend(stage_findings)
                 self._publish_findings(stage_findings)
             except Exception as exc:  # noqa: BLE001
-                stage_findings = (ValidationFinding(
-                    rule_id="internal:dimensional-error",
-                    severity=ValidationSeverity.ERROR,
-                    message=f"Dimensional validator failed unexpectedly: {exc}",
-                    source="dimensional",
-                ),)
+                stage_findings = (
+                    ValidationFinding(
+                        rule_id="internal:dimensional-error",
+                        severity=ValidationSeverity.ERROR,
+                        message=f"Dimensional validator failed unexpectedly: {exc}",
+                        source="dimensional",
+                    ),
+                )
                 findings.extend(stage_findings)
                 self._publish_findings(stage_findings)
-            stage_timings.append(
-                StageTiming("dimensional", time.perf_counter() - stage_started_at)
-            )
+            stage_timings.append(StageTiming("dimensional", time.perf_counter() - stage_started_at))
 
         # --- 4. Formula assertions ------------------------------------------
-        formula_available = bool(
-            self._taxonomy.formula_assertion_set.assertions
-        )
+        formula_available = bool(self._taxonomy.formula_assertion_set.assertions)
         if not (self._cancel_event and self._cancel_event.is_set()):
             stage_started_at = time.perf_counter()
             if self._progress_callback:
                 with contextlib.suppress(Exception):
                     self._progress_callback(3, 4, "Evaluating formula assertions…")
             try:
+                static_findings = tuple(FormulaStaticValidator(self._taxonomy).validate(instance))
+                findings.extend(static_findings)
+                self._publish_findings(static_findings)
                 fe = FormulaEvaluator(
                     taxonomy=self._taxonomy,
                     progress_callback=self._progress_callback,
@@ -165,17 +169,17 @@ class InstanceValidator:
                 )
                 findings.extend(fe.evaluate(instance))
             except Exception as exc:  # noqa: BLE001
-                stage_findings = (ValidationFinding(
-                    rule_id="internal:formula-error",
-                    severity=ValidationSeverity.ERROR,
-                    message=f"Formula evaluator failed unexpectedly: {exc}",
-                    source="formula",
-                ),)
+                stage_findings = (
+                    ValidationFinding(
+                        rule_id="internal:formula-error",
+                        severity=ValidationSeverity.ERROR,
+                        message=f"Formula evaluator failed unexpectedly: {exc}",
+                        source="formula",
+                    ),
+                )
                 findings.extend(stage_findings)
                 self._publish_findings(stage_findings)
-            stage_timings.append(
-                StageTiming("formula", time.perf_counter() - stage_started_at)
-            )
+            stage_timings.append(StageTiming("formula", time.perf_counter() - stage_started_at))
 
         if self._progress_callback:
             with contextlib.suppress(Exception):
@@ -189,9 +193,8 @@ class InstanceValidator:
             taxonomy_version=meta.version,
             run_timestamp=datetime.now(),
             findings=tuple(findings),
-            formula_linkbase_available=formula_available or (
-                self._taxonomy.formula_linkbase_path is not None
-            ),
+            formula_linkbase_available=formula_available
+            or (self._taxonomy.formula_linkbase_path is not None),
             structural_checks_run=True,
             stage_timings=tuple(stage_timings),
         )

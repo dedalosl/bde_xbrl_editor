@@ -400,7 +400,9 @@ class BooleanFilterDefinition:
     """
 
     filter_type: Literal["and", "or"]
-    children: tuple[Any, ...]  # DimensionFilter | TypedDimensionFilter | XPathFilterDefinition | BooleanFilterDefinition
+    children: tuple[
+        Any, ...
+    ]  # DimensionFilter | TypedDimensionFilter | XPathFilterDefinition | BooleanFilterDefinition
     complement: bool = False
 
 
@@ -409,6 +411,7 @@ class FactVariableDefinition:
     """A bound fact variable in a formula assertion."""
 
     variable_name: str
+    bind_as_sequence: bool = False
     concept_filter: QName | None = None
     period_filter: Literal["instant", "duration"] | None = None
     dimension_filters: tuple[DimensionFilter, ...] = field(default_factory=tuple)
@@ -460,10 +463,42 @@ class ConsistencyAssertionDefinition(FormulaAssertion):
 
 
 @dataclass(frozen=True)
+class FormulaAspectRule:
+    """Static output-aspect rule on a Formula 1.0 formula resource."""
+
+    aspect: str
+    source: str | None = None
+    qname: QName | None = None
+    dimension: QName | None = None
+    has_child_rules: bool = False
+    has_scheme: bool = False
+    has_value: bool = False
+    period_kind: Literal["instant", "duration", "forever"] | None = None
+    inherited_source: str | None = None
+
+
+@dataclass(frozen=True)
+class FormulaOutputDefinition:
+    """formula:formula output-producing resource parsed from a formula linkbase."""
+
+    formula_id: str
+    label: str | None
+    value_xpath: str
+    source: str | None
+    aspect_model: str | None
+    implicit_filtering: bool
+    variables: tuple[FactVariableDefinition, ...] = field(default_factory=tuple)
+    aspect_rules: tuple[FormulaAspectRule, ...] = field(default_factory=tuple)
+    namespaces: dict[str, str] = field(default_factory=dict)
+    source_path: str | None = None
+
+
+@dataclass(frozen=True)
 class FormulaAssertionSet:
     """Complete set of formula assertions parsed from a formula linkbase."""
 
     assertions: tuple[FormulaAssertion, ...] = field(default_factory=tuple)
+    output_formulas: tuple[FormulaOutputDefinition, ...] = field(default_factory=tuple)
     abstract_count: int = 0
 
 

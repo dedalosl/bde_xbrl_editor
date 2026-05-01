@@ -115,6 +115,20 @@ _NON_FACT_TAGS = frozenset(
     ]
 )
 
+_OFFICIAL_SECONDARY_SCHEMA_REFS = frozenset(
+    {
+        "http://www.xbrl.org/2003/xbrl-instance-2003-12-31.xsd",
+        "https://www.xbrl.org/2003/xbrl-instance-2003-12-31.xsd",
+        "http://www.xbrl.org/2006/xbrldi-2006.xsd",
+        "https://www.xbrl.org/2006/xbrldi-2006.xsd",
+    }
+)
+_XBRL_ORG_REMOTE_PREFIXES = (
+    "http://www.xbrl.org/",
+    "https://www.xbrl.org/",
+)
+_DEFAULT_XBRL_ORG_CACHE_ROOT = Path(__file__).resolve().parents[3] / "cache" / "www.xbrl.org"
+
 
 def _catalog_path_candidates(local_root: Path, rel: str) -> list[Path]:
     """Return local-cache candidates for a remote schemaRef suffix.
@@ -134,6 +148,23 @@ def _catalog_path_candidates(local_root: Path, rel: str) -> list[Path]:
             candidates.append(alt_candidate)
 
     return candidates
+
+
+def _is_official_secondary_schema_ref(href: str) -> bool:
+    """Return true for standard XBRL infrastructure schemas, not taxonomy entry points."""
+    return href in _OFFICIAL_SECONDARY_SCHEMA_REFS
+
+
+def _resolve_default_xbrl_org_cache_path(href: str) -> Path | None:
+    """Resolve mirrored www.xbrl.org URLs from the bundled cache when present."""
+    href = href.split("#", 1)[0]
+    for prefix in _XBRL_ORG_REMOTE_PREFIXES:
+        if href.startswith(prefix):
+            candidate = (_DEFAULT_XBRL_ORG_CACHE_ROOT / href[len(prefix) :].lstrip("/")).resolve()
+            if candidate.exists():
+                return candidate
+            return None
+    return None
 
 
 def _reject_xbrli_in_segment_or_scenario(container: etree._Element, context_id: ContextId) -> None:
@@ -626,13 +657,18 @@ class InstanceParser:
                 if not extra_href:
                     continue
                 extra_resolved_path = self._resolve_taxonomy_path(path, extra_href)
-                extra_taxonomy = self._resolve_taxonomy(
-                    path,
-                    extra_href,
-                    path_str,
-                    progress_callback=taxonomy_progress,
-                    resolved_taxonomy_path=extra_resolved_path,
-                )
+                try:
+                    extra_taxonomy = self._resolve_taxonomy(
+                        path,
+                        extra_href,
+                        path_str,
+                        progress_callback=taxonomy_progress,
+                        resolved_taxonomy_path=extra_resolved_path,
+                    )
+                except TaxonomyResolutionError:
+                    if _is_official_secondary_schema_ref(extra_href):
+                        continue
+                    raise
                 taxonomy = _merge_taxonomies(taxonomy, extra_taxonomy)
         if taxonomy_resolved_callback is not None:
             taxonomy_resolved_callback(taxonomy)
@@ -725,8 +761,7 @@ class InstanceParser:
                     and footnote_role != _ROLE_FOOTNOTE
                 ):
                     footnote_errors.append(
-                        "link:footnote uses an invalid standard xlink:role "
-                        f"'{footnote_role}'"
+                        f"link:footnote uses an invalid standard xlink:role '{footnote_role}'"
                     )
                 if not _has_inherited_xml_lang(fn_el):
                     footnote_errors.append("link:footnote is missing required xml:lang attribute")
@@ -965,6 +1000,9 @@ class InstanceParser:
                         for candidate in _catalog_path_candidates(local_root, rel):
                             if candidate.exists():
                                 return candidate
+            default_cache_path = _resolve_default_xbrl_org_cache_path(schema_href)
+            if default_cache_path is not None:
+                return default_cache_path
 
         if self._resolver is not None:
             resolved = self._resolver(schema_href)

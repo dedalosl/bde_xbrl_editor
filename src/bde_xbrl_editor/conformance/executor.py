@@ -22,6 +22,10 @@ from bde_xbrl_editor.instance.parser import InstanceParser
 from bde_xbrl_editor.taxonomy.cache import TaxonomyCache
 from bde_xbrl_editor.taxonomy.constants import NS_XLINK, NS_XSD
 from bde_xbrl_editor.taxonomy.linkbases.calculation import parse_calculation_linkbase
+from bde_xbrl_editor.taxonomy.linkbases.formula import (
+    linkbase_contains_formula_assertions,
+    parse_formula_linkbase,
+)
 from bde_xbrl_editor.taxonomy.loader import TaxonomyLoader
 from bde_xbrl_editor.taxonomy.models import (
     QName,
@@ -31,6 +35,7 @@ from bde_xbrl_editor.taxonomy.models import (
 from bde_xbrl_editor.taxonomy.settings import LoaderSettings
 from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
 from bde_xbrl_editor.validation.calculation import CalculationConsistencyValidator
+from bde_xbrl_editor.validation.formula.static import FormulaStaticValidator
 from bde_xbrl_editor.validation.models import ValidationFinding, ValidationSeverity
 from bde_xbrl_editor.validation.orchestrator import InstanceValidator
 from bde_xbrl_editor.validation.relationships import RelationshipSetValidator
@@ -172,6 +177,40 @@ def _with_instance_calculation_linkbases(
     return replace(taxonomy, calculation=merged)
 
 
+def _with_input_formula_linkbases(
+    taxonomy: TaxonomyStructure,
+    input_files: tuple[Path, ...],
+) -> TaxonomyStructure:
+    """Merge Formula 1.0 resources from conformance variation input linkbases.
+
+    Some Formula conformance variations list formula linkbases as independent
+    input files instead of discovering them through schema linkbaseRef arcs.
+    This keeps the conformance runner's role to feeding declared input files to
+    the engine parser, while formula static semantics stay in validation/formula.
+    """
+    existing = taxonomy.formula_assertion_set
+    output_formulas = list(existing.output_formulas)
+    changed = False
+    for path in input_files:
+        if path.suffix.lower() not in (".xml", ".xbrl"):
+            continue
+        if not linkbase_contains_formula_assertions(path):
+            continue
+        parsed = parse_formula_linkbase(path)
+        if parsed.output_formulas:
+            output_formulas.extend(parsed.output_formulas)
+            changed = True
+    if not changed:
+        return taxonomy
+    return replace(
+        taxonomy,
+        formula_assertion_set=replace(
+            existing,
+            output_formulas=tuple(output_formulas),
+        ),
+    )
+
+
 def _xlink_error(message: str) -> ValidationFinding:
     return ValidationFinding(
         rule_id="xlink:validation-error",
@@ -237,9 +276,7 @@ def _schema_location_paths(root: etree._Element, base_dir: Path) -> list[Path]:
 
 
 def _discover_lax_schema_paths(input_files: tuple[Path, ...]) -> list[Path]:
-    queue: list[Path] = [
-        path.resolve() for path in input_files if path.suffix.lower() == ".xsd"
-    ]
+    queue: list[Path] = [path.resolve() for path in input_files if path.suffix.lower() == ".xsd"]
     for path in input_files:
         if path.suffix.lower() not in (".xml", ".xsd"):
             continue
@@ -543,16 +580,12 @@ def _validate_linkbase_refs(root: etree._Element, path: Path) -> list[Validation
     for linkbase_ref in root.iter(_LINK_LINKBASE_REF):
         xlink_type = (linkbase_ref.get(_XLINK_TYPE) or "").strip()
         if xlink_type != "simple":
-            findings.append(
-                _linkbase_ref_error("linkbaseRef xlink:type must be 'simple'")
-            )
+            findings.append(_linkbase_ref_error("linkbaseRef xlink:type must be 'simple'"))
 
         arcrole = (linkbase_ref.get(f"{{{NS_XLINK}}}arcrole") or "").strip()
         if arcrole != _LINKBASE_ARCROLE:
             findings.append(
-                _linkbase_ref_error(
-                    "linkbaseRef xlink:arcrole must be the XLink linkbase arcrole"
-                )
+                _linkbase_ref_error("linkbaseRef xlink:arcrole must be the XLink linkbase arcrole")
             )
 
         href = (linkbase_ref.get(_XLINK_HREF) or "").strip()
@@ -568,16 +601,12 @@ def _validate_linkbase_refs(root: etree._Element, path: Path) -> list[Validation
             path.resolve(),
         )
         if not target_path.exists() or target_path.is_dir():
-            findings.append(
-                _linkbase_ref_error(f"linkbaseRef target '{href}' does not resolve")
-            )
+            findings.append(_linkbase_ref_error(f"linkbaseRef target '{href}' does not resolve"))
             continue
 
         target_tags = _linkbase_target_extended_tags(target_path)
         if target_tags is None:
-            findings.append(
-                _linkbase_ref_error(f"linkbaseRef target '{href}' is not a linkbase")
-            )
+            findings.append(_linkbase_ref_error(f"linkbaseRef target '{href}' is not a linkbase"))
             continue
 
         role = (linkbase_ref.get(f"{{{NS_XLINK}}}role") or "").strip()
@@ -665,10 +694,14 @@ def _validate_xlink_file(path: Path) -> list[ValidationFinding]:
                 source = label_targets.get(frm)
                 target = label_targets.get(to)
                 if source is None or source.tag != _XS_ELEMENT:
-                    findings.append(_xlink_error(f"Label arc source '{frm}' does not resolve to a concept"))
+                    findings.append(
+                        _xlink_error(f"Label arc source '{frm}' does not resolve to a concept")
+                    )
                     break
                 if target is None or target.get(_XLINK_TYPE) != "resource":
-                    findings.append(_xlink_error(f"Label arc target '{to}' does not resolve to a resource"))
+                    findings.append(
+                        _xlink_error(f"Label arc target '{to}' does not resolve to a resource")
+                    )
                     break
             key = (frm, to)
             if key in seen:
@@ -744,18 +777,12 @@ class TestCaseExecutor:
                     taxonomy_struct = parsed_taxonomies[-1]
                 else:
                     schema_href = instance.schema_ref_href
-                    if schema_href and not schema_href.startswith(
-                        ("http://", "https://")
-                    ):
-                        schema_ref_path = (
-                            variation.instance_file.parent / schema_href
-                        ).resolve()
+                    if schema_href and not schema_href.startswith(("http://", "https://")):
+                        schema_ref_path = (variation.instance_file.parent / schema_href).resolve()
                         if schema_ref_path.exists():
                             taxonomy_struct = loader.load(schema_ref_path)
                         else:
-                            taxonomy_struct = loader.load(
-                                instance.taxonomy_entry_point
-                            )
+                            taxonomy_struct = loader.load(instance.taxonomy_entry_point)
                     else:
                         taxonomy_struct = loader.load(instance.taxonomy_entry_point)
 
@@ -764,13 +791,18 @@ class TestCaseExecutor:
                         taxonomy_struct,
                         variation.instance_file,
                     )
+                    if test_case.suite_id == "formula":
+                        taxonomy_struct = _with_input_formula_linkbases(
+                            taxonomy_struct,
+                            variation.input_files,
+                        )
                     validator = InstanceValidator(taxonomy_struct)
                     report = validator.validate_sync(instance)
                     findings = report.findings
+                if test_case.suite_id == "formula" and taxonomy_struct is not None:
+                    findings = findings + tuple(FormulaStaticValidator(taxonomy_struct).validate())
                 if test_case.test_case_id == _LAX_VALIDATION_TEST_ID:
-                    findings = findings + _validate_lax_known_declarations(
-                        variation.input_files
-                    )
+                    findings = findings + _validate_lax_known_declarations(variation.input_files)
 
             elif variation.taxonomy_file is not None:
                 # Taxonomy-only test (e.g. Dimensions schema validation)
@@ -779,14 +811,20 @@ class TestCaseExecutor:
                 except UnsupportedTaxonomyFormatError:
                     if (
                         test_case.test_case_id not in _STRUCTURAL_ONLY_TEST_IDS
-                        and variation.expected_outcome.outcome_type
-                        != ExpectedOutcomeType.VALID
+                        and variation.expected_outcome.outcome_type != ExpectedOutcomeType.VALID
                     ):
                         raise
                 except Exception:  # noqa: BLE001
                     if test_case.test_case_id != _LINKBASE_REFERENCES_TEST_ID:
                         raise
                 findings = _validate_xlink_inputs(variation.input_files)
+                if test_case.suite_id == "formula" and taxonomy_struct is not None:
+                    taxonomy_struct = _with_input_formula_linkbases(
+                        taxonomy_struct,
+                        variation.input_files,
+                    )
+                if test_case.suite_id == "formula" and taxonomy_struct is not None:
+                    findings = findings + tuple(FormulaStaticValidator(taxonomy_struct).validate())
                 if taxonomy_struct is not None and test_case.suite_id == "xbrl21":
                     findings = findings + tuple(
                         CalculationConsistencyValidator().validate_taxonomy(taxonomy_struct)
@@ -795,9 +833,7 @@ class TestCaseExecutor:
                         RelationshipSetValidator().validate_taxonomy(taxonomy_struct)
                     )
                 if test_case.test_case_id == _LAX_VALIDATION_TEST_ID:
-                    findings = findings + _validate_lax_known_declarations(
-                        variation.input_files
-                    )
+                    findings = findings + _validate_lax_known_declarations(variation.input_files)
 
             else:
                 # Try loading any input files as taxonomy entry points.
@@ -816,6 +852,13 @@ class TestCaseExecutor:
                 if taxonomy_struct is None and first_load_error is not None:
                     raise first_load_error
                 findings = _validate_xlink_inputs(variation.input_files)
+                if test_case.suite_id == "formula" and taxonomy_struct is not None:
+                    taxonomy_struct = _with_input_formula_linkbases(
+                        taxonomy_struct,
+                        variation.input_files,
+                    )
+                if test_case.suite_id == "formula" and taxonomy_struct is not None:
+                    findings = findings + tuple(FormulaStaticValidator(taxonomy_struct).validate())
                 if taxonomy_struct is not None and test_case.suite_id == "xbrl21":
                     findings = findings + tuple(
                         CalculationConsistencyValidator().validate_taxonomy(taxonomy_struct)
@@ -824,9 +867,7 @@ class TestCaseExecutor:
                         RelationshipSetValidator().validate_taxonomy(taxonomy_struct)
                     )
                 if test_case.test_case_id == _LAX_VALIDATION_TEST_ID:
-                    findings = findings + _validate_lax_known_declarations(
-                        variation.input_files
-                    )
+                    findings = findings + _validate_lax_known_declarations(variation.input_files)
 
         except Exception as exc:  # noqa: BLE001
             load_error = exc
@@ -862,30 +903,16 @@ class TestCaseExecutor:
         suite_id: str | None = None,
     ) -> tuple[TestResultOutcome, tuple[str, ...]]:
         """Determine the test outcome by comparing expected with actual results."""
-        error_findings = tuple(
-            f for f in findings if f.severity == ValidationSeverity.ERROR
-        )
-        if (
-            suite_id == "formula"
-            and expected.outcome_type == ExpectedOutcomeType.VALID
-        ):
+        error_findings = tuple(f for f in findings if f.severity == ValidationSeverity.ERROR)
+        if suite_id == "formula" and expected.outcome_type == ExpectedOutcomeType.VALID:
             error_findings = tuple(
-                f
-                for f in error_findings
-                if f.rule_id not in _FORMULA_VALID_IGNORE_RULE_IDS
+                f for f in error_findings if f.rule_id not in _FORMULA_VALID_IGNORE_RULE_IDS
             )
-        elif (
-            suite_id == "xbrl21"
-            and expected.outcome_type == ExpectedOutcomeType.VALID
-        ):
+        elif suite_id == "xbrl21" and expected.outcome_type == ExpectedOutcomeType.VALID:
             error_findings = tuple(
-                f
-                for f in error_findings
-                if f.rule_id not in _XBRL21_VALID_IGNORE_RULE_IDS
+                f for f in error_findings if f.rule_id not in _XBRL21_VALID_IGNORE_RULE_IDS
             )
-        warning_findings = tuple(
-            f for f in findings if f.severity == ValidationSeverity.WARNING
-        )
+        warning_findings = tuple(f for f in findings if f.severity == ValidationSeverity.WARNING)
         actual_error_codes = tuple(f.rule_id for f in error_findings)
         actual_warning_codes = tuple(f.rule_id for f in warning_findings)
         all_actual_codes = actual_error_codes + actual_warning_codes

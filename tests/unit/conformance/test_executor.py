@@ -111,9 +111,7 @@ def test_lax_validation_reports_known_integer_element(tmp_path) -> None:
 
     findings = _validate_lax_known_declarations((xml_path,))
 
-    assert [finding.rule_id for finding in findings] == [
-        "xmlschema:lax-validation-error"
-    ]
+    assert [finding.rule_id for finding in findings] == ["xmlschema:lax-validation-error"]
 
 
 def test_lax_validation_allows_unknown_open_content(tmp_path) -> None:
@@ -149,9 +147,7 @@ def test_lax_validation_reports_known_integer_attribute(tmp_path) -> None:
 
     findings = _validate_lax_known_declarations((xml_path,))
 
-    assert [finding.rule_id for finding in findings] == [
-        "xmlschema:lax-validation-error"
-    ]
+    assert [finding.rule_id for finding in findings] == ["xmlschema:lax-validation-error"]
 
 
 def test_lax_validation_checks_xml_language_and_space(tmp_path) -> None:
@@ -189,9 +185,7 @@ def test_lax_validation_reports_known_element_in_linkbase_content(tmp_path) -> N
 
     findings = _validate_lax_known_declarations((xml_path,))
 
-    assert [finding.rule_id for finding in findings] == [
-        "xmlschema:lax-validation-error"
-    ]
+    assert [finding.rule_id for finding in findings] == ["xmlschema:lax-validation-error"]
 
 
 def test_xlink_allows_duplicate_role_refs_in_different_linkbases(tmp_path) -> None:
@@ -266,9 +260,7 @@ def test_linkbase_ref_role_must_match_target_linkbase_type(tmp_path) -> None:
 
     findings = _validate_xlink_file(xml_path)
 
-    assert [finding.rule_id for finding in findings] == [
-        "xbrl:linkbase-reference-error"
-    ]
+    assert [finding.rule_id for finding in findings] == ["xbrl:linkbase-reference-error"]
 
 
 def test_linkbase_ref_uses_xml_base_when_resolving_target(tmp_path) -> None:

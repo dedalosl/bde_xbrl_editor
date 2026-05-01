@@ -1340,11 +1340,13 @@ class TaxonomyLoader:
         from bde_xbrl_editor.taxonomy.models import (  # noqa: PLC0415
             FormulaAssertion,
             FormulaAssertionSet,
+            FormulaOutputDefinition,
         )
 
         formula_assertion_set: FormulaAssertionSet
         if formula_linkbases:
             all_assertions: list[FormulaAssertion] = []
+            all_output_formulas: list[FormulaOutputDefinition] = []
             parsed_formula_linkbases = _run_path_jobs(
                 formula_linkbases,
                 parse_formula_linkbase,
@@ -1352,6 +1354,7 @@ class TaxonomyLoader:
             )
             for _flp, fas in parsed_formula_linkbases:
                 all_assertions.extend(fas.assertions)
+                all_output_formulas.extend(fas.output_formulas)
 
             parsed_assertion_resource_linkbases = _run_path_jobs(
                 all_linkbase_paths,
@@ -1406,7 +1409,10 @@ class TaxonomyLoader:
                         ),
                     )
                 )
-            formula_assertion_set = FormulaAssertionSet(assertions=tuple(enriched_assertions))
+            formula_assertion_set = FormulaAssertionSet(
+                assertions=tuple(enriched_assertions),
+                output_formulas=tuple(all_output_formulas),
+            )
         else:
             formula_assertion_set = FormulaAssertionSet()
 
