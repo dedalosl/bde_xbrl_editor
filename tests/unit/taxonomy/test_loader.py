@@ -223,6 +223,87 @@ def test_parse_variable_set_resources_includes_general_variable_parameter_and_pr
     assert len(assertion.precondition_arcs) == 1
 
 
+def test_parse_variable_set_graph_preserves_extended_filter_resources(tmp_path: Path) -> None:
+    lb = tmp_path / "extended-filter-resources.xml"
+    lb.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:gen="http://xbrl.org/2008/generic"
+  xmlns:va="http://xbrl.org/2008/assertion/value"
+  xmlns:variable="http://xbrl.org/2008/variable"
+  xmlns:uf="http://xbrl.org/2008/filter/unit"
+  xmlns:mf="http://xbrl.org/2008/filter/match"
+  xmlns:tf="http://xbrl.org/2008/filter/tuple"
+  xmlns:acf="http://xbrl.org/2010/filter/aspect-cover"
+  xmlns:crf="http://xbrl.org/2010/filter/concept-relation"
+  xmlns:xlink="http://www.w3.org/1999/xlink"
+  xmlns:eg="http://example.com/eg"
+  xmlns:v="http://example.com/vars">
+  <gen:link xlink:type="extended" xlink:role="http://www.xbrl.org/2003/role/link">
+    <va:valueAssertion xlink:type="resource" xlink:label="a1" id="a1" test="$a gt 0"/>
+    <variable:factVariable xlink:type="resource" xlink:label="fv1"/>
+    <uf:generalMeasures xlink:type="resource" xlink:label="unitFilter" test="$a/unitRef"/>
+    <mf:matchUnit xlink:type="resource" xlink:label="matchUnit" variable="v:other" matchAny="true"/>
+    <tf:parentFilter xlink:type="resource" xlink:label="parentFilter" variable="v:parent"/>
+    <acf:aspectCover xlink:type="resource" xlink:label="coverFilter">
+      <acf:aspect>unit</acf:aspect>
+      <acf:dimension><acf:qname>eg:Dimension</acf:qname></acf:dimension>
+    </acf:aspectCover>
+    <crf:conceptRelation xlink:type="resource" xlink:label="relationFilter"
+      variable="v:source" axis="child">
+      <crf:qnameExpression>$conceptName</crf:qnameExpression>
+    </crf:conceptRelation>
+    <variable:variableFilterArc xlink:type="arc" xlink:from="fv1" xlink:to="unitFilter"/>
+    <variable:variableFilterArc xlink:type="arc" xlink:from="fv1" xlink:to="matchUnit"/>
+    <variable:variableFilterArc xlink:type="arc" xlink:from="fv1" xlink:to="parentFilter"/>
+    <variable:variableSetFilterArc xlink:type="arc" xlink:from="a1" xlink:to="coverFilter"/>
+    <variable:variableSetFilterArc xlink:type="arc" xlink:from="a1" xlink:to="relationFilter"/>
+    <variable:variableArc xlink:type="arc" xlink:from="a1" xlink:to="fv1" name="a"/>
+  </gen:link>
+</link:linkbase>
+""",
+        encoding="utf-8",
+    )
+
+    fas = parse_formula_linkbase(lb)
+    assertion = fas.assertions[0]
+    variable = assertion.variables[0]
+
+    assert {resource.local_name for resource in variable.filter_resources} == {
+        "generalMeasures",
+        "matchUnit",
+        "parentFilter",
+    }
+    match_filter = next(
+        resource for resource in variable.filter_resources if resource.local_name == "matchUnit"
+    )
+    assert match_filter.variable == "v:other"
+    assert match_filter.match_any is True
+    unit_filter = next(
+        resource
+        for resource in variable.filter_resources
+        if resource.local_name == "generalMeasures"
+    )
+    assert "a" in unit_filter.referenced_names
+    assert {resource.local_name for resource in assertion.variable_set_filters} == {
+        "aspectCover",
+        "conceptRelation",
+    }
+    cover_filter = next(
+        resource
+        for resource in assertion.variable_set_filters
+        if resource.local_name == "aspectCover"
+    )
+    assert cover_filter.aspects == ("unit",)
+    assert cover_filter.qnames[0].local_name == "Dimension"
+    relation_filter = next(
+        resource
+        for resource in assertion.variable_set_filters
+        if resource.local_name == "conceptRelation"
+    )
+    assert "conceptName" in relation_filter.referenced_names
+
+
 def test_parse_global_parameters_when_not_bound_locally(tmp_path: Path) -> None:
     lb = tmp_path / "global-parameter.xml"
     lb.write_text(

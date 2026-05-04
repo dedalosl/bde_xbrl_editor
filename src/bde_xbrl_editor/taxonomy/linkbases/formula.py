@@ -22,6 +22,7 @@ from bde_xbrl_editor.taxonomy.models import (
     FormulaAspectRule,
     FormulaAssertion,
     FormulaAssertionSet,
+    FormulaFilterResource,
     FormulaOutputDefinition,
     GeneralVariableDefinition,
     ParameterDefinition,
@@ -51,6 +52,11 @@ _NS_UF = "http://xbrl.org/2008/filter/unit"
 _NS_GF = "http://xbrl.org/2008/filter/general"
 _NS_BF = "http://xbrl.org/2008/filter/boolean"
 _NS_SSF = "http://xbrl.org/2008/filter/segment-scenario"
+_NS_TF = "http://xbrl.org/2008/filter/tuple"
+_NS_VF = "http://xbrl.org/2008/filter/value"
+_NS_MF = "http://xbrl.org/2008/filter/match"
+_NS_ACF = "http://xbrl.org/2010/filter/aspect-cover"
+_NS_CRF = "http://xbrl.org/2010/filter/concept-relation"
 _NS_LINK = "http://www.xbrl.org/2003/linkbase"
 _NS_XLINK = "http://www.w3.org/1999/xlink"
 
@@ -94,9 +100,27 @@ _TAG_GF_GENERAL = f"{{{_NS_GF}}}general"  # gf:general test="..." — XPath gene
 _NS_EF = "http://xbrl.org/2008/filter/entity"
 _TAG_EF_IDENTIFIER = f"{{{_NS_EF}}}identifier"
 _TAG_SSF_SEGMENT = f"{{{_NS_SSF}}}segment"
+_TAG_UF_GENERAL_MEASURES = f"{{{_NS_UF}}}generalMeasures"
 _TAG_BF_AND_FILTER = f"{{{_NS_BF}}}andFilter"
 _TAG_BF_OR_FILTER = f"{{{_NS_BF}}}orFilter"
 _BOOLEAN_FILTER_TAGS = (_TAG_BF_AND_FILTER, _TAG_BF_OR_FILTER)
+_FILTER_NAMESPACES = frozenset(
+    {
+        _NS_CF,
+        _NS_PF,
+        _NS_DF,
+        _NS_UF,
+        _NS_GF,
+        _NS_BF,
+        _NS_EF,
+        _NS_SSF,
+        _NS_TF,
+        _NS_VF,
+        _NS_MF,
+        _NS_ACF,
+        _NS_CRF,
+    }
+)
 
 # XLink attribute names (Clark notation)
 _ATTR_XLINK_TYPE = f"{{{_NS_XLINK}}}type"
@@ -181,6 +205,14 @@ def _parse_qname_element(parent: etree._Element, tag: str) -> QName | None:
     if not text:
         return None
     return _clark_to_qname(text, _element_nsmap(child))
+
+
+def _qname_localname(name: str) -> str:
+    return etree.QName(name).localname if name.startswith("{") else name
+
+
+def _qname_namespace(name: str) -> str:
+    return etree.QName(name).namespace if name.startswith("{") else ""
 
 
 # ---------------------------------------------------------------------------
@@ -295,6 +327,59 @@ def _extract_typed_dimension_filter(filter_el: etree._Element) -> TypedDimension
     if dimension_qname is None:
         return None
     return TypedDimensionFilter(dimension_qname=dimension_qname)
+
+
+def _parse_filter_resource(filter_el: etree._Element) -> FormulaFilterResource:
+    """Preserve Formula filter resource metadata beyond the currently executable subset."""
+    attributes: dict[str, str] = {}
+    for attr_name, attr_value in filter_el.attrib.items():
+        if attr_name in {_ATTR_XLINK_TYPE, _ATTR_XLINK_LABEL}:
+            continue
+        attributes[_qname_localname(attr_name)] = attr_value
+
+    qnames: list[QName] = []
+    qname_expressions: list[str] = []
+    aspects: list[str] = []
+    text_exprs: list[str] = []
+    for descendant in filter_el.iter():
+        if descendant is filter_el or not isinstance(descendant.tag, str):
+            continue
+        local_name = _qname_localname(descendant.tag)
+        text = (descendant.text or "").strip()
+        if local_name == "qname" and text:
+            qname = _clark_to_qname(text, _element_nsmap(descendant))
+            if qname is not None:
+                qnames.append(qname)
+        elif local_name == "qnameExpression" and text:
+            qname_expressions.append(text)
+            text_exprs.append(text)
+        elif local_name == "aspect" and text:
+            aspects.append(text)
+
+    test_xpath = (filter_el.get("test") or "").strip() or None
+    variable = (filter_el.get("variable") or "").strip() or None
+    match_any_attr = (filter_el.get("matchAny") or "").strip()
+    match_any = match_any_attr.lower() == "true" if match_any_attr else None
+    referenced_names = _extract_referenced_names(
+        test_xpath,
+        *(attributes.get(name) for name in ("select", "value")),
+        *qname_expressions,
+        *text_exprs,
+    )
+    return FormulaFilterResource(
+        label=filter_el.get(_ATTR_XLINK_LABEL, ""),
+        namespace=_qname_namespace(filter_el.tag),
+        local_name=_qname_localname(filter_el.tag),
+        attributes=attributes,
+        test_xpath=test_xpath,
+        variable=variable,
+        match_any=match_any,
+        aspects=tuple(aspects),
+        qnames=tuple(qnames),
+        qname_expressions=tuple(qname_expressions),
+        namespaces=_element_nsmap(filter_el),
+        referenced_names=referenced_names,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -521,6 +606,8 @@ def _build_boolean_filter(
                 # We represent it as a dimension-less DimensionFilter sentinel — not ideal,
                 # so skip for now; concept-inside-boolean is very rare in BDE taxonomies.
                 pass
+        else:
+            children.append(_parse_filter_resource(child_el))
 
     return BooleanFilterDefinition(
         filter_type=filter_type,  # type: ignore[arg-type]
@@ -553,6 +640,14 @@ def _build_filter_label_index(root: etree._Element) -> dict[str, etree._Element]
             lbl = el.get(_ATTR_XLINK_LABEL, "")
             if lbl:
                 index[lbl] = el
+    for el in root.iter():
+        if not isinstance(el.tag, str):
+            continue
+        if _qname_namespace(el.tag) not in _FILTER_NAMESPACES:
+            continue
+        lbl = el.get(_ATTR_XLINK_LABEL, "")
+        if lbl:
+            index.setdefault(lbl, el)
     return index
 
 
@@ -584,11 +679,13 @@ def _parse_fact_variable(
     typed_dimension_filters: list[TypedDimensionFilter] = []
     xpath_filters: list[XPathFilterDefinition] = []
     boolean_filters: list[BooleanFilterDefinition] = []
+    filter_resources: list[FormulaFilterResource] = []
 
     for filter_label in filter_arc_map.get(var_label, []):
         filter_el = filter_index.get(filter_label)
         if filter_el is None:
             continue
+        filter_resources.append(_parse_filter_resource(filter_el))
 
         # Concept filter
         if filter_el.tag in (_TAG_CF_CONCEPT_NAME, _TAG_CF_CONCEPT):
@@ -700,6 +797,7 @@ def _parse_fact_variable(
         fallback_value=fallback_value,
         xpath_filters=tuple(xpath_filters),
         boolean_filters=tuple(boolean_filters),
+        filter_resources=tuple(filter_resources),
         arc_name=arc_name or None,
         referenced_names=_extract_referenced_names(
             fallback_value, *(xpath_filter.xpath_expr for xpath_filter in xpath_filters)
@@ -889,6 +987,7 @@ def _parse_assertion(
     global_typed_dimension_filters: list[TypedDimensionFilter] = []
     global_boolean_filters: list[BooleanFilterDefinition] = []
     global_xpath_filters: list[XPathFilterDefinition] = []
+    variable_set_filters: list[FormulaFilterResource] = []
     if variable_set_filter_arc_map is not None:
         _bool_arc = bool_arc_map or {}
         # Deduplicate when assertion_id == assertion_label (both map to the same list)
@@ -905,6 +1004,7 @@ def _parse_assertion(
             filter_el = filter_index.get(set_filter_label)
             if filter_el is None:
                 continue
+            variable_set_filters.append(_parse_filter_resource(filter_el))
             if filter_el.tag in (_TAG_CF_CONCEPT_NAME, _TAG_CF_CONCEPT):
                 qn = _extract_concept_filter(filter_el)
                 if qn is not None and global_concept_filter is None:
@@ -1014,6 +1114,7 @@ def _parse_assertion(
         variable_arcs=variable_arcs,
         parameter_arcs=parameter_arcs,
         precondition_arcs=precondition_arcs,
+        variable_set_filters=tuple(variable_set_filters),
         referenced_names=_extract_referenced_names(
             assertion_el.get("test"),
             assertion_el.get("formula"),
@@ -1181,6 +1282,7 @@ def _parse_output_formula(
     formula_label = _xlabel or formula_id
 
     global_xpath_filters: list[XPathFilterDefinition] = []
+    variable_set_filters: list[FormulaFilterResource] = []
     if variable_set_filter_arc_map is not None:
         seen_set_labels: set[str] = set()
         set_filter_labels = variable_set_filter_arc_map.get(formula_id, []) + (
@@ -1195,6 +1297,7 @@ def _parse_output_formula(
             filter_el = filter_index.get(set_filter_label)
             if filter_el is None:
                 continue
+            variable_set_filters.append(_parse_filter_resource(filter_el))
             if filter_el.tag in (_TAG_GF_GENERAL, _TAG_EF_IDENTIFIER):
                 test_expr = (filter_el.get("test") or "").strip()
                 if test_expr:
@@ -1303,6 +1406,7 @@ def _parse_output_formula(
         variable_arcs=variable_arcs,
         parameter_arcs=parameter_arcs,
         precondition_arcs=precondition_arcs,
+        variable_set_filters=tuple(variable_set_filters),
         referenced_names=_extract_referenced_names(formula_el.get("value")),
         namespaces=_element_nsmap(formula_el),
         source_path=str(source_path) if source_path is not None else None,

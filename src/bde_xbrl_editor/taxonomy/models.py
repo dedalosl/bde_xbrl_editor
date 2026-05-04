@@ -410,6 +410,24 @@ class BooleanFilterDefinition:
 
 
 @dataclass(frozen=True)
+class FormulaFilterResource:
+    """Formula filter resource metadata retained for static analysis and later execution."""
+
+    label: str
+    namespace: str
+    local_name: str
+    attributes: dict[str, str] = field(default_factory=dict)
+    test_xpath: str | None = None
+    variable: str | None = None
+    match_any: bool | None = None
+    aspects: tuple[str, ...] = field(default_factory=tuple)
+    qnames: tuple[QName, ...] = field(default_factory=tuple)
+    qname_expressions: tuple[str, ...] = field(default_factory=tuple)
+    namespaces: dict[str, str] = field(default_factory=dict)
+    referenced_names: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True)
 class FactVariableDefinition:
     """A bound fact variable in a formula assertion."""
 
@@ -424,6 +442,7 @@ class FactVariableDefinition:
     fallback_value: str | None = None
     xpath_filters: tuple[XPathFilterDefinition, ...] = field(default_factory=tuple)
     boolean_filters: tuple[BooleanFilterDefinition, ...] = field(default_factory=tuple)
+    filter_resources: tuple[FormulaFilterResource, ...] = field(default_factory=tuple)
     arc_name: str | None = None
     referenced_names: tuple[str, ...] = field(default_factory=tuple)
 
@@ -495,6 +514,7 @@ class FormulaAssertion:
     variable_arcs: tuple[FormulaArc, ...] = field(default_factory=tuple)
     parameter_arcs: tuple[FormulaArc, ...] = field(default_factory=tuple)
     precondition_arcs: tuple[FormulaArc, ...] = field(default_factory=tuple)
+    variable_set_filters: tuple[FormulaFilterResource, ...] = field(default_factory=tuple)
     referenced_names: tuple[str, ...] = field(default_factory=tuple)
     table_id: str | None = None
     table_label: str | None = None
@@ -559,6 +579,7 @@ class FormulaOutputDefinition:
     variable_arcs: tuple[FormulaArc, ...] = field(default_factory=tuple)
     parameter_arcs: tuple[FormulaArc, ...] = field(default_factory=tuple)
     precondition_arcs: tuple[FormulaArc, ...] = field(default_factory=tuple)
+    variable_set_filters: tuple[FormulaFilterResource, ...] = field(default_factory=tuple)
     referenced_names: tuple[str, ...] = field(default_factory=tuple)
     namespaces: dict[str, str] = field(default_factory=dict)
     source_path: str | None = None
