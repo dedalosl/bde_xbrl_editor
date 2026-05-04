@@ -46,6 +46,7 @@ class InstanceValidator:
         cancel_event: threading.Event | None = None,
         include_dimensional: bool = True,
         include_relationships: bool = False,
+        general_variable_values: dict[str, str] | None = None,
     ) -> None:
         self._taxonomy = taxonomy
         self._progress_callback = progress_callback
@@ -53,6 +54,7 @@ class InstanceValidator:
         self._cancel_event = cancel_event
         self._include_dimensional = include_dimensional
         self._include_relationships = include_relationships
+        self._general_variable_values = dict(general_variable_values or {})
 
     def validate_sync(self, instance: XbrlInstance) -> ValidationReport:
         """Run structural + dimensional + formula validation synchronously.
@@ -189,7 +191,12 @@ class InstanceValidator:
                         "Evaluating formula assertions…",
                     )
             try:
-                static_findings = tuple(FormulaStaticValidator(self._taxonomy).validate(instance))
+                static_findings = tuple(
+                    FormulaStaticValidator(
+                        self._taxonomy,
+                        external_variable_names=self._general_variable_values.keys(),
+                    ).validate(instance)
+                )
                 findings.extend(static_findings)
                 self._publish_findings(static_findings)
                 fe = FormulaEvaluator(
@@ -197,6 +204,7 @@ class InstanceValidator:
                     progress_callback=self._progress_callback,
                     finding_callback=self._publish_findings,
                     cancel_event=self._cancel_event,
+                    general_variable_values=self._general_variable_values,
                 )
                 findings.extend(fe.evaluate(instance))
             except Exception as exc:  # noqa: BLE001

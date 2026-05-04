@@ -10,11 +10,14 @@ from PySide6.QtCore import Qt, QThread, QTimer
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
+    QDialogButtonBox,
     QDockWidget,
     QFileDialog,
+    QFormLayout,
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMainWindow,
     QMessageBox,
     QPushButton,
@@ -1224,6 +1227,10 @@ class MainWindow(QMainWindow):
         if self._validation_thread is not None and self._validation_thread.isRunning():
             return
 
+        general_variable_values = self._prompt_formula_general_variable_values()
+        if general_variable_values is None:
+            return
+
         self._ensure_validation_panel()
         assert self._validation_panel is not None  # guaranteed by _ensure_validation_panel
 
@@ -1236,6 +1243,7 @@ class MainWindow(QMainWindow):
         self._validation_worker = ValidationWorker(
             taxonomy=self._current_taxonomy,
             instance=self._current_instance,
+            general_variable_values=general_variable_values,
         )
         self._validation_thread = QThread(self)
 
@@ -1254,6 +1262,69 @@ class MainWindow(QMainWindow):
             self._on_validation_error, Qt.ConnectionType.QueuedConnection
         )
         self._validation_thread.start()
+
+    def _prompt_formula_general_variable_values(self) -> dict[str, str] | None:
+        if self._current_taxonomy is None:
+            return {}
+        variables = self._formula_general_variables()
+        if not variables:
+            return {}
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Formula General Variables")
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(10)
+        layout.addWidget(QLabel("Provide values for Formula general variables before validation."))
+
+        form = QFormLayout()
+        edits: dict[str, QLineEdit] = {}
+        for name, fallback in variables:
+            edit = QLineEdit()
+            if fallback is not None:
+                edit.setPlaceholderText(f"fallback: {fallback}")
+            form.addRow(QLabel(name), edit)
+            edits[name] = edit
+        layout.addLayout(form)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+        return {
+            name: edit.text().strip()
+            for name, edit in edits.items()
+            if edit.text().strip()
+        }
+
+    def _formula_general_variables(self) -> list[tuple[str, str | None]]:
+        if self._current_taxonomy is None:
+            return []
+        assertion_set = self._current_taxonomy.formula_assertion_set
+        from bde_xbrl_editor.validation.formula.static import (  # noqa: PLC0415
+            collect_formula_external_variable_names,
+        )
+
+        seen: set[str] = set()
+        variables: list[tuple[str, str | None]] = []
+        variable_sets = (*assertion_set.assertions, *assertion_set.output_formulas)
+        for variable_set in variable_sets:
+            for variable in variable_set.general_variables:
+                if variable.variable_name in seen:
+                    continue
+                seen.add(variable.variable_name)
+                variables.append((variable.variable_name, variable.fallback_value))
+        for name in collect_formula_external_variable_names(self._current_taxonomy):
+            if name in seen:
+                continue
+            seen.add(name)
+            variables.append((name, None))
+        return variables
 
     def _on_validation_progress(self, current: int, total: int, message: str) -> None:
         if self._validation_panel:

@@ -60,11 +60,13 @@ class FormulaEvaluator:
         progress_callback: ProgressCallback | None = None,
         finding_callback: FindingCallback | None = None,
         cancel_event: threading.Event | None = None,
+        general_variable_values: dict[str, str] | None = None,
     ) -> None:
         self._taxonomy = taxonomy
         self._progress_callback = progress_callback
         self._finding_callback = finding_callback
         self._cancel_event = cancel_event
+        self._general_variable_values = dict(general_variable_values or {})
         self._detail_cache: dict[str, dict[str, str]] = {}
         self._xpath_token_cache: dict[tuple[tuple[tuple[str, str], ...], str], Any] = {}
         self._xpath_filter_token_cache: dict[tuple[tuple[tuple[str, str], ...], str], Any] = {}
@@ -839,6 +841,10 @@ class FormulaEvaluator:
                 variables[var_name] = _coerce_fallback_value(fallback_by_name[var_name])
             else:
                 variables[var_name] = Decimal(0)
+        if assertion is not None:
+            variables.update(self._general_variable_xpath_values(assertion))
+        for name, value in self._general_variable_values.items():
+            variables.setdefault(name, _coerce_fallback_value(value))
 
         # Populate the thread-local xfi: evaluation context
         ctx_obj = None
@@ -875,6 +881,17 @@ class FormulaEvaluator:
             clear_evaluation_context()
 
         return result
+
+    def _general_variable_xpath_values(self, assertion: FormulaAssertion) -> dict[str, Any]:
+        values: dict[str, Any] = {}
+        for variable in assertion.general_variables:
+            if variable.variable_name in self._general_variable_values:
+                values[variable.variable_name] = _coerce_fallback_value(
+                    self._general_variable_values[variable.variable_name]
+                )
+            elif variable.fallback_value is not None:
+                values[variable.variable_name] = _coerce_fallback_value(variable.fallback_value)
+        return values
 
     def _get_xpath_token(
         self,

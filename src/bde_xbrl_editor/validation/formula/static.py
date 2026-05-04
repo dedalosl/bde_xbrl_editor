@@ -36,11 +36,33 @@ _NUMERIC_TYPE_KEYWORDS = (
 )
 
 
+def collect_formula_external_variable_names(taxonomy: TaxonomyStructure) -> tuple[str, ...]:
+    """Return variable references used by Formula sets but not declared in the DTS."""
+    names: set[str] = set()
+    assertion_set = taxonomy.formula_assertion_set
+    variable_sets = (*assertion_set.assertions, *assertion_set.output_formulas)
+    for variable_set in variable_sets:
+        parameters = tuple(variable_set.parameters) + tuple(assertion_set.global_parameters)
+        name_ctx = _build_name_context(variable_set, parameters)
+        unresolved = _collect_unresolved_dependencies(
+            variable_set,
+            known_names=set(name_ctx["all_declared_names"]),
+            parameters=parameters,
+        )
+        names.update(unresolved)
+    return tuple(sorted(names))
+
+
 class FormulaStaticValidator:
     """Validate static Formula 1.0 output-aspect rules from the loaded taxonomy."""
 
-    def __init__(self, taxonomy: TaxonomyStructure) -> None:
+    def __init__(
+        self,
+        taxonomy: TaxonomyStructure,
+        external_variable_names: Iterable[str] | None = None,
+    ) -> None:
         self._taxonomy = taxonomy
+        self._external_variable_names = set(external_variable_names or ())
 
     def validate(self, instance: XbrlInstance | None = None) -> list[ValidationFinding]:
         findings: list[ValidationFinding] = []
@@ -72,9 +94,21 @@ class FormulaStaticValidator:
     def _validate_variable_sets(self) -> list[ValidationFinding]:
         findings: list[ValidationFinding] = []
         for assertion in self._taxonomy.formula_assertion_set.assertions:
-            findings.extend(_variable_set_graph_findings(assertion, self._taxonomy))
+            findings.extend(
+                _variable_set_graph_findings(
+                    assertion,
+                    self._taxonomy,
+                    external_variable_names=self._external_variable_names,
+                )
+            )
         for formula in self._taxonomy.formula_assertion_set.output_formulas:
-            findings.extend(_variable_set_graph_findings(formula, self._taxonomy))
+            findings.extend(
+                _variable_set_graph_findings(
+                    formula,
+                    self._taxonomy,
+                    external_variable_names=self._external_variable_names,
+                )
+            )
             findings.extend(_formula_aspect_model_findings(formula))
         return findings
 
@@ -431,6 +465,8 @@ def _formula_xpath_static_findings(
 def _variable_set_graph_findings(
     variable_set: FormulaAssertion | FormulaOutputDefinition,
     taxonomy: TaxonomyStructure,
+    *,
+    external_variable_names: set[str] | None = None,
 ) -> list[ValidationFinding]:
     findings: list[ValidationFinding] = []
     parameters = tuple(variable_set.parameters) + tuple(
@@ -463,8 +499,15 @@ def _variable_set_graph_findings(
     local_parameter_name_clashes = _duplicates(
         _resolved_parameter_names(variable_set.parameters)
     )
+    bound_parameter_names = set(
+        _resolved_parameter_names(
+            parameter
+            for parameter in variable_set.parameters
+            if parameter.scope == "local" or parameter.arc_name
+        )
+    )
     parameter_clashes = local_parameter_name_clashes | (
-        set(name_ctx["parameter_names"]) & set(name_ctx["fact_general_names"])
+        bound_parameter_names & set(name_ctx["fact_general_names"])
     )
     if parameter_clashes:
         findings.append(
@@ -486,9 +529,24 @@ def _variable_set_graph_findings(
             )
         )
 
+    if _has_disallowed_fallback_value_reference(
+        variable_set,
+        fact_and_general_names=set(name_ctx["fact_general_names"]),
+    ):
+        findings.append(
+            _finding(
+                "xbrlve:fallbackValueVariableReferenceNotAllowed",
+                (
+                    f"Variable set '{_variable_set_id(variable_set)}' has fallback values "
+                    "that reference fact or general variables"
+                ),
+            )
+        )
+
+    known_names = set(name_ctx["all_declared_names"]) | set(external_variable_names or ())
     unresolved = _collect_unresolved_dependencies(
         variable_set,
-        known_names=set(name_ctx["all_declared_names"]),
+        known_names=known_names,
         parameters=parameters,
     )
     if unresolved:
@@ -502,7 +560,7 @@ def _variable_set_graph_findings(
 
     graph = _build_dependency_graph(
         variable_set,
-        set(name_ctx["all_declared_names"]),
+        known_names,
         parameters=parameters,
     )
     cycles = _find_cycles(graph)
@@ -860,7 +918,7 @@ def _parameter_type_mismatch(parameter) -> bool:
         return False
     select = (parameter.select_xpath or "").strip()
     if not select:
-        return parameter.required
+        return parameter.required and as_type.endswith("qname")
     if as_type.endswith("qname"):
         if "qname(" in select.lower():
             return False
@@ -896,7 +954,22 @@ def _has_disallowed_variable_set_filter_reference(
     return False
 
 
-
+def _has_disallowed_fallback_value_reference(
+    variable_set: FormulaAssertion | FormulaOutputDefinition,
+    *,
+    fact_and_general_names: set[str],
+) -> bool:
+    for variable in variable_set.variables:
+        for ref in _extract_var_refs(variable.fallback_value):
+            resolved, failed = _resolve_name(ref, variable_set.namespaces)
+            if not failed and resolved in fact_and_general_names:
+                return True
+    for variable in variable_set.general_variables:
+        for ref in _extract_var_refs(variable.fallback_value):
+            resolved, failed = _resolve_name(ref, variable.namespaces)
+            if not failed and resolved in fact_and_general_names:
+                return True
+    return False
 
 def _report_formula_xpath_static_error(code: str, exc: Exception) -> bool:
     if code == "err:XPST0081":

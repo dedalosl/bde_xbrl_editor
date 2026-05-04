@@ -245,6 +245,9 @@ def test_parse_global_parameters_when_not_bound_locally(tmp_path: Path) -> None:
     assert len(fas.global_parameters) == 1
     assert fas.global_parameters[0].parameter_name == "globalP"
     assert fas.global_parameters[0].scope == "global"
+    assert len(fas.assertions[0].parameters) == 1
+    assert fas.assertions[0].parameters[0].parameter_name == "globalP"
+    assert fas.assertions[0].parameters[0].scope == "global"
 
 
 def test_parse_assertion_table_mappings_resolves_applies_to_table(tmp_path: Path) -> None:

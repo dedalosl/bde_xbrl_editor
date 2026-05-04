@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import replace
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Literal
@@ -740,6 +741,21 @@ def _parse_parameter(
         namespaces=_element_nsmap(parameter_el),
         referenced_names=_extract_referenced_names(select_xpath),
     )
+
+
+def _with_effective_global_parameters(
+    variable_set: FormulaAssertion | FormulaOutputDefinition,
+    global_parameters: tuple[ParameterDefinition, ...],
+) -> FormulaAssertion | FormulaOutputDefinition:
+    if not global_parameters:
+        return variable_set
+    local_names = {parameter.parameter_name for parameter in variable_set.parameters}
+    inherited = tuple(
+        parameter for parameter in global_parameters if parameter.parameter_name not in local_names
+    )
+    if not inherited:
+        return variable_set
+    return replace(variable_set, parameters=variable_set.parameters + inherited)
 
 
 def _parse_precondition(precondition_el: etree._Element) -> PreconditionDefinition | None:
@@ -1486,6 +1502,15 @@ def _parse_formula_root(
         if label not in global_parameter_targets
         for parameter_el in parameter_els
     )
+    if global_parameters:
+        assertions = [
+            _with_effective_global_parameters(assertion, global_parameters)
+            for assertion in assertions
+        ]
+        output_formulas = [
+            _with_effective_global_parameters(formula, global_parameters)
+            for formula in output_formulas
+        ]
 
     return FormulaAssertionSet(
         assertions=tuple(assertions),

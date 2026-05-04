@@ -54,10 +54,17 @@ class ValidationWorker(QObject):
     validation_completed = Signal(object)  # ValidationReport
     validation_failed = Signal(str)
 
-    def __init__(self, taxonomy, instance, parent=None) -> None:
+    def __init__(
+        self,
+        taxonomy,
+        instance,
+        general_variable_values: dict[str, str] | None = None,
+        parent=None,
+    ) -> None:
         super().__init__(parent)
         self._taxonomy = taxonomy
         self._instance = instance
+        self._general_variable_values = dict(general_variable_values or {})
         self._cancel_event = threading.Event()
 
     @Slot()
@@ -77,6 +84,7 @@ class ValidationWorker(QObject):
                 progress_callback=_progress,
                 finding_callback=_findings_ready,
                 cancel_event=self._cancel_event,
+                general_variable_values=self._general_variable_values,
             )
             report = validator.validate_sync(self._instance)
             self.validation_completed.emit(report)

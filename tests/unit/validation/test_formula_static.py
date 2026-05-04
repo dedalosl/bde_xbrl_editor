@@ -19,7 +19,10 @@ from bde_xbrl_editor.taxonomy.models import (
     TypedDimensionFilter,
     ValueAssertionDefinition,
 )
-from bde_xbrl_editor.validation.formula.static import FormulaStaticValidator
+from bde_xbrl_editor.validation.formula.static import (
+    FormulaStaticValidator,
+    collect_formula_external_variable_names,
+)
 from bde_xbrl_editor.validation.models import ValidationSeverity
 
 _NS = "http://example.com/formula"
@@ -284,6 +287,140 @@ def test_formula_static_validation_reports_parameter_clashes_and_parameter_cycle
     assert "xbrlve:parameterCyclicDependencies" in codes
 
 
+def test_formula_static_validation_allows_global_parameter_name_to_overlap_fact_variable() -> None:
+    assertion_set = FormulaAssertionSet(
+        assertions=(
+            ValueAssertionDefinition(
+                assertion_id="a1",
+                label=None,
+                severity=ValidationSeverity.ERROR,
+                abstract=False,
+                variables=(FactVariableDefinition(variable_name="p"),),
+                parameters=(
+                    ParameterDefinition(
+                        parameter_name="p",
+                        select_xpath="'global'",
+                        scope="global",
+                    ),
+                ),
+                test_xpath="$p = 'fact'",
+            ),
+        )
+    )
+
+    assert "xbrlve:parameterNameClash" not in _rule_ids(assertion_set)
+
+
+def test_formula_static_validation_allows_required_external_parameter_without_select() -> None:
+    assertion_set = FormulaAssertionSet(
+        assertions=(
+            ValueAssertionDefinition(
+                assertion_id="a1",
+                label=None,
+                severity=ValidationSeverity.ERROR,
+                abstract=False,
+                variables=(),
+                parameters=(
+                    ParameterDefinition(
+                        parameter_name="mydate",
+                        as_type="xs:date",
+                        required=True,
+                        scope="local",
+                    ),
+                ),
+                test_xpath="true()",
+            ),
+        )
+    )
+
+    assert "xbrlve:parameterTypeMismatch" not in _rule_ids(assertion_set)
+
+
+def test_formula_static_validation_reports_required_external_qname_parameter_mismatch() -> None:
+    assertion_set = FormulaAssertionSet(
+        assertions=(
+            ValueAssertionDefinition(
+                assertion_id="a1",
+                label=None,
+                severity=ValidationSeverity.ERROR,
+                abstract=False,
+                variables=(),
+                parameters=(
+                    ParameterDefinition(
+                        parameter_name="name",
+                        as_type="xs:QName",
+                        required=True,
+                        scope="local",
+                    ),
+                ),
+                test_xpath="true()",
+            ),
+        )
+    )
+
+    assert "xbrlve:parameterTypeMismatch" in _rule_ids(assertion_set)
+
+
+def test_formula_static_validation_rejects_fallback_referencing_fact_variable() -> None:
+    assertion_set = FormulaAssertionSet(
+        assertions=(
+            ValueAssertionDefinition(
+                assertion_id="a1",
+                label=None,
+                severity=ValidationSeverity.ERROR,
+                abstract=False,
+                variables=(
+                    FactVariableDefinition(variable_name="n1"),
+                    FactVariableDefinition(variable_name="n2", fallback_value="$n1 + 1"),
+                ),
+                test_xpath="true()",
+            ),
+        )
+    )
+
+    assert "xbrlve:fallbackValueVariableReferenceNotAllowed" in _rule_ids(assertion_set)
+
+
+def test_formula_static_validation_rejects_fallback_referencing_general_variable() -> None:
+    assertion_set = FormulaAssertionSet(
+        assertions=(
+            ValueAssertionDefinition(
+                assertion_id="a1",
+                label=None,
+                severity=ValidationSeverity.ERROR,
+                abstract=False,
+                variables=(
+                    FactVariableDefinition(variable_name="n1", fallback_value="$g1"),
+                ),
+                general_variables=(
+                    GeneralVariableDefinition(variable_name="g1", select_xpath="1"),
+                ),
+                test_xpath="true()",
+            ),
+        )
+    )
+
+    assert "xbrlve:fallbackValueVariableReferenceNotAllowed" in _rule_ids(assertion_set)
+
+
+def test_formula_static_validation_allows_fallback_referencing_parameter() -> None:
+    assertion_set = FormulaAssertionSet(
+        assertions=(
+            ValueAssertionDefinition(
+                assertion_id="a1",
+                label=None,
+                severity=ValidationSeverity.ERROR,
+                abstract=False,
+                variables=(FactVariableDefinition(variable_name="n1", fallback_value="$p1"),),
+                parameters=(ParameterDefinition(parameter_name="p1", select_xpath="1"),),
+                test_xpath="true()",
+            ),
+        )
+    )
+
+    assert "xbrlve:fallbackValueVariableReferenceNotAllowed" not in _rule_ids(assertion_set)
+
+
 def test_formula_static_validation_reports_unknown_and_mismatched_aspect_model() -> None:
     assertion_set = FormulaAssertionSet(
         output_formulas=(
@@ -318,3 +455,46 @@ def test_formula_static_validation_reports_unknown_and_mismatched_aspect_model()
     codes = _rule_ids(assertion_set)
     assert "xbrlve:unknownAspectModel" in codes
     assert "xbrlve:filterAspectModelMismatch" in codes
+
+
+def test_formula_static_validation_collects_external_variable_references() -> None:
+    assertion_set = FormulaAssertionSet(
+        assertions=(
+            ValueAssertionDefinition(
+                assertion_id="a1",
+                label=None,
+                severity=ValidationSeverity.ERROR,
+                abstract=False,
+                variables=(),
+                test_xpath="$SucComunitaria and $TipoEntidad = 'B'",
+                referenced_names=("SucComunitaria", "TipoEntidad"),
+            ),
+        )
+    )
+
+    assert collect_formula_external_variable_names(_taxonomy(assertion_set)) == (
+        "SucComunitaria",
+        "TipoEntidad",
+    )
+
+
+def test_formula_static_validation_treats_supplied_external_variables_as_known() -> None:
+    assertion_set = FormulaAssertionSet(
+        assertions=(
+            ValueAssertionDefinition(
+                assertion_id="a1",
+                label=None,
+                severity=ValidationSeverity.ERROR,
+                abstract=False,
+                variables=(),
+                test_xpath="$SucComunitaria and $TipoEntidad = 'B'",
+                referenced_names=("SucComunitaria", "TipoEntidad"),
+            ),
+        )
+    )
+    validator = FormulaStaticValidator(
+        _taxonomy(assertion_set),
+        external_variable_names={"SucComunitaria", "TipoEntidad"},
+    )
+
+    assert "xbrlve:unresolvedDependency" not in {f.rule_id for f in validator.validate()}

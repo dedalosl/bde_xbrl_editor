@@ -23,6 +23,7 @@ from bde_xbrl_editor.taxonomy.models import (
     ExistenceAssertionDefinition,
     FactVariableDefinition,
     FormulaAssertionSet,
+    GeneralVariableDefinition,
     QName,
     TaxonomyMetadata,
     TaxonomyStructure,
@@ -222,6 +223,52 @@ class TestValueAssertion:
         inst = _instance([_fact()])
         findings = FormulaEvaluator(taxonomy).evaluate(inst)
         assert findings == []
+
+    def test_uses_provided_general_variable_value(self) -> None:
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(assertion_id="VA_GENERAL"),
+            general_variables=(GeneralVariableDefinition(variable_name="threshold"),),
+            test_xpath="$threshold = 10",
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
+        inst = _instance([])
+
+        findings = FormulaEvaluator(
+            taxonomy,
+            general_variable_values={"threshold": "10"},
+        ).evaluate(inst)
+
+        assert findings[0].status == ValidationStatus.PASS
+
+    def test_uses_general_variable_fallback_when_value_not_provided(self) -> None:
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(assertion_id="VA_GENERAL_FALLBACK"),
+            general_variables=(
+                GeneralVariableDefinition(variable_name="threshold", fallback_value="10"),
+            ),
+            test_xpath="$threshold = 10",
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
+        inst = _instance([])
+
+        findings = FormulaEvaluator(taxonomy).evaluate(inst)
+
+        assert findings[0].status == ValidationStatus.PASS
+
+    def test_uses_provided_external_variable_value(self) -> None:
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(assertion_id="VA_EXTERNAL"),
+            test_xpath="$SucComunitaria = 'S'",
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
+        inst = _instance([])
+
+        findings = FormulaEvaluator(
+            taxonomy,
+            general_variable_values={"SucComunitaria": "S"},
+        ).evaluate(inst)
+
+        assert findings[0].status == ValidationStatus.PASS
 
     def test_value_assertion_with_variable_binding(self) -> None:
         """A value assertion with a bound variable produces a finding when test fails."""
