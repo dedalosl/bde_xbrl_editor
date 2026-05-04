@@ -2,6 +2,11 @@
 
 from __future__ import annotations
 
+import re
+from collections import defaultdict
+from collections.abc import Iterable
+from pathlib import Path
+
 from bde_xbrl_editor.instance.models import XbrlInstance
 from bde_xbrl_editor.taxonomy.constants import NS_XBRLI
 from bde_xbrl_editor.taxonomy.models import (
@@ -9,6 +14,7 @@ from bde_xbrl_editor.taxonomy.models import (
     DimensionFilter,
     FactVariableDefinition,
     FormulaAspectRule,
+    FormulaAssertion,
     FormulaOutputDefinition,
     QName,
     TaxonomyStructure,
@@ -38,6 +44,7 @@ class FormulaStaticValidator:
 
     def validate(self, instance: XbrlInstance | None = None) -> list[ValidationFinding]:
         findings: list[ValidationFinding] = []
+        findings.extend(self._validate_variable_sets())
         findings.extend(self._validate_assertion_filters(instance))
         for formula in self._taxonomy.formula_assertion_set.output_formulas:
             findings.extend(_formula_xpath_static_findings(formula, self._taxonomy))
@@ -60,6 +67,15 @@ class FormulaStaticValidator:
                 self._append_variable_filter_findings(
                     variable, formula.variables, instance, findings, seen_codes
                 )
+        return findings
+
+    def _validate_variable_sets(self) -> list[ValidationFinding]:
+        findings: list[ValidationFinding] = []
+        for assertion in self._taxonomy.formula_assertion_set.assertions:
+            findings.extend(_variable_set_graph_findings(assertion, self._taxonomy))
+        for formula in self._taxonomy.formula_assertion_set.output_formulas:
+            findings.extend(_variable_set_graph_findings(formula, self._taxonomy))
+            findings.extend(_formula_aspect_model_findings(formula))
         return findings
 
     def _append_variable_filter_findings(
@@ -410,6 +426,476 @@ def _formula_xpath_static_findings(
                 )
             ]
     return []
+
+
+def _variable_set_graph_findings(
+    variable_set: FormulaAssertion | FormulaOutputDefinition,
+    taxonomy: TaxonomyStructure,
+) -> list[ValidationFinding]:
+    findings: list[ValidationFinding] = []
+    parameters = tuple(variable_set.parameters) + tuple(
+        taxonomy.formula_assertion_set.global_parameters
+    )
+
+    name_ctx = _build_name_context(variable_set, parameters)
+
+    if name_ctx["resolution_failures"]:
+        findings.append(
+            _finding(
+                "xbrlve:variableNameResolutionFailure",
+                (
+                    f"Variable set '{_variable_set_id(variable_set)}' has names with unresolved "
+                    f"namespace prefixes: {', '.join(sorted(name_ctx['resolution_failures']))}"
+                ),
+            )
+        )
+
+    duplicate_names = _duplicates(name_ctx["all_variable_names"])
+    if duplicate_names:
+        findings.append(
+            _finding(
+                "xbrlve:duplicateVariableNames",
+                f"Variable set '{_variable_set_id(variable_set)}' has duplicate variable names: "
+                + ", ".join(sorted(duplicate_names)),
+            )
+        )
+
+    local_parameter_name_clashes = _duplicates(
+        _resolved_parameter_names(variable_set.parameters)
+    )
+    parameter_clashes = local_parameter_name_clashes | (
+        set(name_ctx["parameter_names"]) & set(name_ctx["fact_general_names"])
+    )
+    if parameter_clashes:
+        findings.append(
+            _finding(
+                "xbrlve:parameterNameClash",
+                f"Variable set '{_variable_set_id(variable_set)}' has parameter name clashes: "
+                + ", ".join(sorted(parameter_clashes)),
+            )
+        )
+
+    if any(_parameter_type_mismatch(parameter) for parameter in parameters):
+        findings.append(
+            _finding(
+                "xbrlve:parameterTypeMismatch",
+                (
+                    f"Variable set '{_variable_set_id(variable_set)}' contains parameter declarations "
+                    "whose select/external value shape conflicts with the declared @as type"
+                ),
+            )
+        )
+
+    unresolved = _collect_unresolved_dependencies(
+        variable_set,
+        known_names=set(name_ctx["all_declared_names"]),
+        parameters=parameters,
+    )
+    if unresolved:
+        findings.append(
+            _finding(
+                "xbrlve:unresolvedDependency",
+                f"Variable set '{_variable_set_id(variable_set)}' has unresolved dependencies: "
+                + ", ".join(sorted(unresolved)),
+            )
+        )
+
+    graph = _build_dependency_graph(
+        variable_set,
+        set(name_ctx["all_declared_names"]),
+        parameters=parameters,
+    )
+    cycles = _find_cycles(graph)
+    if cycles:
+        cycle_nodes = {node for cycle in cycles for node in cycle}
+        if cycle_nodes and cycle_nodes.issubset(set(name_ctx["parameter_names"])):
+            findings.append(
+                _finding(
+                    "xbrlve:parameterCyclicDependencies",
+                    f"Variable set '{_variable_set_id(variable_set)}' has parameter dependency cycles",
+                )
+            )
+        else:
+            findings.append(
+                _finding(
+                    "xbrlve:cyclicDependencies",
+                    f"Variable set '{_variable_set_id(variable_set)}' has variable dependency cycles",
+                )
+            )
+
+    if _has_disallowed_variable_set_filter_reference(
+        variable_set,
+        fact_and_general_names=set(name_ctx["fact_general_names"]),
+    ):
+        findings.append(
+            _finding(
+                "xbrlve:factVariableReferenceNotAllowed",
+                (
+                    f"Variable set '{_variable_set_id(variable_set)}' has variable-set filters "
+                    "that reference fact/general variables"
+                ),
+            )
+        )
+
+    findings.extend(_variable_set_xpath_static_findings(variable_set, taxonomy))
+    return findings
+
+
+def _variable_set_xpath_static_findings(
+    variable_set: FormulaAssertion | FormulaOutputDefinition,
+    taxonomy: TaxonomyStructure,
+) -> list[ValidationFinding]:
+    findings: list[ValidationFinding] = []
+    expressions: list[tuple[str, dict[str, str]]] = []
+
+    if isinstance(variable_set, FormulaAssertion):
+        if hasattr(variable_set, "test_xpath") and variable_set.test_xpath:
+            expressions.append((variable_set.test_xpath, variable_set.namespaces))
+        if hasattr(variable_set, "formula_xpath") and variable_set.formula_xpath:
+            expressions.append((variable_set.formula_xpath, variable_set.namespaces))
+    else:
+        expressions.append((variable_set.value_xpath, variable_set.namespaces))
+        if variable_set.source_path is not None:
+            expressions.extend(_extract_formula_decimals_expressions(variable_set))
+
+    for variable in variable_set.general_variables:
+        expressions.append((variable.select_xpath, variable.namespaces))
+
+    for parameter in variable_set.parameters:
+        if parameter.select_xpath:
+            expressions.append((parameter.select_xpath, parameter.namespaces))
+
+    for precondition in variable_set.preconditions:
+        expressions.append((precondition.test_xpath, precondition.namespaces))
+
+    for variable in variable_set.variables:
+        for xpath_filter in variable.xpath_filters:
+            expressions.append((xpath_filter.xpath_expr, xpath_filter.namespaces))
+
+    for expr, namespaces in expressions:
+        if not expr.strip():
+            continue
+        try:
+            parser = build_formula_parser(
+                namespaces,
+                custom_functions=taxonomy.custom_functions,
+                expression_hints=(expr,),
+            )
+            parser.parse(expr)
+        except Exception as exc:  # noqa: BLE001
+            code = getattr(exc, "code", None)
+            if isinstance(code, str) and code == "err:XPST0017":
+                findings.append(
+                    _finding(
+                        "xbrlve:noCustomFunctionSignature",
+                        (
+                            f"Variable set '{_variable_set_id(variable_set)}' references "
+                            "a custom function without a declared signature"
+                        ),
+                    )
+                )
+                break
+            if isinstance(code, str) and code.startswith("err:XPST"):
+                findings.append(
+                    _finding(
+                        code,
+                        (
+                            f"Variable set '{_variable_set_id(variable_set)}' has invalid static XPath"
+                            f" expression: {exc}"
+                        ),
+                    )
+                )
+                break
+    return findings
+
+
+def _extract_formula_decimals_expressions(
+    formula: FormulaOutputDefinition,
+) -> list[tuple[str, dict[str, str]]]:
+    if not formula.source_path:
+        return []
+    source_path = Path(formula.source_path)
+    try:
+        xml_text = source_path.read_text(encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        return []
+    matches = re.findall(
+        r"<formula:decimals>\s*(.*?)\s*</formula:decimals>",
+        xml_text,
+        flags=re.DOTALL,
+    )
+    return [(expr, formula.namespaces) for expr in matches if expr.strip()]
+
+
+def _formula_aspect_model_findings(formula: FormulaOutputDefinition) -> list[ValidationFinding]:
+    findings: list[ValidationFinding] = []
+    if formula.aspect_model and formula.aspect_model not in {"dimensional", "non-dimensional"}:
+        findings.append(
+            _finding(
+                "xbrlve:unknownAspectModel",
+                f"Formula '{formula.formula_id}' uses unknown aspect model '{formula.aspect_model}'",
+            )
+        )
+    if formula.aspect_model == "non-dimensional":
+        has_dimensional_filters = any(
+            variable.dimension_filters or variable.typed_dimension_filters
+            for variable in formula.variables
+        )
+        if has_dimensional_filters:
+            findings.append(
+                _finding(
+                    "xbrlve:filterAspectModelMismatch",
+                    (
+                        f"Formula '{formula.formula_id}' uses dimensional filters under "
+                        "the non-dimensional aspect model"
+                    ),
+                )
+            )
+    if formula.aspect_model == "dimensional":
+        has_segment_scenario_filters = any(
+            xpath_filter.filter_type == "segment-scenario"
+            for variable in formula.variables
+            for xpath_filter in variable.xpath_filters
+        )
+        if has_segment_scenario_filters:
+            findings.append(
+                _finding(
+                    "xbrlve:filterAspectModelMismatch",
+                    (
+                        f"Formula '{formula.formula_id}' uses segment/scenario filters under "
+                        "the dimensional aspect model"
+                    ),
+                )
+            )
+    return findings
+
+
+def _variable_set_id(variable_set: FormulaAssertion | FormulaOutputDefinition) -> str:
+    if isinstance(variable_set, FormulaOutputDefinition):
+        return variable_set.formula_id
+    return variable_set.assertion_id
+
+
+def _duplicates(names: Iterable[str]) -> set[str]:
+    counts: dict[str, int] = defaultdict(int)
+    for name in names:
+        counts[name] += 1
+    return {name for name, count in counts.items() if count > 1}
+
+
+def _collect_unresolved_dependencies(
+    variable_set: FormulaAssertion | FormulaOutputDefinition,
+    known_names: set[str],
+    parameters: tuple,
+) -> set[str]:
+    unresolved: set[str] = set()
+
+    def add_unknown(names: Iterable[str], namespaces: dict[str, str]) -> None:
+        for name in names:
+            canonical, failed = _resolve_name(name, namespaces)
+            if failed or canonical is not None and canonical not in known_names:
+                unresolved.add(name)
+
+    add_unknown(variable_set.referenced_names, variable_set.namespaces)
+    for variable in variable_set.variables:
+        for xpath_filter in variable.xpath_filters:
+            add_unknown(_extract_var_refs(xpath_filter.xpath_expr), xpath_filter.namespaces)
+        add_unknown(variable.referenced_names, variable_set.namespaces)
+    for variable in variable_set.general_variables:
+        add_unknown(variable.referenced_names, variable.namespaces)
+    for parameter in parameters:
+        add_unknown(parameter.referenced_names, parameter.namespaces)
+    for precondition in variable_set.preconditions:
+        add_unknown(precondition.referenced_names, precondition.namespaces)
+    return unresolved
+
+
+def _build_dependency_graph(
+    variable_set: FormulaAssertion | FormulaOutputDefinition,
+    known_names: set[str],
+    parameters: tuple,
+) -> dict[str, set[str]]:
+    graph: dict[str, set[str]] = {}
+
+    for variable in variable_set.variables:
+        node, failed = _resolve_name(variable.variable_name, variable_set.namespaces)
+        if failed or node is None:
+            continue
+        deps: set[str] = set()
+        for ref in variable.referenced_names:
+            resolved, _failed = _resolve_name(ref, variable_set.namespaces)
+            if resolved is not None and resolved in known_names:
+                deps.add(resolved)
+        graph[node] = deps
+    for variable in variable_set.general_variables:
+        node, failed = _resolve_name(variable.variable_name, variable_set.namespaces)
+        if failed or node is None:
+            continue
+        deps: set[str] = set()
+        for ref in variable.referenced_names:
+            resolved, _failed = _resolve_name(ref, variable.namespaces)
+            if resolved is not None and resolved in known_names:
+                deps.add(resolved)
+        graph[node] = deps
+    for parameter in parameters:
+        node, failed = _resolve_name(parameter.parameter_name, parameter.namespaces)
+        if failed or node is None:
+            continue
+        deps: set[str] = set()
+        for ref in parameter.referenced_names:
+            resolved, _failed = _resolve_name(ref, parameter.namespaces)
+            if resolved is not None and resolved in known_names:
+                deps.add(resolved)
+        graph[node] = deps
+    return graph
+
+
+def _find_cycles(graph: dict[str, set[str]]) -> list[list[str]]:
+    visiting: set[str] = set()
+    visited: set[str] = set()
+    stack: list[str] = []
+    cycles: list[list[str]] = []
+
+    def dfs(node: str) -> None:
+        if node in visited:
+            return
+        if node in visiting:
+            if node in stack:
+                start = stack.index(node)
+                cycles.append(stack[start:] + [node])
+            return
+
+        visiting.add(node)
+        stack.append(node)
+        for dep in graph.get(node, set()):
+            if dep in graph:
+                dfs(dep)
+        stack.pop()
+        visiting.remove(node)
+        visited.add(node)
+
+    for node in graph:
+        dfs(node)
+    return cycles
+
+
+_VAR_REF_RE = re.compile(r"\$([A-Za-z_][A-Za-z0-9_.:-]*)")
+_NUMERIC_SELECT_RE = re.compile(r"^\s*(?:xs:(?:float|double|decimal|integer)\(|-?\d+(?:\.\d+)?)")
+
+
+def _extract_var_refs(expr: str | None) -> tuple[str, ...]:
+    if not expr:
+        return ()
+    return tuple(_VAR_REF_RE.findall(expr))
+
+
+def _resolve_name(name: str, namespaces: dict[str, str]) -> tuple[str | None, bool]:
+    candidate = (name or "").strip()
+    if not candidate:
+        return None, False
+    if ":" not in candidate:
+        return candidate, False
+    prefix, local = candidate.split(":", 1)
+    namespace = namespaces.get(prefix)
+    if not namespace:
+        return None, True
+    return f"{{{namespace}}}{local}", False
+
+
+def _build_name_context(
+    variable_set: FormulaAssertion | FormulaOutputDefinition,
+    parameters: tuple,
+) -> dict[str, list[str] | set[str]]:
+    all_variable_names: list[str] = []
+    fact_general_names: list[str] = []
+    parameter_names: list[str] = []
+    all_declared_names: set[str] = set()
+    resolution_failures: set[str] = set()
+
+    if variable_set.variable_arcs:
+        for arc in variable_set.variable_arcs:
+            if not arc.name:
+                continue
+            canonical, failed = _resolve_name(arc.name, arc.namespaces)
+            if failed or canonical is None:
+                resolution_failures.add(arc.name)
+                continue
+            all_declared_names.add(canonical)
+            all_variable_names.append(canonical)
+            if any(param.arc_name == arc.name for param in parameters):
+                parameter_names.append(canonical)
+            else:
+                fact_general_names.append(canonical)
+    else:
+        for variable in [*variable_set.variables, *variable_set.general_variables]:
+            canonical, failed = _resolve_name(variable.variable_name, variable_set.namespaces)
+            if failed or canonical is None:
+                resolution_failures.add(variable.variable_name)
+                continue
+            all_declared_names.add(canonical)
+            all_variable_names.append(canonical)
+            fact_general_names.append(canonical)
+
+    for parameter in parameters:
+        canonical, failed = _resolve_name(parameter.parameter_name, parameter.namespaces)
+        if failed or canonical is None:
+            resolution_failures.add(parameter.parameter_name)
+            continue
+        all_declared_names.add(canonical)
+        if canonical not in parameter_names:
+            parameter_names.append(canonical)
+
+    return {
+        "fact_general_names": fact_general_names,
+        "all_variable_names": all_variable_names,
+        "parameter_names": parameter_names,
+        "all_declared_names": all_declared_names,
+        "resolution_failures": resolution_failures,
+    }
+
+
+def _parameter_type_mismatch(parameter) -> bool:
+    as_type = (parameter.as_type or "").lower()
+    if not as_type:
+        return False
+    select = (parameter.select_xpath or "").strip()
+    if not select:
+        return parameter.required
+    if as_type.endswith("qname"):
+        if "qname(" in select.lower():
+            return False
+        return bool(_NUMERIC_SELECT_RE.match(select))
+    if as_type.endswith("date"):
+        return "qname(" in select.lower() or bool(_NUMERIC_SELECT_RE.match(select))
+    return False
+
+
+def _resolved_parameter_names(parameters: Iterable) -> list[str]:
+    names: list[str] = []
+    for parameter in parameters:
+        canonical, failed = _resolve_name(parameter.parameter_name, parameter.namespaces)
+        if failed or canonical is None:
+            continue
+        names.append(canonical)
+    return names
+
+
+def _has_disallowed_variable_set_filter_reference(
+    variable_set: FormulaAssertion | FormulaOutputDefinition,
+    *,
+    fact_and_general_names: set[str],
+) -> bool:
+    for variable in variable_set.variables:
+        for xpath_filter in variable.xpath_filters:
+            if xpath_filter.filter_type != "variable-set":
+                continue
+            for ref in _extract_var_refs(xpath_filter.xpath_expr):
+                canonical, _failed = _resolve_name(ref, xpath_filter.namespaces)
+                if canonical in fact_and_general_names:
+                    return True
+    return False
+
+
 
 
 def _report_formula_xpath_static_error(code: str, exc: Exception) -> bool:

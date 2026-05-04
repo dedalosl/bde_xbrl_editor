@@ -145,6 +145,14 @@ def _schema_text_references_xbrl_instance_model(path: Path) -> bool:
     return bool(_XBRLI_PREFIX_COLON_RE.search(snippet))
 
 
+def _schema_defines_xbrli_item_type(path: Path) -> bool:
+    try:
+        snippet = path.read_text(encoding="utf-8", errors="ignore")[:524_288]
+    except OSError:
+        return False
+    return bool(re.search(r"""base\s*=\s*["']xbrli:[A-Za-z0-9]+ItemType["']""", snippet))
+
+
 def _sniff_linkbase_type(path: Path) -> str:
     """Return a crude type string for a linkbase file: label/generic/pres/calc/def/table/unknown.
 
@@ -1120,6 +1128,12 @@ class TaxonomyLoader:
             # points (no linkbases, no xbrli QName/import wiring) — conformance
             # 302.01.  Schemas that reference linkbases or the XBRL instance model
             # must still surface as unsupported when nothing resolved to a concept.
+            metadata_only_taxonomy = bool(schema_paths) and any(
+                _schema_embeds_linkbase_or_role_declarations(p) for p in schema_paths
+            )
+            type_only_taxonomy = bool(schema_paths) and any(
+                _schema_defines_xbrli_item_type(p) for p in schema_paths
+            )
             segment_style_taxonomy = (
                 bool(schema_paths)
                 and not linkbase_paths
@@ -1131,7 +1145,7 @@ class TaxonomyLoader:
                     for p in schema_paths
                 )
             )
-            if not segment_style_taxonomy:
+            if not segment_style_taxonomy and not metadata_only_taxonomy and not type_only_taxonomy:
                 raise UnsupportedTaxonomyFormatError(
                     entry_point=str(entry_point),
                     reason="No XBRL concepts found — file may not be a valid XBRL taxonomy entry point",
@@ -1347,6 +1361,7 @@ class TaxonomyLoader:
         if formula_linkbases:
             all_assertions: list[FormulaAssertion] = []
             all_output_formulas: list[FormulaOutputDefinition] = []
+            all_global_parameters = []
             parsed_formula_linkbases = _run_path_jobs(
                 formula_linkbases,
                 parse_formula_linkbase,
@@ -1355,6 +1370,7 @@ class TaxonomyLoader:
             for _flp, fas in parsed_formula_linkbases:
                 all_assertions.extend(fas.assertions)
                 all_output_formulas.extend(fas.output_formulas)
+                all_global_parameters.extend(fas.global_parameters)
 
             parsed_assertion_resource_linkbases = _run_path_jobs(
                 all_linkbase_paths,
@@ -1412,6 +1428,7 @@ class TaxonomyLoader:
             formula_assertion_set = FormulaAssertionSet(
                 assertions=tuple(enriched_assertions),
                 output_formulas=tuple(all_output_formulas),
+                global_parameters=tuple(all_global_parameters),
             )
         else:
             formula_assertion_set = FormulaAssertionSet()

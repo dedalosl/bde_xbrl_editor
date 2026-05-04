@@ -8,13 +8,19 @@ from pathlib import Path
 from bde_xbrl_editor.taxonomy.linkbases.formula import parse_formula_linkbase
 from bde_xbrl_editor.taxonomy.models import (
     Concept,
+    FactVariableDefinition,
     FormulaAssertionSet,
     FormulaOutputDefinition,
+    GeneralVariableDefinition,
+    ParameterDefinition,
     QName,
     TaxonomyMetadata,
     TaxonomyStructure,
+    TypedDimensionFilter,
+    ValueAssertionDefinition,
 )
 from bde_xbrl_editor.validation.formula.static import FormulaStaticValidator
+from bde_xbrl_editor.validation.models import ValidationSeverity
 
 _NS = "http://example.com/formula"
 _XBRLI = "http://www.xbrl.org/2003/instance"
@@ -194,3 +200,121 @@ def test_formula_static_validation_reports_undeclared_output_value_xpath_prefix(
     )
 
     assert "err:XPST0081" in _rule_ids(assertion_set)
+
+
+def test_formula_static_validation_reports_duplicate_variable_names() -> None:
+    assertion_set = FormulaAssertionSet(
+        assertions=(
+            ValueAssertionDefinition(
+                assertion_id="a1",
+                label=None,
+                severity=ValidationSeverity.ERROR,
+                abstract=False,
+                variables=(
+                    FactVariableDefinition(variable_name="dup"),
+                    FactVariableDefinition(variable_name="dup"),
+                ),
+                test_xpath="true()",
+            ),
+        )
+    )
+    assert "xbrlve:duplicateVariableNames" in _rule_ids(assertion_set)
+
+
+def test_formula_static_validation_reports_unresolved_and_cycle_dependencies() -> None:
+    assertion_set = FormulaAssertionSet(
+        assertions=(
+            ValueAssertionDefinition(
+                assertion_id="a1",
+                label=None,
+                severity=ValidationSeverity.ERROR,
+                abstract=False,
+                variables=(FactVariableDefinition(variable_name="fact", referenced_names=("missing",)),),
+                general_variables=(
+                    GeneralVariableDefinition(
+                        variable_name="g1",
+                        select_xpath="$g2",
+                        referenced_names=("g2",),
+                    ),
+                    GeneralVariableDefinition(
+                        variable_name="g2",
+                        select_xpath="$g1",
+                        referenced_names=("g1",),
+                    ),
+                ),
+                test_xpath="$g1 = 1",
+                referenced_names=("g1",),
+            ),
+        )
+    )
+    codes = _rule_ids(assertion_set)
+    assert "xbrlve:unresolvedDependency" in codes
+    assert "xbrlve:cyclicDependencies" in codes
+
+
+def test_formula_static_validation_reports_parameter_clashes_and_parameter_cycles() -> None:
+    assertion_set = FormulaAssertionSet(
+        assertions=(
+            ValueAssertionDefinition(
+                assertion_id="a1",
+                label=None,
+                severity=ValidationSeverity.ERROR,
+                abstract=False,
+                variables=(FactVariableDefinition(variable_name="p"),),
+                parameters=(
+                    ParameterDefinition(
+                        parameter_name="p",
+                        select_xpath="$q",
+                        referenced_names=("q",),
+                        scope="local",
+                    ),
+                    ParameterDefinition(
+                        parameter_name="q",
+                        select_xpath="$p",
+                        referenced_names=("p",),
+                        scope="local",
+                    ),
+                ),
+                test_xpath="true()",
+            ),
+        )
+    )
+    codes = _rule_ids(assertion_set)
+    assert "xbrlve:parameterNameClash" in codes
+    assert "xbrlve:parameterCyclicDependencies" in codes
+
+
+def test_formula_static_validation_reports_unknown_and_mismatched_aspect_model() -> None:
+    assertion_set = FormulaAssertionSet(
+        output_formulas=(
+            FormulaOutputDefinition(
+                formula_id="f1",
+                label=None,
+                value_xpath="1",
+                source=None,
+                aspect_model="unexpected",
+                implicit_filtering=True,
+            ),
+            FormulaOutputDefinition(
+                formula_id="f2",
+                label=None,
+                value_xpath="1",
+                source=None,
+                aspect_model="non-dimensional",
+                implicit_filtering=True,
+                variables=(
+                    FactVariableDefinition(
+                        variable_name="v",
+                        typed_dimension_filters=(
+                            TypedDimensionFilter(
+                                dimension_qname=QName(_NS, "d1", "eg"),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+    )
+    codes = _rule_ids(assertion_set)
+    assert "xbrlve:unknownAspectModel" in codes
+    assert "xbrlve:filterAspectModelMismatch" in codes

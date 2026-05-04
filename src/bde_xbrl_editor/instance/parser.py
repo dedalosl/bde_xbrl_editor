@@ -45,6 +45,8 @@ if TYPE_CHECKING:
 # lxml Clark-notation tag helpers
 _XBRLI_XBRL = f"{{{XBRLI_NS}}}xbrl"
 _LINK_SCHEMA_REF = f"{{{LINK_NS}}}schemaRef"
+_LINK_ROLE_REF = f"{{{LINK_NS}}}roleRef"
+_LINK_ARCROLE_REF = f"{{{LINK_NS}}}arcroleRef"
 _XBRLI_CONTEXT = f"{{{XBRLI_NS}}}context"
 _XBRLI_UNIT = f"{{{XBRLI_NS}}}unit"
 _XBRLI_ENTITY = f"{{{XBRLI_NS}}}entity"
@@ -79,7 +81,10 @@ _XLINK_LABEL = f"{{{XLINK_NS}}}label"
 _XLINK_FROM = f"{{{XLINK_NS}}}from"
 _XLINK_TO = f"{{{XLINK_NS}}}to"
 _XLINK_ARCROLE = f"{{{XLINK_NS}}}arcrole"
+_ROLE_URI = "roleURI"
+_ARCROLE_URI = "arcroleURI"
 _XML_LANG = "{http://www.w3.org/XML/1998/namespace}lang"
+_XML_BASE = "{http://www.w3.org/XML/1998/namespace}base"
 _XSI_NIL = "{http://www.w3.org/2001/XMLSchema-instance}nil"
 _XBRLI_TUPLE_QNAME = QName(namespace=XBRLI_NS, local_name="tuple")
 _FOOTNOTE_LINK_ALLOWED_CHILD = frozenset(
@@ -209,6 +214,32 @@ def _has_inherited_xml_lang(el: etree._Element) -> bool:
             return True
         current = current.getparent()
     return False
+
+
+def _reject_duplicate_instance_refs(root: etree._Element, path_str: str) -> None:
+    seen_roles: set[str] = set()
+    for role_ref in root.findall(_LINK_ROLE_REF):
+        role_uri = (role_ref.get(_ROLE_URI) or "").strip()
+        if not role_uri:
+            continue
+        if role_uri in seen_roles:
+            raise InstanceParseError(
+                path_str,
+                f"xbrl:duplicate-role-ref: Duplicate roleRef for roleURI '{role_uri}'",
+            )
+        seen_roles.add(role_uri)
+
+    seen_arcroles: set[str] = set()
+    for arcrole_ref in root.findall(_LINK_ARCROLE_REF):
+        arcrole_uri = (arcrole_ref.get(_ARCROLE_URI) or "").strip()
+        if not arcrole_uri:
+            continue
+        if arcrole_uri in seen_arcroles:
+            raise InstanceParseError(
+                path_str,
+                f"xbrl:duplicate-arcrole-ref: Duplicate arcroleRef for arcroleURI '{arcrole_uri}'",
+            )
+        seen_arcroles.add(arcrole_uri)
 
 
 def _period_s_equal_key(period_el: etree._Element) -> tuple:
@@ -622,6 +653,7 @@ class InstanceParser:
                 path_str,
                 f"Root element must be xbrli:xbrl, got '{root.tag}'",
             )
+        _reject_duplicate_instance_refs(root, path_str)
 
         # Stage 2: Extract schemaRef and load taxonomy
         schema_ref_els = root.findall(_LINK_SCHEMA_REF)
@@ -642,7 +674,7 @@ class InstanceParser:
             mapped = 12 + int((current / total) * 58)
             progress(f"Loading taxonomy… {message}", min(mapped, 70))
 
-        resolved_taxonomy_path = self._resolve_taxonomy_path(path, schema_href)
+        resolved_taxonomy_path = self._resolve_taxonomy_path(path, schema_href, schema_ref_el)
         if (
             preloaded_taxonomy is not None
             and resolved_taxonomy_path is not None
@@ -662,7 +694,11 @@ class InstanceParser:
                 extra_href = extra_schema_ref_el.get(_XLINK_HREF, "")
                 if not extra_href:
                     continue
-                extra_resolved_path = self._resolve_taxonomy_path(path, extra_href)
+                extra_resolved_path = self._resolve_taxonomy_path(
+                    path,
+                    extra_href,
+                    extra_schema_ref_el,
+                )
                 try:
                     extra_taxonomy = self._resolve_taxonomy(
                         path,
@@ -983,12 +1019,18 @@ class InstanceParser:
         self,
         instance_path: Path,
         schema_href: str,
+        schema_ref_el: etree._Element | None = None,
     ) -> Path | None:
         """Resolve schemaRef href to a local taxonomy path when possible."""
         is_remote = schema_href.startswith(("http://", "https://"))
+        base_dir = instance_path.parent
+        if schema_ref_el is not None:
+            xml_base = (schema_ref_el.get(_XML_BASE) or "").strip()
+            if xml_base and not xml_base.startswith(("http://", "https://")):
+                base_dir = (base_dir / xml_base).resolve()
 
         if not is_remote and not schema_href.startswith("/"):
-            candidate = (instance_path.parent / schema_href).resolve()
+            candidate = (base_dir / schema_href).resolve()
             if candidate.exists():
                 return candidate
 

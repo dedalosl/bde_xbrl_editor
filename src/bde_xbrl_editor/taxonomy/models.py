@@ -134,6 +134,8 @@ class Concept:
     enumeration_domain: QName | None = None
     enumeration_linkrole: str | None = None
     enumeration_head_usable: bool = False
+    default_decimals: str | None = None
+    default_precision: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -474,6 +476,7 @@ class FormulaArc:
     order: float | None = None
     priority: int | None = None
     use: str = "optional"
+    namespaces: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

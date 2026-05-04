@@ -365,7 +365,11 @@ class StructuralConformanceValidator:
                 )
 
             if is_numeric or fact.unit_ref is not None:
-                finding = self._decimals_precision_finding(fact, is_numeric=is_numeric)
+                finding = self._decimals_precision_finding(
+                    fact,
+                    is_numeric=is_numeric,
+                    concept=concept,
+                )
                 if finding is not None:
                     decimals_precision.append(finding)
 
@@ -519,7 +523,11 @@ class StructuralConformanceValidator:
             is_numeric = _is_numeric_concept(concept) if concept is not None else False
             if not is_numeric and fact.unit_ref is None:
                 continue
-            finding = self._decimals_precision_finding(fact, is_numeric=is_numeric)
+            finding = self._decimals_precision_finding(
+                fact,
+                is_numeric=is_numeric,
+                concept=concept,
+            )
             if finding is not None:
                 findings.append(finding)
         return findings
@@ -785,9 +793,17 @@ class StructuralConformanceValidator:
         fact: Fact,
         *,
         is_numeric: bool,
+        concept: Concept | None = None,
     ) -> ValidationFinding | None:
-        has_decimals = fact.decimals is not None
-        has_precision = fact.precision is not None
+        effective_decimals = fact.decimals
+        effective_precision = fact.precision
+        if concept is not None:
+            if effective_decimals is None:
+                effective_decimals = concept.default_decimals
+            if effective_precision is None:
+                effective_precision = concept.default_precision
+        has_decimals = effective_decimals is not None
+        has_precision = effective_precision is not None
         is_nil = getattr(fact, "is_nil", False)
 
         if is_nil:

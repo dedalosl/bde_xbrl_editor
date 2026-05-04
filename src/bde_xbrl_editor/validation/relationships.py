@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,7 +26,11 @@ _ROLE_TYPE = f"{{{NS_LINK}}}roleType"
 _ARCROLE_TYPE = f"{{{NS_LINK}}}arcroleType"
 _USED_ON = f"{{{NS_LINK}}}usedOn"
 _ARCROLE_REF = f"{{{NS_LINK}}}arcroleRef"
+_ROLE_REF = f"{{{NS_LINK}}}roleRef"
 _LOC = f"{{{NS_LINK}}}loc"
+_LABEL = f"{{{NS_LINK}}}label"
+_XML_LANG = "{http://www.w3.org/XML/1998/namespace}lang"
+_NCNAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]*$")
 
 _STANDARD_ARCROLE_CYCLES = {
     "http://www.xbrl.org/2003/arcrole/parent-child": "undirected",
@@ -44,6 +49,17 @@ _STANDARD_ARCROLE_CYCLES = {
     "http://xbrl.org/int/dim/arcrole/domain-member": "undirected",
     "http://xbrl.org/int/dim/arcrole/dimension-default": "none",
 }
+_STANDARD_ARCROLE_ALLOWED_ON = {
+    "http://www.xbrl.org/2003/arcrole/parent-child": {"presentationArc"},
+    "http://www.xbrl.org/2003/arcrole/summation-item": {"calculationArc"},
+    "https://xbrl.org/2023/arcrole/summation-item": {"calculationArc"},
+    "http://www.xbrl.org/2003/arcrole/general-special": {"definitionArc"},
+    "http://www.xbrl.org/2003/arcrole/essence-alias": {"definitionArc"},
+    "http://www.xbrl.org/2003/arcrole/similar-tuples": {"definitionArc"},
+    "http://www.xbrl.org/2003/arcrole/requires-element": {"definitionArc"},
+    "http://www.xbrl.org/2003/arcrole/concept-label": {"labelArc"},
+    "http://www.xbrl.org/2003/arcrole/concept-reference": {"referenceArc"},
+}
 _STANDARD_ARC_ELEMENTS = {
     "calculationArc",
     "definitionArc",
@@ -60,6 +76,19 @@ _STANDARD_LINK_ELEMENTS = {
     "referenceLink",
 }
 _STANDARD_ROLE_ELEMENTS = _STANDARD_LINK_ELEMENTS | {"footnote", "label", "reference"}
+_STANDARD_ROLE_ALLOWED_ON = {
+    "http://www.xbrl.org/2003/role/link": _STANDARD_LINK_ELEMENTS,
+    "http://www.xbrl.org/2003/role/label": {"label"},
+    "http://www.xbrl.org/2003/role/terseLabel": {"label"},
+    "http://www.xbrl.org/2003/role/verboseLabel": {"label"},
+    "http://www.xbrl.org/2003/role/positiveLabel": {"label"},
+    "http://www.xbrl.org/2003/role/negativeLabel": {"label"},
+    "http://www.xbrl.org/2003/role/zeroLabel": {"label"},
+    "http://www.xbrl.org/2003/role/totalLabel": {"label"},
+    "http://www.xbrl.org/2003/role/periodStartLabel": {"label"},
+    "http://www.xbrl.org/2003/role/periodEndLabel": {"label"},
+    "http://www.xbrl.org/2003/role/documentation": {"label", "reference"},
+}
 
 
 @dataclass(frozen=True)
@@ -91,6 +120,12 @@ class _ArcUse:
 class _RoleDeclaration:
     uri: str
     used_on: frozenset[str]
+    source_path: Path
+    xml_id: str | None
+
+    @property
+    def signature(self) -> frozenset[str]:
+        return self.used_on
 
 
 def _finding(rule_id: str, message: str) -> ValidationFinding:
@@ -108,7 +143,8 @@ def _local_name(tag: str) -> str:
 
 def _used_on_key(raw: str, ns_map: dict[str | None, str]) -> str:
     if ":" not in raw:
-        return raw
+        namespace = ns_map.get(None)
+        return f"{{{namespace}}}{raw}" if namespace else raw
     prefix, local = raw.split(":", 1)
     namespace = ns_map.get(prefix)
     return f"{{{namespace}}}{local}" if namespace else local
@@ -116,6 +152,20 @@ def _used_on_key(raw: str, ns_map: dict[str | None, str]) -> str:
 
 def _tag_key(tag: str) -> str:
     return tag if tag.startswith("{") else _local_name(tag)
+
+
+def _has_inherited_xml_lang(el: etree._Element) -> bool:
+    current: etree._Element | None = el
+    while current is not None:
+        if current.get(_XML_LANG) is not None:
+            return True
+        current = current.getparent()
+    return False
+
+
+def _is_absolute_uri(raw: str) -> bool:
+    parsed = urlparse(raw)
+    return bool(parsed.scheme) and not raw.startswith("#")
 
 
 def _load_roots(paths: tuple[Path, ...]) -> list[tuple[Path, etree._Element]]:
@@ -196,11 +246,85 @@ def _collect_arcrole_declarations(
     return declarations
 
 
+def _used_on_values(el: etree._Element) -> list[str]:
+    return [
+        _used_on_key((child.text or "").strip(), child.nsmap or {})
+        for child in el.iterchildren(_USED_ON)
+        if (child.text or "").strip()
+    ]
+
+
+def _collect_declaration_findings(
+    roots: list[tuple[Path, etree._Element]],
+) -> list[ValidationFinding]:
+    findings: list[ValidationFinding] = []
+    for _path, root in roots:
+        for el in root.iter():
+            if not isinstance(el.tag, str):
+                continue
+            if el.tag == _ROLE_TYPE:
+                xml_id = (el.get("id") or "").strip()
+                if xml_id and not _NCNAME_RE.fullmatch(xml_id):
+                    findings.append(_finding("xbrl:role-type-id", "roleType id is not an NCName"))
+                role_uri = (el.get("roleURI") or "").strip()
+                if not role_uri:
+                    findings.append(
+                        _finding("xbrl:role-type-uri", "roleType roleURI is missing or empty")
+                    )
+                used_on = _used_on_values(el)
+                if len(used_on) != len(set(used_on)):
+                    findings.append(
+                        _finding(
+                            "xbrl:role-used-on-duplicate", "roleType has duplicate usedOn values"
+                        )
+                    )
+            elif el.tag == _ARCROLE_TYPE:
+                xml_id = (el.get("id") or "").strip()
+                if xml_id and not _NCNAME_RE.fullmatch(xml_id):
+                    findings.append(
+                        _finding("xbrl:arcrole-type-id", "arcroleType id is not an NCName")
+                    )
+                arcrole_uri = (el.get("arcroleURI") or "").strip()
+                if not arcrole_uri or not _is_absolute_uri(arcrole_uri):
+                    findings.append(
+                        _finding(
+                            "xbrl:arcrole-type-uri",
+                            "arcroleType arcroleURI is missing or not absolute",
+                        )
+                    )
+                cycles_allowed = (el.get("cyclesAllowed") or "").strip()
+                if cycles_allowed not in {"any", "undirected", "none"}:
+                    findings.append(
+                        _finding(
+                            "xbrl:arcrole-cycles-allowed",
+                            "arcroleType cyclesAllowed must be any, undirected, or none",
+                        )
+                    )
+                used_on = _used_on_values(el)
+                if len(used_on) != len(set(used_on)):
+                    findings.append(
+                        _finding(
+                            "xbrl:arcrole-used-on-duplicate",
+                            "arcroleType has duplicate usedOn values",
+                        )
+                    )
+            elif _local_name(el.tag) in {"roleType", "arcroleType"} and not el.tag.startswith(
+                f"{{{NS_LINK}}}"
+            ):
+                findings.append(
+                    _finding(
+                        "xbrl:appinfo-declaration-element",
+                        f"{_local_name(el.tag)} is not in the XBRL linkbase namespace",
+                    )
+                )
+    return findings
+
+
 def _collect_role_declarations(
     roots: list[tuple[Path, etree._Element]],
 ) -> dict[str, list[_RoleDeclaration]]:
     declarations: dict[str, list[_RoleDeclaration]] = defaultdict(list)
-    for _path, root in roots:
+    for path, root in roots:
         for el in root.iter(_ROLE_TYPE):
             uri = (el.get("roleURI") or "").strip()
             if not uri:
@@ -210,8 +334,66 @@ def _collect_role_declarations(
                 for child in el.iterchildren(_USED_ON)
                 if (child.text or "").strip()
             )
-            declarations[uri].append(_RoleDeclaration(uri=uri, used_on=used_on))
+            declarations[uri].append(
+                _RoleDeclaration(uri=uri, used_on=used_on, source_path=path, xml_id=el.get("id"))
+            )
     return declarations
+
+
+def _role_declaration_by_href(
+    href: str,
+    base_path: Path,
+    declarations: dict[str, list[_RoleDeclaration]],
+) -> _RoleDeclaration | None:
+    file_part, sep, fragment = href.partition("#")
+    if not sep or not fragment:
+        return None
+    parsed = urlparse(file_part)
+    target_path = (
+        None
+        if parsed.scheme in {"http", "https"}
+        else (base_path.parent / file_part).resolve()
+        if file_part
+        else base_path.resolve()
+    )
+    for decls in declarations.values():
+        for decl in decls:
+            if (
+                target_path is not None
+                and decl.source_path.resolve() == target_path
+                and decl.xml_id == fragment
+            ):
+                return decl
+    return None
+
+
+def _collect_role_ref_findings(
+    roots: list[tuple[Path, etree._Element]],
+    declarations: dict[str, list[_RoleDeclaration]],
+) -> list[ValidationFinding]:
+    findings: list[ValidationFinding] = []
+    for path, root in roots:
+        refs_by_parent: dict[int, set[str]] = defaultdict(set)
+        for ref in root.iter(_ROLE_REF):
+            role_uri = (ref.get("roleURI") or "").strip()
+            parent = ref.getparent()
+            parent_id = id(parent) if parent is not None else id(root)
+            if role_uri in refs_by_parent[parent_id]:
+                findings.append(
+                    _finding("xbrl:duplicate-role-ref", f"Duplicate roleRef '{role_uri}'")
+                )
+                continue
+            refs_by_parent[parent_id].add(role_uri)
+            href = (ref.get(_XLINK_HREF) or "").strip()
+            decl = _role_declaration_by_href(href, path, declarations) if href else None
+            if decl is not None and role_uri and decl.uri != role_uri:
+                findings.append(
+                    _finding(
+                        "xbrl:role-ref-mismatch",
+                        f"roleRef '{role_uri}' points to declaration '{decl.uri}'",
+                    )
+                )
+    return findings
 
 
 def _declaration_by_href(
@@ -261,8 +443,17 @@ def _collect_arcs(
     findings: list[ValidationFinding] = []
 
     for path, root in roots:
+        arcrole_refs_by_parent: dict[int, set[str]] = defaultdict(set)
         for ref in root.iter(_ARCROLE_REF):
             arcrole_uri = (ref.get("arcroleURI") or "").strip()
+            parent = ref.getparent()
+            parent_id = id(parent) if parent is not None else id(root)
+            if arcrole_uri in arcrole_refs_by_parent[parent_id]:
+                findings.append(
+                    _finding("xbrl:duplicate-arcrole-ref", f"Duplicate arcroleRef '{arcrole_uri}'")
+                )
+                continue
+            arcrole_refs_by_parent[parent_id].add(arcrole_uri)
             href = (ref.get(_XLINK_HREF) or "").strip()
             decl = _declaration_by_href(href, path, declarations) if href else None
             if decl is not None and arcrole_uri and decl.uri != arcrole_uri:
@@ -303,15 +494,9 @@ def _collect_arcs(
                 frm = arc_el.get(_XLINK_FROM, "")
                 to = arc_el.get(_XLINK_TO, "")
                 source = (
-                    locs.get(frm)
-                    or resources.get(frm)
-                    or _link_local_node_id(path, link_el, frm)
+                    locs.get(frm) or resources.get(frm) or _link_local_node_id(path, link_el, frm)
                 )
-                target = (
-                    locs.get(to)
-                    or resources.get(to)
-                    or _link_local_node_id(path, link_el, to)
-                )
+                target = locs.get(to) or resources.get(to) or _link_local_node_id(path, link_el, to)
                 try:
                     priority = int(arc_el.get("priority", "0"))
                 except ValueError:
@@ -357,6 +542,82 @@ def _collect_arcs(
         < arc.priority
     ]
     return arcs, referenced_arcroles, findings
+
+
+def _collect_preferred_label_findings(
+    roots: list[tuple[Path, etree._Element]],
+    href_resolver: _HrefResolver,
+) -> list[ValidationFinding]:
+    label_roles_by_concept: dict[str, set[str]] = defaultdict(set)
+    presentation_arcs: list[tuple[str, str]] = []
+
+    for path, root in roots:
+        for link_el in root.iter():
+            if not isinstance(link_el.tag, str) or link_el.get(_XLINK_TYPE) != "extended":
+                continue
+            link_tag = _local_name(link_el.tag)
+            locs = {
+                loc.get(_XLINK_LABEL, ""): href_resolver.canonicalize(
+                    loc.get(_XLINK_HREF, ""),
+                    path,
+                )
+                for loc in link_el.iterchildren(_LOC)
+            }
+            if link_tag == "labelLink":
+                resource_roles = {
+                    child.get(_XLINK_LABEL, ""): child.get(_XLINK_ROLE, "")
+                    for child in link_el.iterchildren()
+                    if isinstance(child.tag, str)
+                    and child.get(_XLINK_TYPE) == "resource"
+                    and _local_name(child.tag) == "label"
+                    and child.get(_XLINK_LABEL)
+                }
+                for arc_el in link_el.iterchildren():
+                    if (
+                        not isinstance(arc_el.tag, str)
+                        or arc_el.get(_XLINK_TYPE) != "arc"
+                        or arc_el.get(_XLINK_ARCROLE)
+                        != "http://www.xbrl.org/2003/arcrole/concept-label"
+                    ):
+                        continue
+                    concept = locs.get(arc_el.get(_XLINK_FROM, ""))
+                    role = resource_roles.get(arc_el.get(_XLINK_TO, ""))
+                    if concept and role:
+                        label_roles_by_concept[concept].add(role)
+            elif link_tag == "presentationLink":
+                for arc_el in link_el.iterchildren():
+                    if not isinstance(arc_el.tag, str) or arc_el.get(_XLINK_TYPE) != "arc":
+                        continue
+                    preferred = (arc_el.get("preferredLabel") or "").strip()
+                    if not preferred:
+                        continue
+                    target = locs.get(arc_el.get(_XLINK_TO, ""))
+                    if target:
+                        presentation_arcs.append((target, preferred))
+
+    findings: list[ValidationFinding] = []
+    for target, preferred in presentation_arcs:
+        if preferred not in label_roles_by_concept.get(target, set()):
+            findings.append(
+                _finding(
+                    "xbrl:preferred-label-missing",
+                    f"Presentation arc target '{target}' has no label role '{preferred}'",
+                )
+            )
+    return findings
+
+
+def _collect_label_resource_findings(
+    roots: list[tuple[Path, etree._Element]],
+) -> list[ValidationFinding]:
+    findings: list[ValidationFinding] = []
+    for _path, root in roots:
+        for label in root.iter(_LABEL):
+            if label.get(_XLINK_TYPE) == "resource" and not _has_inherited_xml_lang(label):
+                findings.append(
+                    _finding("xbrl:label-language", "link:label resource is missing xml:lang")
+                )
+    return findings
 
 
 def _has_directed_cycle(edges: set[tuple[str, str]]) -> bool:
@@ -413,20 +674,47 @@ class RelationshipSetValidator:
         href_resolver = _HrefResolver(loaded_paths)
         role_declarations = _collect_role_declarations(roots)
         declarations = _collect_arcrole_declarations(roots)
-        arcs, referenced_arcroles, findings = _collect_arcs(
+        findings: list[ValidationFinding] = []
+        findings.extend(_collect_declaration_findings(roots))
+        findings.extend(_collect_label_resource_findings(roots))
+        arcs, referenced_arcroles, arc_findings = _collect_arcs(
             roots,
             declarations,
             href_resolver,
         )
+        findings.extend(arc_findings)
+        findings.extend(_collect_role_ref_findings(roots, role_declarations))
+        findings.extend(_collect_preferred_label_findings(roots, href_resolver))
+
+        for uri, decls in role_declarations.items():
+            signatures = {decl.signature for decl in decls}
+            source_paths = [decl.source_path.resolve() for decl in decls]
+            if len(signatures) > 1 or len(source_paths) != len(set(source_paths)):
+                findings.append(
+                    _finding(
+                        "xbrl:role-declaration-duplicate",
+                        f"Role '{uri}' is declared with non-equivalent definitions",
+                    )
+                )
 
         for _path, root in roots:
             for el in root.iter():
                 if not isinstance(el.tag, str):
                     continue
                 role_uri = (el.get(_XLINK_ROLE) or "").strip()
+                tag = _local_name(el.tag)
+                standard_allowed = _STANDARD_ROLE_ALLOWED_ON.get(role_uri)
+                if standard_allowed is not None and tag in _STANDARD_ROLE_ELEMENTS:
+                    if tag not in standard_allowed:
+                        findings.append(
+                            _finding(
+                                "xbrl:standard-role-used-on",
+                                f"Standard role '{role_uri}' is not defined for {tag}",
+                            )
+                        )
+                    continue
                 if not role_uri or role_uri not in role_declarations:
                     continue
-                tag = _local_name(el.tag)
                 if tag not in _STANDARD_ROLE_ELEMENTS:
                     continue
                 used_on = set().union(*(decl.used_on for decl in role_declarations[role_uri]))
@@ -451,6 +739,19 @@ class RelationshipSetValidator:
                 )
 
         for arc in arcs:
+            standard_arc_allowed = _STANDARD_ARCROLE_ALLOWED_ON.get(arc.arcrole)
+            if (
+                standard_arc_allowed is not None
+                and arc.arc_tag in _STANDARD_ARC_ELEMENTS
+                and arc.arc_tag not in standard_arc_allowed
+            ):
+                findings.append(
+                    _finding(
+                        "xbrl:standard-arcrole-used-on",
+                        f"Standard arcrole '{arc.arcrole}' is not defined for {arc.arc_tag}",
+                    )
+                )
+                continue
             decls = declarations.get(arc.arcrole, [])
             declared_and_referenced = bool(decls) and arc.arcrole in referenced_arcroles
             if declared_and_referenced:
@@ -469,7 +770,10 @@ class RelationshipSetValidator:
                             f"but is declared for {sorted(used_on)}",
                         )
                     )
-            elif arc.arcrole not in _STANDARD_ARCROLE_CYCLES and arc.arc_tag in _STANDARD_ARC_ELEMENTS:
+            elif (
+                arc.arcrole not in _STANDARD_ARCROLE_CYCLES
+                and arc.arc_tag in _STANDARD_ARC_ELEMENTS
+            ):
                 findings.append(
                     _finding(
                         "xbrl:arcrole-undeclared",
@@ -480,6 +784,11 @@ class RelationshipSetValidator:
         edges_by_base_set: dict[tuple[str, str, str, str], set[tuple[str, str]]] = defaultdict(set)
         for arc in arcs:
             if not arc.source or not arc.target:
+                continue
+            if (
+                arc.link_tag not in _STANDARD_LINK_ELEMENTS
+                or arc.arc_tag not in _STANDARD_ARC_ELEMENTS
+            ):
                 continue
             key = (arc.arcrole, arc.link_tag, arc.arc_tag, arc.extended_link_role)
             edges_by_base_set[key].add((arc.source, arc.target))

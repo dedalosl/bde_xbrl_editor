@@ -123,6 +123,43 @@ def test_validate_sync_progress_callback_called(taxonomy):
     assert len(calls) > 0
 
 
+def test_validate_sync_skips_relationship_checks_by_default(taxonomy, monkeypatch):
+    """Default UI-style validation should not run DTS-wide relationship checks."""
+    from bde_xbrl_editor.validation import orchestrator
+
+    instance = _make_clean_instance(taxonomy)
+
+    class FailingRelationshipValidator:
+        def validate_taxonomy(self, taxonomy):
+            pytest.fail("relationship checks should be opt-in")
+
+    monkeypatch.setattr(orchestrator, "RelationshipSetValidator", FailingRelationshipValidator)
+
+    report = InstanceValidator(taxonomy=taxonomy).validate_sync(instance)
+    assert isinstance(report, ValidationReport)
+
+
+def test_validate_sync_can_include_relationship_checks(taxonomy, monkeypatch):
+    """Conformance-style validation can still opt into processor relationship checks."""
+    from bde_xbrl_editor.validation import orchestrator
+
+    instance = _make_clean_instance(taxonomy)
+    calls = []
+
+    class RecordingRelationshipValidator:
+        def validate_taxonomy(self, taxonomy):
+            calls.append(taxonomy)
+            return []
+
+    monkeypatch.setattr(orchestrator, "RelationshipSetValidator", RecordingRelationshipValidator)
+
+    report = InstanceValidator(taxonomy=taxonomy, include_relationships=True).validate_sync(instance)
+
+    assert isinstance(report, ValidationReport)
+    assert calls == [taxonomy]
+    assert any(stage.name == "relationships" for stage in report.stage_timings)
+
+
 def test_validate_sync_cancel_event(taxonomy):
     """When cancel_event is set before validation, no further steps run."""
     import threading
