@@ -49,6 +49,7 @@ from bde_xbrl_editor.taxonomy.linkbases.formula import (
     linkbase_contains_formula_assertions,
     parse_assertion_table_mappings,
     parse_formula_linkbase,
+    parse_formula_linkbase_bundle,
 )
 from bde_xbrl_editor.taxonomy.linkbases.generic_label import parse_generic_label_linkbase
 from bde_xbrl_editor.taxonomy.linkbases.label import parse_label_linkbase
@@ -433,6 +434,28 @@ def _best_assertion_resources(
             return tuple(sorted(localized, key=lambda item: item.priority, reverse=True))
 
     return tuple(sorted(matched, key=lambda item: item.priority, reverse=True))
+
+
+def _merge_formula_relationships(resource, relationship_resource):
+    """Overlay DTS-wide relationship fields while preserving per-file resource metadata."""
+    if relationship_resource is None:
+        return resource
+    relationship_fields = (
+        "variables",
+        "general_variables",
+        "parameters",
+        "preconditions",
+        "variable_arcs",
+        "parameter_arcs",
+        "precondition_arcs",
+        "variable_set_filters",
+    )
+    updates = {
+        field_name: getattr(relationship_resource, field_name)
+        for field_name in relationship_fields
+        if not getattr(resource, field_name) and getattr(relationship_resource, field_name)
+    }
+    return replace(resource, **updates) if updates else resource
 
 
 _SG_HYPERCUBE = QName(NS_XBRLDT, "hypercubeItem")
@@ -1367,9 +1390,30 @@ class TaxonomyLoader:
                 parse_formula_linkbase,
                 workers=linkbase_workers,
             )
+            bundled_formula_set = parse_formula_linkbase_bundle(all_linkbase_paths)
+            bundled_assertions = {
+                assertion.assertion_id: assertion
+                for assertion in bundled_formula_set.assertions
+            }
+            bundled_output_formulas = {
+                formula.formula_id: formula
+                for formula in bundled_formula_set.output_formulas
+            }
             for _flp, fas in parsed_formula_linkbases:
-                all_assertions.extend(fas.assertions)
-                all_output_formulas.extend(fas.output_formulas)
+                all_assertions.extend(
+                    _merge_formula_relationships(
+                        assertion,
+                        bundled_assertions.get(assertion.assertion_id),
+                    )
+                    for assertion in fas.assertions
+                )
+                all_output_formulas.extend(
+                    _merge_formula_relationships(
+                        formula,
+                        bundled_output_formulas.get(formula.formula_id),
+                    )
+                    for formula in fas.output_formulas
+                )
                 all_global_parameters.extend(fas.global_parameters)
 
             parsed_assertion_resource_linkbases = _run_path_jobs(

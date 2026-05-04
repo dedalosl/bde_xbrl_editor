@@ -11,6 +11,7 @@ from bde_xbrl_editor.taxonomy.linkbases.formula import (
     linkbase_contains_formula_assertions,
     parse_assertion_table_mappings,
     parse_formula_linkbase,
+    parse_formula_linkbase_bundle,
 )
 from bde_xbrl_editor.taxonomy.linkbases.presentation import PresentationLinkbaseParseResult
 from bde_xbrl_editor.taxonomy.loader import (
@@ -302,6 +303,120 @@ def test_parse_variable_set_graph_preserves_extended_filter_resources(tmp_path: 
         if resource.local_name == "conceptRelation"
     )
     assert "conceptName" in relation_filter.referenced_names
+
+
+def test_parse_variable_set_graph_resolves_locator_labels_to_resource_ids(
+    tmp_path: Path,
+) -> None:
+    lb = tmp_path / "locator-backed-formula.xml"
+    lb.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:gen="http://xbrl.org/2008/generic"
+  xmlns:formula="http://xbrl.org/2008/formula"
+  xmlns:variable="http://xbrl.org/2008/variable"
+  xmlns:cf="http://xbrl.org/2008/filter/concept"
+  xmlns:xlink="http://www.w3.org/1999/xlink"
+  xmlns:eg="http://example.com/eg">
+  <gen:link xlink:type="extended" xlink:role="http://www.xbrl.org/2003/role/link">
+    <formula:formula xlink:type="resource" xlink:label="dummyFormula"
+      id="formulaInnerPlanetId" value="concat('hello ', $c1i)"/>
+    <variable:factVariable xlink:type="resource" xlink:label="dummyFact" id="factvarId"/>
+    <cf:conceptName xlink:type="resource" xlink:label="dummyFilter" id="namefilterId">
+      <cf:concept><cf:qname>eg:c1</cf:qname></cf:concept>
+    </cf:conceptName>
+    <variable:precondition xlink:type="resource" xlink:label="dummyPrecondition"
+      id="preconditionIdI" test="$c1i eq 'venus'"/>
+
+    <link:loc xlink:type="locator" xlink:href="locator-backed-formula.xml#formulaInnerPlanetId"
+      xlink:label="formulaInnerPlanet"/>
+    <link:loc xlink:type="locator" xlink:href="locator-backed-formula.xml#factvarId"
+      xlink:label="factvar1"/>
+    <link:loc xlink:type="locator" xlink:href="locator-backed-formula.xml#namefilterId"
+      xlink:label="namefilter1"/>
+    <link:loc xlink:type="locator" xlink:href="locator-backed-formula.xml#preconditionIdI"
+      xlink:label="preconditionI"/>
+
+    <variable:variableArc xlink:type="arc" xlink:from="formulaInnerPlanet"
+      xlink:to="factvar1" name="c1i"/>
+    <variable:variableFilterArc xlink:type="arc" xlink:from="factvar1"
+      xlink:to="namefilter1"/>
+    <variable:preconditionArc xlink:type="arc" xlink:from="formulaInnerPlanet"
+      xlink:to="preconditionI"/>
+  </gen:link>
+</link:linkbase>
+""",
+        encoding="utf-8",
+    )
+
+    fas = parse_formula_linkbase(lb)
+    formula = fas.output_formulas[0]
+
+    assert formula.formula_id == "formulaInnerPlanetId"
+    assert [variable.variable_name for variable in formula.variables] == ["c1i"]
+    assert formula.variables[0].concept_filter is not None
+    assert formula.variables[0].concept_filter.local_name == "c1"
+    assert [precondition.test_xpath for precondition in formula.preconditions] == [
+        "$c1i eq 'venus'"
+    ]
+    assert "c1i" in formula.referenced_names
+
+
+def test_parse_formula_linkbase_bundle_resolves_relationships_across_files(
+    tmp_path: Path,
+) -> None:
+    resources = tmp_path / "resources.xml"
+    resources.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:gen="http://xbrl.org/2008/generic"
+  xmlns:formula="http://xbrl.org/2008/formula"
+  xmlns:variable="http://xbrl.org/2008/variable"
+  xmlns:cf="http://xbrl.org/2008/filter/concept"
+  xmlns:xlink="http://www.w3.org/1999/xlink"
+  xmlns:eg="http://example.com/eg">
+  <gen:link xlink:type="extended">
+    <formula:formula xlink:type="resource" xlink:label="dummyFormula"
+      id="formulaId" value="$c1"/>
+    <variable:factVariable xlink:type="resource" xlink:label="dummyFact" id="factvarId"/>
+    <cf:conceptName xlink:type="resource" xlink:label="dummyFilter" id="filterId">
+      <cf:concept><cf:qname>eg:c1</cf:qname></cf:concept>
+    </cf:conceptName>
+  </gen:link>
+</link:linkbase>
+""",
+        encoding="utf-8",
+    )
+    arcs = tmp_path / "arcs.xml"
+    arcs.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:gen="http://xbrl.org/2008/generic"
+  xmlns:variable="http://xbrl.org/2008/variable"
+  xmlns:xlink="http://www.w3.org/1999/xlink">
+  <gen:link xlink:type="extended">
+    <variable:variableArc xlink:type="arc" xlink:from="formulaLoc"
+      xlink:to="factLoc" name="c1"/>
+    <variable:variableFilterArc xlink:type="arc" xlink:from="factLoc"
+      xlink:to="filterLoc"/>
+    <link:loc xlink:type="locator" xlink:href="resources.xml#formulaId"
+      xlink:label="formulaLoc"/>
+    <link:loc xlink:type="locator" xlink:href="resources.xml#factvarId"
+      xlink:label="factLoc"/>
+    <link:loc xlink:type="locator" xlink:href="resources.xml#filterId"
+      xlink:label="filterLoc"/>
+  </gen:link>
+</link:linkbase>
+""",
+        encoding="utf-8",
+    )
+
+    fas = parse_formula_linkbase_bundle((resources, arcs))
+    formula = fas.output_formulas[0]
+
+    assert [variable.variable_name for variable in formula.variables] == ["c1"]
+    assert formula.variables[0].concept_filter is not None
+    assert formula.variables[0].concept_filter.local_name == "c1"
 
 
 def test_parse_global_parameters_when_not_bound_locally(tmp_path: Path) -> None:

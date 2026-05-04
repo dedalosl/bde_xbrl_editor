@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
+from copy import deepcopy
 from dataclasses import replace
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -84,6 +86,7 @@ _TAG_VARIABLE_ARC = f"{{{_NS_VARIABLE}}}variableArc"
 _TAG_PARAMETER_ARC = f"{{{_NS_VARIABLE}}}parameterArc"
 _TAG_PRECONDITION_ARC = f"{{{_NS_VARIABLE}}}preconditionArc"
 _TAG_VARIABLE_FILTER_ARC = f"{{{_NS_VARIABLE}}}variableFilterArc"
+_TAG_GENERIC_ARC = "{http://xbrl.org/2008/generic}arc"
 _TAG_CF_CONCEPT_NAME = f"{{{_NS_CF}}}conceptName"
 _TAG_CF_CONCEPT = f"{{{_NS_CF}}}concept"
 _TAG_CF_QNAME = f"{{{_NS_CF}}}qname"
@@ -387,22 +390,54 @@ def _parse_filter_resource(filter_el: etree._Element) -> FormulaFilterResource:
 # ---------------------------------------------------------------------------
 
 
-def _build_label_to_element(root: etree._Element, tag: str) -> dict[str, etree._Element]:
+def _build_locator_target_map(root: etree._Element) -> dict[str, str]:
+    locator_targets: dict[str, str] = {}
+    for locator in root.iter(_TAG_LINK_LOC):
+        label = (locator.get(_ATTR_XLINK_LABEL) or "").strip()
+        href = (locator.get(f"{{{_NS_XLINK}}}href") or "").strip()
+        fragment = _href_fragment(href)
+        if label and fragment:
+            locator_targets[label] = fragment
+    return locator_targets
+
+
+def _resource_index_keys(
+    el: etree._Element,
+    locator_labels_by_fragment: dict[str, list[str]] | None = None,
+) -> tuple[str, ...]:
+    keys: list[str] = []
+    label = (el.get(_ATTR_XLINK_LABEL) or "").strip()
+    if label:
+        keys.append(label)
+    xml_id = (el.get("id") or "").strip()
+    if xml_id:
+        keys.append(xml_id)
+        keys.extend(locator_labels_by_fragment.get(xml_id, []) if locator_labels_by_fragment else [])
+    return tuple(dict.fromkeys(keys))
+
+
+def _build_label_to_element(
+    root: etree._Element,
+    tag: str,
+    locator_labels_by_fragment: dict[str, list[str]] | None = None,
+) -> dict[str, etree._Element]:
     """Index all *tag* elements in the document by their @xlink:label attribute."""
     index: dict[str, etree._Element] = {}
     for el in root.iter(tag):
-        lbl = el.get(_ATTR_XLINK_LABEL, "")
-        if lbl:
-            index[lbl] = el
+        for key in _resource_index_keys(el, locator_labels_by_fragment):
+            index[key] = el
     return index
 
 
-def _build_label_to_elements(root: etree._Element, tag: str) -> dict[str, list[etree._Element]]:
+def _build_label_to_elements(
+    root: etree._Element,
+    tag: str,
+    locator_labels_by_fragment: dict[str, list[str]] | None = None,
+) -> dict[str, list[etree._Element]]:
     index: dict[str, list[etree._Element]] = {}
     for el in root.iter(tag):
-        lbl = el.get(_ATTR_XLINK_LABEL, "")
-        if lbl:
-            index.setdefault(lbl, []).append(el)
+        for key in _resource_index_keys(el, locator_labels_by_fragment):
+            index.setdefault(key, []).append(el)
     return index
 
 
@@ -428,12 +463,18 @@ def _build_arc_map(root: etree._Element, arc_tags: list[str]) -> dict[str, list[
     return arc_map
 
 
-def _build_filter_arc_map(root: etree._Element) -> dict[str, list[str]]:
+def _build_filter_arc_map(
+    root: etree._Element,
+    locator_targets: dict[str, str] | None = None,
+) -> dict[str, list[str]]:
     """Build a variable-label→[filter-label, …] mapping from variableFilterArc elements."""
     arc_map: dict[str, list[str]] = {}
     for arc in root.iter(_TAG_VARIABLE_FILTER_ARC):
         frm = arc.get(_ATTR_XLINK_FROM, "")
         to = arc.get(_ATTR_XLINK_TO, "")
+        if locator_targets:
+            frm = locator_targets.get(frm, frm)
+            to = locator_targets.get(to, to)
         if frm and to:
             arc_map.setdefault(frm, []).append(to)
     return arc_map
@@ -474,21 +515,41 @@ def _build_resource_arc_map(
     root: etree._Element,
     *,
     tag: str,
+    locator_targets: dict[str, str] | None = None,
 ) -> tuple[dict[str, list[FormulaArc]], dict[str, list[tuple[str, str]]]]:
     arc_meta_map: dict[str, list[FormulaArc]] = {}
     arc_name_map: dict[str, list[tuple[str, str]]] = {}
-    for arc in root.iter(tag):
-        parsed = _collect_formula_arc(arc)
-        if parsed is None:
-            continue
-        arc_meta_map.setdefault(parsed.from_label, []).append(parsed)
-        arc_name_map.setdefault(parsed.from_label, []).append(
-            (parsed.to_label, parsed.name or "")
-        )
+    arc_tags = (tag,)
+    if tag == _TAG_PRECONDITION_ARC:
+        arc_tags = (tag, _TAG_GENERIC_ARC)
+    for arc_tag in arc_tags:
+        for arc in root.iter(arc_tag):
+            parsed = _collect_formula_arc(arc)
+            if parsed is None:
+                continue
+            if (
+                arc_tag == _TAG_GENERIC_ARC
+                and tag == _TAG_PRECONDITION_ARC
+                and parsed.arcrole != _ARCROLE_VARIABLE_SET_PRECONDITION
+            ):
+                continue
+            if locator_targets:
+                parsed = replace(
+                    parsed,
+                    from_label=locator_targets.get(parsed.from_label, parsed.from_label),
+                    to_label=locator_targets.get(parsed.to_label, parsed.to_label),
+                )
+            arc_meta_map.setdefault(parsed.from_label, []).append(parsed)
+            arc_name_map.setdefault(parsed.from_label, []).append(
+                (parsed.to_label, parsed.name or "")
+            )
     return arc_meta_map, arc_name_map
 
 
-def _build_variable_set_filter_arc_map(root: etree._Element) -> dict[str, list[str]]:
+def _build_variable_set_filter_arc_map(
+    root: etree._Element,
+    locator_targets: dict[str, str] | None = None,
+) -> dict[str, list[str]]:
     """Build an assertion-label→[filter-label, …] mapping from variableSetFilterArc elements.
 
     These filters apply at the assertion level (to all variables in the set).
@@ -497,12 +558,18 @@ def _build_variable_set_filter_arc_map(root: etree._Element) -> dict[str, list[s
     for arc in root.iter(_TAG_VARIABLE_SET_FILTER_ARC):
         frm = arc.get(_ATTR_XLINK_FROM, "")
         to = arc.get(_ATTR_XLINK_TO, "")
+        if locator_targets:
+            frm = locator_targets.get(frm, frm)
+            to = locator_targets.get(to, to)
         if frm and to:
             arc_map.setdefault(frm, []).append(to)
     return arc_map
 
 
-def _build_boolean_filter_arc_map(root: etree._Element) -> dict[str, list[tuple[str, bool]]]:
+def _build_boolean_filter_arc_map(
+    root: etree._Element,
+    locator_targets: dict[str, str] | None = None,
+) -> dict[str, list[tuple[str, bool]]]:
     """Build a parent-label → [(child-label, complement), …] map from boolean-filter arcs.
 
     Both variableFilterArc and variableSetFilterArc elements can carry arcrole
@@ -516,6 +583,9 @@ def _build_boolean_filter_arc_map(root: etree._Element) -> dict[str, list[tuple[
                 continue
             frm = arc.get(_ATTR_XLINK_FROM, "")
             to = arc.get(_ATTR_XLINK_TO, "")
+            if locator_targets:
+                frm = locator_targets.get(frm, frm)
+                to = locator_targets.get(to, to)
             complement = arc.get("complement", "false").lower() == "true"
             if frm and to:
                 arc_map.setdefault(frm, []).append((to, complement))
@@ -632,22 +702,23 @@ _FILTER_TAGS = [
 ]
 
 
-def _build_filter_label_index(root: etree._Element) -> dict[str, etree._Element]:
+def _build_filter_label_index(
+    root: etree._Element,
+    locator_labels_by_fragment: dict[str, list[str]] | None = None,
+) -> dict[str, etree._Element]:
     """Index all known filter elements by their @xlink:label."""
     index: dict[str, etree._Element] = {}
     for tag in _FILTER_TAGS:
         for el in root.iter(tag):
-            lbl = el.get(_ATTR_XLINK_LABEL, "")
-            if lbl:
-                index[lbl] = el
+            for key in _resource_index_keys(el, locator_labels_by_fragment):
+                index[key] = el
     for el in root.iter():
         if not isinstance(el.tag, str):
             continue
         if _qname_namespace(el.tag) not in _FILTER_NAMESPACES:
             continue
-        lbl = el.get(_ATTR_XLINK_LABEL, "")
-        if lbl:
-            index.setdefault(lbl, el)
+        for key in _resource_index_keys(el, locator_labels_by_fragment):
+            index.setdefault(key, el)
     return index
 
 
@@ -672,6 +743,10 @@ def _parse_fact_variable(
     """
     variable_name = arc_name or var_el.get("name", "") or var_el.get(_ATTR_XLINK_LABEL, "")
     var_label = var_el.get(_ATTR_XLINK_LABEL, variable_name)
+    var_id = (var_el.get("id") or "").strip()
+    filter_labels = list(filter_arc_map.get(var_label, []))
+    if var_id and var_id != var_label:
+        filter_labels.extend(filter_arc_map.get(var_id, []))
 
     concept_filter: QName | None = None
     period_filter: Literal["instant", "duration"] | None = None
@@ -681,7 +756,7 @@ def _parse_fact_variable(
     boolean_filters: list[BooleanFilterDefinition] = []
     filter_resources: list[FormulaFilterResource] = []
 
-    for filter_label in filter_arc_map.get(var_label, []):
+    for filter_label in dict.fromkeys(filter_labels):
         filter_el = filter_index.get(filter_label)
         if filter_el is None:
             continue
@@ -1434,6 +1509,28 @@ def parse_formula_linkbase(path: Path) -> FormulaAssertionSet:
         return FormulaAssertionSet()
 
 
+def parse_formula_linkbase_bundle(paths: Iterable[Path]) -> FormulaAssertionSet:
+    """Parse multiple Formula linkbases as one DTS relationship graph."""
+    try:
+        roots: list[etree._Element] = []
+        for path in paths:
+            if not path.exists():
+                continue
+            try:
+                roots.append(parse_xml_file(path).getroot())
+            except etree.XMLSyntaxError:
+                continue
+        if not roots:
+            return FormulaAssertionSet()
+        synthetic_root = etree.Element(f"{{{_NS_LINK}}}linkbase")
+        for root in roots:
+            for child in root:
+                synthetic_root.append(deepcopy(child))
+        return _parse_formula_root(synthetic_root)
+    except Exception:  # noqa: BLE001
+        return FormulaAssertionSet()
+
+
 def parse_assertion_table_mappings(path: Path) -> dict[str, str]:
     """Return assertion-id -> table-id mappings from assertion-set linkbases.
 
@@ -1530,21 +1627,34 @@ def _parse_formula_root(
     root: etree._Element, source_path: Path | None = None
 ) -> FormulaAssertionSet:
     """Parse assertions from a link:linkbase root (including under gen:link / assertionSet)."""
-    fact_variable_index = _build_label_to_element(root, _TAG_FACT_VARIABLE)
-    general_variable_index = _build_label_to_element(root, _TAG_GENERAL_VARIABLE)
-    parameter_index = _build_label_to_elements(root, _TAG_PARAMETER)
-    precondition_index = _build_label_to_element(root, _TAG_PRECONDITION)
-    filter_index = _build_filter_label_index(root)
-    filter_arc_map = _build_filter_arc_map(root)
-    variable_set_filter_arc_map = _build_variable_set_filter_arc_map(root)
-    bool_arc_map = _build_boolean_filter_arc_map(root)
+    locator_targets = _build_locator_target_map(root)
+    locator_labels_by_fragment: dict[str, list[str]] = {}
+    for label, fragment in locator_targets.items():
+        locator_labels_by_fragment.setdefault(fragment, []).append(label)
 
-    variable_arc_meta_map, variable_arc_map = _build_resource_arc_map(root, tag=_TAG_VARIABLE_ARC)
+    fact_variable_index = _build_label_to_element(
+        root, _TAG_FACT_VARIABLE, locator_labels_by_fragment
+    )
+    general_variable_index = _build_label_to_element(
+        root, _TAG_GENERAL_VARIABLE, locator_labels_by_fragment
+    )
+    parameter_index = _build_label_to_elements(root, _TAG_PARAMETER, locator_labels_by_fragment)
+    precondition_index = _build_label_to_element(
+        root, _TAG_PRECONDITION, locator_labels_by_fragment
+    )
+    filter_index = _build_filter_label_index(root, locator_labels_by_fragment)
+    filter_arc_map = _build_filter_arc_map(root, locator_targets)
+    variable_set_filter_arc_map = _build_variable_set_filter_arc_map(root, locator_targets)
+    bool_arc_map = _build_boolean_filter_arc_map(root, locator_targets)
+
+    variable_arc_meta_map, variable_arc_map = _build_resource_arc_map(
+        root, tag=_TAG_VARIABLE_ARC, locator_targets=locator_targets
+    )
     parameter_arc_meta_map, parameter_arc_map = _build_resource_arc_map(
-        root, tag=_TAG_PARAMETER_ARC
+        root, tag=_TAG_PARAMETER_ARC, locator_targets=locator_targets
     )
     precondition_arc_meta_map, precondition_arc_map = _build_resource_arc_map(
-        root, tag=_TAG_PRECONDITION_ARC
+        root, tag=_TAG_PRECONDITION_ARC, locator_targets=locator_targets
     )
 
     assertions: list[FormulaAssertion] = []
