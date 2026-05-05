@@ -510,7 +510,10 @@ class FormulaEvaluator:
             # Each fact is one binding candidate for this variable
             # We group as list[list[Fact]] where each inner list is [one_fact]
             if matched:
-                candidates: list[list[Fact]] = [[f] for f in matched]
+                if var_def.bind_as_sequence:
+                    candidates = [matched]
+                else:
+                    candidates = [[f] for f in matched]
             elif var_def.fallback_value is not None:
                 candidates = [[]]  # one binding with empty set (fallback applies)
             else:
@@ -830,11 +833,21 @@ class FormulaEvaluator:
         } if assertion is not None else {}
         for var_name, facts in binding.items():
             if facts:
-                variables[var_name] = _coerce_xpath_variable_value(
-                    facts[0].value,
-                    namespaces=namespaces or {},
-                    xpath_expr=xpath_expr,
-                )
+                if len(facts) > 1:
+                    variables[var_name] = [
+                        _coerce_xpath_variable_value(
+                            fact.value,
+                            namespaces=namespaces or {},
+                            xpath_expr=xpath_expr,
+                        )
+                        for fact in facts
+                    ]
+                else:
+                    variables[var_name] = _coerce_xpath_variable_value(
+                        facts[0].value,
+                        namespaces=namespaces or {},
+                        xpath_expr=xpath_expr,
+                    )
                 if first_fact is None:
                     first_fact = facts[0]
             elif var_name in fallback_by_name:
@@ -842,7 +855,14 @@ class FormulaEvaluator:
             else:
                 variables[var_name] = Decimal(0)
         if assertion is not None:
-            variables.update(self._general_variable_xpath_values(assertion))
+            variables.update(
+                self._general_variable_xpath_values(
+                    assertion,
+                    binding,
+                    instance,
+                    namespaces=namespaces or {},
+                )
+            )
         for name, value in self._general_variable_values.items():
             variables.setdefault(name, _coerce_fallback_value(value))
 
@@ -882,16 +902,108 @@ class FormulaEvaluator:
 
         return result
 
-    def _general_variable_xpath_values(self, assertion: FormulaAssertion) -> dict[str, Any]:
+    def _general_variable_xpath_values(
+        self,
+        assertion: FormulaAssertion,
+        binding: dict[str, list[Fact]],
+        instance: XbrlInstance,
+        *,
+        namespaces: dict[str, str],
+    ) -> dict[str, Any]:
         values: dict[str, Any] = {}
+        eval_variables: dict[str, Any] = {}
+        first_fact = _first_fact(binding)
+        for fact_name, facts in binding.items():
+            if not facts:
+                continue
+            if len(facts) == 1:
+                eval_variables[fact_name] = _coerce_xpath_variable_value(
+                    facts[0].value,
+                    namespaces=namespaces,
+                    xpath_expr="",
+                )
+            else:
+                eval_variables[fact_name] = [
+                    _coerce_xpath_variable_value(
+                        fact.value,
+                        namespaces=namespaces,
+                        xpath_expr="",
+                    )
+                    for fact in facts
+                ]
+
         for variable in assertion.general_variables:
             if variable.variable_name in self._general_variable_values:
                 values[variable.variable_name] = _coerce_fallback_value(
                     self._general_variable_values[variable.variable_name]
                 )
+                eval_variables[variable.variable_name] = values[variable.variable_name]
+                continue
+
+            selected = self._evaluate_general_variable_select(
+                variable.select_xpath,
+                variables=eval_variables,
+                instance=instance,
+                namespaces=variable.namespaces or namespaces,
+                first_fact=first_fact,
+            )
+            if selected is not None:
+                if variable.bind_as_sequence:
+                    values[variable.variable_name] = selected
+                elif isinstance(selected, list):
+                    values[variable.variable_name] = selected[0] if selected else []
+                else:
+                    values[variable.variable_name] = selected
+                eval_variables[variable.variable_name] = values[variable.variable_name]
             elif variable.fallback_value is not None:
                 values[variable.variable_name] = _coerce_fallback_value(variable.fallback_value)
+                eval_variables[variable.variable_name] = values[variable.variable_name]
         return values
+
+    def _evaluate_general_variable_select(
+        self,
+        select_xpath: str,
+        *,
+        variables: dict[str, Any],
+        instance: XbrlInstance,
+        namespaces: dict[str, str],
+        first_fact: Fact | None,
+    ) -> Any | None:
+        import elementpath  # type: ignore[import-untyped]
+
+        if not select_xpath.strip():
+            return None
+        if first_fact is None:
+            return None
+        ctx_obj = None
+        unit_obj = None
+        if first_fact is not None:
+            ctx_obj = instance.contexts.get(first_fact.context_ref)
+            if first_fact.unit_ref:
+                unit_obj = instance.units.get(first_fact.unit_ref)
+
+        set_evaluation_context(
+            {
+                "_all_facts": instance.facts,
+                "_current_fact": first_fact,
+                "_context": ctx_obj,
+                "_unit": unit_obj,
+                "_instance": instance,
+                "_custom_functions": self._taxonomy.custom_functions,
+            }
+        )
+        token = self._get_xpath_token(select_xpath, namespaces)
+        try:
+            ctx = elementpath.XPathContext(
+                root=None,
+                item=_coerce_value(first_fact.value) if first_fact is not None else True,
+                variables=variables,
+            )
+            return list(token.select(ctx))
+        except Exception:  # noqa: BLE001
+            return None
+        finally:
+            clear_evaluation_context()
 
     def _get_xpath_token(
         self,

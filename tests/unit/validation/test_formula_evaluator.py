@@ -431,6 +431,52 @@ class TestValueAssertion:
         assert len(findings) == 1
         assert findings[0].status == ValidationStatus.PASS
 
+    def test_bind_as_sequence_uses_full_fact_sequence(self) -> None:
+        var_def = FactVariableDefinition(
+            variable_name="a",
+            concept_filter=_qn("Amount"),
+            bind_as_sequence=True,
+        )
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(assertion_id="VA_SEQ_FACTS", variables=(var_def,)),
+            test_xpath="count($a) = 2 and sum($a) = 3",
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
+        inst = _instance(
+            [_fact("Amount", "ctx1", "1"), _fact("Amount", "ctx2", "2")],
+            contexts={"ctx1": _ctx("ctx1"), "ctx2": _ctx("ctx2")},
+        )
+
+        findings = FormulaEvaluator(taxonomy).evaluate(inst)
+
+        assert len(findings) == 1
+        assert findings[0].status == ValidationStatus.PASS
+
+    def test_general_variable_select_uses_bound_fact_variable(self) -> None:
+        fact_var = FactVariableDefinition(
+            variable_name="a",
+            concept_filter=_qn("Amount"),
+        )
+        general_var = GeneralVariableDefinition(
+            variable_name="threshold",
+            select_xpath="$a + 1",
+        )
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(
+                assertion_id="VA_GENERAL_SELECT",
+                variables=(fact_var,),
+            ),
+            general_variables=(general_var,),
+            test_xpath="$threshold = 43",
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
+        inst = _instance([_fact("Amount", value="42")])
+
+        findings = FormulaEvaluator(taxonomy).evaluate(inst)
+
+        assert len(findings) == 1
+        assert findings[0].status == ValidationStatus.PASS
+
     def test_formula_finding_carries_rule_details(self) -> None:
         """Failed formula findings include formatted assertion details for the UI."""
         var_def = FactVariableDefinition(
