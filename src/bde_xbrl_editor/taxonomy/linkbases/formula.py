@@ -1513,16 +1513,22 @@ def parse_formula_linkbase_bundle(paths: Iterable[Path]) -> FormulaAssertionSet:
     """Parse multiple Formula linkbases as one DTS relationship graph."""
     try:
         roots: list[etree._Element] = []
+        nsmap: dict[str, str] = {"link": _NS_LINK}
         for path in paths:
             if not path.exists():
                 continue
             try:
-                roots.append(parse_xml_file(path).getroot())
+                root = parse_xml_file(path).getroot()
             except etree.XMLSyntaxError:
                 continue
+            roots.append(root)
+            for prefix, namespace in root.nsmap.items():
+                if prefix is None or prefix in nsmap:
+                    continue
+                nsmap[prefix] = namespace
         if not roots:
             return FormulaAssertionSet()
-        synthetic_root = etree.Element(f"{{{_NS_LINK}}}linkbase")
+        synthetic_root = etree.Element(f"{{{_NS_LINK}}}linkbase", nsmap=nsmap)
         for root in roots:
             for child in root:
                 synthetic_root.append(deepcopy(child))

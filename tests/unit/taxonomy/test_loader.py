@@ -419,6 +419,50 @@ def test_parse_formula_linkbase_bundle_resolves_relationships_across_files(
     assert formula.variables[0].concept_filter.local_name == "c1"
 
 
+def test_parse_formula_linkbase_bundle_preserves_root_xpath_namespaces(
+    tmp_path: Path,
+) -> None:
+    resources = tmp_path / "resources.xml"
+    resources.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:gen="http://xbrl.org/2008/generic"
+  xmlns:va="http://xbrl.org/2008/assertion/value"
+  xmlns:variable="http://xbrl.org/2008/variable"
+  xmlns:xbrli="http://www.xbrl.org/2003/instance"
+  xmlns:xlink="http://www.w3.org/1999/xlink">
+  <gen:link xlink:type="extended">
+    <va:valueAssertion xlink:type="resource" xlink:label="assertion" id="a1" test="$p"/>
+    <variable:parameter xlink:type="resource" xlink:label="p1"
+      name="p" select="//xbrli:period/link:schemaRef"/>
+  </gen:link>
+</link:linkbase>
+""",
+        encoding="utf-8",
+    )
+    arcs = tmp_path / "arcs.xml"
+    arcs.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:gen="http://xbrl.org/2008/generic"
+  xmlns:variable="http://xbrl.org/2008/variable"
+  xmlns:xlink="http://www.w3.org/1999/xlink">
+  <gen:link xlink:type="extended">
+    <variable:parameterArc xlink:type="arc" xlink:from="assertion"
+      xlink:to="p1" name="p"/>
+  </gen:link>
+</link:linkbase>
+""",
+        encoding="utf-8",
+    )
+
+    fas = parse_formula_linkbase_bundle((resources, arcs))
+
+    parameter = fas.assertions[0].parameters[0]
+    assert parameter.namespaces["link"] == "http://www.xbrl.org/2003/linkbase"
+    assert parameter.namespaces["xbrli"] == "http://www.xbrl.org/2003/instance"
+
+
 def test_parse_global_parameters_when_not_bound_locally(tmp_path: Path) -> None:
     lb = tmp_path / "global-parameter.xml"
     lb.write_text(
