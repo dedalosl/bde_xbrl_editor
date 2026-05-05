@@ -249,7 +249,7 @@ def xfi_period_instant(period_arg: Any) -> Any:
     if p is None:
         return None
     d = getattr(p, "instant_date", None)
-    return _to_xsd_date(d)
+    return _to_xsd_datetime(d)
 
 
 def xfi_period_start(period_arg: Any) -> Any:

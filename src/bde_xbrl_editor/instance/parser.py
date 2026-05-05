@@ -45,6 +45,7 @@ if TYPE_CHECKING:
 # lxml Clark-notation tag helpers
 _XBRLI_XBRL = f"{{{XBRLI_NS}}}xbrl"
 _LINK_SCHEMA_REF = f"{{{LINK_NS}}}schemaRef"
+_LINK_LINKBASE_REF = f"{{{LINK_NS}}}linkbaseRef"
 _LINK_ROLE_REF = f"{{{LINK_NS}}}roleRef"
 _LINK_ARCROLE_REF = f"{{{LINK_NS}}}arcroleRef"
 _XBRLI_CONTEXT = f"{{{XBRLI_NS}}}context"
@@ -558,6 +559,33 @@ def _concept_substitution_chain_reaches(
     return False
 
 
+def _resolve_instance_linkbase_refs(instance_path: Path, root: etree._Element) -> list[Path]:
+    """Resolve local link:linkbaseRef hrefs on an instance document.
+
+    XBRL instance linkbaseRefs are DTS discovery roots. They are especially
+    important for formula conformance cases where a referenced linkbase contains
+    only locators that discover the real arc/resource linkbases.
+    """
+    refs: list[Path] = []
+    seen: set[Path] = set()
+    for lb_ref in root.findall(_LINK_LINKBASE_REF):
+        href = (lb_ref.get(_XLINK_HREF) or "").strip()
+        if not href:
+            continue
+        href = href.split("#", 1)[0]
+        if not href or href.startswith(("http://", "https://")):
+            continue
+        base_dir = instance_path.parent
+        xml_base = (lb_ref.get(_XML_BASE) or "").strip()
+        if xml_base and not xml_base.startswith(("http://", "https://")):
+            base_dir = (base_dir / xml_base).resolve()
+        candidate = (base_dir / href).resolve() if not href.startswith("/") else Path(href).resolve()
+        if candidate.exists() and candidate not in seen:
+            seen.add(candidate)
+            refs.append(candidate)
+    return refs
+
+
 def _reject_xbrl_defined_attrs_on_tuple_fact(
     el: etree._Element,
     concept_qname: QName,
@@ -665,6 +693,7 @@ class InstanceParser:
             raise InstanceParseError(path_str, "link:schemaRef missing xlink:href")
 
         progress("Resolving instance taxonomy…", 12)
+        instance_linkbase_refs = _resolve_instance_linkbase_refs(path, root)
 
         def taxonomy_progress(message: str, current: int, total: int) -> None:
             if total <= 0:
@@ -1009,6 +1038,7 @@ class InstanceParser:
             orphaned_facts=orphaned,
             bde_preambulo=bde_preambulo,
             source_path=path,
+            instance_linkbase_refs=tuple(instance_linkbase_refs),
             _dirty=False,
         )
 
@@ -1066,12 +1096,17 @@ class InstanceParser:
         path_str: str,
         progress_callback: Callable[[str, int, int], None] | None = None,
         resolved_taxonomy_path: Path | None = None,
+        instance_linkbase_seeds: list[Path] | tuple[Path, ...] | None = None,
     ) -> TaxonomyStructure:
         """Resolve the schemaRef href to a taxonomy path and load it."""
         if resolved_taxonomy_path is None:
             resolved_taxonomy_path = self._resolve_taxonomy_path(instance_path, schema_href)
         if resolved_taxonomy_path is not None:
-            return self._loader.load(resolved_taxonomy_path, progress_callback=progress_callback)
+            return self._loader.load(
+                resolved_taxonomy_path,
+                progress_callback=progress_callback,
+                instance_linkbase_seeds=instance_linkbase_seeds,
+            )
 
         raise TaxonomyResolutionError(
             schema_href,

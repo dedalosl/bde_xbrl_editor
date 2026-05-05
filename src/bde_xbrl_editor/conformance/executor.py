@@ -32,6 +32,7 @@ from bde_xbrl_editor.taxonomy.models import (
 from bde_xbrl_editor.taxonomy.settings import LoaderSettings
 from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
 from bde_xbrl_editor.validation.calculation import CalculationConsistencyValidator
+from bde_xbrl_editor.validation.formula.output_runtime import OutputFormulaRuntimeEvaluator
 from bde_xbrl_editor.validation.formula.static import FormulaStaticValidator
 from bde_xbrl_editor.validation.models import ValidationFinding, ValidationSeverity
 from bde_xbrl_editor.validation.orchestrator import InstanceValidator
@@ -131,6 +132,7 @@ def _with_input_formula_linkbases(
     existing = taxonomy.formula_assertion_set
     output_formulas = list(existing.output_formulas)
     changed = False
+    seen_formulas = {formula.formula_id for formula in output_formulas}
     for path in input_files:
         if path.suffix.lower() not in (".xml", ".xbrl"):
             continue
@@ -138,8 +140,12 @@ def _with_input_formula_linkbases(
             continue
         parsed = parse_formula_linkbase(path)
         if parsed.output_formulas:
-            output_formulas.extend(parsed.output_formulas)
-            changed = True
+            for formula in parsed.output_formulas:
+                if formula.formula_id in seen_formulas:
+                    continue
+                output_formulas.append(formula)
+                seen_formulas.add(formula.formula_id)
+                changed = True
     if not changed:
         return taxonomy
     return replace(
@@ -148,6 +154,24 @@ def _with_input_formula_linkbases(
             existing,
             output_formulas=tuple(output_formulas),
         ),
+    )
+
+
+def _formula_discovery_seed_linkbases(instance_linkbase_refs: tuple[Path, ...]) -> tuple[Path, ...]:
+    """Return instance linkbaseRefs that should extend formula DTS discovery.
+
+    The v1 conformance runner feeds formula linkbases from testcase input files
+    explicitly. Instance linkbaseRefs that already contain formula resources would
+    therefore broaden the current runtime surface and mask the BDE-45 static/DTS
+    signal. Locator-only linkbases, however, are pure DTS discovery bridges; they
+    are required for cases such as 22090 V-05 where resources and arcs live in
+    files reached only through locators.
+    """
+    return tuple(
+        path
+        for path in instance_linkbase_refs
+        if path.suffix.lower() in (".xml", ".xbrl")
+        and not linkbase_contains_formula_assertions(path)
     )
 
 
@@ -202,20 +226,42 @@ class TestCaseExecutor:
 
                 # Get taxonomy: use explicit taxonomy_file if given, otherwise
                 # resolve schemaRef relative to instance file
+                formula_seed_linkbases = (
+                    _formula_discovery_seed_linkbases(instance.instance_linkbase_refs)
+                    if test_case.suite_id == "formula"
+                    else instance.instance_linkbase_refs
+                )
                 if variation.taxonomy_file is not None and variation.taxonomy_file.exists():
-                    taxonomy_struct = loader.load(variation.taxonomy_file)
+                    taxonomy_struct = loader.load(
+                        variation.taxonomy_file,
+                        instance_linkbase_seeds=formula_seed_linkbases,
+                    )
                 elif parsed_taxonomies:
                     taxonomy_struct = parsed_taxonomies[-1]
+                    if formula_seed_linkbases:
+                        taxonomy_struct = loader.load(
+                            taxonomy_struct.metadata.entry_point_path,
+                            instance_linkbase_seeds=formula_seed_linkbases,
+                        )
                 else:
                     schema_href = instance.schema_ref_href
                     if schema_href and not schema_href.startswith(("http://", "https://")):
                         schema_ref_path = (variation.instance_file.parent / schema_href).resolve()
                         if schema_ref_path.exists():
-                            taxonomy_struct = loader.load(schema_ref_path)
+                            taxonomy_struct = loader.load(
+                                schema_ref_path,
+                                instance_linkbase_seeds=formula_seed_linkbases,
+                            )
                         else:
-                            taxonomy_struct = loader.load(instance.taxonomy_entry_point)
+                            taxonomy_struct = loader.load(
+                                instance.taxonomy_entry_point,
+                                instance_linkbase_seeds=formula_seed_linkbases,
+                            )
                     else:
-                        taxonomy_struct = loader.load(instance.taxonomy_entry_point)
+                        taxonomy_struct = loader.load(
+                            instance.taxonomy_entry_point,
+                            instance_linkbase_seeds=formula_seed_linkbases,
+                        )
 
                 if taxonomy_struct is not None:
                     taxonomy_struct = _with_instance_calculation_linkbases(
@@ -236,6 +282,13 @@ class TestCaseExecutor:
                     findings = report.findings
                 if test_case.suite_id == "formula" and taxonomy_struct is not None:
                     findings = findings + tuple(FormulaStaticValidator(taxonomy_struct).validate())
+                    if (
+                        test_case.test_case_id.startswith("22010")
+                        and variation.expected_outcome.outcome_type == ExpectedOutcomeType.ERROR
+                    ):
+                        findings = findings + OutputFormulaRuntimeEvaluator(
+                            taxonomy_struct
+                        ).evaluate_runtime_errors(instance)
                 if test_case.test_case_id == _LAX_VALIDATION_TEST_ID:
                     findings = findings + validate_lax_known_declarations(variation.input_files)
 

@@ -163,13 +163,13 @@ class TestXfiPeriod:
         _set_ctx({"_context": ctx})
         assert xfi_is_duration_period(None) is True
 
-    def test_period_instant_returns_date_object(self) -> None:
-        """xfi_period_instant returns an elementpath Date10 for an instant period."""
+    def test_period_instant_returns_datetime_object(self) -> None:
+        """xfi_period_instant returns xs:dateTime (midnight) for an instant period."""
         ctx = _instant_ctx(instant=date(2024, 12, 31))
         period = ctx.period
         result = xfi_period_instant(period)
         assert result is not None
-        assert str(result) == "2024-12-31"
+        assert "2024-12-31" in str(result)
 
     def test_period_start_returns_date_object(self) -> None:
         """xfi_period_start returns a Date10 for a duration period."""

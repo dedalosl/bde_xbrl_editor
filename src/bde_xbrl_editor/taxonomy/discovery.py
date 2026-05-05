@@ -157,12 +157,9 @@ def _element_base_dir(el: etree._Element, fallback: Path) -> Path:
         return fallback
     raw_base = el.base
     parsed = urlparse(raw_base)
-    if parsed.scheme == "file":
-        # lxml exposes percent-encoded file URIs (e.g. "%20" for spaces).
-        # Convert back to a local filesystem path before Path resolution.
-        base_value = unquote(parsed.path)
-    else:
-        base_value = unquote(raw_base)
+    # lxml exposes percent-encoded file URIs (e.g. "%20" for spaces).
+    # Convert back to a local filesystem path before Path resolution.
+    base_value = unquote(parsed.path) if parsed.scheme == "file" else unquote(raw_base)
 
     base_path = Path(base_value)
     if not base_path.is_absolute():
@@ -200,6 +197,7 @@ def discover_dts(
     settings: LoaderSettings,
     progress_callback=None,
     extra_entry_points: list[Path] | None = None,
+    seed_linkbases: list[Path] | None = None,
 ) -> tuple[list[Path], list[Path], list[str], dict[Path, str], set[str]]:
     """Discover all schema and linkbase files reachable from entry_point.
 
@@ -211,6 +209,9 @@ def discover_dts(
             entry_point.  Use this to load multi-entry-point taxonomies such as
             BDE's, where tax.xsd (the version marker) is disconnected from the
             module schemas (mod/pc_con1.xsd, etc.) and both need to be seeded.
+        seed_linkbases: Additional linkbases to seed the BFS queue alongside
+            schema entry points. Instance documents may contain link:linkbaseRef
+            elements that participate in DTS discovery (XBRL 2.1 section 3.2).
 
     Returns:
         (schema_paths, linkbase_paths, skipped_remote_urls, include_ns_map, declared_roles)
@@ -268,6 +269,18 @@ def discover_dts(
                 queue,
                 ep,
                 is_linkbase=False,
+                pending_schemas=pending_schemas,
+                pending_linkbases=pending_linkbases,
+                visited_schemas=visited_schemas,
+                visited_linkbases=visited_linkbases,
+            )
+    for linkbase in (seed_linkbases or []):
+        linkbase = linkbase.resolve()
+        if linkbase.exists() and linkbase.suffix.lower() in (".xml", ".xbrl"):
+            _enqueue_if_new(
+                queue,
+                linkbase,
+                is_linkbase=True,
                 pending_schemas=pending_schemas,
                 pending_linkbases=pending_linkbases,
                 visited_schemas=visited_schemas,

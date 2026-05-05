@@ -366,6 +366,7 @@ class XbrlInstance:
     # None when the instance was not created from a BDE IE_2008_02 source.
     bde_preambulo: BdePreambulo | None = None
     source_path: Path | None = None
+    instance_linkbase_refs: tuple[Path, ...] = field(default_factory=tuple)
     _dirty: bool = field(default=True, repr=False)
 
     # ------------------------------------------------------------------

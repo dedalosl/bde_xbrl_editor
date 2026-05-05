@@ -322,6 +322,18 @@ def _find_cache_root(entry_point: Path) -> Path | None:
     return None
 
 
+def _loader_cache_key(entry_point: Path, seed_paths: tuple[Path, ...]) -> str:
+    cache_key = str(entry_point)
+    if seed_paths:
+        seed_key = ";".join(str(path) for path in seed_paths)
+        cache_key = f"{cache_key}|linkbase-seeds={seed_key}"
+    return cache_key
+
+
+def _normalize_seed_paths(seed_paths: list[Path] | tuple[Path, ...] | None) -> tuple[Path, ...]:
+    return tuple(sorted({Path(path).resolve() for path in (seed_paths or ())}))
+
+
 def _infer_local_catalog_from_cache(entry_point: Path) -> dict[str, Path]:
     """Infer URL-prefix mappings from a mirrored on-disk taxonomy cache.
 
@@ -1002,6 +1014,7 @@ class TaxonomyLoader:
         self,
         entry_point: str | Path,
         progress_callback: ProgressCallback | None = None,
+        instance_linkbase_seeds: list[Path] | tuple[Path, ...] | None = None,
     ) -> TaxonomyStructure:
         """Load the taxonomy at entry_point.
 
@@ -1013,7 +1026,8 @@ class TaxonomyLoader:
             TaxonomyParseError — structural parse error.
         """
         entry_point = Path(entry_point).resolve()
-        cache_key = str(entry_point)
+        seed_paths = _normalize_seed_paths(instance_linkbase_seeds)
+        cache_key = _loader_cache_key(entry_point, seed_paths)
 
         cached = self._cache.get(cache_key)
         if cached is not None:
@@ -1028,7 +1042,7 @@ class TaxonomyLoader:
                 )
             return cached
 
-        structure = self._do_load(entry_point, progress_callback)
+        structure = self._do_load(entry_point, progress_callback, seed_linkbases=seed_paths)
         self._cache.put(cache_key, structure)
         return structure
 
@@ -1036,12 +1050,14 @@ class TaxonomyLoader:
         self,
         entry_point: str | Path,
         progress_callback: ProgressCallback | None = None,
+        instance_linkbase_seeds: list[Path] | tuple[Path, ...] | None = None,
     ) -> TaxonomyStructure:
         """Force-reload the taxonomy, bypassing and replacing the cache entry."""
         entry_point = Path(entry_point).resolve()
-        cache_key = str(entry_point)
+        seed_paths = _normalize_seed_paths(instance_linkbase_seeds)
+        cache_key = _loader_cache_key(entry_point, seed_paths)
         self._cache.invalidate(cache_key)
-        structure = self._do_load(entry_point, progress_callback)
+        structure = self._do_load(entry_point, progress_callback, seed_linkbases=seed_paths)
         self._cache.put(cache_key, structure)
         return structure
 
@@ -1049,7 +1065,13 @@ class TaxonomyLoader:
     # Internal loading pipeline
     # ------------------------------------------------------------------
 
-    def _do_load(self, entry_point: Path, cb: ProgressCallback | None) -> TaxonomyStructure:
+    def _do_load(
+        self,
+        entry_point: Path,
+        cb: ProgressCallback | None,
+        *,
+        seed_linkbases: tuple[Path, ...] = (),
+    ) -> TaxonomyStructure:
         def progress(msg: str, step: int) -> None:
             if cb:
                 cb(msg, step, _TOTAL_STEPS)
@@ -1073,6 +1095,7 @@ class TaxonomyLoader:
             entry_point,
             effective_settings,
             progress_callback=(lambda message, _current, _total: progress(message, 1)),
+            seed_linkbases=list(seed_linkbases),
         )
         companion_tab_linkbases = _find_companion_tab_presentation_linkbases(
             entry_point,
