@@ -107,6 +107,47 @@ def _rule_ids(assertion_set: FormulaAssertionSet) -> set[str]:
     }
 
 
+def test_static_parser_binds_standard_prefix_defaults() -> None:
+    assertion = ValueAssertionDefinition(
+        assertion_id="assertion1",
+        label="assertion1",
+        severity="error",
+        abstract=False,
+        variables=(),
+        parameters=(),
+        preconditions=(),
+        test_xpath="exists(link:schemaRef) or exists(xbrli:context)",
+        namespaces={},
+    )
+
+    assert "err:XPST0081" not in _rule_ids(FormulaAssertionSet(assertions=(assertion,)))
+
+
+def test_duplicate_inherited_global_parameters_do_not_name_clash() -> None:
+    global_parameter = ParameterDefinition(
+        parameter_name="RepEntity",
+        scope="global",
+        namespaces={},
+    )
+    assertion = ValueAssertionDefinition(
+        assertion_id="assertion1",
+        label="assertion1",
+        severity="error",
+        abstract=False,
+        variables=(),
+        parameters=(global_parameter, global_parameter),
+        preconditions=(),
+        test_xpath="true()",
+        namespaces={},
+    )
+    assertion_set = FormulaAssertionSet(
+        assertions=(assertion,),
+        global_parameters=(global_parameter,),
+    )
+
+    assert "xbrlve:parameterNameClash" not in _rule_ids(assertion_set)
+
+
 def test_formula_static_validation_reports_missing_output_concept(tmp_path) -> None:
     assertion_set = _formula_set(
         tmp_path,
@@ -222,6 +263,27 @@ def test_formula_static_validation_reports_duplicate_variable_names() -> None:
         )
     )
     assert "xbrlve:duplicateVariableNames" in _rule_ids(assertion_set)
+
+
+def test_formula_static_validation_reports_missing_custom_function_name() -> None:
+    assertion_set = FormulaAssertionSet(
+        assertions=(
+            ValueAssertionDefinition(
+                assertion_id="a1",
+                label=None,
+                severity=ValidationSeverity.ERROR,
+                abstract=False,
+                variables=(),
+                test_xpath="fext:EsNoResidenteVigente($code)",
+                namespaces={"fext": "http://www.bde.es/xbrl/func/external-functions"},
+            ),
+        )
+    )
+
+    findings = FormulaStaticValidator(_taxonomy(assertion_set)).validate()
+
+    assert findings[0].rule_id == "xbrlve:noCustomFunctionSignature"
+    assert "fext:EsNoResidenteVigente" in findings[0].message
 
 
 def test_formula_static_validation_reports_unresolved_and_cycle_dependencies() -> None:

@@ -104,9 +104,13 @@ def register_custom_functions(
         prefix = definition.prefix
         if prefix and prefix not in parser.namespaces:
             parser.namespaces[prefix] = definition.namespace
+        try:
+            callback = make_callback(grouped_definitions, definitions)  # type: ignore[misc]
+        except TypeError:
+            callback = make_callback(grouped_definitions)
         _register_external_function(
             parser,
-            make_callback(grouped_definitions),
+            callback,
             name=definition.local_name,
             prefix=prefix,
         )

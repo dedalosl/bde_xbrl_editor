@@ -13,7 +13,11 @@ from urllib.parse import urldefrag
 
 from lxml import etree
 
-from bde_xbrl_editor.taxonomy.constants import NS_ASSERTION_SETS_20_PWD, NS_VALIDATION_V10
+from bde_xbrl_editor.taxonomy.constants import (
+    FORMULA_XPATH_DEFAULT_PREFIXES,
+    NS_ASSERTION_SETS_20_PWD,
+    NS_VALIDATION_V10,
+)
 from bde_xbrl_editor.taxonomy.models import (
     BooleanFilterDefinition,
     ConsistencyAssertionDefinition,
@@ -186,8 +190,23 @@ def _clark_to_qname(clark: str, nsmap: dict[str, str] | None = None) -> QName | 
 
 
 def _element_nsmap(el: etree._Element) -> dict[str, str]:
-    """Return the namespace map (str → URI) for an element, filtering None keys."""
-    return {k: v for k, v in el.nsmap.items() if k is not None}
+    """Return Formula XPath/QName namespace context for *el*."""
+    return _xpath_ns_context(el)
+
+
+def _xpath_ns_context(el: etree._Element) -> dict[str, str]:
+    """Return Formula XPath namespace context for *el*.
+
+    Start with standard Formula/XBRL prefixes, then apply ancestor declarations
+    root-to-parent, and finally the element's declarations. This prevents static
+    XPath checks from failing when BDE/EBA rule packs put ``xbrli`` or ``link``
+    on ``link:linkbase`` rather than on the assertion/filter resource itself.
+    """
+    merged: dict[str, str] = dict(FORMULA_XPATH_DEFAULT_PREFIXES)
+    for ancestor in reversed(list(el.iterancestors())):
+        merged.update({k: v for k, v in ancestor.nsmap.items() if k is not None and v})
+    merged.update({k: v for k, v in el.nsmap.items() if k is not None and v})
+    return merged
 
 
 def _extract_referenced_names(*expressions: str | None) -> tuple[str, ...]:

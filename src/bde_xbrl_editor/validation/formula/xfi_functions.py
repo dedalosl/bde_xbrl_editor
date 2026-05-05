@@ -31,6 +31,7 @@ from decimal import Decimal, InvalidOperation
 from types import SimpleNamespace
 from typing import Any
 
+from bde_xbrl_editor.taxonomy.constants import FORMULA_XPATH_DEFAULT_PREFIXES
 from bde_xbrl_editor.taxonomy.models import CustomFunctionDefinition
 from bde_xbrl_editor.validation.formula.xpath_registration import (
     build_registered_parser_class,
@@ -1419,19 +1420,34 @@ def _select_custom_functions(
     )
 
 
-def _make_custom_function_callback(definitions: list[CustomFunctionDefinition]):
+def _make_custom_function_callback(
+    definitions: list[CustomFunctionDefinition],
+    available_definitions: tuple[CustomFunctionDefinition, ...] | None = None,
+):
     def callback(*args: Any) -> Any:
         definition = next(
             (candidate for candidate in definitions if len(candidate.input_names) == len(args)),
             definitions[0],
         )
-        return _evaluate_custom_function(definition, args)
+        return _evaluate_custom_function(
+            definition,
+            args,
+            custom_functions=available_definitions,
+        )
 
     return callback
 
 
-def _evaluate_custom_function(definition: CustomFunctionDefinition, args: tuple[Any, ...]) -> Any:
+def _evaluate_custom_function(
+    definition: CustomFunctionDefinition,
+    args: tuple[Any, ...],
+    *,
+    custom_functions: tuple[CustomFunctionDefinition, ...] | None = None,
+) -> Any:
     import elementpath
+
+    if not definition.steps:
+        return []
 
     variables: dict[str, Any] = {}
     for name, value in zip(definition.input_names, args, strict=False):
@@ -1439,6 +1455,8 @@ def _evaluate_custom_function(definition: CustomFunctionDefinition, args: tuple[
 
     context_item: Any = True
     for value in variables.values():
+        if value is None:
+            continue
         if isinstance(value, list):
             if value:
                 context_item = value[0]
@@ -1449,7 +1467,7 @@ def _evaluate_custom_function(definition: CustomFunctionDefinition, args: tuple[
 
     parser = build_formula_parser(
         namespaces=definition.namespaces,
-        custom_functions=_custom_functions(),
+        custom_functions=custom_functions if custom_functions is not None else _custom_functions(),
         expression_hints=(step.expression for step in definition.steps),
     )
     for step in definition.steps:
@@ -1486,6 +1504,8 @@ def build_formula_parser(
     """
     cls = _get_parser_class()
     ns = dict(namespaces or {})
+    for prefix, uri in FORMULA_XPATH_DEFAULT_PREFIXES.items():
+        ns.setdefault(prefix, uri)
     ns.setdefault("xfi", _XFI_NS)
     ns.setdefault("efn", _EFN_NS)
     ns.setdefault("iaf", _IAF_NS)

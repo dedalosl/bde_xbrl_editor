@@ -402,3 +402,11 @@ class TestIafFunctions:
         result = list(token.select(ctx))
 
         assert result == [Decimal("12.75")]
+
+
+class TestBuildFormulaParserNamespaces:
+    def test_standard_xbrl_prefixes_are_available_without_nsmap(self) -> None:
+        """Static parsing must not fail when BDE/EBA XPath uses standard prefixes."""
+        parser = build_formula_parser({})
+        parser.parse("link:schemaRef")
+        parser.parse("xbrli:context")

@@ -58,6 +58,7 @@ def parse_custom_function_linkbase(linkbase_path: Path) -> tuple[CustomFunctionD
     }
 
     functions: list[CustomFunctionDefinition] = []
+    implemented_labels: set[str] = set()
     for arc in root.iter(_TAG_GEN_ARC):
         if (arc.get(_ATTR_XLINK_ARCROLE) or "").strip() != _ARCROLE_FUNCTION_IMPLEMENTATION:
             continue
@@ -69,6 +70,14 @@ def parse_custom_function_linkbase(linkbase_path: Path) -> tuple[CustomFunctionD
             continue
         definition = _parse_function_definition(function_el, implementation_el)
         if definition is not None:
+            implemented_labels.add(from_label)
+            functions.append(definition)
+
+    for label, function_el in function_index.items():
+        if label in implemented_labels:
+            continue
+        definition = _parse_function_definition(function_el, None)
+        if definition is not None:
             functions.append(definition)
 
     return tuple(functions)
@@ -76,7 +85,7 @@ def parse_custom_function_linkbase(linkbase_path: Path) -> tuple[CustomFunctionD
 
 def _parse_function_definition(
     function_el: etree._Element,
-    implementation_el: etree._Element,
+    implementation_el: etree._Element | None,
 ) -> CustomFunctionDefinition | None:
     qname = (function_el.get("name") or "").strip()
     if ":" not in qname:
@@ -92,28 +101,33 @@ def _parse_function_definition(
         for input_el in function_el.findall(_TAG_VARIABLE_INPUT)
     )
     output_type = (function_el.get("output") or "").strip() or None
-    input_names = tuple(
-        (input_el.get("name") or "").strip()
-        for input_el in implementation_el.findall(_TAG_CFI_INPUT)
-        if (input_el.get("name") or "").strip()
-    )
+    if implementation_el is not None:
+        input_names = tuple(
+            (input_el.get("name") or "").strip()
+            for input_el in implementation_el.findall(_TAG_CFI_INPUT)
+            if (input_el.get("name") or "").strip()
+        )
+    else:
+        input_names = tuple(f"arg{idx}" for idx, _type in enumerate(input_types, start=1))
 
     steps: list[CustomFunctionStep] = []
-    for child in implementation_el:
-        if child.tag == _TAG_CFI_STEP:
-            expression = "".join(child.itertext()).strip()
-            name = (child.get("name") or "").strip() or None
-            if expression:
-                steps.append(CustomFunctionStep(expression=expression, name=name))
-        elif child.tag == _TAG_CFI_OUTPUT:
-            expression = "".join(child.itertext()).strip()
-            if expression:
-                steps.append(CustomFunctionStep(expression=expression, is_output=True))
+    if implementation_el is not None:
+        for child in implementation_el:
+            if child.tag == _TAG_CFI_STEP:
+                expression = "".join(child.itertext()).strip()
+                name = (child.get("name") or "").strip() or None
+                if expression:
+                    steps.append(CustomFunctionStep(expression=expression, name=name))
+            elif child.tag == _TAG_CFI_OUTPUT:
+                expression = "".join(child.itertext()).strip()
+                if expression:
+                    steps.append(CustomFunctionStep(expression=expression, is_output=True))
 
-    if not steps:
-        return None
+        if not steps:
+            return None
 
-    namespaces = {key: value for key, value in implementation_el.nsmap.items() if key and value}
+    namespace_source = implementation_el if implementation_el is not None else function_el
+    namespaces = {key: value for key, value in namespace_source.nsmap.items() if key and value}
     namespaces.setdefault(prefix, namespace)
 
     return CustomFunctionDefinition(

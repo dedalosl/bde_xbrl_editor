@@ -42,7 +42,7 @@ def collect_formula_external_variable_names(taxonomy: TaxonomyStructure) -> tupl
     assertion_set = taxonomy.formula_assertion_set
     variable_sets = (*assertion_set.assertions, *assertion_set.output_formulas)
     for variable_set in variable_sets:
-        parameters = tuple(variable_set.parameters) + tuple(assertion_set.global_parameters)
+        parameters = _effective_parameters(variable_set, assertion_set.global_parameters)
         name_ctx = _build_name_context(variable_set, parameters)
         unresolved = _collect_unresolved_dependencies(
             variable_set,
@@ -469,8 +469,9 @@ def _variable_set_graph_findings(
     external_variable_names: set[str] | None = None,
 ) -> list[ValidationFinding]:
     findings: list[ValidationFinding] = []
-    parameters = tuple(variable_set.parameters) + tuple(
-        taxonomy.formula_assertion_set.global_parameters
+    parameters = _effective_parameters(
+        variable_set,
+        taxonomy.formula_assertion_set.global_parameters,
     )
 
     name_ctx = _build_name_context(variable_set, parameters)
@@ -497,7 +498,9 @@ def _variable_set_graph_findings(
         )
 
     local_parameter_name_clashes = _duplicates(
-        _resolved_parameter_names(variable_set.parameters)
+        _resolved_parameter_names(
+            parameter for parameter in variable_set.parameters if parameter.scope == "local"
+        )
     )
     bound_parameter_names = set(
         _resolved_parameter_names(
@@ -643,12 +646,18 @@ def _variable_set_xpath_static_findings(
         except Exception as exc:  # noqa: BLE001
             code = getattr(exc, "code", None)
             if isinstance(code, str) and code == "err:XPST0017":
+                missing_function = _missing_custom_function_name(exc)
+                missing_text = (
+                    f": {missing_function}"
+                    if missing_function is not None
+                    else ""
+                )
                 findings.append(
                     _finding(
                         "xbrlve:noCustomFunctionSignature",
                         (
                             f"Variable set '{_variable_set_id(variable_set)}' references "
-                            "a custom function without a declared signature"
+                            f"a custom function without a declared signature{missing_text}"
                         ),
                     )
                 )
@@ -732,6 +741,13 @@ def _variable_set_id(variable_set: FormulaAssertion | FormulaOutputDefinition) -
     if isinstance(variable_set, FormulaOutputDefinition):
         return variable_set.formula_id
     return variable_set.assertion_id
+
+
+def _missing_custom_function_name(exc: Exception) -> str | None:
+    match = re.search(r"unknown function '([^']+)'", str(exc))
+    if match is None:
+        return None
+    return match.group(1)
 
 
 def _duplicates(names: Iterable[str]) -> set[str]:
@@ -936,6 +952,42 @@ def _resolved_parameter_names(parameters: Iterable) -> list[str]:
             continue
         names.append(canonical)
     return names
+
+
+def _effective_parameters(
+    variable_set: FormulaAssertion | FormulaOutputDefinition,
+    global_parameters: Iterable,
+) -> tuple:
+    """Return variable-set parameters plus only missing globals.
+
+    Formula linkbase parsing already inherits global parameters onto each
+    variable set. Static validation may also receive the taxonomy-level globals,
+    especially after parsing multiple linkbase files. Do not count the same
+    global parameter twice as a local ``parameterNameClash``.
+    """
+    result: list = []
+    seen_global_names: set[str] = set()
+    seen_any_names: set[str] = set()
+
+    for parameter in variable_set.parameters:
+        canonical, failed = _resolve_name(parameter.parameter_name, parameter.namespaces)
+        if not failed and canonical is not None:
+            if parameter.scope == "global":
+                if canonical in seen_global_names:
+                    continue
+                seen_global_names.add(canonical)
+            seen_any_names.add(canonical)
+        result.append(parameter)
+
+    for parameter in global_parameters:
+        canonical, failed = _resolve_name(parameter.parameter_name, parameter.namespaces)
+        if not failed and canonical is not None and canonical in seen_any_names:
+            continue
+        if not failed and canonical is not None:
+            seen_any_names.add(canonical)
+        result.append(parameter)
+
+    return tuple(result)
 
 
 def _has_disallowed_variable_set_filter_reference(

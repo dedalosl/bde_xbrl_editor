@@ -1416,6 +1416,36 @@ class TaxonomyLoader:
                 )
                 all_global_parameters.extend(fas.global_parameters)
 
+            # Aggregator linkbases and their locator-discovered targets can expose
+            # the same formula resources more than once. Keep one effective copy so
+            # downstream static checks do not see duplicated variable/parameter sets.
+            _seen_assertion_ids: set[str] = set()
+            _deduped_assertions: list[FormulaAssertion] = []
+            for assertion in all_assertions:
+                if assertion.assertion_id in _seen_assertion_ids:
+                    continue
+                _seen_assertion_ids.add(assertion.assertion_id)
+                _deduped_assertions.append(assertion)
+            all_assertions = _deduped_assertions
+
+            _seen_formula_ids: set[str] = set()
+            _deduped_output_formulas: list[FormulaOutputDefinition] = []
+            for formula in all_output_formulas:
+                if formula.formula_id in _seen_formula_ids:
+                    continue
+                _seen_formula_ids.add(formula.formula_id)
+                _deduped_output_formulas.append(formula)
+            all_output_formulas = _deduped_output_formulas
+
+            _seen_global_parameter_names: set[str] = set()
+            _deduped_global_parameters = []
+            for parameter in all_global_parameters:
+                if parameter.parameter_name in _seen_global_parameter_names:
+                    continue
+                _seen_global_parameter_names.add(parameter.parameter_name)
+                _deduped_global_parameters.append(parameter)
+            all_global_parameters = _deduped_global_parameters
+
             parsed_assertion_resource_linkbases = _run_path_jobs(
                 all_linkbase_paths,
                 parse_assertion_resource_linkbase,
