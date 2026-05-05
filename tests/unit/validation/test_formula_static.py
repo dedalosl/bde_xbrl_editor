@@ -560,3 +560,21 @@ def test_formula_static_validation_treats_supplied_external_variables_as_known()
     )
 
     assert "xbrlve:unresolvedDependency" not in {f.rule_id for f in validator.validate()}
+
+
+def test_formula_static_validation_ignores_flwor_local_variable_references() -> None:
+    assertion_set = FormulaAssertionSet(
+        assertions=(
+            ValueAssertionDefinition(
+                assertion_id="a1",
+                label=None,
+                severity=ValidationSeverity.ERROR,
+                abstract=False,
+                variables=(FactVariableDefinition(variable_name="fact"),),
+                test_xpath="for $x in (1, 2) return $x + $fact",
+                referenced_names=("x", "fact"),
+            ),
+        )
+    )
+
+    assert "xbrlve:unresolvedDependency" not in _rule_ids(assertion_set)

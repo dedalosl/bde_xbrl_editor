@@ -770,17 +770,39 @@ def _collect_unresolved_dependencies(
             if failed or canonical is not None and canonical not in known_names:
                 unresolved.add(name)
 
-    add_unknown(variable_set.referenced_names, variable_set.namespaces)
+    add_unknown(
+        _sanitize_referenced_names(
+            variable_set.referenced_names,
+            *_variable_set_expressions(variable_set),
+        ),
+        variable_set.namespaces,
+    )
     for variable in variable_set.variables:
         for xpath_filter in variable.xpath_filters:
             add_unknown(_extract_var_refs(xpath_filter.xpath_expr), xpath_filter.namespaces)
-        add_unknown(variable.referenced_names, variable_set.namespaces)
+        add_unknown(
+            _sanitize_referenced_names(variable.referenced_names, variable.fallback_value),
+            variable_set.namespaces,
+        )
     for variable in variable_set.general_variables:
-        add_unknown(variable.referenced_names, variable.namespaces)
+        add_unknown(
+            _sanitize_referenced_names(
+                variable.referenced_names,
+                variable.select_xpath,
+                variable.fallback_value,
+            ),
+            variable.namespaces,
+        )
     for parameter in parameters:
-        add_unknown(parameter.referenced_names, parameter.namespaces)
+        add_unknown(
+            _sanitize_referenced_names(parameter.referenced_names, parameter.select_xpath),
+            parameter.namespaces,
+        )
     for precondition in variable_set.preconditions:
-        add_unknown(precondition.referenced_names, precondition.namespaces)
+        add_unknown(
+            _sanitize_referenced_names(precondition.referenced_names, precondition.test_xpath),
+            precondition.namespaces,
+        )
     return unresolved
 
 
@@ -796,7 +818,7 @@ def _build_dependency_graph(
         if failed or node is None:
             continue
         deps: set[str] = set()
-        for ref in variable.referenced_names:
+        for ref in _sanitize_referenced_names(variable.referenced_names, variable.fallback_value):
             resolved, _failed = _resolve_name(ref, variable_set.namespaces)
             if resolved is not None and resolved in known_names:
                 deps.add(resolved)
@@ -806,7 +828,11 @@ def _build_dependency_graph(
         if failed or node is None:
             continue
         deps: set[str] = set()
-        for ref in variable.referenced_names:
+        for ref in _sanitize_referenced_names(
+            variable.referenced_names,
+            variable.select_xpath,
+            variable.fallback_value,
+        ):
             resolved, _failed = _resolve_name(ref, variable.namespaces)
             if resolved is not None and resolved in known_names:
                 deps.add(resolved)
@@ -816,7 +842,7 @@ def _build_dependency_graph(
         if failed or node is None:
             continue
         deps: set[str] = set()
-        for ref in parameter.referenced_names:
+        for ref in _sanitize_referenced_names(parameter.referenced_names, parameter.select_xpath):
             resolved, _failed = _resolve_name(ref, parameter.namespaces)
             if resolved is not None and resolved in known_names:
                 deps.add(resolved)
@@ -854,13 +880,44 @@ def _find_cycles(graph: dict[str, set[str]]) -> list[list[str]]:
 
 
 _VAR_REF_RE = re.compile(r"\$([A-Za-z_][A-Za-z0-9_.:-]*)")
+_LOCAL_VAR_HEAD_RE = re.compile(r"\b(?:for|let|some|every)\s+\$([A-Za-z_][A-Za-z0-9_.:-]*)\b")
+_LOCAL_VAR_CHAIN_RE = re.compile(r",\s*\$([A-Za-z_][A-Za-z0-9_.:-]*)\s+(?:in|:=)\b")
 _NUMERIC_SELECT_RE = re.compile(r"^\s*(?:xs:(?:float|double|decimal|integer)\(|-?\d+(?:\.\d+)?)")
 
 
 def _extract_var_refs(expr: str | None) -> tuple[str, ...]:
     if not expr:
         return ()
-    return tuple(_VAR_REF_RE.findall(expr))
+    refs = _VAR_REF_RE.findall(expr)
+    if not refs:
+        return ()
+    local_vars = set(_LOCAL_VAR_HEAD_RE.findall(expr))
+    local_vars.update(_LOCAL_VAR_CHAIN_RE.findall(expr))
+    return tuple(ref for ref in refs if ref not in local_vars)
+
+
+def _sanitize_referenced_names(names: Iterable[str], *expressions: str | None) -> tuple[str, ...]:
+    local_vars: set[str] = set()
+    for expr in expressions:
+        if not expr:
+            continue
+        local_vars.update(_LOCAL_VAR_HEAD_RE.findall(expr))
+        local_vars.update(_LOCAL_VAR_CHAIN_RE.findall(expr))
+    return tuple(name for name in names if name not in local_vars)
+
+
+def _variable_set_expressions(variable_set: FormulaAssertion | FormulaOutputDefinition) -> tuple[str, ...]:
+    expressions: list[str] = []
+    if isinstance(variable_set, FormulaAssertion):
+        test_xpath = getattr(variable_set, "test_xpath", None)
+        formula_xpath = getattr(variable_set, "formula_xpath", None)
+        if test_xpath:
+            expressions.append(test_xpath)
+        if formula_xpath:
+            expressions.append(formula_xpath)
+    else:
+        expressions.append(variable_set.value_xpath)
+    return tuple(expressions)
 
 
 def _resolve_name(name: str, namespaces: dict[str, str]) -> tuple[str | None, bool]:

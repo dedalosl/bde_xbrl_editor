@@ -477,6 +477,84 @@ class TestValueAssertion:
         assert len(findings) == 1
         assert findings[0].status == ValidationStatus.PASS
 
+    def test_general_variable_non_sequence_expands_bindings(self) -> None:
+        fact_var = FactVariableDefinition(
+            variable_name="a",
+            concept_filter=_qn("Amount"),
+        )
+        general_var = GeneralVariableDefinition(
+            variable_name="g",
+            select_xpath="(10, 20)",
+            bind_as_sequence=False,
+        )
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(
+                assertion_id="VA_GENERAL_EXPAND",
+                variables=(fact_var,),
+            ),
+            general_variables=(general_var,),
+            test_xpath="$a + $g > 0",
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
+        inst = _instance([_fact("Amount", value="1")])
+
+        findings = FormulaEvaluator(taxonomy).evaluate(inst)
+
+        assert len(findings) == 2
+        assert all(finding.status == ValidationStatus.PASS for finding in findings)
+
+    def test_general_variable_bind_as_sequence_keeps_single_binding(self) -> None:
+        fact_var = FactVariableDefinition(
+            variable_name="a",
+            concept_filter=_qn("Amount"),
+        )
+        general_var = GeneralVariableDefinition(
+            variable_name="g",
+            select_xpath="(10, 20)",
+            bind_as_sequence=True,
+        )
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(
+                assertion_id="VA_GENERAL_SEQ",
+                variables=(fact_var,),
+            ),
+            general_variables=(general_var,),
+            test_xpath="count($g) = 2",
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
+        inst = _instance([_fact("Amount", value="1")])
+
+        findings = FormulaEvaluator(taxonomy).evaluate(inst)
+
+        assert len(findings) == 1
+        assert findings[0].status == ValidationStatus.PASS
+
+    def test_general_variable_duplicate_expansion_values_are_deduplicated(self) -> None:
+        fact_var = FactVariableDefinition(
+            variable_name="a",
+            concept_filter=_qn("Amount"),
+        )
+        general_var = GeneralVariableDefinition(
+            variable_name="g",
+            select_xpath="(10, 10)",
+            bind_as_sequence=False,
+        )
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(
+                assertion_id="VA_GENERAL_DEDUP",
+                variables=(fact_var,),
+            ),
+            general_variables=(general_var,),
+            test_xpath="$a + $g > 0",
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
+        inst = _instance([_fact("Amount", value="1")])
+
+        findings = FormulaEvaluator(taxonomy).evaluate(inst)
+
+        assert len(findings) == 1
+        assert findings[0].status == ValidationStatus.PASS
+
     def test_formula_finding_carries_rule_details(self) -> None:
         """Failed formula findings include formatted assertion details for the UI."""
         var_def = FactVariableDefinition(

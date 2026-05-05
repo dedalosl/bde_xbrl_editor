@@ -8,6 +8,7 @@ import re
 import threading
 import time
 from collections.abc import Callable, Iterable, Iterator
+from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -46,6 +47,13 @@ ProgressCallback = Callable[[int, int, str], None]
 FindingCallback = Callable[[tuple[ValidationFinding, ...]], None]
 _MESSAGE_EXPR_RE = re.compile(r"\{([^{}]+)\}")
 _FINDING_BATCH_SIZE = 100
+
+
+@dataclass(frozen=True)
+class _VariableBinding:
+    fact_binding: dict[str, list[Fact]]
+    general_values: dict[str, Any] = field(default_factory=dict)
+    uses_fallback: bool = False
 
 
 class FormulaEvaluator:
@@ -490,7 +498,7 @@ class FormulaEvaluator:
         instance: XbrlInstance,
         *,
         facts_by_concept: dict[object, list[Fact]] | None = None,
-    ) -> Iterator[dict[str, list[Fact]]]:
+    ) -> Iterator[_VariableBinding]:
         """Yield variable binding tuples for an assertion.
 
         Each binding maps variable_name → list of matching facts.
@@ -521,17 +529,169 @@ class FormulaEvaluator:
             per_variable.append((var_def.variable_name, candidates))
 
         if not per_variable:
-            yield {}
+            general_values, uses_general_fallback = self._resolve_general_variable_bindings(
+                assertion,
+                {},
+                instance,
+            )[0]
+            yield _VariableBinding(
+                fact_binding={},
+                general_values=general_values,
+                uses_fallback=uses_general_fallback,
+            )
             return
 
         # Cartesian product across all variables
         variable_names = [name for name, _ in per_variable]
         candidate_lists = [candidates for _, candidates in per_variable]
+        seen_binding_signatures: set[tuple[Any, ...]] = set()
         for combo in itertools.product(*candidate_lists):
-            binding: dict[str, list[Fact]] = {
+            fact_binding: dict[str, list[Fact]] = {
                 name: facts for name, facts in zip(variable_names, combo, strict=False)
             }
-            yield binding
+            uses_fact_fallback = any(
+                not facts
+                and any(
+                    var_def.variable_name == name and var_def.fallback_value is not None
+                    for var_def in assertion.variables
+                )
+                for name, facts in fact_binding.items()
+            )
+            for general_values, uses_general_fallback in self._resolve_general_variable_bindings(
+                assertion,
+                fact_binding,
+                instance,
+            ):
+                binding = _VariableBinding(
+                    fact_binding=fact_binding,
+                    general_values=general_values,
+                    uses_fallback=uses_fact_fallback or uses_general_fallback,
+                )
+                signature = self._binding_signature(binding)
+                if signature in seen_binding_signatures:
+                    continue
+                seen_binding_signatures.add(signature)
+                yield binding
+
+    def _resolve_general_variable_bindings(
+        self,
+        assertion: FormulaAssertion,
+        fact_binding: dict[str, list[Fact]],
+        instance: XbrlInstance,
+    ) -> list[tuple[dict[str, Any], bool]]:
+        if not assertion.general_variables:
+            return [({}, False)]
+        candidates: list[tuple[dict[str, Any], bool]] = [({}, False)]
+        first_fact = _first_fact(fact_binding)
+        for variable in assertion.general_variables:
+            next_candidates: list[tuple[dict[str, Any], bool]] = []
+            for candidate, candidate_uses_fallback in candidates:
+                if variable.variable_name in self._general_variable_values:
+                    value = _coerce_fallback_value(self._general_variable_values[variable.variable_name])
+                    expanded = [value]
+                    selected_from_fallback = False
+                else:
+                    eval_vars = self._build_general_select_variables(
+                        fact_binding,
+                        candidate,
+                        namespaces=assertion.namespaces,
+                    )
+                    selected = self._evaluate_general_variable_select(
+                        variable.select_xpath,
+                        variables=eval_vars,
+                        instance=instance,
+                        namespaces=variable.namespaces or assertion.namespaces,
+                        first_fact=first_fact,
+                    )
+                    if selected is None:
+                        if variable.fallback_value is None:
+                            expanded = [[]]
+                            selected_from_fallback = False
+                        else:
+                            expanded = [_coerce_fallback_value(variable.fallback_value)]
+                            selected_from_fallback = True
+                    elif variable.bind_as_sequence:
+                        expanded = [selected]
+                        selected_from_fallback = False
+                    elif isinstance(selected, list):
+                        expanded = list(selected) if selected else [[]]
+                        selected_from_fallback = False
+                    else:
+                        expanded = [selected]
+                        selected_from_fallback = False
+
+                for value in expanded:
+                    next_candidate = dict(candidate)
+                    next_candidate[variable.variable_name] = value
+                    next_candidates.append(
+                        (
+                            next_candidate,
+                            candidate_uses_fallback or selected_from_fallback,
+                        )
+                    )
+            candidates = next_candidates or candidates
+        return candidates
+
+    @classmethod
+    def _binding_signature(cls, binding: _VariableBinding) -> tuple[Any, ...]:
+        return (
+            cls._binding_trail_key(binding.fact_binding),
+            tuple(sorted((name, cls._value_signature(value)) for name, value in binding.general_values.items())),
+        )
+
+    @staticmethod
+    def _value_signature(value: Any) -> Any:
+        if isinstance(value, list):
+            return tuple(FormulaEvaluator._value_signature(item) for item in value)
+        if hasattr(value, "value"):
+            return getattr(value, "value")
+        return str(value)
+
+    @staticmethod
+    def _binding_trail_key(binding: dict[str, list[Fact]]) -> tuple[Any, ...]:
+        trail: list[tuple[str, tuple[tuple[Any, ...], ...]]] = []
+        for name in sorted(binding):
+            facts = binding[name]
+            serialized = tuple(
+                (
+                    str(fact.concept),
+                    fact.context_ref,
+                    fact.unit_ref,
+                    fact.value,
+                    fact.decimals,
+                )
+                for fact in facts
+            )
+            trail.append((name, serialized))
+        return tuple(trail)
+
+    @staticmethod
+    def _build_general_select_variables(
+        fact_binding: dict[str, list[Fact]],
+        general_values: dict[str, Any],
+        *,
+        namespaces: dict[str, str],
+    ) -> dict[str, Any]:
+        variables: dict[str, Any] = dict(general_values)
+        for fact_name, facts in fact_binding.items():
+            if not facts:
+                continue
+            if len(facts) == 1:
+                variables[fact_name] = _coerce_xpath_variable_value(
+                    facts[0].value,
+                    namespaces=namespaces,
+                    xpath_expr="",
+                )
+            else:
+                variables[fact_name] = [
+                    _coerce_xpath_variable_value(
+                        fact.value,
+                        namespaces=namespaces,
+                        xpath_expr="",
+                    )
+                    for fact in facts
+                ]
+        return variables
 
     def _matching_facts_for_variable(
         self,
@@ -616,7 +776,7 @@ class FormulaEvaluator:
     def _evaluate_value_assertion(
         self,
         assertion: ValueAssertionDefinition,
-        bindings: Iterable[dict[str, list[Fact]]],
+        bindings: Iterable[_VariableBinding],
         instance: XbrlInstance,
     ) -> list[ValidationFinding]:
         """Evaluate @test XPath for each binding tuple."""
@@ -625,7 +785,12 @@ class FormulaEvaluator:
             return findings
 
         pending_publish: list[ValidationFinding] = []
-        for binding in bindings:
+        successful_non_fallback_trails: set[tuple[Any, ...]] = set()
+        for resolved_binding in bindings:
+            binding = resolved_binding.fact_binding
+            trail_key = self._binding_trail_key(binding)
+            if resolved_binding.uses_fallback and trail_key in successful_non_fallback_trails:
+                continue
             if self._value_assertion_not_evaluated(assertion, binding):
                 self._append_and_maybe_publish(
                     findings,
@@ -650,6 +815,7 @@ class FormulaEvaluator:
                     instance,
                     assertion.namespaces,
                     assertion=assertion,
+                    general_values=resolved_binding.general_values,
                 )
                 passed = _to_bool(result)
             except Exception as exc:  # noqa: BLE001
@@ -666,6 +832,8 @@ class FormulaEvaluator:
                     ),
                 )
                 continue
+            if passed and not resolved_binding.uses_fallback:
+                successful_non_fallback_trails.add(trail_key)
 
             fact = _first_fact(binding)
             self._append_and_maybe_publish(
@@ -709,12 +877,13 @@ class FormulaEvaluator:
     def _evaluate_existence_assertion(
         self,
         assertion: ExistenceAssertionDefinition,
-        bindings: Iterable[dict[str, list[Fact]]],
+        bindings: Iterable[_VariableBinding],
         instance: XbrlInstance,
     ) -> list[ValidationFinding]:
         """Pass if at least one binding has a non-empty fact set."""
         first_binding: dict[str, list[Fact]] | None = None
-        for binding in bindings:
+        for resolved_binding in bindings:
+            binding = resolved_binding.fact_binding
             if first_binding is None:
                 first_binding = binding
             for facts in binding.values():
@@ -745,7 +914,7 @@ class FormulaEvaluator:
     def _evaluate_consistency_assertion(
         self,
         assertion: ConsistencyAssertionDefinition,
-        bindings: Iterable[dict[str, list[Fact]]],
+        bindings: Iterable[_VariableBinding],
         instance: XbrlInstance,
     ) -> list[ValidationFinding]:
         """Evaluate formula expression; compare computed vs. actual fact value."""
@@ -754,7 +923,8 @@ class FormulaEvaluator:
             return findings
 
         pending_publish: list[ValidationFinding] = []
-        for binding in bindings:
+        for resolved_binding in bindings:
+            binding = resolved_binding.fact_binding
             fact = _first_fact(binding)
             if fact is None:
                 continue
@@ -765,6 +935,7 @@ class FormulaEvaluator:
                     instance,
                     assertion.namespaces,
                     assertion=assertion,
+                    general_values=resolved_binding.general_values,
                 )
                 # elementpath.select returns a list; unwrap single-element results
                 if isinstance(computed, list):
@@ -817,6 +988,7 @@ class FormulaEvaluator:
         namespaces: dict[str, str] | None = None,
         *,
         assertion: FormulaAssertion | None = None,
+        general_values: dict[str, Any] | None = None,
     ) -> Any:
         """Evaluate an XPath 2.0 expression with the current fact binding."""
         import elementpath  # type: ignore[import-untyped]
@@ -854,7 +1026,9 @@ class FormulaEvaluator:
                 variables[var_name] = _coerce_fallback_value(fallback_by_name[var_name])
             else:
                 variables[var_name] = Decimal(0)
-        if assertion is not None:
+        if general_values is not None:
+            variables.update(general_values)
+        elif assertion is not None:
             variables.update(
                 self._general_variable_xpath_values(
                     assertion,
@@ -973,7 +1147,7 @@ class FormulaEvaluator:
 
         if not select_xpath.strip():
             return None
-        if first_fact is None:
+        if first_fact is None and select_xpath.strip() == ".":
             return None
         ctx_obj = None
         unit_obj = None
