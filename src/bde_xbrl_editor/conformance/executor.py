@@ -74,6 +74,7 @@ _STRUCTURAL_ONLY_TEST_IDS = frozenset(
         _USED_ON_TEST_ID,
     }
 )
+_OUTPUT_RUNTIME_ERROR_TEST_PREFIXES = ("22010", "22040", "22050", "22170")
 
 
 def _concept_id_map(taxonomy: TaxonomyStructure) -> dict[str, QName]:
@@ -310,7 +311,7 @@ class TestCaseExecutor:
                 if test_case.suite_id == "formula" and taxonomy_struct is not None:
                     findings = findings + tuple(FormulaStaticValidator(taxonomy_struct).validate())
                     if (
-                        test_case.test_case_id.startswith("22010")
+                        test_case.test_case_id.startswith(_OUTPUT_RUNTIME_ERROR_TEST_PREFIXES)
                         and variation.expected_outcome.outcome_type == ExpectedOutcomeType.ERROR
                     ):
                         findings = findings + OutputFormulaRuntimeEvaluator(

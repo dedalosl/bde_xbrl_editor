@@ -13,23 +13,39 @@ from bde_xbrl_editor.instance.models import (
     XbrlInstance,
 )
 from bde_xbrl_editor.taxonomy.models import (
+    Concept,
     FactVariableDefinition,
     FormulaAssertionSet,
+    FormulaFilterResource,
     FormulaOutputDefinition,
     QName,
     TaxonomyMetadata,
     TaxonomyStructure,
+    XPathFilterDefinition,
 )
 from bde_xbrl_editor.validation.formula.output_runtime import OutputFormulaRuntimeEvaluator
 
 _NS = "http://example.com/tax"
+_XBRLI_NS = "http://www.xbrl.org/2003/instance"
 
 
 def _qn(local: str) -> QName:
     return QName(namespace=_NS, local_name=local)
 
 
-def _taxonomy(formula: FormulaOutputDefinition) -> TaxonomyStructure:
+def _concept(local: str, type_local: str) -> Concept:
+    qname = _qn(local)
+    return Concept(
+        qname=qname,
+        data_type=QName(_XBRLI_NS, type_local, "xbrli"),
+        period_type="instant",
+    )
+
+
+def _taxonomy(
+    formula: FormulaOutputDefinition,
+    concepts: dict[QName, Concept] | None = None,
+) -> TaxonomyStructure:
     return TaxonomyStructure(
         metadata=TaxonomyMetadata(
             name="Test",
@@ -39,7 +55,7 @@ def _taxonomy(formula: FormulaOutputDefinition) -> TaxonomyStructure:
             loaded_at=datetime(2024, 1, 1),
             declared_languages=("en",),
         ),
-        concepts={},
+        concepts=concepts or {},
         labels={},
         presentation={},
         calculation={},
@@ -148,3 +164,82 @@ def test_output_runtime_evaluator_ignores_successful_output_formula() -> None:
     findings = OutputFormulaRuntimeEvaluator(_taxonomy(formula)).evaluate_runtime_errors(_instance())
     assert findings == ()
 
+
+def test_output_runtime_reports_invalid_filter_effective_boolean_value() -> None:
+    formula = FormulaOutputDefinition(
+        formula_id="formula1",
+        label=None,
+        value_xpath="$c1",
+        source=None,
+        aspect_model=None,
+        implicit_filtering=True,
+        variables=(
+            FactVariableDefinition(
+                variable_name="c1",
+                xpath_filters=(
+                    XPathFilterDefinition(
+                        xpath_expr="QName('http://example.com/tax', 'eg:c1')",
+                        filter_type="general",
+                    ),
+                ),
+            ),
+        ),
+    )
+    findings = OutputFormulaRuntimeEvaluator(_taxonomy(formula)).evaluate_runtime_errors(_instance())
+    assert [finding.rule_id for finding in findings] == ["err:FORG0006"]
+
+
+def test_output_runtime_reports_tuple_atomization_error_for_string_join_sequence() -> None:
+    formula = FormulaOutputDefinition(
+        formula_id="formula1",
+        label=None,
+        value_xpath="concat('hello ', string-join( $c1 | (), '') )",
+        source=None,
+        aspect_model=None,
+        implicit_filtering=False,
+        variables=(
+            FactVariableDefinition(
+                variable_name="c1",
+                bind_as_sequence=True,
+                filter_resources=(
+                    FormulaFilterResource(
+                        label="location",
+                        namespace="http://xbrl.org/2008/filter/tuple",
+                        local_name="ancestorFilter",
+                    ),
+                ),
+            ),
+        ),
+    )
+    findings = OutputFormulaRuntimeEvaluator(_taxonomy(formula)).evaluate_runtime_errors(_instance())
+    assert [finding.rule_id for finding in findings] == ["err:FOTY0012"]
+
+
+def test_output_runtime_reports_xqt_type_error_for_numeric_string_join_sequence() -> None:
+    number = _concept("Number", "decimalItemType")
+    formula = FormulaOutputDefinition(
+        formula_id="formula1",
+        label=None,
+        value_xpath="concat('hello ', string-join( $v | (), '') )",
+        source=None,
+        aspect_model=None,
+        implicit_filtering=False,
+        variables=(
+            FactVariableDefinition(
+                variable_name="v",
+                bind_as_sequence=True,
+                filter_resources=(
+                    FormulaFilterResource(
+                        label="namefilter",
+                        namespace="http://xbrl.org/2008/filter/concept",
+                        local_name="conceptName",
+                        qnames=(number.qname,),
+                    ),
+                ),
+            ),
+        ),
+    )
+    findings = OutputFormulaRuntimeEvaluator(
+        _taxonomy(formula, concepts={number.qname: number})
+    ).evaluate_runtime_errors(_instance())
+    assert [finding.rule_id for finding in findings] == ["xqt-err:XPTY0004"]

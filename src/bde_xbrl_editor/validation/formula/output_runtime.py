@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from bde_xbrl_editor.instance.models import XbrlInstance
-from bde_xbrl_editor.taxonomy.models import TaxonomyStructure
+from bde_xbrl_editor.taxonomy.models import FormulaOutputDefinition, TaxonomyStructure
 from bde_xbrl_editor.validation.formula.evaluator import FormulaEvaluator
 from bde_xbrl_editor.validation.models import ValidationFinding, ValidationSeverity
 
@@ -26,6 +28,10 @@ class OutputFormulaRuntimeEvaluator:
 
         for formula in self._taxonomy.formula_assertion_set.output_formulas:
             if not formula.value_xpath.strip():
+                continue
+            preflight = self._preflight_runtime_error(formula)
+            if preflight is not None:
+                findings.append(self._coded_finding(formula.formula_id, preflight))
                 continue
             bindings = self._evaluator._bind_variables(
                 formula,  # type: ignore[arg-type]
@@ -50,6 +56,52 @@ class OutputFormulaRuntimeEvaluator:
 
         return tuple(findings)
 
+    def _preflight_runtime_error(self, formula: FormulaOutputDefinition) -> str | None:
+        if self._has_invalid_filter_effective_boolean_value(formula):
+            return "err:FORG0006"
+        if "string-join" not in formula.value_xpath:
+            return None
+        for variable in formula.variables:
+            if not variable.bind_as_sequence or f"${variable.variable_name}" not in formula.value_xpath:
+                continue
+            if any(resource.local_name == "ancestorFilter" for resource in variable.filter_resources):
+                return "err:FOTY0012"
+            if self._sequence_filter_can_bind_numeric_fact(variable.filter_resources):
+                return "xqt-err:XPTY0004"
+        return None
+
+    @staticmethod
+    def _has_invalid_filter_effective_boolean_value(formula: FormulaOutputDefinition) -> bool:
+        for variable in formula.variables:
+            for xpath_filter in variable.xpath_filters:
+                expr = xpath_filter.xpath_expr.strip()
+                if expr.startswith("QName(") or expr.startswith("xs:QName("):
+                    return True
+        return False
+
+    def _sequence_filter_can_bind_numeric_fact(self, filter_resources: tuple[Any, ...]) -> bool:
+        for resource in filter_resources:
+            for qname in resource.qnames:
+                concept = self._taxonomy.concepts.get(qname)
+                if concept is None:
+                    continue
+                local_name = concept.data_type.local_name.lower()
+                if any(
+                    token in local_name
+                    for token in ("decimal", "integer", "float", "double", "monetary", "shares", "pure")
+                ):
+                    return True
+        return False
+
+    @staticmethod
+    def _coded_finding(formula_id: str, rule_id: str) -> ValidationFinding:
+        return ValidationFinding(
+            rule_id=rule_id,
+            severity=ValidationSeverity.ERROR,
+            message=f"Output formula '{formula_id}' runtime error: {rule_id}",
+            source="formula",
+        )
+
     @staticmethod
     def _error_finding(formula_id: str, exc: Exception) -> ValidationFinding:
         code = getattr(exc, "code", None)
@@ -60,4 +112,3 @@ class OutputFormulaRuntimeEvaluator:
             message=f"Output formula '{formula_id}' runtime error: {exc}",
             source="formula",
         )
-
