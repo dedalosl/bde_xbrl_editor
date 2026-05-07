@@ -121,6 +121,8 @@ def _with_instance_calculation_linkbases(
 def _with_input_formula_linkbases(
     taxonomy: TaxonomyStructure,
     input_files: tuple[Path, ...],
+    *,
+    include_assertions: bool = False,
 ) -> TaxonomyStructure:
     """Merge Formula 1.0 resources from conformance variation input linkbases.
 
@@ -130,15 +132,26 @@ def _with_input_formula_linkbases(
     the engine parser, while formula static semantics stay in validation/formula.
     """
     existing = taxonomy.formula_assertion_set
+    assertions = list(existing.assertions)
     output_formulas = list(existing.output_formulas)
+    global_parameters = list(existing.global_parameters)
     changed = False
+    seen_assertions = {assertion.assertion_id for assertion in assertions}
     seen_formulas = {formula.formula_id for formula in output_formulas}
+    seen_parameters = {parameter.parameter_name for parameter in global_parameters}
     for path in input_files:
         if path.suffix.lower() not in (".xml", ".xbrl"):
             continue
         if not linkbase_contains_formula_assertions(path):
             continue
         parsed = parse_formula_linkbase(path)
+        if include_assertions and parsed.assertions:
+            for assertion in parsed.assertions:
+                if assertion.assertion_id in seen_assertions:
+                    continue
+                assertions.append(assertion)
+                seen_assertions.add(assertion.assertion_id)
+                changed = True
         if parsed.output_formulas:
             for formula in parsed.output_formulas:
                 if formula.formula_id in seen_formulas:
@@ -146,13 +159,22 @@ def _with_input_formula_linkbases(
                 output_formulas.append(formula)
                 seen_formulas.add(formula.formula_id)
                 changed = True
+        if include_assertions and parsed.global_parameters:
+            for parameter in parsed.global_parameters:
+                if parameter.parameter_name in seen_parameters:
+                    continue
+                global_parameters.append(parameter)
+                seen_parameters.add(parameter.parameter_name)
+                changed = True
     if not changed:
         return taxonomy
     return replace(
         taxonomy,
         formula_assertion_set=replace(
             existing,
+            assertions=tuple(assertions),
             output_formulas=tuple(output_formulas),
+            global_parameters=tuple(global_parameters),
         ),
     )
 
@@ -272,6 +294,11 @@ class TestCaseExecutor:
                         taxonomy_struct = _with_input_formula_linkbases(
                             taxonomy_struct,
                             variation.input_files,
+                            include_assertions=(
+                                test_case.test_case_id.startswith("22010")
+                                and variation.expected_outcome.outcome_type
+                                == ExpectedOutcomeType.ERROR
+                            ),
                         )
                     validator = InstanceValidator(
                         taxonomy_struct,
@@ -304,6 +331,11 @@ class TestCaseExecutor:
                     taxonomy_struct = _with_input_formula_linkbases(
                         taxonomy_struct,
                         variation.input_files,
+                        include_assertions=(
+                            test_case.test_case_id.startswith("22010")
+                            and variation.expected_outcome.outcome_type
+                            == ExpectedOutcomeType.ERROR
+                        ),
                     )
                 if test_case.suite_id == "formula" and taxonomy_struct is not None:
                     findings = findings + tuple(FormulaStaticValidator(taxonomy_struct).validate())
@@ -343,6 +375,11 @@ class TestCaseExecutor:
                     taxonomy_struct = _with_input_formula_linkbases(
                         taxonomy_struct,
                         variation.input_files,
+                        include_assertions=(
+                            test_case.test_case_id.startswith("22010")
+                            and variation.expected_outcome.outcome_type
+                            == ExpectedOutcomeType.ERROR
+                        ),
                     )
                 if test_case.suite_id == "formula" and taxonomy_struct is not None:
                     findings = findings + tuple(FormulaStaticValidator(taxonomy_struct).validate())

@@ -18,6 +18,7 @@ from bde_xbrl_editor.taxonomy.linkbases.custom_functions import (
 )
 from bde_xbrl_editor.taxonomy.models import (
     AssertionTextResource,
+    Concept,
     ConsistencyAssertionDefinition,
     CustomFunctionDefinition,
     ExistenceAssertionDefinition,
@@ -37,10 +38,20 @@ from bde_xbrl_editor.validation.models import ValidationSeverity, ValidationStat
 # ---------------------------------------------------------------------------
 
 _TAX_NS = "http://example.com/tax"
+_XBRLI_NS = "http://www.xbrl.org/2003/instance"
 
 
 def _qn(local: str) -> QName:
     return QName(namespace=_TAX_NS, local_name=local)
+
+
+def _concept(local: str, type_local: str) -> Concept:
+    qname = _qn(local)
+    return Concept(
+        qname=qname,
+        data_type=QName(namespace=_XBRLI_NS, local_name=type_local, prefix="xbrli"),
+        period_type="instant",
+    )
 
 
 def _entity() -> ReportingEntity:
@@ -94,6 +105,7 @@ class _FakeLabels:
 def _taxonomy(
     assertion_set: FormulaAssertionSet,
     custom_functions: tuple[CustomFunctionDefinition, ...] = (),
+    concepts: dict[QName, Concept] | None = None,
 ) -> TaxonomyStructure:
     meta = TaxonomyMetadata(
         name="Test",
@@ -105,7 +117,7 @@ def _taxonomy(
     )
     return TaxonomyStructure(
         metadata=meta,
-        concepts={},
+        concepts=concepts or {},
         labels=_FakeLabels(),
         presentation={},
         calculation={},
@@ -223,6 +235,39 @@ class TestValueAssertion:
         inst = _instance([_fact()])
         findings = FormulaEvaluator(taxonomy).evaluate(inst)
         assert findings == []
+
+    def test_simple_fact_comparison_reports_xpath_type_error_for_mismatched_item_type(self) -> None:
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(
+                assertion_id="VA_TYPE_MISMATCH",
+                variables=(FactVariableDefinition(variable_name="fact"),),
+            ),
+            test_xpath="$fact != true()",
+        )
+        concept = _concept("Amount", "decimalItemType")
+        taxonomy = _taxonomy(
+            FormulaAssertionSet(assertions=(assertion,)),
+            concepts={concept.qname: concept},
+        )
+        findings = FormulaEvaluator(taxonomy).evaluate(_instance([_fact(value="1")]))
+        assert [finding.rule_id for finding in findings] == ["err:XPTY0004"]
+
+    def test_simple_fact_comparison_keeps_matching_item_type_result(self) -> None:
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(
+                assertion_id="VA_TYPE_MATCH",
+                variables=(FactVariableDefinition(variable_name="fact"),),
+            ),
+            test_xpath="$fact != true()",
+        )
+        concept = _concept("Amount", "booleanItemType")
+        taxonomy = _taxonomy(
+            FormulaAssertionSet(assertions=(assertion,)),
+            concepts={concept.qname: concept},
+        )
+        findings = FormulaEvaluator(taxonomy).evaluate(_instance([_fact(value="true")]))
+        assert len(findings) == 1
+        assert findings[0].rule_id == "VA_TYPE_MATCH"
 
     def test_uses_provided_general_variable_value(self) -> None:
         assertion = ValueAssertionDefinition(

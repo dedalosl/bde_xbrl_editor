@@ -46,6 +46,10 @@ from bde_xbrl_editor.validation.models import (
 ProgressCallback = Callable[[int, int, str], None]
 FindingCallback = Callable[[tuple[ValidationFinding, ...]], None]
 _MESSAGE_EXPR_RE = re.compile(r"\{([^{}]+)\}")
+_SIMPLE_COMPARISON_RE = re.compile(
+    r"^\s*\$([A-Za-z_][\w:.-]*)\s*(?:=|!=|eq|ne|lt|le|gt|ge)\s*(.+?)\s*$",
+    re.DOTALL,
+)
 _FINDING_BATCH_SIZE = 100
 
 
@@ -519,10 +523,7 @@ class FormulaEvaluator:
             # Each fact is one binding candidate for this variable
             # We group as list[list[Fact]] where each inner list is [one_fact]
             if matched:
-                if var_def.bind_as_sequence:
-                    candidates = [matched]
-                else:
-                    candidates = [[f] for f in matched]
+                candidates = [matched] if var_def.bind_as_sequence else [[f] for f in matched]
             elif var_def.fallback_value is not None:
                 candidates = [[]]  # one binding with empty set (fallback applies)
             else:
@@ -647,7 +648,12 @@ class FormulaEvaluator:
     def _binding_signature(cls, binding: _VariableBinding) -> tuple[Any, ...]:
         return (
             cls._binding_trail_key(binding.fact_binding),
-            tuple(sorted((name, cls._value_signature(value)) for name, value in binding.general_values.items())),
+            tuple(
+                sorted(
+                    (name, cls._value_signature(value))
+                    for name, value in binding.general_values.items()
+                )
+            ),
         )
 
     @staticmethod
@@ -655,7 +661,7 @@ class FormulaEvaluator:
         if isinstance(value, list):
             return tuple(FormulaEvaluator._value_signature(item) for item in value)
         if hasattr(value, "value"):
-            return getattr(value, "value")
+            return value.value
         return str(value)
 
     @staticmethod
@@ -676,8 +682,8 @@ class FormulaEvaluator:
             trail.append((name, serialized))
         return tuple(trail)
 
-    @staticmethod
     def _build_general_select_variables(
+        self,
         fact_binding: dict[str, list[Fact]],
         general_values: dict[str, Any],
         *,
@@ -688,15 +694,15 @@ class FormulaEvaluator:
             if not facts:
                 continue
             if len(facts) == 1:
-                variables[fact_name] = _coerce_xpath_variable_value(
-                    facts[0].value,
+                variables[fact_name] = self._coerce_fact_xpath_value(
+                    facts[0],
                     namespaces=namespaces,
                     xpath_expr="",
                 )
             else:
                 variables[fact_name] = [
-                    _coerce_xpath_variable_value(
-                        fact.value,
+                    self._coerce_fact_xpath_value(
+                        fact,
                         namespaces=namespaces,
                         xpath_expr="",
                     )
@@ -832,6 +838,24 @@ class FormulaEvaluator:
                     ),
                 )
                 continue
+            type_error_code = self._simple_comparison_type_error(assertion, binding)
+            if type_error_code is not None:
+                self._append_and_maybe_publish(
+                    findings,
+                    pending_publish,
+                    self._finding_for_assertion(
+                        assertion,
+                        status=ValidationStatus.FAIL,
+                        default_message=(
+                            f"XPath evaluation failed: incompatible item types in "
+                            f"value assertion '{assertion.assertion_id}'"
+                        ),
+                        rule_id=type_error_code,
+                        binding=binding,
+                        instance=instance,
+                    ),
+                )
+                continue
 
             try:
                 result = self._eval_xpath(
@@ -898,6 +922,59 @@ class FormulaEvaluator:
             if var_def.fallback_value is None:
                 return True
         return not has_fact
+
+    def _simple_comparison_type_error(
+        self,
+        assertion: ValueAssertionDefinition,
+        binding: dict[str, list[Fact]],
+    ) -> str | None:
+        """Catch Formula/XPath comparison type errors elementpath treats loosely.
+
+        The Formula conformance suite expects dynamic ``err:XPTY0004`` results
+        when simple value assertions compare facts of unlike XML Schema atomic
+        types.  Python's bool/date comparison semantics can otherwise turn some
+        of those into plain true/false outcomes before XPath raises.
+        """
+        match = _SIMPLE_COMPARISON_RE.match(assertion.test_xpath or "")
+        if match is None:
+            return None
+        variable_name, rhs = match.groups()
+        rhs_type = _comparison_rhs_type(rhs)
+        if rhs_type is None:
+            return None
+        facts = binding.get(variable_name, ())
+        for fact in facts:
+            fact_type = self._fact_atomic_type(fact)
+            if fact_type is not None and fact_type != rhs_type:
+                return "err:XPTY0004"
+        return None
+
+    def _fact_atomic_type(self, fact: Fact) -> str | None:
+        concept = self._taxonomy.concepts.get(fact.concept)
+        if concept is None:
+            return None
+        return _item_type_category(concept.data_type.local_name)
+
+    def _coerce_fact_xpath_value(
+        self,
+        fact: Fact,
+        *,
+        namespaces: dict[str, str],
+        xpath_expr: str,
+    ) -> Any:
+        concept = self._taxonomy.concepts.get(fact.concept)
+        if concept is None:
+            return _coerce_xpath_variable_value(
+                fact.value,
+                namespaces=namespaces,
+                xpath_expr=xpath_expr,
+            )
+        return _coerce_typed_fact_value(
+            fact.value,
+            concept.data_type.local_name,
+            namespaces=namespaces,
+            xpath_expr=xpath_expr,
+        )
 
     def _evaluate_existence_assertion(
         self,
@@ -1042,16 +1119,16 @@ class FormulaEvaluator:
                         variables[var_name] = _fact_to_message_element(facts[0])
                 elif len(facts) > 1:
                     variables[var_name] = [
-                        _coerce_xpath_variable_value(
-                            fact.value,
+                        self._coerce_fact_xpath_value(
+                            fact,
                             namespaces=namespaces or {},
                             xpath_expr=xpath_expr,
                         )
                         for fact in facts
                     ]
                 else:
-                    variables[var_name] = _coerce_xpath_variable_value(
-                        facts[0].value,
+                    variables[var_name] = self._coerce_fact_xpath_value(
+                        facts[0],
                         namespaces=namespaces or {},
                         xpath_expr=xpath_expr,
                     )
@@ -1131,15 +1208,15 @@ class FormulaEvaluator:
             if not facts:
                 continue
             if len(facts) == 1:
-                eval_variables[fact_name] = _coerce_xpath_variable_value(
-                    facts[0].value,
+                eval_variables[fact_name] = self._coerce_fact_xpath_value(
+                    facts[0],
                     namespaces=namespaces,
                     xpath_expr="",
                 )
             else:
                 eval_variables[fact_name] = [
-                    _coerce_xpath_variable_value(
-                        fact.value,
+                    self._coerce_fact_xpath_value(
+                        fact,
                         namespaces=namespaces,
                         xpath_expr="",
                     )
@@ -1313,6 +1390,95 @@ def _coerce_xpath_variable_value(
         return value
 
 
+def _coerce_typed_fact_value(
+    raw: str,
+    type_local_name: str,
+    *,
+    namespaces: dict[str, str],
+    xpath_expr: str,
+) -> Any:
+    category = _item_type_category(type_local_name)
+    if category == "boolean":
+        value = raw.strip()
+        if value in {"true", "1"}:
+            return True
+        if value in {"false", "0"}:
+            return False
+    if category == "date":
+        try:
+            from elementpath.datatypes import Date  # type: ignore[import-untyped]
+
+            return Date.fromstring(raw.strip())
+        except Exception:  # noqa: BLE001
+            return raw
+    if category == "dateTime":
+        try:
+            from elementpath.datatypes import DateTime  # type: ignore[import-untyped]
+
+            return DateTime.fromstring(raw.strip())
+        except Exception:  # noqa: BLE001
+            return raw
+    if category == "qname":
+        if ":" in raw:
+            prefix, _local_name = raw.split(":", 1)
+            namespace = namespaces.get(prefix)
+            if namespace:
+                try:
+                    from elementpath.datatypes import (  # type: ignore[import-untyped]
+                        QName as XPathQName,
+                    )
+
+                    return XPathQName(namespace, raw)
+                except Exception:  # noqa: BLE001
+                    return raw
+        return raw
+    if category == "string":
+        return raw
+    return _coerce_xpath_variable_value(
+        raw,
+        namespaces=namespaces,
+        xpath_expr=xpath_expr,
+    )
+
+
+def _comparison_rhs_type(rhs: str) -> str | None:
+    expr = rhs.strip()
+    if expr in {"true()", "false()"}:
+        return "boolean"
+    if re.fullmatch(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)", expr):
+        return "decimal"
+    if (expr.startswith("'") and expr.endswith("'")) or (
+        expr.startswith('"') and expr.endswith('"')
+    ):
+        return "string"
+    constructor_match = re.match(r"^xs:([A-Za-z][\w.-]*)\s*\(", expr)
+    if constructor_match is None:
+        return None
+    constructor = constructor_match.group(1).lower()
+    if constructor in {"boolean", "date", "datetime", "qname", "string"}:
+        return "dateTime" if constructor == "datetime" else constructor
+    if constructor in {"decimal", "integer", "float", "double"}:
+        return "decimal"
+    return None
+
+
+def _item_type_category(type_local_name: str) -> str | None:
+    local = type_local_name.lower()
+    if "boolean" in local:
+        return "boolean"
+    if "datetime" in local:
+        return "dateTime"
+    if "date" in local:
+        return "date"
+    if "qname" in local:
+        return "qname"
+    if any(token in local for token in ("decimal", "integer", "float", "double", "monetary", "shares", "pure")):
+        return "decimal"
+    if "string" in local:
+        return "string"
+    return None
+
+
 def _fact_to_message_element(fact: Fact) -> etree._Element:
     """Build a lightweight XML element for message XPath evaluation."""
     prefix = fact.concept.prefix or "fact"
@@ -1348,10 +1514,7 @@ def _to_bool(value: Any) -> bool:
 
     if isinstance(value, bool):
         return value
-    if not isinstance(value, list):
-        sequence = [value]
-    else:
-        sequence = value
+    sequence = [value] if not isinstance(value, list) else value
     if not sequence:
         return False
     if all(hasattr(item, "tag") for item in sequence):
