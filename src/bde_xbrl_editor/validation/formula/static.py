@@ -21,7 +21,10 @@ from bde_xbrl_editor.taxonomy.models import (
     XPathFilterDefinition,
 )
 from bde_xbrl_editor.validation.formula.filters import apply_filters
-from bde_xbrl_editor.validation.formula.xfi_functions import build_formula_parser
+from bde_xbrl_editor.validation.formula.xfi_functions import (
+    build_formula_parser,
+    normalize_formula_xpath_expression,
+)
 from bde_xbrl_editor.validation.models import ValidationFinding, ValidationSeverity
 
 _NUMERIC_TYPE_KEYWORDS = (
@@ -449,7 +452,7 @@ def _formula_xpath_static_findings(
             custom_functions=taxonomy.custom_functions,
             expression_hints=(formula.value_xpath,),
         )
-        parser.parse(formula.value_xpath)
+        parser.parse(normalize_formula_xpath_expression(formula.value_xpath))
     except Exception as exc:  # noqa: BLE001
         code = getattr(exc, "code", None)
         if isinstance(code, str) and _report_formula_xpath_static_error(code, exc):
@@ -642,7 +645,7 @@ def _variable_set_xpath_static_findings(
                 custom_functions=taxonomy.custom_functions,
                 expression_hints=(expr,),
             )
-            parser.parse(expr)
+            parser.parse(normalize_formula_xpath_expression(expr))
         except Exception as exc:  # noqa: BLE001
             code = getattr(exc, "code", None)
             if isinstance(code, str) and code == "err:XPST0017":

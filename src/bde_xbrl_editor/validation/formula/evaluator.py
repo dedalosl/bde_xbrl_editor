@@ -35,6 +35,7 @@ from bde_xbrl_editor.validation.formula.filters import apply_filters
 from bde_xbrl_editor.validation.formula.xfi_functions import (
     build_formula_parser,
     clear_evaluation_context,
+    normalize_formula_xpath_expression,
     set_evaluation_context,
 )
 from bde_xbrl_editor.validation.models import (
@@ -1299,6 +1300,7 @@ class FormulaEvaluator:
         xpath_expr: str,
         namespaces: dict[str, str] | None = None,
     ) -> Any:
+        xpath_expr = normalize_formula_xpath_expression(xpath_expr)
         namespace_items = tuple(sorted((namespaces or {}).items()))
         cache_key = (namespace_items, xpath_expr)
         cached = self._xpath_token_cache.get(cache_key)

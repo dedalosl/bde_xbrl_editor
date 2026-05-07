@@ -1489,7 +1489,71 @@ def _evaluate_custom_function(
 
 def _normalize_custom_function_expression(expression: str) -> str:
     """Relax schema-bound kind tests that elementpath cannot resolve without a schema."""
-    return re.sub(r"schema-element\([^)]+\)", "element()", expression)
+    return re.sub(
+        r"schema-element\([^)]+\)",
+        "element()",
+        normalize_formula_xpath_expression(expression),
+    )
+
+
+def normalize_formula_xpath_expression(expression: str) -> str:
+    """Return an XPath expression shape accepted by elementpath.
+
+    Formula conformance linkbases use XPath comments.  Elementpath's XPath 2
+    parser does not accept the ``(: ... :)`` comment form, so strip comments
+    before parsing/evaluating while leaving quoted string contents untouched.
+    """
+    if "(:" not in expression:
+        return expression
+
+    result: list[str] = []
+    quote: str | None = None
+    comment_depth = 0
+    index = 0
+    while index < len(expression):
+        char = expression[index]
+        next_char = expression[index + 1] if index + 1 < len(expression) else ""
+
+        if comment_depth:
+            if char == "(" and next_char == ":":
+                comment_depth += 1
+                index += 2
+                continue
+            if char == ":" and next_char == ")":
+                comment_depth -= 1
+                index += 2
+                if comment_depth == 0:
+                    result.append(" ")
+                continue
+            index += 1
+            continue
+
+        if quote is not None:
+            result.append(char)
+            if char == quote:
+                if next_char == quote:
+                    result.append(next_char)
+                    index += 2
+                    continue
+                quote = None
+            index += 1
+            continue
+
+        if char in {"'", '"'}:
+            quote = char
+            result.append(char)
+            index += 1
+            continue
+
+        if char == "(" and next_char == ":":
+            comment_depth = 1
+            index += 2
+            continue
+
+        result.append(char)
+        index += 1
+
+    return "".join(result)
 
 
 def build_formula_parser(

@@ -21,6 +21,7 @@ from bde_xbrl_editor.validation.formula.xfi_functions import (
     clear_evaluation_context,
     iaf_numeric_add,
     iaf_sum,
+    normalize_formula_xpath_expression,
     set_evaluation_context,
     xfi_decimal,  # backward-compat alias
     xfi_decimals,
@@ -95,6 +96,20 @@ def _unit(measure: str = "iso4217:EUR") -> XbrlUnit:
 
 def _set_ctx(binding: dict) -> None:
     set_evaluation_context(binding)
+
+
+def test_normalize_formula_xpath_expression_strips_comments_outside_strings() -> None:
+    expr = "concat('(: literal :)', (: comment with ' quote :) 'ok')"
+
+    assert normalize_formula_xpath_expression(expr) == "concat('(: literal :)',   'ok')"
+
+
+def test_formula_parser_accepts_normalized_xpath_comments() -> None:
+    expr = "concat('planet ', (: table's integer is typed :) 'venus')"
+
+    token = build_formula_parser().parse(normalize_formula_xpath_expression(expr))
+
+    assert "".join(token.evaluate()) == "planet venus"
 
 
 # ---------------------------------------------------------------------------
