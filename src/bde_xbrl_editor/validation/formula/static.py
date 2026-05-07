@@ -781,10 +781,17 @@ def _collect_unresolved_dependencies(
         variable_set.namespaces,
     )
     for variable in variable_set.variables:
+        variable_filter_expressions = tuple(
+            xpath_filter.xpath_expr for xpath_filter in variable.xpath_filters
+        )
         for xpath_filter in variable.xpath_filters:
             add_unknown(_extract_var_refs(xpath_filter.xpath_expr), xpath_filter.namespaces)
         add_unknown(
-            _sanitize_referenced_names(variable.referenced_names, variable.fallback_value),
+            _sanitize_referenced_names(
+                variable.referenced_names,
+                variable.fallback_value,
+                *variable_filter_expressions,
+            ),
             variable_set.namespaces,
         )
     for variable in variable_set.general_variables:
@@ -821,7 +828,14 @@ def _build_dependency_graph(
         if failed or node is None:
             continue
         deps: set[str] = set()
-        for ref in _sanitize_referenced_names(variable.referenced_names, variable.fallback_value):
+        variable_filter_expressions = tuple(
+            xpath_filter.xpath_expr for xpath_filter in variable.xpath_filters
+        )
+        for ref in _sanitize_referenced_names(
+            variable.referenced_names,
+            variable.fallback_value,
+            *variable_filter_expressions,
+        ):
             resolved, _failed = _resolve_name(ref, variable_set.namespaces)
             if resolved is not None and resolved in known_names:
                 deps.add(resolved)
@@ -886,11 +900,13 @@ _VAR_REF_RE = re.compile(r"\$([A-Za-z_][A-Za-z0-9_.:-]*)")
 _LOCAL_VAR_HEAD_RE = re.compile(r"\b(?:for|let|some|every)\s+\$([A-Za-z_][A-Za-z0-9_.:-]*)\b")
 _LOCAL_VAR_CHAIN_RE = re.compile(r",\s*\$([A-Za-z_][A-Za-z0-9_.:-]*)\s+(?:in|:=)\b")
 _NUMERIC_SELECT_RE = re.compile(r"^\s*(?:xs:(?:float|double|decimal|integer)\(|-?\d+(?:\.\d+)?)")
+_XPATH_COMMENT_RE = re.compile(r"\(:.*?:\)", re.DOTALL)
 
 
 def _extract_var_refs(expr: str | None) -> tuple[str, ...]:
     if not expr:
         return ()
+    expr = _strip_xpath_comments(expr)
     refs = _VAR_REF_RE.findall(expr)
     if not refs:
         return ()
@@ -901,12 +917,20 @@ def _extract_var_refs(expr: str | None) -> tuple[str, ...]:
 
 def _sanitize_referenced_names(names: Iterable[str], *expressions: str | None) -> tuple[str, ...]:
     local_vars: set[str] = set()
+    ignored_refs: set[str] = set()
     for expr in expressions:
         if not expr:
             continue
+        for comment in _XPATH_COMMENT_RE.findall(expr):
+            ignored_refs.update(_VAR_REF_RE.findall(comment))
+        expr = _strip_xpath_comments(expr)
         local_vars.update(_LOCAL_VAR_HEAD_RE.findall(expr))
         local_vars.update(_LOCAL_VAR_CHAIN_RE.findall(expr))
-    return tuple(name for name in names if name not in local_vars)
+    return tuple(name for name in names if name not in local_vars and name not in ignored_refs)
+
+
+def _strip_xpath_comments(expr: str) -> str:
+    return _XPATH_COMMENT_RE.sub("", expr)
 
 
 def _variable_set_expressions(variable_set: FormulaAssertion | FormulaOutputDefinition) -> tuple[str, ...]:

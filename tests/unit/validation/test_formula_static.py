@@ -18,6 +18,7 @@ from bde_xbrl_editor.taxonomy.models import (
     TaxonomyStructure,
     TypedDimensionFilter,
     ValueAssertionDefinition,
+    XPathFilterDefinition,
 )
 from bde_xbrl_editor.validation.formula.static import (
     FormulaStaticValidator,
@@ -573,6 +574,56 @@ def test_formula_static_validation_ignores_flwor_local_variable_references() -> 
                 variables=(FactVariableDefinition(variable_name="fact"),),
                 test_xpath="for $x in (1, 2) return $x + $fact",
                 referenced_names=("x", "fact"),
+            ),
+        )
+    )
+
+    assert "xbrlve:unresolvedDependency" not in _rule_ids(assertion_set)
+
+
+def test_formula_static_validation_ignores_xpath_comment_variable_references() -> None:
+    assertion_set = FormulaAssertionSet(
+        output_formulas=(
+            FormulaOutputDefinition(
+                formula_id="f1",
+                label=None,
+                value_xpath="(: replaced $missing with a custom function :) $source + 1",
+                source="source",
+                aspect_model="non-dimensional",
+                implicit_filtering=True,
+                variables=(FactVariableDefinition(variable_name="source"),),
+            ),
+        )
+    )
+
+    assert "xbrlve:unresolvedDependency" not in _rule_ids(assertion_set)
+
+
+def test_formula_static_validation_ignores_filter_local_variable_references() -> None:
+    assertion_set = FormulaAssertionSet(
+        assertions=(
+            ValueAssertionDefinition(
+                assertion_id="a1",
+                label=None,
+                severity=ValidationSeverity.ERROR,
+                abstract=False,
+                variables=(
+                    FactVariableDefinition(
+                        variable_name="fact",
+                        referenced_names=("restatementDate", "restatementDateTime"),
+                        xpath_filters=(
+                            XPathFilterDefinition(
+                                xpath_expr=(
+                                    "for $restatementDate in (), "
+                                    "$restatementDateTime in dateTime($restatementDate, "
+                                    "xs:time('24:00:00')) return true()"
+                                ),
+                                namespaces={"xs": "http://www.w3.org/2001/XMLSchema"},
+                            ),
+                        ),
+                    ),
+                ),
+                test_xpath="true()",
             ),
         )
     )
