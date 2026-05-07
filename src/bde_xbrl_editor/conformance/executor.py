@@ -75,7 +75,7 @@ _STRUCTURAL_ONLY_TEST_IDS = frozenset(
         _USED_ON_TEST_ID,
     }
 )
-_OUTPUT_RUNTIME_ERROR_TEST_PREFIXES = ("22010", "22040", "22050", "22170")
+_OUTPUT_RUNTIME_ERROR_TEST_PREFIXES = ("22010", "22040", "22050", "22140", "22170")
 
 
 def _concept_id_map(taxonomy: TaxonomyStructure) -> dict[str, QName]:

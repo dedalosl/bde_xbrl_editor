@@ -6,7 +6,7 @@ from typing import Any
 
 from bde_xbrl_editor.instance.models import XbrlInstance
 from bde_xbrl_editor.taxonomy.models import FormulaOutputDefinition, TaxonomyStructure
-from bde_xbrl_editor.validation.formula.evaluator import FormulaEvaluator
+from bde_xbrl_editor.validation.formula.evaluator import FormulaEvaluator, _to_bool
 from bde_xbrl_editor.validation.models import ValidationFinding, ValidationSeverity
 
 
@@ -42,6 +42,17 @@ class OutputFormulaRuntimeEvaluator:
                 if resolved.error is not None:
                     findings.append(self._error_finding(formula.formula_id, resolved.error))
                     continue
+                precondition_result = self._evaluate_preconditions(
+                    formula,
+                    resolved.fact_binding,
+                    instance,
+                    general_values=resolved.general_values,
+                )
+                if isinstance(precondition_result, Exception):
+                    findings.append(self._error_finding(formula.formula_id, precondition_result))
+                    continue
+                if not precondition_result:
+                    continue
                 try:
                     self._evaluator._eval_xpath(
                         formula.value_xpath,
@@ -55,6 +66,30 @@ class OutputFormulaRuntimeEvaluator:
                     findings.append(self._error_finding(formula.formula_id, exc))
 
         return tuple(findings)
+
+    def _evaluate_preconditions(
+        self,
+        formula: FormulaOutputDefinition,
+        binding: dict[str, list],
+        instance: XbrlInstance,
+        *,
+        general_values: dict[str, Any],
+    ) -> bool | Exception:
+        for precondition in formula.preconditions:
+            try:
+                result = self._evaluator._eval_xpath(
+                    precondition.test_xpath,
+                    binding,
+                    instance,
+                    precondition.namespaces or formula.namespaces,
+                    general_values=general_values,
+                    fact_bindings_as_elements=True,
+                )
+                if not _to_bool(result):
+                    return False
+            except Exception as exc:  # noqa: BLE001
+                return exc
+        return True
 
     def _preflight_runtime_error(self, formula: FormulaOutputDefinition) -> str | None:
         if self._has_invalid_filter_effective_boolean_value(formula):

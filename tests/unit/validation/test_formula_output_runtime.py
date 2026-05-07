@@ -18,6 +18,7 @@ from bde_xbrl_editor.taxonomy.models import (
     FormulaAssertionSet,
     FormulaFilterResource,
     FormulaOutputDefinition,
+    PreconditionDefinition,
     QName,
     TaxonomyMetadata,
     TaxonomyStructure,
@@ -182,6 +183,27 @@ def test_output_runtime_reports_invalid_filter_effective_boolean_value() -> None
                         filter_type="general",
                     ),
                 ),
+            ),
+        ),
+    )
+    findings = OutputFormulaRuntimeEvaluator(_taxonomy(formula)).evaluate_runtime_errors(_instance())
+    assert [finding.rule_id for finding in findings] == ["err:FORG0006"]
+
+
+def test_output_runtime_reports_invalid_precondition_effective_boolean_value() -> None:
+    formula = FormulaOutputDefinition(
+        formula_id="formula1",
+        label=None,
+        value_xpath="$c1",
+        source=None,
+        aspect_model=None,
+        implicit_filtering=True,
+        variables=(FactVariableDefinition(variable_name="c1", concept_filter=_qn("Amount")),),
+        preconditions=(
+            PreconditionDefinition(
+                precondition_id="precondition",
+                test_xpath="xs:date('2008-01-01')",
+                namespaces={"xs": "http://www.w3.org/2001/XMLSchema"},
             ),
         ),
     )
