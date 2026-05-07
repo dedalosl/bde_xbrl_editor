@@ -20,6 +20,7 @@ from bde_xbrl_editor.instance.constants import LINK_NS, XLINK_NS
 from bde_xbrl_editor.instance.parser import InstanceParser
 from bde_xbrl_editor.taxonomy.cache import TaxonomyCache
 from bde_xbrl_editor.taxonomy.linkbases.calculation import parse_calculation_linkbase
+from bde_xbrl_editor.taxonomy.linkbases.custom_functions import parse_custom_function_linkbase
 from bde_xbrl_editor.taxonomy.linkbases.formula import (
     linkbase_contains_formula_assertions,
     parse_formula_linkbase,
@@ -136,41 +137,52 @@ def _with_input_formula_linkbases(
     assertions = list(existing.assertions)
     output_formulas = list(existing.output_formulas)
     global_parameters = list(existing.global_parameters)
+    custom_functions = list(taxonomy.custom_functions)
     changed = False
     seen_assertions = {assertion.assertion_id for assertion in assertions}
     seen_formulas = {formula.formula_id for formula in output_formulas}
     seen_parameters = {parameter.parameter_name for parameter in global_parameters}
+    seen_custom_functions = {
+        (definition.name, definition.input_types) for definition in custom_functions
+    }
     for path in input_files:
         if path.suffix.lower() not in (".xml", ".xbrl"):
             continue
-        if not linkbase_contains_formula_assertions(path):
-            continue
-        parsed = parse_formula_linkbase(path)
-        if include_assertions and parsed.assertions:
-            for assertion in parsed.assertions:
-                if assertion.assertion_id in seen_assertions:
-                    continue
-                assertions.append(assertion)
-                seen_assertions.add(assertion.assertion_id)
-                changed = True
-        if parsed.output_formulas:
-            for formula in parsed.output_formulas:
-                if formula.formula_id in seen_formulas:
-                    continue
-                output_formulas.append(formula)
-                seen_formulas.add(formula.formula_id)
-                changed = True
-        if include_assertions and parsed.global_parameters:
-            for parameter in parsed.global_parameters:
-                if parameter.parameter_name in seen_parameters:
-                    continue
-                global_parameters.append(parameter)
-                seen_parameters.add(parameter.parameter_name)
-                changed = True
+        for definition in parse_custom_function_linkbase(path):
+            key = (definition.name, definition.input_types)
+            if key in seen_custom_functions:
+                continue
+            custom_functions.append(definition)
+            seen_custom_functions.add(key)
+            changed = True
+        if linkbase_contains_formula_assertions(path):
+            parsed = parse_formula_linkbase(path)
+            if include_assertions and parsed.assertions:
+                for assertion in parsed.assertions:
+                    if assertion.assertion_id in seen_assertions:
+                        continue
+                    assertions.append(assertion)
+                    seen_assertions.add(assertion.assertion_id)
+                    changed = True
+            if parsed.output_formulas:
+                for formula in parsed.output_formulas:
+                    if formula.formula_id in seen_formulas:
+                        continue
+                    output_formulas.append(formula)
+                    seen_formulas.add(formula.formula_id)
+                    changed = True
+            if include_assertions and parsed.global_parameters:
+                for parameter in parsed.global_parameters:
+                    if parameter.parameter_name in seen_parameters:
+                        continue
+                    global_parameters.append(parameter)
+                    seen_parameters.add(parameter.parameter_name)
+                    changed = True
     if not changed:
         return taxonomy
     return replace(
         taxonomy,
+        custom_functions=tuple(custom_functions),
         formula_assertion_set=replace(
             existing,
             assertions=tuple(assertions),

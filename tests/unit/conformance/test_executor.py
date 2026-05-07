@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+from pathlib import Path
+
 from bde_xbrl_editor.conformance.executor import (
     TestCaseExecutor,
-    _validate_lax_known_declarations,
-    _validate_xlink_file,
+    _with_input_formula_linkbases,
 )
 from bde_xbrl_editor.conformance.models import (
     ExpectedOutcome,
@@ -13,7 +15,13 @@ from bde_xbrl_editor.conformance.models import (
     TestResultOutcome,
 )
 from bde_xbrl_editor.taxonomy.cache import TaxonomyCache
+from bde_xbrl_editor.taxonomy.models import TaxonomyMetadata, TaxonomyStructure
+from bde_xbrl_editor.validation.formula.static import FormulaStaticValidator
 from bde_xbrl_editor.validation.models import ValidationFinding, ValidationSeverity
+from bde_xbrl_editor.validation.xbrl_documents import (
+    _validate_xlink_file,
+    validate_lax_known_declarations,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -90,6 +98,27 @@ def _write_linkbase(path, link_element: str) -> None:
     )
 
 
+def _empty_taxonomy(tmp_path: Path) -> TaxonomyStructure:
+    return TaxonomyStructure(
+        metadata=TaxonomyMetadata(
+            name="Test",
+            version="1.0",
+            publisher="Example",
+            entry_point_path=tmp_path / "test.xsd",
+            loaded_at=datetime(2026, 1, 1),
+            declared_languages=("en",),
+        ),
+        concepts={},
+        labels=None,
+        presentation={},
+        calculation={},
+        definition={},
+        hypercubes=[],
+        dimensions={},
+        tables=[],
+    )
+
+
 # ---------------------------------------------------------------------------
 # XLink/linkbase structural validation
 # ---------------------------------------------------------------------------
@@ -109,7 +138,7 @@ def test_lax_validation_reports_known_integer_element(tmp_path) -> None:
         encoding="utf-8",
     )
 
-    findings = _validate_lax_known_declarations((xml_path,))
+    findings = validate_lax_known_declarations((xml_path,))
 
     assert [finding.rule_id for finding in findings] == ["xmlschema:lax-validation-error"]
 
@@ -129,7 +158,7 @@ def test_lax_validation_allows_unknown_open_content(tmp_path) -> None:
         encoding="utf-8",
     )
 
-    assert _validate_lax_known_declarations((xml_path,)) == ()
+    assert validate_lax_known_declarations((xml_path,)) == ()
 
 
 def test_lax_validation_reports_known_integer_attribute(tmp_path) -> None:
@@ -145,7 +174,7 @@ def test_lax_validation_reports_known_integer_attribute(tmp_path) -> None:
         encoding="utf-8",
     )
 
-    findings = _validate_lax_known_declarations((xml_path,))
+    findings = validate_lax_known_declarations((xml_path,))
 
     assert [finding.rule_id for finding in findings] == ["xmlschema:lax-validation-error"]
 
@@ -157,7 +186,7 @@ def test_lax_validation_checks_xml_language_and_space(tmp_path) -> None:
         encoding="utf-8",
     )
 
-    findings = _validate_lax_known_declarations((xml_path,))
+    findings = validate_lax_known_declarations((xml_path,))
 
     assert [finding.rule_id for finding in findings] == [
         "xmlschema:lax-validation-error",
@@ -183,7 +212,7 @@ def test_lax_validation_reports_known_element_in_linkbase_content(tmp_path) -> N
         encoding="utf-8",
     )
 
-    findings = _validate_lax_known_declarations((xml_path,))
+    findings = validate_lax_known_declarations((xml_path,))
 
     assert [finding.rule_id for finding in findings] == ["xmlschema:lax-validation-error"]
 
@@ -280,6 +309,75 @@ def test_linkbase_ref_uses_xml_base_when_resolving_target(tmp_path) -> None:
     )
 
     assert _validate_xlink_file(xml_path) == []
+
+
+# ---------------------------------------------------------------------------
+# Formula input linkbase merge
+# ---------------------------------------------------------------------------
+
+
+def test_input_formula_linkbases_merge_custom_function_signatures(tmp_path) -> None:
+    formula_path = tmp_path / "formula.xml"
+    formula_path.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+               xmlns:generic="http://xbrl.org/2008/generic"
+               xmlns:formula="http://xbrl.org/2008/formula"
+               xmlns:xlink="http://www.w3.org/1999/xlink"
+               xmlns:my-fn="http://example.com/functions">
+  <generic:link xlink:type="extended">
+    <formula:formula xlink:type="resource"
+                     xlink:label="formula"
+                     value="my-fn:add(1, 2)"
+                     aspectModel="dimensional"
+                     implicitFiltering="true"/>
+  </generic:link>
+</link:linkbase>
+""",
+        encoding="utf-8",
+    )
+    function_path = tmp_path / "functions.xml"
+    function_path.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+               xmlns:generic="http://xbrl.org/2008/generic"
+               xmlns:variable="http://xbrl.org/2008/variable"
+               xmlns:cfi="http://xbrl.org/2010/custom-function"
+               xmlns:xlink="http://www.w3.org/1999/xlink"
+               xmlns:xs="http://www.w3.org/2001/XMLSchema"
+               xmlns:my-fn="http://example.com/functions">
+  <generic:link xlink:type="extended">
+    <variable:function xlink:type="resource"
+                       xlink:label="add-signature"
+                       name="my-fn:add"
+                       output="xs:decimal">
+      <variable:input type="xs:decimal"/>
+      <variable:input type="xs:decimal"/>
+    </variable:function>
+    <generic:arc xlink:type="arc"
+                 xlink:arcrole="http://xbrl.org/arcrole/2010/function-implementation"
+                 xlink:from="add-signature"
+                 xlink:to="add-implementation"/>
+    <cfi:implementation xlink:type="resource" xlink:label="add-implementation">
+      <cfi:input name="left"/>
+      <cfi:input name="right"/>
+      <cfi:output>$left + $right</cfi:output>
+    </cfi:implementation>
+  </generic:link>
+</link:linkbase>
+""",
+        encoding="utf-8",
+    )
+
+    taxonomy = _with_input_formula_linkbases(
+        _empty_taxonomy(tmp_path),
+        (formula_path, function_path),
+    )
+
+    assert [definition.name for definition in taxonomy.custom_functions] == ["my-fn:add"]
+    assert "xbrlve:noCustomFunctionSignature" not in {
+        finding.rule_id for finding in FormulaStaticValidator(taxonomy).validate()
+    }
 
 
 # ---------------------------------------------------------------------------
