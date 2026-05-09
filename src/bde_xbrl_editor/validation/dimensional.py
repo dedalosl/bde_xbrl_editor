@@ -214,6 +214,33 @@ class DimensionalConstraintValidator:
 
             # Instance-level checks on each context's explicit member declarations.
             for ctx_ref, ctx in instance.contexts.items():
+                typed_elements = getattr(ctx, "typed_dimension_elements", {}) or {}
+                for dim_qname in getattr(ctx, "typed_dimensions", {}) or {}:
+                    concept_for_dim = self._taxonomy.concepts.get(dim_qname)
+                    expected_element = (
+                        concept_for_dim.typed_domain_element
+                        if concept_for_dim is not None
+                        else None
+                    )
+                    actual_element = typed_elements.get(dim_qname)
+                    if expected_element is not None and actual_element != expected_element:
+                        findings.append(
+                            ValidationFinding(
+                                rule_id="xbrldie:IllegalTypedDimensionContentError",
+                                severity=ValidationSeverity.ERROR,
+                                message=(
+                                    f"Context '{ctx_ref}' uses typed dimension "
+                                    f"'{dim_qname}' with content element "
+                                    f"'{actual_element}', but the typed domain "
+                                    f"requires '{expected_element}'."
+                                ),
+                                source="dimensional",
+                                context_ref=ctx_ref,
+                                dimension_qname=dim_qname,
+                                constraint_type="ILLEGAL_TYPED_DIMENSION_CONTENT",
+                            )
+                        )
+
                 for dim_qname, member_qname in ctx.dimensions.items():
                     # ExplicitMemberNotExplicitDimensionError: the dimension QName used in
                     # xbrldi:explicitMember must actually be an explicit dimension in the DTS.

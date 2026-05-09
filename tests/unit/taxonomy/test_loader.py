@@ -25,7 +25,7 @@ from bde_xbrl_editor.taxonomy.loader import (
     _schema_parse_workers,
     _sniff_linkbase_type,
 )
-from bde_xbrl_editor.taxonomy.models import TaxonomyParseError
+from bde_xbrl_editor.taxonomy.models import QName, TaxonomyParseError
 
 
 def test_sniff_linkbase_calculation_stem_does_not_use_formula_bucket() -> None:
@@ -698,6 +698,67 @@ def test_loader_uses_inferred_cache_catalog_for_remote_imports(tmp_path: Path) -
 
     assert remote_schema.resolve() in taxonomy.schema_files
     assert not any("http://external.example/shared/schema.xsd" in url for url in loader.last_skipped_urls)
+
+
+def test_typed_domain_ref_uses_inferred_cache_catalog_for_absolute_urls(
+    tmp_path: Path,
+) -> None:
+    cache_root = tmp_path / "cache"
+    entry = cache_root / "www.bde.es" / "fr" / "xbrl" / "dict" / "dim.xsd"
+    entry.parent.mkdir(parents=True, exist_ok=True)
+    entry.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:xbrli="http://www.xbrl.org/2003/instance"
+           xmlns:xbrldt="http://xbrl.org/2005/xbrldt"
+           targetNamespace="http://www.bde.es/xbrl/dict/dim"
+           elementFormDefault="qualified">
+  <xs:import namespace="http://www.eba.europa.eu/xbrl/crr/dict/typ"
+             schemaLocation="http://www.eba.europa.eu/eu/fr/xbrl/crr/dict/dom/typ.xsd"/>
+  <xs:element name="DIM"
+              id="bde_DIM"
+              substitutionGroup="xbrldt:dimensionItem"
+              type="xbrli:stringItemType"
+              abstract="true"
+              nillable="true"
+              xbrli:periodType="instant"
+              xbrldt:typedDomainRef="http://www.eba.europa.eu/eu/fr/xbrl/crr/dict/dom/typ.xsd#eba_IS"/>
+</xs:schema>
+""",
+        encoding="utf-8",
+    )
+    typ_schema = (
+        cache_root
+        / "www.eba.europa.eu"
+        / "eu"
+        / "fr"
+        / "xbrl"
+        / "crr"
+        / "dict"
+        / "dom"
+        / "typ.xsd"
+    )
+    typ_schema.parent.mkdir(parents=True, exist_ok=True)
+    typ_schema.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="http://www.eba.europa.eu/xbrl/crr/dict/typ"
+           elementFormDefault="qualified">
+  <xs:element name="IS" type="xs:string" id="eba_IS"/>
+</xs:schema>
+""",
+        encoding="utf-8",
+    )
+
+    loader = TaxonomyLoader(cache=TaxonomyCache(), settings=LoaderSettings(allow_network=False))
+
+    taxonomy = loader.load(entry)
+
+    dim = QName("http://www.bde.es/xbrl/dict/dim", "DIM")
+    assert taxonomy.concepts[dim].typed_domain_element == QName(
+        "http://www.eba.europa.eu/xbrl/crr/dict/typ",
+        "IS",
+    )
 
 
 def test_run_path_jobs_preserves_input_order_when_parallel() -> None:

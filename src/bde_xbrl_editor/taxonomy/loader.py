@@ -34,6 +34,7 @@ from bde_xbrl_editor.taxonomy.constants import (
     NS_TABLE_NAMESPACES,
     NS_XBRLDT,
     NS_XBRLI,
+    NS_XSD,
 )
 from bde_xbrl_editor.taxonomy.discovery import _should_skip_linkbase, discover_dts
 from bde_xbrl_editor.taxonomy.label_resolver import LabelResolver
@@ -89,12 +90,19 @@ _TOTAL_STEPS = 7
 
 _NS_XLINK = "http://www.w3.org/1999/xlink"
 _XLINK_HREF = f"{{{_NS_XLINK}}}href"
+_XSD_ELEMENT = f"{{{NS_XSD}}}element"
+_XSD_COMPLEX_TYPE = f"{{{NS_XSD}}}complexType"
+_XSD_SIMPLE_TYPE = f"{{{NS_XSD}}}simpleType"
 
 _XBRLI_PREFIX_COLON_RE = re.compile(r"\bxbrli\s*:")
 _XBRLI_INSTANCE_IMPORT_NS_RE = re.compile(
     r"""namespace\s*=\s*["']http://www\.xbrl\.org/2003/instance["']""",
     re.IGNORECASE,
 )
+
+
+def _is_true(raw: str | None) -> bool:
+    return str(raw or "").strip().lower() in {"true", "1"}
 
 
 def _schema_declares_xsd_model_tags(path: Path) -> bool:
@@ -472,6 +480,146 @@ def _merge_formula_relationships(resource, relationship_resource):
     return replace(resource, **updates) if updates else resource
 
 
+def _collect_schema_fragment_index(
+    schema_paths: list[Path],
+) -> tuple[dict[tuple[str, str], tuple[QName, bool]], dict[tuple[str, str], str]]:
+    """Index schema fragments needed for xbrldt:typedDomainRef checks."""
+    global_elements: dict[tuple[str, str], tuple[QName, bool]] = {}
+    fragment_kinds: dict[tuple[str, str], str] = {}
+
+    for schema_path in schema_paths:
+        try:
+            root = parse_xml_file(schema_path).getroot()
+        except etree.XMLSyntaxError:
+            continue
+        schema_key = str(schema_path.resolve())
+        target_ns = root.get("targetNamespace", "")
+
+        for child in root:
+            if not isinstance(child.tag, str):
+                continue
+            fragment = child.get("id")
+            if child.tag == _XSD_ELEMENT:
+                name = child.get("name")
+                if name:
+                    fragment = fragment or name
+                    if fragment:
+                        qname = QName(namespace=target_ns, local_name=name)
+                        global_elements[(schema_key, fragment)] = (
+                            qname,
+                            _is_true(child.get("abstract")),
+                        )
+                        fragment_kinds[(schema_key, fragment)] = "global-element"
+                continue
+            if child.tag in {_XSD_COMPLEX_TYPE, _XSD_SIMPLE_TYPE} and fragment:
+                fragment_kinds[(schema_key, fragment)] = "type"
+
+        for el in root.iter(_XSD_ELEMENT):
+            if el.getparent() is root:
+                continue
+            fragment = el.get("id")
+            if fragment:
+                fragment_kinds.setdefault((schema_key, fragment), "local-element")
+
+    return global_elements, fragment_kinds
+
+
+def _resolve_typed_domain_ref_path(
+    source_schema_path: str | None,
+    typed_domain_ref: str,
+    local_catalog: dict[str, Path] | None = None,
+) -> Path | None:
+    if not source_schema_path or "#" not in typed_domain_ref:
+        return None
+    ref_path, _fragment = typed_domain_ref.rsplit("#", 1)
+    if not ref_path:
+        return Path(source_schema_path).resolve()
+    if ref_path.startswith(("http://", "https://")):
+        for prefix, local_root in (local_catalog or {}).items():
+            if ref_path.startswith(prefix):
+                rel = ref_path[len(prefix) :].lstrip("/")
+                return (local_root / rel).resolve()
+        return None
+    return (Path(source_schema_path).parent / ref_path).resolve()
+
+
+def _apply_and_check_typed_domain_refs(
+    concepts: dict[QName, Concept],
+    dimension_qnames: set[QName],
+    schema_paths: list[Path],
+    local_catalog: dict[str, Path] | None = None,
+) -> dict[QName, Concept]:
+    """Validate typedDomainRef syntax rules and attach resolved domain elements."""
+    global_elements, fragment_kinds = _collect_schema_fragment_index(schema_paths)
+    dts_schema_paths = {str(path.resolve()) for path in schema_paths}
+    updated: dict[QName, Concept] = {}
+
+    for qname, concept in concepts.items():
+        typed_domain_ref = concept.typed_domain_ref
+        if not typed_domain_ref:
+            updated[qname] = concept
+            continue
+
+        if qname not in dimension_qnames:
+            raise TaxonomyParseError(
+                file_path=concept.schema_path or "",
+                message=(
+                    "xbrldte:TypedDomainRefError: "
+                    f"typedDomainRef appears on non-dimension declaration {qname}"
+                ),
+            )
+
+        target_path = _resolve_typed_domain_ref_path(
+            concept.schema_path,
+            typed_domain_ref,
+            local_catalog,
+        )
+        if target_path is None or "#" not in typed_domain_ref:
+            raise TaxonomyParseError(
+                file_path=concept.schema_path or "",
+                message=(
+                    "xbrldte:TypedDimensionError: "
+                    f"typedDomainRef '{typed_domain_ref}' does not locate a global element"
+                ),
+            )
+        _ref_path, fragment = typed_domain_ref.rsplit("#", 1)
+        target_key = str(target_path)
+        if target_key not in dts_schema_paths:
+            raise TaxonomyParseError(
+                file_path=concept.schema_path or "",
+                message=(
+                    "xbrldte:OutOfDTSSchemaError: "
+                    f"typedDomainRef '{typed_domain_ref}' points outside the DTS"
+                ),
+            )
+
+        element_info = global_elements.get((target_key, fragment))
+        if element_info is None:
+            kind = fragment_kinds.get((target_key, fragment), "missing")
+            raise TaxonomyParseError(
+                file_path=concept.schema_path or "",
+                message=(
+                    "xbrldte:TypedDimensionError: "
+                    f"typedDomainRef '{typed_domain_ref}' locates {kind}, not a "
+                    "non-abstract global element"
+                ),
+            )
+
+        typed_domain_element, is_abstract = element_info
+        if is_abstract:
+            raise TaxonomyParseError(
+                file_path=concept.schema_path or "",
+                message=(
+                    "xbrldte:TypedDimensionError: "
+                    f"typedDomainRef '{typed_domain_ref}' locates an abstract element"
+                ),
+            )
+
+        updated[qname] = replace(concept, typed_domain_element=typed_domain_element)
+
+    return updated
+
+
 _SG_HYPERCUBE = QName(NS_XBRLDT, "hypercubeItem")
 _SG_DIMENSION = QName(NS_XBRLDT, "dimensionItem")
 
@@ -515,27 +663,15 @@ _PREDEFINED_XBRL_ROLES: frozenset[str] = frozenset(
 )
 
 
-def _check_dimensional_constraints(
+def _dimension_and_hypercube_qnames(
     concepts: dict[QName, Concept],
-    definition_arcs: dict[str, list],
-    declared_roles: set[str] | None = None,
-) -> None:
-    """Check XBRL Dimensions 1.0 taxonomy structure constraints (xbrldte:* errors).
-
-    Raises TaxonomyParseError with the appropriate xbrldte: error code in the
-    message when a constraint is violated. The conformance runner's
-    _match_outcome() detects these codes in the exception message.
-    """
-    # Build substitution group chain map for transitive closure computation.
+) -> tuple[set[QName], set[QName]]:
+    """Return transitive dimension and hypercube concept sets."""
     sg_map: dict[QName, QName] = {
         q: c.substitution_group for q, c in concepts.items() if c.substitution_group is not None
     }
-
-    # Compute transitive hypercube and dimension sets — a concept is a hypercube
-    # (dimension) item if its substitution group chain reaches xbrldt:hypercubeItem
-    # (xbrldt:dimensionItem), regardless of how many hops.
-    hypercube_qnames: set[QName] = set()
     dimension_qnames: set[QName] = set()
+    hypercube_qnames: set[QName] = set()
     for q in concepts:
         sg = sg_map.get(q)
         while sg is not None:
@@ -546,6 +682,25 @@ def _check_dimensional_constraints(
                 dimension_qnames.add(q)
                 break
             sg = sg_map.get(sg)
+    return dimension_qnames, hypercube_qnames
+
+
+def _check_dimensional_constraints(
+    concepts: dict[QName, Concept],
+    definition_arcs: dict[str, list],
+    hypercubes: list[HypercubeModel] | None = None,
+    declared_roles: set[str] | None = None,
+) -> None:
+    """Check XBRL Dimensions 1.0 taxonomy structure constraints (xbrldte:* errors).
+
+    Raises TaxonomyParseError with the appropriate xbrldte: error code in the
+    message when a constraint is violated. The conformance runner's
+    _match_outcome() detects these codes in the exception message.
+    """
+    # Compute transitive hypercube and dimension sets — a concept is a hypercube
+    # (dimension) item if its substitution group chain reaches xbrldt:hypercubeItem
+    # (xbrldt:dimensionItem), regardless of how many hops.
+    dimension_qnames, hypercube_qnames = _dimension_and_hypercube_qnames(concepts)
 
     # Check 1: hypercube items (including transitive) must be abstract
     # (xbrldte:HypercubeElementIsNotAbstractError)
@@ -672,12 +827,18 @@ def _check_dimensional_constraints(
             # Check 7: source of dimension-domain arc must be a dimension item
             # (xbrldte:DimensionDomainSourceError)
             if arcrole == ARCROLE_DIMENSION_DOMAIN:
-                if arc.source in concepts and arc.source not in dimension_qnames:
+                if (
+                    arc.source in concepts
+                    and (
+                        arc.source not in dimension_qnames
+                        or concepts[arc.source].typed_domain_ref is not None
+                    )
+                ):
                     raise TaxonomyParseError(
                         file_path="",
                         message=(
                             f"xbrldte:DimensionDomainSourceError: "
-                            f"Source of dimension-domain arc must be a dimension item, "
+                            f"Source of dimension-domain arc must be an explicit dimension item, "
                             f"got {arc.source}"
                         ),
                     )
@@ -776,6 +937,143 @@ def _check_dimensional_constraints(
                             f"across the DTS"
                         ),
                     )
+
+    _check_drs_directed_cycles(definition_arcs)
+    if hypercubes is not None:
+        _check_primary_item_polymorphism(definition_arcs, hypercubes)
+
+
+def _check_drs_directed_cycles(definition_arcs: dict[str, list[DefinitionArc]]) -> None:
+    drs_elrs = {
+        arc.target_role or elr
+        for elr, arcs in definition_arcs.items()
+        for arc in arcs
+        if arc.arcrole in (ARCROLE_ALL, ARCROLE_NOT_ALL)
+    }
+    if not drs_elrs:
+        return
+
+    graph: dict[QName, set[QName]] = {}
+    for start_elr in drs_elrs:
+        reachable_elrs: set[str] = set()
+        queue: deque[str] = deque([start_elr])
+        while queue:
+            elr = queue.popleft()
+            if elr in reachable_elrs:
+                continue
+            reachable_elrs.add(elr)
+            for arc in definition_arcs.get(elr, []):
+                if arc.arcrole in (
+                    ARCROLE_HYPERCUBE_DIMENSION,
+                    ARCROLE_DIMENSION_DOMAIN,
+                    ARCROLE_DOMAIN_MEMBER,
+                ) and arc.target_role:
+                    queue.append(arc.target_role)
+
+        for elr in reachable_elrs:
+            for arc in definition_arcs.get(elr, []):
+                if arc.arcrole in (ARCROLE_DIMENSION_DOMAIN, ARCROLE_DOMAIN_MEMBER):
+                    graph.setdefault(arc.source, set()).add(arc.target)
+
+    visiting: set[QName] = set()
+    visited: set[QName] = set()
+
+    def visit(node: QName) -> bool:
+        if node in visiting:
+            return True
+        if node in visited:
+            return False
+        visiting.add(node)
+        for child in graph.get(node, ()):
+            if visit(child):
+                return True
+        visiting.remove(node)
+        visited.add(node)
+        return False
+
+    if any(visit(node) for node in graph):
+        raise TaxonomyParseError(
+            file_path="",
+            message="xbrldte:DRSDirectedCycleError: directed cycle in dimensional DRS",
+        )
+
+
+def _collect_drs_members(
+    definition_arcs: dict[str, list[DefinitionArc]],
+    root: QName,
+    start_elr: str,
+    *,
+    start_usable: bool = True,
+) -> set[QName]:
+    members: set[QName] = set()
+    queue: deque[tuple[QName, str, bool]] = deque([(root, start_elr, start_usable)])
+    seen: set[tuple[QName, str, bool]] = {(root, start_elr, start_usable)}
+    while queue:
+        current, elr, inherited_usable = queue.popleft()
+        if inherited_usable:
+            members.add(current)
+        for arc in definition_arcs.get(elr, []):
+            if arc.arcrole != ARCROLE_DOMAIN_MEMBER or arc.source != current:
+                continue
+            effective_usable = inherited_usable and (arc.usable is not False)
+            next_elr = arc.target_role or elr
+            state = (arc.target, next_elr, effective_usable)
+            if state not in seen:
+                seen.add(state)
+                queue.append(state)
+    return members
+
+
+def _check_primary_item_polymorphism(
+    definition_arcs: dict[str, list[DefinitionArc]],
+    hypercubes: list[HypercubeModel],
+) -> None:
+    for hc in hypercubes:
+        if hc.arcrole not in {"all", "notAll"}:
+            continue
+        primary_items = set(hc.primary_items)
+        if not primary_items:
+            continue
+        dimension_elr = hc.dimension_link_role or hc.extended_link_role
+        dimension_members: set[QName] = set()
+        for dim_qname in hc.dimensions:
+            hc_dim_arcs = [
+                arc
+                for arc in definition_arcs.get(dimension_elr, [])
+                if arc.arcrole == ARCROLE_HYPERCUBE_DIMENSION
+                and arc.source == hc.qname
+                and arc.target == dim_qname
+            ]
+            if not hc_dim_arcs:
+                hc_dim_arcs = [
+                    arc
+                    for arc in definition_arcs.get(hc.extended_link_role, [])
+                    if arc.arcrole == ARCROLE_HYPERCUBE_DIMENSION
+                    and arc.source == hc.qname
+                    and arc.target == dim_qname
+                ]
+            for hc_dim_arc in hc_dim_arcs:
+                dim_elr = hc_dim_arc.target_role or hc_dim_arc.extended_link_role
+                for arc in definition_arcs.get(dim_elr, []):
+                    if arc.arcrole != ARCROLE_DIMENSION_DOMAIN or arc.source != dim_qname:
+                        continue
+                    domain_usable = arc.usable is not False
+                    dimension_members.update(
+                        _collect_drs_members(
+                            definition_arcs,
+                            arc.target,
+                            arc.target_role or dim_elr,
+                            start_usable=domain_usable,
+                        )
+                    )
+        if primary_items & dimension_members:
+            raise TaxonomyParseError(
+                file_path="",
+                message=(
+                    "xbrldte:PrimaryItemPolymorphismError: primary item is also "
+                    "a member of a declared dimension domain"
+                ),
+            )
 
 
 def _rebuild_dimensions(
@@ -1469,6 +1767,13 @@ class TaxonomyLoader:
                 definition_arcs.setdefault(elr, []).extend(arc_list)
             hypercubes.extend(hcs)
 
+        dimension_qnames, _hypercube_qnames = _dimension_and_hypercube_qnames(concepts)
+        concepts = _apply_and_check_typed_domain_refs(
+            concepts,
+            dimension_qnames,
+            schema_paths,
+            effective_settings.local_catalog,
+        )
         concepts = _apply_extensible_enumeration_values(concepts, definition_arcs)
         hypercubes = _rebuild_hypercubes(definition_arcs)
 
@@ -1480,7 +1785,12 @@ class TaxonomyLoader:
         # Step 4b: XBRL Dimensions 1.0 taxonomy constraint checks (xbrldte:* errors)
         declared_roles = set(_PREDEFINED_XBRL_ROLES)
         declared_roles.update(discovered_roles)
-        _check_dimensional_constraints(concepts, definition_arcs, declared_roles=declared_roles)
+        _check_dimensional_constraints(
+            concepts,
+            definition_arcs,
+            hypercubes=hypercubes,
+            declared_roles=declared_roles,
+        )
         progress(
             f"Structure mapped — {len(dimensions)} dimensions, {len(hypercubes)} hypercubes",
             4,

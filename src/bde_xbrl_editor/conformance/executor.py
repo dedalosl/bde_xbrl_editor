@@ -370,10 +370,22 @@ class TestCaseExecutor:
                 # Keep the first load error so taxonomy-level constraint violations
                 # (xbrldte:* errors raised as TaxonomyParseError) are not silently lost.
                 first_load_error: Exception | None = None
+                dimensions_seed_linkbases = (
+                    tuple(f for f in variation.input_files if f.suffix.lower() == ".xml")
+                    if test_case.suite_id == "dimensions"
+                    else ()
+                )
                 for f in variation.input_files:
                     if f.suffix.lower() in (".xsd", ".xml"):
                         try:
-                            taxonomy_struct = loader.load(f)
+                            taxonomy_struct = loader.load(
+                                f,
+                                instance_linkbase_seeds=(
+                                    dimensions_seed_linkbases
+                                    if f.suffix.lower() == ".xsd"
+                                    else None
+                                ),
+                            )
                             first_load_error = None  # success — clear any prior error
                             break
                         except Exception as _exc:  # noqa: BLE001

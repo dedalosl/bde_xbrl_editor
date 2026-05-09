@@ -123,6 +123,7 @@ class Concept:
     substitution_group: QName | None = None
     xml_id: str | None = None  # @id attribute from the XSD element declaration
     typed_domain_ref: str | None = None
+    typed_domain_element: QName | None = None
     schema_path: str | None = None
     # True when the item type is xbrli:monetaryItemType or a restriction/extension
     # thereof (used for ISO 4217 unit validation).
