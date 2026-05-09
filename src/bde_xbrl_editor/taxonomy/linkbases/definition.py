@@ -14,6 +14,7 @@ from bde_xbrl_editor.taxonomy.constants import (
     ARCROLE_DOMAIN_MEMBER,
     ARCROLE_HYPERCUBE_DIMENSION,
     ARCROLE_NOT_ALL,
+    DEFAULT_LINK_ROLE,
     NS_LINK,
     NS_XBRLDT,
     NS_XLINK,
@@ -37,9 +38,45 @@ _XLINK_FROM = f"{{{NS_XLINK}}}from"
 _XLINK_TO = f"{{{NS_XLINK}}}to"
 _XLINK_ARCROLE = f"{{{NS_XLINK}}}arcrole"
 _XLINK_ROLE = f"{{{NS_XLINK}}}role"
+_ROLE_REF = f"{{{NS_LINK}}}roleRef"
+_ROLE_URI = "roleURI"
 _CLOSED = f"{{{NS_XBRLDT}}}closed"
 _CONTEXT_ELEMENT = f"{{{NS_XBRLDT}}}contextElement"
 _USABLE = f"{{{NS_XBRLDT}}}usable"
+_TARGET_ROLE = f"{{{NS_XBRLDT}}}targetRole"
+_BOOLEAN_TRUE = {"true", "1"}
+_BOOLEAN_FALSE = {"false", "0"}
+_PREDEFINED_TARGET_ROLES = {DEFAULT_LINK_ROLE}
+
+
+def _schema_error(linkbase_path: Path, message: str, el: etree._Element | None = None) -> TaxonomyParseError:
+    return TaxonomyParseError(
+        file_path=str(linkbase_path),
+        message=f"sche:XmlSchemaError: {message}",
+        line=el.sourceline if el is not None else None,
+    )
+
+
+def _parse_xsd_boolean(
+    raw: str | None,
+    *,
+    attr_name: str,
+    linkbase_path: Path,
+    el: etree._Element,
+) -> bool | None:
+    if raw is None:
+        return None
+    value = raw.strip()
+    if value in _BOOLEAN_TRUE:
+        return True
+    if value in _BOOLEAN_FALSE:
+        return False
+    raise _schema_error(linkbase_path, f"xbrldt:{attr_name} must be boolean, got '{raw}'", el)
+
+
+def _is_invalid_target_role_uri(raw: str) -> bool:
+    value = raw.strip()
+    return not value or value.startswith("#") or "\\" in value
 
 
 def _resolve_locator_href(
@@ -130,6 +167,11 @@ def parse_definition_linkbase(
     # Normalise optional maps so inner code can always call dict.get()
     _ns_qmap: dict[str, QName] = ns_qualified_map or {}
     _schema_ns: dict[str, str] = schema_ns_map or {}
+    role_refs = {
+        role_uri
+        for role_ref in root.iter(_ROLE_REF)
+        if (role_uri := role_ref.get(_ROLE_URI))
+    }
 
     # Per-ELR accumulators for dimensional model construction
     # elr → list of (
@@ -180,12 +222,58 @@ def parse_definition_linkbase(
             except ValueError:
                 order = 1.0
 
-            closed_raw = arc.get(_CLOSED)
-            closed = (closed_raw.lower() == "true") if closed_raw else None
+            closed = _parse_xsd_boolean(
+                arc.get(_CLOSED),
+                attr_name="closed",
+                linkbase_path=linkbase_path,
+                el=arc,
+            )
             context_element = arc.get(_CONTEXT_ELEMENT)
-            usable_raw = arc.get(_USABLE)
-            usable = (usable_raw.lower() != "false") if usable_raw else None
-            target_role = arc.get(f"{{{NS_XBRLDT}}}targetRole") or None
+            if (
+                arcrole in (ARCROLE_ALL, ARCROLE_NOT_ALL)
+                and context_element is not None
+                and context_element not in {"segment", "scenario"}
+            ):
+                raise _schema_error(
+                    linkbase_path,
+                    f"xbrldt:contextElement must be 'segment' or 'scenario', got "
+                    f"'{context_element}'",
+                    arc,
+                )
+            usable = _parse_xsd_boolean(
+                arc.get(_USABLE),
+                attr_name="usable",
+                linkbase_path=linkbase_path,
+                el=arc,
+            )
+            target_role = arc.get(_TARGET_ROLE) or None
+            if target_role is not None:
+                if _is_invalid_target_role_uri(target_role):
+                    raise _schema_error(
+                        linkbase_path,
+                        f"xbrldt:targetRole must be a valid URI, got '{target_role}'",
+                        arc,
+                    )
+                if (
+                    arcrole
+                    in {
+                        ARCROLE_ALL,
+                        ARCROLE_NOT_ALL,
+                        ARCROLE_HYPERCUBE_DIMENSION,
+                        ARCROLE_DIMENSION_DOMAIN,
+                        ARCROLE_DOMAIN_MEMBER,
+                    }
+                    and target_role not in role_refs
+                    and target_role not in _PREDEFINED_TARGET_ROLES
+                ):
+                    raise TaxonomyParseError(
+                        file_path=str(linkbase_path),
+                        message=(
+                            "xbrldte:TargetRoleNotResolvedError: "
+                            f"targetRole '{target_role}' is not declared via a roleRef"
+                        ),
+                        line=arc.sourceline,
+                    )
 
             for source in sources:
                 for target in targets:

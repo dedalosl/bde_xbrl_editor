@@ -108,6 +108,41 @@ def test_dimensions_bde26_typed_and_drs_topology_cases(suite_data_dir: Path) -> 
 
 
 @dimensions_available
+def test_dimensions_bde27_schema_and_linkbase_attribute_cases(suite_data_dir: Path) -> None:
+    """BDE-27 scoped schema-invalid and targetRole resolution cases pass."""
+    parser = ConformanceSuiteParser(suite_data_dir)
+    suite_def = SUITE_REGISTRY["dimensions"]
+    target_variations = {
+        "001-TestCase-Taxonomy": {"V-03", "V-04", "V-05", "V-08", "V-09", "V-10", "V-12"},
+        "106-TestCase-HasHypercubeMissingContextElementAttributeError": {"V-01", "V-02"},
+        "107-TestCase-TargetRoleNotResolvedError": {"V-11"},
+    }
+    test_cases = {
+        tc.test_case_id: tc
+        for tc in parser.load_suite(suite_def)
+        if tc.test_case_id in target_variations
+    }
+    executor = ConformanceTestCaseExecutor(TaxonomyCache(max_size=100))
+
+    results = []
+    for test_case_id, variation_ids in target_variations.items():
+        test_case = test_cases[test_case_id]
+        results.extend(
+            executor.execute(variation, test_case)
+            for variation in test_case.variations
+            if variation.variation_id in variation_ids
+        )
+
+    expected = {
+        (test_case_id, variation_id)
+        for test_case_id, variation_ids in target_variations.items()
+        for variation_id in variation_ids
+    }
+    assert {(result.test_case_id, result.variation_id) for result in results} == expected
+    assert all(result.outcome.value == "pass" for result in results)
+
+
+@dimensions_available
 @pytest.mark.slow
 def test_dimensions_runner_completes(suite_data_dir: Path) -> None:
     runner = ConformanceRunner(
