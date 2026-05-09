@@ -132,8 +132,11 @@ def parse_definition_linkbase(
     _schema_ns: dict[str, str] = schema_ns_map or {}
 
     # Per-ELR accumulators for dimensional model construction
-    # elr → list of (primary_item, hypercube, arcrole, closed, context_element, target_role)
-    hc_primary: dict[str, list[tuple[QName, QName, str, bool, str, str | None]]] = {}
+    # elr → list of (
+    #   primary_item, hypercube, arcrole, closed, context_element, target_role,
+    #   primary_inheritance_elr,
+    # )
+    hc_primary: dict[str, list[tuple[QName, QName, str, bool, str, str | None, str]]] = {}
     # elr → list of (hypercube, dimension)
     hc_dims: dict[str, list[tuple[QName, QName]]] = {}
     # dimension → default domain root (kept for compatibility in DimensionModel.domain)
@@ -201,7 +204,7 @@ def parse_definition_linkbase(
             if arcrole in (ARCROLE_ALL, ARCROLE_NOT_ALL):
                 hc_primary.setdefault(elr, []).append((
                     source, target, arcrole,
-                    bool(closed), context_element or "segment", target_role,
+                    bool(closed), context_element or "segment", target_role, elr,
                 ))
             elif arcrole == ARCROLE_HYPERCUBE_DIMENSION:
                 hc_dims.setdefault(elr, []).append((source, target))
@@ -235,8 +238,13 @@ def parse_definition_linkbase(
             member_keys.add(root_key)
             members.append(root_key)
 
-        for child_q in _collect_domain_member_descendants(domain_q, start_elr, arcs_by_elr):
-            child_key = (child_q, domain_q, 1.0, True)
+        for child_q, child_usable in _collect_domain_member_descendants_with_usability(
+            domain_q,
+            start_elr,
+            arcs_by_elr,
+            start_usable=dm_usable,
+        ):
+            child_key = (child_q, domain_q, 1.0, child_usable)
             if child_key not in member_keys:
                 member_keys.add(child_key)
                 members.append(child_key)
@@ -244,25 +252,32 @@ def parse_definition_linkbase(
     # Build HypercubeModel objects
     hypercubes: list[HypercubeModel] = []
     for elr, prim_list in hc_primary.items():
-        expanded_primaries: set[QName] = {p for p, *_ in prim_list}
-        bfs_queue: list[tuple[QName, QName, str, bool, str, str | None]] = list(prim_list)
-        for primary, hc, arcrole, closed, ctx, tgt_role in bfs_queue:
+        direct_primary_by_hc: dict[QName, list[QName]] = {}
+        for primary, hc, *_rest in prim_list:
+            direct_primary_by_hc.setdefault(hc, []).append(primary)
+
+        expanded_relationships: set[tuple[QName, QName, str, bool, str, str | None, str]] = set(
+            prim_list
+        )
+        bfs_queue: list[tuple[QName, QName, str, bool, str, str | None, str]] = list(prim_list)
+        for primary, hc, arcrole, closed, ctx, tgt_role, inheritance_elr in bfs_queue:
             # Primary-item inheritance follows domain-member relationships.
-            # Some taxonomies keep those relationships in the has-hypercube ELR,
-            # others in the targetRole ELR. Traverse both to avoid missing
-            # inherited primary items.
-            start_elrs = [elr]
-            if tgt_role and tgt_role != elr:
+            # Direct has-hypercube arcs may point their DRS into targetRole, so
+            # seed traversal from both. Once a domain-member arc has handed off
+            # to its own targetRole, keep following from that ELR instead of
+            # restarting from the original has-hypercube ELR.
+            start_elrs = [inheritance_elr]
+            if inheritance_elr == elr and tgt_role and tgt_role != elr:
                 start_elrs.append(tgt_role)
             for start_elr in start_elrs:
-                for child in _collect_domain_member_descendants(
+                for child, child_elr in _collect_domain_member_descendant_states(
                     primary,
                     start_elr,
                     arcs_by_elr,
                 ):
-                    if child not in expanded_primaries:
-                        expanded_primaries.add(child)
-                        new_entry = (child, hc, arcrole, closed, ctx, tgt_role)
+                    new_entry = (child, hc, arcrole, closed, ctx, tgt_role, child_elr)
+                    if new_entry not in expanded_relationships:
+                        expanded_relationships.add(new_entry)
                         prim_list.append(new_entry)
                         bfs_queue.append(new_entry)
 
@@ -270,7 +285,7 @@ def parse_definition_linkbase(
         # hc → (arcrole, closed, ctx, target_role)
         hc_map: dict[QName, tuple[str, bool, str, str | None]] = {}
         primary_by_hc: dict[QName, list[QName]] = {}
-        for primary, hc, arcrole, closed, ctx, tgt_role in prim_list:
+        for primary, hc, arcrole, closed, ctx, tgt_role, _inheritance_elr in prim_list:
             hc_map[hc] = (arcrole, closed, ctx, tgt_role)
             primary_by_hc.setdefault(hc, []).append(primary)
 
@@ -279,11 +294,13 @@ def parse_definition_linkbase(
         # otherwise fall back to the current ELR.  This implements XBRL Dimensions
         # §2.3 DRS targetRole semantics for the hypercube-dimension relationship.
         dims_by_hc: dict[QName, list[QName]] = {}
+        dim_elr_by_hc: dict[QName, str] = {}
         for hc, (_arcrole, _closed, _ctx, tgt_role) in hc_map.items():
             lookup_elr = tgt_role if tgt_role else elr
             for hc_q, dim_q in hc_dims.get(lookup_elr, []):
                 if hc_q == hc:
                     dims_by_hc.setdefault(hc, []).append(dim_q)
+                    dim_elr_by_hc[hc] = lookup_elr
 
         for hc, (arcrole, closed, ctx, _tgt_role) in hc_map.items():
             arcrole_short: str = "all" if arcrole == ARCROLE_ALL else "notAll"
@@ -296,6 +313,8 @@ def parse_definition_linkbase(
                 primary_items=tuple(primary_by_hc.get(hc, [])),
                 dimensions=tuple(dims_by_hc.get(hc, [])),
                 extended_link_role=elr,
+                dimension_link_role=dim_elr_by_hc.get(hc, elr),
+                direct_primary_items=tuple(direct_primary_by_hc.get(hc, ())),
             ))
 
     # Build DimensionModel objects
@@ -351,6 +370,72 @@ def _collect_domain_member_descendants(
 
             next_elr = arc.target_role or current_elr
             state = (arc.target, next_elr)
+            if state not in seen_states:
+                seen_states.add(state)
+                queue.append(state)
+
+    return descendants
+
+
+def _collect_domain_member_descendant_states(
+    source: QName,
+    start_elr: str,
+    arcs_by_elr: dict[str, list[DefinitionArc]],
+) -> list[tuple[QName, str]]:
+    """Follow domain-member arcs and return each child with its continuation ELR."""
+    descendants: list[tuple[QName, str]] = []
+    queue: deque[tuple[QName, str]] = deque([(source, start_elr)])
+    seen_states: set[tuple[QName, str]] = {(source, start_elr)}
+    seen_targets: set[tuple[QName, str]] = set()
+
+    while queue:
+        current, current_elr = queue.popleft()
+        for arc in arcs_by_elr.get(current_elr, []):
+            if arc.arcrole != ARCROLE_DOMAIN_MEMBER or arc.source != current:
+                continue
+
+            next_elr = arc.target_role or current_elr
+            target = (arc.target, next_elr)
+            if target not in seen_targets:
+                seen_targets.add(target)
+                descendants.append(target)
+
+            state = (arc.target, next_elr)
+            if state not in seen_states:
+                seen_states.add(state)
+                queue.append(state)
+
+    return descendants
+
+
+def _collect_domain_member_descendants_with_usability(
+    source: QName,
+    start_elr: str,
+    arcs_by_elr: dict[str, list[DefinitionArc]],
+    *,
+    start_usable: bool = True,
+) -> list[tuple[QName, bool]]:
+    """Follow domain-member relationships and preserve inherited usability."""
+    descendants: list[tuple[QName, bool]] = []
+    queue: deque[tuple[QName, str, bool]] = deque([(source, start_elr, start_usable)])
+    seen_states: set[tuple[QName, str, bool]] = {(source, start_elr, start_usable)}
+    seen_targets: set[tuple[QName, bool]] = set()
+
+    while queue:
+        current, current_elr, inherited_usable = queue.popleft()
+        for arc in arcs_by_elr.get(current_elr, []):
+            if arc.arcrole != ARCROLE_DOMAIN_MEMBER or arc.source != current:
+                continue
+
+            arc_usable = arc.usable is not False
+            effective_usable = inherited_usable and arc_usable
+            target = (arc.target, effective_usable)
+            if target not in seen_targets:
+                seen_targets.add(target)
+                descendants.append(target)
+
+            next_elr = arc.target_role or current_elr
+            state = (arc.target, next_elr, effective_usable)
             if state not in seen_states:
                 seen_states.add(state)
                 queue.append(state)

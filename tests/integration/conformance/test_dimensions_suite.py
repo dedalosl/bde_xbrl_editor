@@ -6,10 +6,12 @@ from pathlib import Path
 
 import pytest
 
+from bde_xbrl_editor.conformance.executor import TestCaseExecutor as ConformanceTestCaseExecutor
 from bde_xbrl_editor.conformance.models import SuiteStatus
 from bde_xbrl_editor.conformance.parser import ConformanceSuiteParser
 from bde_xbrl_editor.conformance.registry import SUITE_REGISTRY
 from bde_xbrl_editor.conformance.runner import ConformanceRunner
+from bde_xbrl_editor.taxonomy.cache import TaxonomyCache
 
 from .conftest import dimensions_available
 
@@ -43,6 +45,29 @@ def test_dimensions_suite_has_error_code_variations(suite_data_dir: Path) -> Non
 
 
 @dimensions_available
+def test_dimensions_multirole_drs_signed_hypercube_inheritance(suite_data_dir: Path) -> None:
+    """Inherited and direct DRS groups combine signed all/notAll relationships."""
+    parser = ConformanceSuiteParser(suite_data_dir)
+    suite_def = SUITE_REGISTRY["dimensions"]
+    test_case = next(
+        tc
+        for tc in parser.load_suite(suite_def)
+        if tc.test_case_id == "203-TestCase-PrimaryItemDimensionallyInvalidError"
+    )
+    executor = ConformanceTestCaseExecutor(TaxonomyCache(max_size=50))
+
+    expected_passing_variations = {"V-122", "V-123", "V-125", "V-126", "V-130", "V-131"}
+    results = [
+        executor.execute(variation, test_case)
+        for variation in test_case.variations
+        if variation.variation_id in expected_passing_variations
+    ]
+
+    assert {result.variation_id for result in results} == expected_passing_variations
+    assert all(result.outcome.value == "pass" for result in results)
+
+
+@dimensions_available
 @pytest.mark.slow
 def test_dimensions_runner_completes(suite_data_dir: Path) -> None:
     runner = ConformanceRunner(
@@ -50,9 +75,7 @@ def test_dimensions_runner_completes(suite_data_dir: Path) -> None:
         selected_suites=["dimensions"],
     )
     report = runner.run()
-    dim_result = next(
-        (sr for sr in report.suite_results if sr.suite_id == "dimensions"), None
-    )
+    dim_result = next((sr for sr in report.suite_results if sr.suite_id == "dimensions"), None)
     assert dim_result is not None
     assert dim_result.status in (
         SuiteStatus.PASSED,

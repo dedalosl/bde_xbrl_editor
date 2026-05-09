@@ -315,7 +315,10 @@ class TestCaseExecutor:
                         )
                     validator = InstanceValidator(
                         taxonomy_struct,
-                        include_dimensional=test_case.suite_id != "formula",
+                        include_dimensional=test_case.suite_id not in {
+                            "formula",
+                            "table-linkbase",
+                        },
                         include_relationships=test_case.suite_id == "xbrl21",
                     )
                     report = validator.validate_sync(instance)

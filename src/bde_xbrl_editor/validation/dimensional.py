@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from bde_xbrl_editor.instance.constants import BDE_DIM_NS
+from lxml import etree
+
+from bde_xbrl_editor.instance.constants import BDE_DIM_NS, XBRLDI_NS
 from bde_xbrl_editor.instance.models import XbrlInstance
 from bde_xbrl_editor.taxonomy.models import DefinitionArc, HypercubeModel, QName, TaxonomyStructure
 from bde_xbrl_editor.validation.models import ValidationFinding, ValidationSeverity
@@ -11,6 +13,29 @@ _AGRUPACION_DIM = QName(namespace=BDE_DIM_NS, local_name="Agrupacion")
 _ARCROLE_HC_DIM = "http://xbrl.org/int/dim/arcrole/hypercube-dimension"
 _ARCROLE_DIM_DOMAIN = "http://xbrl.org/int/dim/arcrole/dimension-domain"
 _ARCROLE_DOMAIN_MEMBER = "http://xbrl.org/int/dim/arcrole/domain-member"
+_EBA_MODEL_NS = "http://www.eba.europa.eu/xbrl/ext/model"
+_EBA_NULL_DIMENSION = QName(namespace=_EBA_MODEL_NS, local_name="NullDimension")
+_XBRLDI_EXPLICIT_MEMBER = f"{{{XBRLDI_NS}}}explicitMember"
+_XBRLDI_TYPED_MEMBER = f"{{{XBRLDI_NS}}}typedMember"
+
+
+def _is_null_dimension(qname: QName) -> bool:
+    return qname == _EBA_NULL_DIMENSION
+
+
+def _has_unexpected_dimensional_container_content(context, container_name: str) -> bool:
+    xml = getattr(context, f"{container_name}_xml", None)
+    if not xml:
+        return False
+    try:
+        container = etree.fromstring(xml)
+    except etree.XMLSyntaxError:
+        return False
+    return any(
+        isinstance(child.tag, str)
+        and child.tag not in {_XBRLDI_EXPLICIT_MEMBER, _XBRLDI_TYPED_MEMBER}
+        for child in container
+    )
 
 
 class DimensionalConstraintValidator:
@@ -27,17 +52,23 @@ class DimensionalConstraintValidator:
         source: QName,
         start_elr: str,
         domain_member_index: dict[tuple[str, QName], list[DefinitionArc]],
-    ) -> set[QName]:
-        descendants: set[QName] = set()
-        queue: list[tuple[QName, str]] = [(source, start_elr)]
-        seen_states: set[tuple[QName, str]] = {(source, start_elr)}
+        *,
+        start_usable: bool = True,
+    ) -> dict[QName, bool]:
+        descendants: dict[QName, bool] = {}
+        queue: list[tuple[QName, str, bool]] = [(source, start_elr, start_usable)]
+        seen_states: set[tuple[QName, str, bool]] = {(source, start_elr, start_usable)}
 
         while queue:
-            current, elr = queue.pop(0)
+            current, elr, inherited_usable = queue.pop(0)
             for arc in domain_member_index.get((elr, current), ()):
-                descendants.add(arc.target)
+                effective_usable = inherited_usable and (arc.usable is not False)
+                if arc.target not in descendants:
+                    descendants[arc.target] = effective_usable
+                else:
+                    descendants[arc.target] = descendants[arc.target] and effective_usable
                 next_elr = arc.target_role or elr
-                state = (arc.target, next_elr)
+                state = (arc.target, next_elr, effective_usable)
                 if state not in seen_states:
                     seen_states.add(state)
                     queue.append(state)
@@ -47,26 +78,33 @@ class DimensionalConstraintValidator:
         self,
         hc: HypercubeModel,
         dim_qname: QName,
-        hc_dim_index: dict[tuple[QName, QName], list[DefinitionArc]],
+        hc_dim_index: dict[tuple[str, QName, QName], list[DefinitionArc]],
         dim_domain_index: dict[tuple[str, QName], list[DefinitionArc]],
         domain_member_index: dict[tuple[str, QName], list[DefinitionArc]],
     ) -> tuple[set[QName], bool]:
         members: set[QName] = set()
-        hc_dim_arcs = hc_dim_index.get((hc.qname, dim_qname), [])
+        dimension_elr = hc.dimension_link_role or hc.extended_link_role
+        hc_dim_arcs = hc_dim_index.get((dimension_elr, hc.qname, dim_qname), [])
         if not hc_dim_arcs:
             return set(), False
 
         for hc_dim_arc in hc_dim_arcs:
             dim_elr = hc_dim_arc.target_role or hc_dim_arc.extended_link_role
             for arc in dim_domain_index.get((dim_elr, dim_qname), ()):
-                members.add(arc.target)
-                members.update(
-                    self._collect_domain_member_descendants(
-                        arc.target,
-                        arc.target_role or dim_elr,
-                        domain_member_index,
-                    )
+                domain_usable = arc.usable is not False
+                if domain_usable:
+                    members.add(arc.target)
+                descendant_usability = self._collect_domain_member_descendants(
+                    arc.target,
+                    arc.target_role or dim_elr,
+                    domain_member_index,
+                    start_usable=domain_usable,
                 )
+                for member_qname, usable in descendant_usability.items():
+                    if usable:
+                        members.add(member_qname)
+                    else:
+                        members.discard(member_qname)
         return members, True
 
     def _get_scoped_declared_members(
@@ -75,7 +113,7 @@ class DimensionalConstraintValidator:
         dim_qname: QName,
         hc_declared_members_cache: dict[tuple[QName, str, QName], set[QName]],
         declared_members_cache: dict[QName, set[QName]],
-        hc_dim_index: dict[tuple[QName, QName], list[DefinitionArc]],
+        hc_dim_index: dict[tuple[str, QName, QName], list[DefinitionArc]],
         dim_domain_index: dict[tuple[str, QName], list[DefinitionArc]],
         domain_member_index: dict[tuple[str, QName], list[DefinitionArc]],
     ) -> tuple[set[QName], bool]:
@@ -98,6 +136,9 @@ class DimensionalConstraintValidator:
         hc_declared_members_cache[scoped_key] = scoped_usable
         return scoped_usable, True
 
+    def _drs_group_key(self, hc: HypercubeModel) -> tuple[str]:
+        return (hc.extended_link_role,)
+
     def validate(self, instance: XbrlInstance) -> list[ValidationFinding]:
         """Run all dimensional constraint checks and return the findings list."""
         findings: list[ValidationFinding] = []
@@ -109,6 +150,14 @@ class DimensionalConstraintValidator:
             for hc in self._taxonomy.hypercubes:
                 for pi in hc.primary_items:
                     primary_to_hcs.setdefault(pi, []).append(hc)
+            relevant_dims_by_context: dict[str, set[QName]] = {}
+            has_open_empty_hc_by_context: dict[str, bool] = {}
+            for fact in instance.facts:
+                relevant_dims = relevant_dims_by_context.setdefault(fact.context_ref, set())
+                for hc in primary_to_hcs.get(fact.concept, ()):
+                    relevant_dims.update(hc.dimensions)
+                    if hc.arcrole == "all" and not hc.closed and not hc.dimensions:
+                        has_open_empty_hc_by_context[fact.context_ref] = True
             # Build set of all concept QNames for ExplicitMemberUndefinedQNameError check.
             all_concept_qnames: set[QName] = set(self._taxonomy.concepts.keys())
 
@@ -141,24 +190,18 @@ class DimensionalConstraintValidator:
                     if m.qname not in member_usability:
                         member_usability[m.qname] = m.usable
                     else:
-                        member_usability[m.qname] = (
-                            member_usability[m.qname] and m.usable
-                        )
-                declared_members_cache[dim_qname] = {
-                    qn for qn, u in member_usability.items() if u
-                }
-                members_frozenset_cache[dim_qname] = frozenset(
-                    m.qname for m in dim_model.members
-                )
+                        member_usability[m.qname] = member_usability[m.qname] and m.usable
+                declared_members_cache[dim_qname] = {qn for qn, u in member_usability.items() if u}
+                members_frozenset_cache[dim_qname] = frozenset(m.qname for m in dim_model.members)
             # Lazily filled only for hypercube/dimension pairs actually touched by facts.
             hc_declared_members_cache: dict[tuple[QName, str, QName], set[QName]] = {}
-            hc_dim_index: dict[tuple[QName, QName], list[DefinitionArc]] = {}
+            hc_dim_index: dict[tuple[str, QName, QName], list[DefinitionArc]] = {}
             dim_domain_index: dict[tuple[str, QName], list[DefinitionArc]] = {}
             domain_member_index: dict[tuple[str, QName], list[DefinitionArc]] = {}
             for elr, arcs in self._taxonomy.definition.items():
                 for arc in arcs:
                     if arc.arcrole == _ARCROLE_HC_DIM:
-                        hc_dim_index.setdefault((arc.source, arc.target), []).append(arc)
+                        hc_dim_index.setdefault((elr, arc.source, arc.target), []).append(arc)
                     elif arc.arcrole == _ARCROLE_DIM_DOMAIN:
                         dim_domain_index.setdefault((elr, arc.source), []).append(arc)
                     elif arc.arcrole == _ARCROLE_DOMAIN_MEMBER:
@@ -251,6 +294,10 @@ class DimensionalConstraintValidator:
                         member_qname != dim_qname
                         and member_qname not in all_concept_qnames
                         and dim_qname.namespace in dts_namespaces
+                        and not (
+                            dim_qname not in relevant_dims_by_context.get(ctx_ref, set())
+                            and has_open_empty_hc_by_context.get(ctx_ref, False)
+                        )
                     ):
                         findings.append(
                             ValidationFinding(
@@ -291,8 +338,12 @@ class DimensionalConstraintValidator:
             for fact in instance.facts:
                 try:
                     self._validate_fact(
-                        fact, instance, primary_to_hcs, findings,
-                        declared_members_cache, members_frozenset_cache,
+                        fact,
+                        instance,
+                        primary_to_hcs,
+                        findings,
+                        declared_members_cache,
+                        members_frozenset_cache,
                         hc_dim_frozensets,
                         hc_declared_members_cache,
                         hc_dim_index,
@@ -341,7 +392,7 @@ class DimensionalConstraintValidator:
         members_frozenset_cache: dict[QName, frozenset],
         hc_dim_frozensets: dict[HypercubeModel, frozenset[QName]],
         hc_declared_members_cache: dict[tuple[QName, str, QName], set[QName]],
-        hc_dim_index: dict[tuple[QName, QName], list[DefinitionArc]],
+        hc_dim_index: dict[tuple[str, QName, QName], list[DefinitionArc]],
         dim_domain_index: dict[tuple[str, QName], list[DefinitionArc]],
         domain_member_index: dict[tuple[str, QName], list[DefinitionArc]],
     ) -> None:
@@ -355,6 +406,11 @@ class DimensionalConstraintValidator:
             # Concept is not part of any hypercube — not dimensional, skip.
             return
 
+        covering_dimensions_by_hc_qname: dict[QName, set[QName]] = {}
+        for hc in covering_hcs:
+            if hc.arcrole == "all":
+                covering_dimensions_by_hc_qname.setdefault(hc.qname, set()).update(hc.dimensions)
+
         context = instance.contexts.get(fact.context_ref)
         raw_context_dims: dict[QName, QName] = context.dimensions if context is not None else {}
         # BDE uses Agrupacion as a report-level segment dimension that qualifies
@@ -366,43 +422,21 @@ class DimensionalConstraintValidator:
             if dim_qname != _AGRUPACION_DIM
         }
 
-        # Separate positive and negative hypercubes.
-        all_hcs = [hc for hc in covering_hcs if hc.arcrole == "all"]
-        not_all_hcs = [hc for hc in covering_hcs if hc.arcrole == "notAll"]
+        grouped_hcs: dict[tuple[str], list[HypercubeModel]] = {}
+        for hc in covering_hcs:
+            if (
+                hc.arcrole == "notAll"
+                and fact.concept not in hc.direct_primary_items
+                and not hc.direct_primary_items
+            ):
+                continue
+            grouped_hcs.setdefault(self._drs_group_key(hc), []).append(hc)
 
-        # notAll: each prohibited combination is checked independently.
-        for hc in not_all_hcs:
-            try:
-                self._check_notall_hypercube(
-                    fact, context_dims, hc, findings, context,
-                    declared_members_cache,
-                    members_frozenset_cache,
-                    hc_declared_members_cache,
-                    hc_dim_index,
-                    dim_domain_index,
-                    domain_member_index,
-                )
-            except Exception as exc:  # noqa: BLE001
-                findings.append(
-                    ValidationFinding(
-                        rule_id="dimensional.unexpected_error",
-                        severity=ValidationSeverity.ERROR,
-                        message=(
-                            f"Unexpected error checking hypercube '{hc.qname}' for fact "
-                            f"'{fact.concept}' in context '{fact.context_ref}': {exc}"
-                        ),
-                        source="dimensional",
-                        concept_qname=fact.concept,
-                        context_ref=fact.context_ref,
-                        hypercube_qname=hc.qname,
-                        constraint_type="UNEXPECTED_ERROR",
-                    )
-                )
-
-        # all: a fact is dimensionally valid when it satisfies at least one
-        # covering positive hypercube. A primary item may appear in multiple
-        # ELRs/tables, but a fact should not fail merely because it does not fit
-        # every other table network that reuses the same concept.
+        # all: a fact is dimensionally valid when it satisfies the positive
+        # DRS group. Inherited primary-item DRS networks and direct primary-item
+        # networks are alternatives; inside one DRS group, positive all
+        # hypercubes must be satisfied and negative notAll hypercubes must not
+        # be satisfied.
         #
         # BDE-specific note: the Agrupacion dimension (es-be-cm-dim:Agrupacion)
         # is encoded in xbrli:segment as a standard xbrldi:explicitMember and
@@ -410,17 +444,33 @@ class DimensionalConstraintValidator:
         # If UNDECLARED_DIMENSION errors appear for Agrupacion it means the
         # taxonomy loader is not including it in the relevant hypercubes — fix
         # the taxonomy loader, do not relax the validator here.
-        if all_hcs:
+        all_hcs = [hc for hc in covering_hcs if hc.arcrole == "all"]
+        if grouped_hcs:
             try:
-                self._check_all_hypercubes_for_elr(
-                    fact, context_dims, all_hcs, findings, context,
-                    declared_members_cache,
-                    hc_dim_frozensets,
-                    hc_declared_members_cache,
-                    hc_dim_index,
-                    dim_domain_index,
-                    domain_member_index,
-                )
+                per_group: list[list[ValidationFinding]] = []
+                for hcs in grouped_hcs.values():
+                    group_findings: list[ValidationFinding] = []
+                    self._check_drs_group(
+                        fact,
+                        context_dims,
+                        hcs,
+                        group_findings,
+                        context,
+                        declared_members_cache,
+                        members_frozenset_cache,
+                        hc_dim_frozensets,
+                        hc_declared_members_cache,
+                        hc_dim_index,
+                        dim_domain_index,
+                        domain_member_index,
+                        covering_dimensions_by_hc_qname,
+                    )
+                    if not group_findings:
+                        break
+                    per_group.append(group_findings)
+                else:
+                    if per_group:
+                        findings.extend(min(per_group, key=len))
             except Exception as exc:  # noqa: BLE001
                 findings.append(
                     ValidationFinding(
@@ -447,17 +497,11 @@ class DimensionalConstraintValidator:
                 dim_containers = context.dim_containers
                 for dim_qname, actual_container in dim_containers.items():
                     # Find all 'all' HCs that include this dimension
-                    relevant_hcs = [
-                        hc for hc in all_hcs
-                        if dim_qname in hc.dimensions
-                    ]
+                    relevant_hcs = [hc for hc in all_hcs if dim_qname in hc.dimensions]
                     if not relevant_hcs:
                         continue
                     # Check if ANY HC accepts the dimension in its actual container
-                    any_accepts = any(
-                        hc.context_element == actual_container
-                        for hc in relevant_hcs
-                    )
+                    any_accepts = any(hc.context_element == actual_container for hc in relevant_hcs)
                     if not any_accepts:
                         # All HCs require a different container — violation
                         # Report using the first relevant HC for context
@@ -482,6 +526,62 @@ class DimensionalConstraintValidator:
                             )
                         )
 
+    def _check_drs_group(
+        self,
+        fact,
+        context_dims: dict[QName, QName],
+        hcs: list[HypercubeModel],
+        findings: list[ValidationFinding],
+        context=None,
+        declared_members_cache: dict[QName, set[QName]] | None = None,
+        members_frozenset_cache: dict[QName, frozenset] | None = None,
+        hc_dim_frozensets: dict[HypercubeModel, frozenset[QName]] | None = None,
+        hc_declared_members_cache: dict[tuple[QName, str, QName], set[QName]] | None = None,
+        hc_dim_index: dict[tuple[str, QName, QName], list[DefinitionArc]] | None = None,
+        dim_domain_index: dict[tuple[str, QName], list[DefinitionArc]] | None = None,
+        domain_member_index: dict[tuple[str, QName], list[DefinitionArc]] | None = None,
+        covering_dimensions_by_hc_qname: dict[QName, set[QName]] | None = None,
+    ) -> None:
+        all_hcs_by_elr: dict[str, list[HypercubeModel]] = {}
+        for hc in hcs:
+            if hc.arcrole == "all":
+                all_hcs_by_elr.setdefault(hc.extended_link_role, []).append(hc)
+
+        for elr_hcs in all_hcs_by_elr.values():
+            self._check_all_hypercubes_for_elr(
+                fact,
+                context_dims,
+                elr_hcs,
+                findings,
+                context,
+                declared_members_cache,
+                hc_dim_frozensets,
+                hc_declared_members_cache,
+                hc_dim_index,
+                dim_domain_index,
+                domain_member_index,
+                covering_dimensions_by_hc_qname,
+            )
+
+        for hc in hcs:
+            if hc.arcrole != "notAll":
+                continue
+            notall_findings: list[ValidationFinding] = []
+            self._check_notall_hypercube(
+                fact,
+                context_dims,
+                hc,
+                notall_findings,
+                context,
+                declared_members_cache,
+                members_frozenset_cache,
+                hc_declared_members_cache,
+                hc_dim_index,
+                dim_domain_index,
+                domain_member_index,
+            )
+            findings.extend(notall_findings)
+
     def _check_all_hypercubes_for_elr(
         self,
         fact,
@@ -492,14 +592,17 @@ class DimensionalConstraintValidator:
         declared_members_cache: dict[QName, set[QName]] | None = None,
         hc_dim_frozensets: dict[HypercubeModel, frozenset[QName]] | None = None,
         hc_declared_members_cache: dict[tuple[QName, str, QName], set[QName]] | None = None,
-        hc_dim_index: dict[tuple[QName, QName], list[DefinitionArc]] | None = None,
+        hc_dim_index: dict[tuple[str, QName, QName], list[DefinitionArc]] | None = None,
         dim_domain_index: dict[tuple[str, QName], list[DefinitionArc]] | None = None,
         domain_member_index: dict[tuple[str, QName], list[DefinitionArc]] | None = None,
+        covering_dimensions_by_hc_qname: dict[QName, set[QName]] | None = None,
     ) -> None:
-        """Fact is valid within an ELR if it passes at least one 'all' HC in that ELR.
+        """Fact is valid within an ELR if it passes each positive HC declaration.
 
-        If no HC in this ELR accepts the fact, reports findings from the HC with
-        the fewest errors (most likely the intended table's hypercube).
+        Repeated HypercubeModel entries with the same QName are alternative
+        signatures for the same hypercube declaration; at least one such
+        signature must accept the fact. Distinct hypercube declarations remain
+        cumulative within the ELR.
         """
         # Pre-compute the union of all dimension QNames across all hypercubes
         # in this ELR.  This allows _check_all_hypercube to skip checking
@@ -510,23 +613,43 @@ class DimensionalConstraintValidator:
         for hc in hcs:
             all_elr_dimensions.update(hc.dimensions)
 
-        per_hc: list[tuple[HypercubeModel, list[ValidationFinding]]] = []
+        per_group: list[list[ValidationFinding]] = []
+        hcs_by_qname: dict[QName, list[HypercubeModel]] = {}
         for hc in hcs:
-            hc_findings: list[ValidationFinding] = []
-            self._check_all_hypercube(
-                fact, context_dims, hc, hc_findings, context,
-                declared_members_cache, hc_dim_frozensets, hc_declared_members_cache,
-                hc_dim_index, dim_domain_index, domain_member_index,
-                all_elr_dimensions=all_elr_dimensions,
-            )
-            if not hc_findings:
-                return  # Satisfied at least one HC in this ELR — ELR is valid.
-            per_hc.append((hc, hc_findings))
+            hcs_by_qname.setdefault(hc.qname, []).append(hc)
 
-        # No HC in this ELR accepted the fact — report from the HC with fewest errors.
-        if per_hc:
-            _, best_findings = min(per_hc, key=lambda t: len(t[1]))
-            findings.extend(best_findings)
+        for hc_group in hcs_by_qname.values():
+            group_findings: list[list[ValidationFinding]] = []
+            for hc in hc_group:
+                hc_findings: list[ValidationFinding] = []
+                self._check_all_hypercube(
+                    fact,
+                    context_dims,
+                    hc,
+                    hc_findings,
+                    context,
+                    declared_members_cache,
+                    hc_dim_frozensets,
+                    hc_declared_members_cache,
+                    hc_dim_index,
+                    dim_domain_index,
+                    domain_member_index,
+                    all_elr_dimensions=all_elr_dimensions,
+                    same_hypercube_dimensions=(
+                        covering_dimensions_by_hc_qname.get(hc.qname, set())
+                        if covering_dimensions_by_hc_qname is not None
+                        else set()
+                    ),
+                )
+                if not hc_findings:
+                    break
+                group_findings.append(hc_findings)
+            else:
+                if group_findings:
+                    per_group.append(min(group_findings, key=len))
+
+        if per_group:
+            findings.extend(min(per_group, key=len))
 
     def _check_all_hypercube(
         self,
@@ -538,10 +661,11 @@ class DimensionalConstraintValidator:
         declared_members_cache: dict[QName, set[QName]] | None = None,
         hc_dim_frozensets: dict[HypercubeModel, frozenset[QName]] | None = None,
         hc_declared_members_cache: dict[tuple[QName, str, QName], set[QName]] | None = None,
-        hc_dim_index: dict[tuple[QName, QName], list[DefinitionArc]] | None = None,
+        hc_dim_index: dict[tuple[str, QName, QName], list[DefinitionArc]] | None = None,
         dim_domain_index: dict[tuple[str, QName], list[DefinitionArc]] | None = None,
         domain_member_index: dict[tuple[str, QName], list[DefinitionArc]] | None = None,
         all_elr_dimensions: set[QName] | None = None,
+        same_hypercube_dimensions: set[QName] | None = None,
     ) -> None:
         """Check one positive ('all') hypercube for a fact. Appends findings on failure."""
         hc_dim_set: frozenset
@@ -554,15 +678,31 @@ class DimensionalConstraintValidator:
 
         # --- 1. UNDECLARED_DIMENSION -----------------------------------------
         # Only closed hypercubes disallow extra (undeclared) dimensions.
-        # Skip dimensions that belong to OTHER hypercubes in the same ELR:
-        # they are "expected" by those hypercubes and must not be reported
-        # as undeclared in the current hypercube (false positive).
         if hc.closed:
+            if context is not None and _has_unexpected_dimensional_container_content(
+                context, hc.context_element
+            ):
+                findings.append(
+                    ValidationFinding(
+                        rule_id="xbrldie:PrimaryItemDimensionallyInvalidError",
+                        severity=ValidationSeverity.ERROR,
+                        message=(
+                            f"Fact '{fact.concept}' in context '{fact.context_ref}' "
+                            f"has non-dimensional content in closed hypercube "
+                            f"'{hc.qname}' {hc.context_element}."
+                        ),
+                        source="dimensional",
+                        concept_qname=fact.concept,
+                        context_ref=fact.context_ref,
+                        hypercube_qname=hc.qname,
+                        constraint_type="UNEXPECTED_DIMENSIONAL_CONTENT",
+                    )
+                )
             for dim_qname in context_dims:
                 if dim_qname not in hc_dim_set:
                     if (
-                        all_elr_dimensions is not None
-                        and dim_qname in all_elr_dimensions
+                        same_hypercube_dimensions is not None
+                        and dim_qname in same_hypercube_dimensions
                     ):
                         continue
                     findings.append(
@@ -618,12 +758,8 @@ class DimensionalConstraintValidator:
                     if m.qname not in member_usability:
                         member_usability[m.qname] = m.usable
                     else:
-                        member_usability[m.qname] = (
-                            member_usability[m.qname] and m.usable
-                        )
-                declared_members = {
-                    qn for qn, u in member_usability.items() if u
-                }
+                        member_usability[m.qname] = member_usability[m.qname] and m.usable
+                declared_members = {qn for qn, u in member_usability.items() if u}
 
             if not declared_members:
                 dim_model = self._taxonomy.dimensions.get(dim_qname)
@@ -680,12 +816,41 @@ class DimensionalConstraintValidator:
         for dim_qname in hc.dimensions:
             if dim_qname in context_dims:
                 continue
+            if _is_null_dimension(dim_qname):
+                continue
 
             dim_model = self._taxonomy.dimensions.get(dim_qname)
-            has_default = (
-                dim_model is not None and dim_model.default_member is not None
-            )
-            if not has_default:
+            has_usable_default = False
+            if dim_model is not None and dim_model.default_member is not None:
+                default_member = dim_model.default_member
+                declared_members: set[QName]
+                if hc_declared_members_cache is not None and declared_members_cache is not None:
+                    scoped_members, has_scope = self._get_scoped_declared_members(
+                        hc,
+                        dim_qname,
+                        hc_declared_members_cache,
+                        declared_members_cache,
+                        hc_dim_index or {},
+                        dim_domain_index or {},
+                        domain_member_index or {},
+                    )
+                    if has_scope:
+                        declared_members = scoped_members
+                    else:
+                        declared_members = declared_members_cache.get(dim_qname) or set()
+                elif declared_members_cache is not None:
+                    declared_members = declared_members_cache.get(dim_qname) or set()
+                else:
+                    member_usability: dict[QName, bool] = {}
+                    for m in dim_model.members:
+                        if m.qname not in member_usability:
+                            member_usability[m.qname] = m.usable
+                        else:
+                            member_usability[m.qname] = member_usability[m.qname] and m.usable
+                    declared_members = {qn for qn, usable in member_usability.items() if usable}
+                has_usable_default = default_member in declared_members
+
+            if not has_usable_default:
                 findings.append(
                     ValidationFinding(
                         rule_id="xbrldie:PrimaryItemDimensionallyInvalidError",
@@ -714,7 +879,7 @@ class DimensionalConstraintValidator:
         declared_members_cache: dict[QName, set[QName]] | None = None,
         members_frozenset_cache: dict[QName, frozenset] | None = None,
         hc_declared_members_cache: dict[tuple[QName, str, QName], set[QName]] | None = None,
-        hc_dim_index: dict[tuple[QName, QName], list[DefinitionArc]] | None = None,
+        hc_dim_index: dict[tuple[str, QName, QName], list[DefinitionArc]] | None = None,
         dim_domain_index: dict[tuple[str, QName], list[DefinitionArc]] | None = None,
         domain_member_index: dict[tuple[str, QName], list[DefinitionArc]] | None = None,
     ) -> None:
@@ -730,6 +895,11 @@ class DimensionalConstraintValidator:
         if not hc.dimensions:
             return
 
+        if hc.closed:
+            hc_dim_set = set(hc.dimensions)
+            if any(dim_qname not in hc_dim_set for dim_qname in context_dims):
+                return
+
         for dim_qname in hc.dimensions:
             if dim_qname not in context_dims:
                 # Required dimension absent — prohibition not triggered.
@@ -743,10 +913,7 @@ class DimensionalConstraintValidator:
 
             # Look up precomputed members for this dimension (O(1)).
             declared_members: set[QName]
-            if (
-                hc_declared_members_cache is not None
-                and declared_members_cache is not None
-            ):
+            if hc_declared_members_cache is not None and declared_members_cache is not None:
                 scoped_members, has_scope = self._get_scoped_declared_members(
                     hc,
                     dim_qname,
@@ -759,7 +926,11 @@ class DimensionalConstraintValidator:
                 if has_scope:
                     declared_members = scoped_members
                 else:
-                    fs = members_frozenset_cache.get(dim_qname) if members_frozenset_cache is not None else None
+                    fs = (
+                        members_frozenset_cache.get(dim_qname)
+                        if members_frozenset_cache is not None
+                        else None
+                    )
                     declared_members = set() if fs is None else set(fs)
             elif members_frozenset_cache is not None:
                 fs = members_frozenset_cache.get(dim_qname)

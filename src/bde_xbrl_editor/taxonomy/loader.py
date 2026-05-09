@@ -62,8 +62,10 @@ from bde_xbrl_editor.taxonomy.models import (
     AssertionTextResource,
     Concept,
     CustomFunctionDefinition,
+    DefinitionArc,
     DimensionModel,
     DomainMember,
+    HypercubeModel,
     QName,
     TaxonomyMetadata,
     TaxonomyParseError,
@@ -857,6 +859,117 @@ def _rebuild_dimensions(
     return dimensions
 
 
+def _collect_primary_descendant_states(
+    source: QName,
+    start_elr: str,
+    definition_arcs: dict[str, list[DefinitionArc]],
+) -> list[tuple[QName, str]]:
+    descendants: list[tuple[QName, str]] = []
+    queue: deque[tuple[QName, str]] = deque([(source, start_elr)])
+    seen_states: set[tuple[QName, str]] = {(source, start_elr)}
+    seen_targets: set[tuple[QName, str]] = set()
+
+    while queue:
+        current, current_elr = queue.popleft()
+        for arc in definition_arcs.get(current_elr, []):
+            if arc.arcrole != ARCROLE_DOMAIN_MEMBER or arc.source != current:
+                continue
+
+            next_elr = arc.target_role or current_elr
+            target = (arc.target, next_elr)
+            if target not in seen_targets:
+                seen_targets.add(target)
+                descendants.append(target)
+
+            state = (arc.target, next_elr)
+            if state not in seen_states:
+                seen_states.add(state)
+                queue.append(state)
+
+    return descendants
+
+
+def _rebuild_hypercubes(definition_arcs: dict[str, list]) -> list[HypercubeModel]:
+    """Build hypercubes from the complete merged definition arc set."""
+    hc_primary: dict[str, list[tuple[QName, QName, str, bool, str, str | None, str]]] = {}
+    hc_dims: dict[str, list[tuple[QName, QName]]] = {}
+
+    for elr, arcs in definition_arcs.items():
+        for arc in arcs:
+            if arc.arcrole in (ARCROLE_ALL, ARCROLE_NOT_ALL):
+                hc_primary.setdefault(elr, []).append(
+                    (
+                        arc.source,
+                        arc.target,
+                        arc.arcrole,
+                        bool(arc.closed),
+                        arc.context_element or "segment",
+                        arc.target_role,
+                        elr,
+                    )
+                )
+            elif arc.arcrole == ARCROLE_HYPERCUBE_DIMENSION:
+                hc_dims.setdefault(elr, []).append((arc.source, arc.target))
+
+    hypercubes: list[HypercubeModel] = []
+    for elr, prim_list in hc_primary.items():
+        direct_primary_by_hc: dict[QName, list[QName]] = {}
+        for primary, hc, *_rest in prim_list:
+            direct_primary_by_hc.setdefault(hc, []).append(primary)
+
+        expanded_relationships: set[tuple[QName, QName, str, bool, str, str | None, str]] = set(
+            prim_list
+        )
+        bfs_queue: list[tuple[QName, QName, str, bool, str, str | None, str]] = list(prim_list)
+        for primary, hc, arcrole, closed, ctx, tgt_role, inheritance_elr in bfs_queue:
+            start_elrs = [inheritance_elr]
+            if inheritance_elr == elr and tgt_role and tgt_role != elr:
+                start_elrs.append(tgt_role)
+            for start_elr in start_elrs:
+                for child, child_elr in _collect_primary_descendant_states(
+                    primary,
+                    start_elr,
+                    definition_arcs,
+                ):
+                    new_entry = (child, hc, arcrole, closed, ctx, tgt_role, child_elr)
+                    if new_entry not in expanded_relationships:
+                        expanded_relationships.add(new_entry)
+                        prim_list.append(new_entry)
+                        bfs_queue.append(new_entry)
+
+        hc_map: dict[QName, tuple[str, bool, str, str | None]] = {}
+        primary_by_hc: dict[QName, list[QName]] = {}
+        for primary, hc, arcrole, closed, ctx, tgt_role, _inheritance_elr in prim_list:
+            hc_map[hc] = (arcrole, closed, ctx, tgt_role)
+            primary_by_hc.setdefault(hc, []).append(primary)
+
+        dims_by_hc: dict[QName, list[QName]] = {}
+        dim_elr_by_hc: dict[QName, str] = {}
+        for hc, (_arcrole, _closed, _ctx, tgt_role) in hc_map.items():
+            lookup_elr = tgt_role if tgt_role else elr
+            for hc_q, dim_q in hc_dims.get(lookup_elr, []):
+                if hc_q == hc:
+                    dims_by_hc.setdefault(hc, []).append(dim_q)
+                    dim_elr_by_hc[hc] = lookup_elr
+
+        for hc, (arcrole, closed, ctx, _tgt_role) in hc_map.items():
+            hypercubes.append(
+                HypercubeModel(
+                    qname=hc,
+                    arcrole="all" if arcrole == ARCROLE_ALL else "notAll",
+                    closed=closed,
+                    context_element="segment" if ctx == "segment" else "scenario",
+                    primary_items=tuple(primary_by_hc.get(hc, [])),
+                    dimensions=tuple(dims_by_hc.get(hc, [])),
+                    extended_link_role=elr,
+                    dimension_link_role=dim_elr_by_hc.get(hc, elr),
+                    direct_primary_items=tuple(direct_primary_by_hc.get(hc, ())),
+                )
+            )
+
+    return hypercubes
+
+
 def _member_qname_to_expanded_name_uri(member: QName) -> str:
     """EE 2.0 expanded name URI: ``namespace-uri#localname``."""
     return f"{member.namespace}#{member.local_name}"
@@ -1357,6 +1470,7 @@ class TaxonomyLoader:
             hypercubes.extend(hcs)
 
         concepts = _apply_extensible_enumeration_values(concepts, definition_arcs)
+        hypercubes = _rebuild_hypercubes(definition_arcs)
 
         # Build dimensions once from the complete merged arc set so that
         # domain-member arcs in extension linkbases are correctly associated

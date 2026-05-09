@@ -296,6 +296,8 @@ class HypercubeModel:
     primary_items: tuple[QName, ...]
     dimensions: tuple[QName, ...]
     extended_link_role: str
+    dimension_link_role: str | None = None
+    direct_primary_items: tuple[QName, ...] = field(default_factory=tuple)
 
 
 # ---------------------------------------------------------------------------
