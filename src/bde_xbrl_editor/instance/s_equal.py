@@ -35,6 +35,8 @@ def _period_key(period: ReportingPeriod) -> tuple:
     if period.period_type == "instant":
         assert period.instant_date is not None
         return ("instant", period.instant_date.isoformat())
+    if period.period_type == "forever":
+        return ("forever",)
     assert period.start_date is not None and period.end_date is not None
     return ("duration", period.start_date.isoformat(), period.end_date.isoformat())
 
@@ -87,9 +89,7 @@ def _element_s_equal_key(el: etree._Element) -> tuple:
         )
     text_raw = el.text if el.text is not None else ""
     text_tok = _normalize_lexical(el, text_raw) if text_raw.strip() else None
-    children = tuple(
-        _element_s_equal_key(c) for c in el if isinstance(c.tag, str)
-    )
+    children = tuple(_element_s_equal_key(c) for c in el if isinstance(c.tag, str))
     return (tag, tuple(attrs), text_tok, children)
 
 

@@ -123,6 +123,7 @@ class Concept:
     substitution_group: QName | None = None
     xml_id: str | None = None  # @id attribute from the XSD element declaration
     typed_domain_ref: str | None = None
+    typed_domain_element: QName | None = None
     schema_path: str | None = None
     # True when the item type is xbrli:monetaryItemType or a restriction/extension
     # thereof (used for ISO 4217 unit validation).
@@ -134,6 +135,8 @@ class Concept:
     enumeration_domain: QName | None = None
     enumeration_linkrole: str | None = None
     enumeration_head_usable: bool = False
+    default_decimals: str | None = None
+    default_precision: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -294,6 +297,8 @@ class HypercubeModel:
     primary_items: tuple[QName, ...]
     dimensions: tuple[QName, ...]
     extended_link_role: str
+    dimension_link_role: str | None = None
+    direct_primary_items: tuple[QName, ...] = field(default_factory=tuple)
 
 
 # ---------------------------------------------------------------------------
@@ -388,6 +393,7 @@ class XPathFilterDefinition:
 
     xpath_expr: str
     namespaces: dict[str, str] = field(default_factory=dict)
+    filter_type: str = "general"
 
 
 @dataclass(frozen=True)
@@ -400,8 +406,28 @@ class BooleanFilterDefinition:
     """
 
     filter_type: Literal["and", "or"]
-    children: tuple[Any, ...]  # DimensionFilter | TypedDimensionFilter | XPathFilterDefinition | BooleanFilterDefinition
+    children: tuple[
+        Any, ...
+    ]  # DimensionFilter | TypedDimensionFilter | XPathFilterDefinition | BooleanFilterDefinition
     complement: bool = False
+
+
+@dataclass(frozen=True)
+class FormulaFilterResource:
+    """Formula filter resource metadata retained for static analysis and later execution."""
+
+    label: str
+    namespace: str
+    local_name: str
+    attributes: dict[str, str] = field(default_factory=dict)
+    test_xpath: str | None = None
+    variable: str | None = None
+    match_any: bool | None = None
+    aspects: tuple[str, ...] = field(default_factory=tuple)
+    qnames: tuple[QName, ...] = field(default_factory=tuple)
+    qname_expressions: tuple[str, ...] = field(default_factory=tuple)
+    namespaces: dict[str, str] = field(default_factory=dict)
+    referenced_names: tuple[str, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True)
@@ -409,6 +435,8 @@ class FactVariableDefinition:
     """A bound fact variable in a formula assertion."""
 
     variable_name: str
+    bind_as_sequence: bool = False
+    matches: bool = False
     concept_filter: QName | None = None
     period_filter: Literal["instant", "duration"] | None = None
     dimension_filters: tuple[DimensionFilter, ...] = field(default_factory=tuple)
@@ -417,6 +445,60 @@ class FactVariableDefinition:
     fallback_value: str | None = None
     xpath_filters: tuple[XPathFilterDefinition, ...] = field(default_factory=tuple)
     boolean_filters: tuple[BooleanFilterDefinition, ...] = field(default_factory=tuple)
+    filter_resources: tuple[FormulaFilterResource, ...] = field(default_factory=tuple)
+    arc_name: str | None = None
+    referenced_names: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True)
+class GeneralVariableDefinition:
+    """A variable:generalVariable resource bound through variable-set arcs."""
+
+    variable_name: str
+    select_xpath: str = "."
+    bind_as_sequence: bool = False
+    fallback_value: str | None = None
+    arc_name: str | None = None
+    namespaces: dict[str, str] = field(default_factory=dict)
+    referenced_names: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True)
+class ParameterDefinition:
+    """A variable:parameter resource (global or local)."""
+
+    parameter_name: str
+    select_xpath: str | None = None
+    as_type: str | None = None
+    required: bool = False
+    arc_name: str | None = None
+    scope: Literal["global", "local"] = "global"
+    namespaces: dict[str, str] = field(default_factory=dict)
+    referenced_names: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True)
+class PreconditionDefinition:
+    """A variable:precondition resource attached to a variable set."""
+
+    precondition_id: str
+    test_xpath: str
+    namespaces: dict[str, str] = field(default_factory=dict)
+    referenced_names: tuple[str, ...] = field(default_factory=tuple)
+
+
+@dataclass(frozen=True)
+class FormulaArc:
+    """Formula linkbase relationship metadata used for effective graph resolution."""
+
+    from_label: str
+    to_label: str
+    arcrole: str
+    name: str | None = None
+    order: float | None = None
+    priority: int | None = None
+    use: str = "optional"
+    namespaces: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -428,7 +510,15 @@ class FormulaAssertion:
     severity: Any  # ValidationSeverity — late-bound to avoid circular import
     abstract: bool
     variables: tuple[FactVariableDefinition, ...]
-    precondition_xpath: str | None
+    general_variables: tuple[GeneralVariableDefinition, ...] = field(default_factory=tuple)
+    parameters: tuple[ParameterDefinition, ...] = field(default_factory=tuple)
+    preconditions: tuple[PreconditionDefinition, ...] = field(default_factory=tuple)
+    precondition_xpath: str | None = None
+    variable_arcs: tuple[FormulaArc, ...] = field(default_factory=tuple)
+    parameter_arcs: tuple[FormulaArc, ...] = field(default_factory=tuple)
+    precondition_arcs: tuple[FormulaArc, ...] = field(default_factory=tuple)
+    variable_set_filters: tuple[FormulaFilterResource, ...] = field(default_factory=tuple)
+    referenced_names: tuple[str, ...] = field(default_factory=tuple)
     table_id: str | None = None
     table_label: str | None = None
     label_resources: tuple[AssertionTextResource, ...] = field(default_factory=tuple)
@@ -460,10 +550,51 @@ class ConsistencyAssertionDefinition(FormulaAssertion):
 
 
 @dataclass(frozen=True)
+class FormulaAspectRule:
+    """Static output-aspect rule on a Formula 1.0 formula resource."""
+
+    aspect: str
+    source: str | None = None
+    qname: QName | None = None
+    dimension: QName | None = None
+    has_child_rules: bool = False
+    has_scheme: bool = False
+    has_value: bool = False
+    period_kind: Literal["instant", "duration", "forever"] | None = None
+    inherited_source: str | None = None
+
+
+@dataclass(frozen=True)
+class FormulaOutputDefinition:
+    """formula:formula output-producing resource parsed from a formula linkbase."""
+
+    formula_id: str
+    label: str | None
+    value_xpath: str
+    source: str | None
+    aspect_model: str | None
+    implicit_filtering: bool
+    variables: tuple[FactVariableDefinition, ...] = field(default_factory=tuple)
+    general_variables: tuple[GeneralVariableDefinition, ...] = field(default_factory=tuple)
+    parameters: tuple[ParameterDefinition, ...] = field(default_factory=tuple)
+    preconditions: tuple[PreconditionDefinition, ...] = field(default_factory=tuple)
+    aspect_rules: tuple[FormulaAspectRule, ...] = field(default_factory=tuple)
+    variable_arcs: tuple[FormulaArc, ...] = field(default_factory=tuple)
+    parameter_arcs: tuple[FormulaArc, ...] = field(default_factory=tuple)
+    precondition_arcs: tuple[FormulaArc, ...] = field(default_factory=tuple)
+    variable_set_filters: tuple[FormulaFilterResource, ...] = field(default_factory=tuple)
+    referenced_names: tuple[str, ...] = field(default_factory=tuple)
+    namespaces: dict[str, str] = field(default_factory=dict)
+    source_path: str | None = None
+
+
+@dataclass(frozen=True)
 class FormulaAssertionSet:
     """Complete set of formula assertions parsed from a formula linkbase."""
 
     assertions: tuple[FormulaAssertion, ...] = field(default_factory=tuple)
+    output_formulas: tuple[FormulaOutputDefinition, ...] = field(default_factory=tuple)
+    global_parameters: tuple[ParameterDefinition, ...] = field(default_factory=tuple)
     abstract_count: int = 0
 
 

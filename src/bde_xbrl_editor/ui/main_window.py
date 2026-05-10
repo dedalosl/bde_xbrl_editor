@@ -4,17 +4,21 @@ from __future__ import annotations
 
 import contextlib
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, QTimer
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
+    QDialogButtonBox,
     QDockWidget,
     QFileDialog,
+    QFormLayout,
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QMainWindow,
     QMessageBox,
     QPushButton,
@@ -38,6 +42,54 @@ from bde_xbrl_editor.ui.widgets.activity_sidebar import ActivitySidebar
 from bde_xbrl_editor.ui.widgets.loader_settings_dialog import load_saved_settings
 from bde_xbrl_editor.ui.widgets.progress_dialog import TaxonomyProgressDialog
 from bde_xbrl_editor.ui.widgets.taxonomy_loader_widget import TaxonomyLoaderWidget
+
+
+@dataclass(frozen=True)
+class _FormulaInputHint:
+    name: str
+    fallback: str | None = None
+    hint: str = "Enter an XPath literal value"
+    example: str = "Example: 123, true(), 2026-01-31, or text"
+
+
+def _formula_input_hint(name: str, select_xpath: str | None = None) -> str:
+    text = f"{name} {select_xpath or ''}".lower()
+    if "codigoparticipada" in text or "cod_participada" in text:
+        return "Bank of Spain code for a participating entity. Use the taxonomy-specific code."
+    if "leipresentadora" in text or "lei_presentadora" in text:
+        return "LEI code for the reporting entity. Use the taxonomy-specific code."
+    if "date" in text or "fecha" in text:
+        return "Date value. Use ISO format YYYY-MM-DD."
+    if "qname" in text or "tipoentidad" in text or "tipo_entidad" in text:
+        return "QName or code-like text. Use the taxonomy prefix when the rule expects a QName."
+    if "bool" in text or "succomunitaria" in text:
+        return "Boolean-like value. Use true()/false() or the taxonomy-specific code."
+    if "count" in text or "number" in text or "amount" in text or "importe" in text:
+        return "Numeric value. Use digits with a dot as decimal separator."
+    return "XPath atomic value. Numbers, booleans, dates, QNames, and plain text are accepted."
+
+
+def _formula_input_example(
+    name: str,
+    select_xpath: str | None = None,
+    fallback: str | None = None,
+) -> str:
+    if fallback is not None:
+        return f"Blank uses fallback: {fallback}"
+    hint = _formula_input_hint(name, select_xpath).lower()
+    if "code" in hint and "participating" in hint:
+        return "Example: 12345 (Bank of Spain-specific code for a participating entity)"
+    if "lei" in hint and "code" in hint:
+        return "Example: 5493001KJTIIGC8Y1R12 (taxonomy-specific LEI code for the reporting entity)"
+    if "date" in hint:
+        return "Example: 2026-01-31"
+    if "qname" in hint:
+        return "Example: prefix:member or code"
+    if "boolean" in hint:
+        return "Example: true() or false()"
+    if "numeric" in hint:
+        return "Example: 123.45"
+    return "Example: 123, true(), prefix:member, 2026-01-31, or text"
 
 
 class MainWindow(QMainWindow):
@@ -1224,6 +1276,10 @@ class MainWindow(QMainWindow):
         if self._validation_thread is not None and self._validation_thread.isRunning():
             return
 
+        general_variable_values = self._prompt_formula_general_variable_values()
+        if general_variable_values is None:
+            return
+
         self._ensure_validation_panel()
         assert self._validation_panel is not None  # guaranteed by _ensure_validation_panel
 
@@ -1236,6 +1292,7 @@ class MainWindow(QMainWindow):
         self._validation_worker = ValidationWorker(
             taxonomy=self._current_taxonomy,
             instance=self._current_instance,
+            general_variable_values=general_variable_values,
         )
         self._validation_thread = QThread(self)
 
@@ -1254,6 +1311,101 @@ class MainWindow(QMainWindow):
             self._on_validation_error, Qt.ConnectionType.QueuedConnection
         )
         self._validation_thread.start()
+
+    def _prompt_formula_general_variable_values(self) -> dict[str, str] | None:
+        if self._current_taxonomy is None:
+            return {}
+        input_hints = self._formula_general_variable_hints()
+        if not input_hints:
+            return {}
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Formula General Variables")
+        dialog.setMinimumWidth(760)
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(10)
+        intro = QLabel(
+            "Provide values for Formula variables before validation. Leave a field blank to use "
+            "its fallback when available."
+        )
+        intro.setWordWrap(True)
+        layout.addWidget(intro)
+
+        form = QFormLayout()
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.ExpandingFieldsGrow)
+        form.setHorizontalSpacing(16)
+        form.setVerticalSpacing(8)
+        edits: dict[str, QLineEdit] = {}
+        for item in input_hints:
+            edit = QLineEdit()
+            edit.setMinimumWidth(380)
+            edit.setPlaceholderText(item.example)
+            edit.setToolTip(item.hint)
+            label_text = item.name
+            if item.fallback is not None:
+                label_text = f"{label_text} (fallback: {item.fallback})"
+            label = QLabel(label_text)
+            label.setToolTip(item.hint)
+            form.addRow(label, edit)
+            edits[item.name] = edit
+        layout.addLayout(form)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(dialog.accept)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+        return {
+            name: edit.text().strip()
+            for name, edit in edits.items()
+            if edit.text().strip()
+        }
+
+    def _formula_general_variable_hints(self) -> list[_FormulaInputHint]:
+        if self._current_taxonomy is None:
+            return []
+        assertion_set = self._current_taxonomy.formula_assertion_set
+        from bde_xbrl_editor.validation.formula.static import (  # noqa: PLC0415
+            collect_formula_external_variable_names,
+        )
+
+        seen: set[str] = set()
+        variables: list[_FormulaInputHint] = []
+        variable_sets = (*assertion_set.assertions, *assertion_set.output_formulas)
+        for variable_set in variable_sets:
+            for variable in variable_set.general_variables:
+                if variable.variable_name in seen:
+                    continue
+                seen.add(variable.variable_name)
+                variables.append(
+                    _FormulaInputHint(
+                        name=variable.variable_name,
+                        fallback=variable.fallback_value,
+                        hint=_formula_input_hint(variable.variable_name, variable.select_xpath),
+                        example=_formula_input_example(
+                            variable.variable_name,
+                            variable.select_xpath,
+                            variable.fallback_value,
+                        ),
+                    )
+                )
+        for name in collect_formula_external_variable_names(self._current_taxonomy):
+            if name in seen:
+                continue
+            seen.add(name)
+            variables.append(
+                _FormulaInputHint(
+                    name=name,
+                    hint=_formula_input_hint(name),
+                    example=_formula_input_example(name),
+                )
+            )
+        return variables
 
     def _on_validation_progress(self, current: int, total: int, message: str) -> None:
         if self._validation_panel:

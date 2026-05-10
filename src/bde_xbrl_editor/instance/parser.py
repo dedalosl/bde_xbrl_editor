@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import date, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -44,6 +45,9 @@ if TYPE_CHECKING:
 # lxml Clark-notation tag helpers
 _XBRLI_XBRL = f"{{{XBRLI_NS}}}xbrl"
 _LINK_SCHEMA_REF = f"{{{LINK_NS}}}schemaRef"
+_LINK_LINKBASE_REF = f"{{{LINK_NS}}}linkbaseRef"
+_LINK_ROLE_REF = f"{{{LINK_NS}}}roleRef"
+_LINK_ARCROLE_REF = f"{{{LINK_NS}}}arcroleRef"
 _XBRLI_CONTEXT = f"{{{XBRLI_NS}}}context"
 _XBRLI_UNIT = f"{{{XBRLI_NS}}}unit"
 _XBRLI_ENTITY = f"{{{XBRLI_NS}}}entity"
@@ -52,6 +56,7 @@ _XBRLI_PERIOD = f"{{{XBRLI_NS}}}period"
 _XBRLI_INSTANT = f"{{{XBRLI_NS}}}instant"
 _XBRLI_START = f"{{{XBRLI_NS}}}startDate"
 _XBRLI_END = f"{{{XBRLI_NS}}}endDate"
+_XBRLI_FOREVER = f"{{{XBRLI_NS}}}forever"
 _XBRLI_MEASURE = f"{{{XBRLI_NS}}}measure"
 _XBRLI_DIVIDE = f"{{{XBRLI_NS}}}divide"
 _XBRLI_UNIT_NUMERATOR = f"{{{XBRLI_NS}}}unitNumerator"
@@ -77,7 +82,10 @@ _XLINK_LABEL = f"{{{XLINK_NS}}}label"
 _XLINK_FROM = f"{{{XLINK_NS}}}from"
 _XLINK_TO = f"{{{XLINK_NS}}}to"
 _XLINK_ARCROLE = f"{{{XLINK_NS}}}arcrole"
+_ROLE_URI = "roleURI"
+_ARCROLE_URI = "arcroleURI"
 _XML_LANG = "{http://www.w3.org/XML/1998/namespace}lang"
+_XML_BASE = "{http://www.w3.org/XML/1998/namespace}base"
 _XSI_NIL = "{http://www.w3.org/2001/XMLSchema-instance}nil"
 _XBRLI_TUPLE_QNAME = QName(namespace=XBRLI_NS, local_name="tuple")
 _FOOTNOTE_LINK_ALLOWED_CHILD = frozenset(
@@ -114,6 +122,20 @@ _NON_FACT_TAGS = frozenset(
     ]
 )
 
+_OFFICIAL_SECONDARY_SCHEMA_REFS = frozenset(
+    {
+        "http://www.xbrl.org/2003/xbrl-instance-2003-12-31.xsd",
+        "https://www.xbrl.org/2003/xbrl-instance-2003-12-31.xsd",
+        "http://www.xbrl.org/2006/xbrldi-2006.xsd",
+        "https://www.xbrl.org/2006/xbrldi-2006.xsd",
+    }
+)
+_XBRL_ORG_REMOTE_PREFIXES = (
+    "http://www.xbrl.org/",
+    "https://www.xbrl.org/",
+)
+_DEFAULT_XBRL_ORG_CACHE_ROOT = Path(__file__).resolve().parents[3] / "cache" / "www.xbrl.org"
+
 
 def _catalog_path_candidates(local_root: Path, rel: str) -> list[Path]:
     """Return local-cache candidates for a remote schemaRef suffix.
@@ -133,6 +155,23 @@ def _catalog_path_candidates(local_root: Path, rel: str) -> list[Path]:
             candidates.append(alt_candidate)
 
     return candidates
+
+
+def _is_official_secondary_schema_ref(href: str) -> bool:
+    """Return true for standard XBRL infrastructure schemas, not taxonomy entry points."""
+    return href in _OFFICIAL_SECONDARY_SCHEMA_REFS
+
+
+def _resolve_default_xbrl_org_cache_path(href: str) -> Path | None:
+    """Resolve mirrored www.xbrl.org URLs from the bundled cache when present."""
+    href = href.split("#", 1)[0]
+    for prefix in _XBRL_ORG_REMOTE_PREFIXES:
+        if href.startswith(prefix):
+            candidate = (_DEFAULT_XBRL_ORG_CACHE_ROOT / href[len(prefix) :].lstrip("/")).resolve()
+            if candidate.exists():
+                return candidate
+            return None
+    return None
 
 
 def _reject_xbrli_in_segment_or_scenario(container: etree._Element, context_id: ContextId) -> None:
@@ -178,6 +217,32 @@ def _has_inherited_xml_lang(el: etree._Element) -> bool:
     return False
 
 
+def _reject_duplicate_instance_refs(root: etree._Element, path_str: str) -> None:
+    seen_roles: set[str] = set()
+    for role_ref in root.findall(_LINK_ROLE_REF):
+        role_uri = (role_ref.get(_ROLE_URI) or "").strip()
+        if not role_uri:
+            continue
+        if role_uri in seen_roles:
+            raise InstanceParseError(
+                path_str,
+                f"xbrl:duplicate-role-ref: Duplicate roleRef for roleURI '{role_uri}'",
+            )
+        seen_roles.add(role_uri)
+
+    seen_arcroles: set[str] = set()
+    for arcrole_ref in root.findall(_LINK_ARCROLE_REF):
+        arcrole_uri = (arcrole_ref.get(_ARCROLE_URI) or "").strip()
+        if not arcrole_uri:
+            continue
+        if arcrole_uri in seen_arcroles:
+            raise InstanceParseError(
+                path_str,
+                f"xbrl:duplicate-arcrole-ref: Duplicate arcroleRef for arcroleURI '{arcrole_uri}'",
+            )
+        seen_arcroles.add(arcrole_uri)
+
+
 def _period_s_equal_key(period_el: etree._Element) -> tuple:
     instant_el = period_el.find(_XBRLI_INSTANT)
     if instant_el is not None:
@@ -188,6 +253,9 @@ def _period_s_equal_key(period_el: etree._Element) -> tuple:
                 date_only_is_end_boundary=True,
             ).isoformat(),
         )
+
+    if period_el.find(_XBRLI_FOREVER) is not None:
+        return ("forever",)
 
     start_el = period_el.find(_XBRLI_START)
     end_el = period_el.find(_XBRLI_END)
@@ -224,6 +292,8 @@ def _parse_context(el: etree._Element) -> XbrlContext:
             period_type="instant",
             instant_date=_parse_date(instant_el.text or ""),
         )
+    elif period_el.find(_XBRLI_FOREVER) is not None:
+        period = ReportingPeriod(period_type="forever")
     else:
         start_el = period_el.find(_XBRLI_START)
         end_el = period_el.find(_XBRLI_END)
@@ -489,6 +559,33 @@ def _concept_substitution_chain_reaches(
     return False
 
 
+def _resolve_instance_linkbase_refs(instance_path: Path, root: etree._Element) -> list[Path]:
+    """Resolve local link:linkbaseRef hrefs on an instance document.
+
+    XBRL instance linkbaseRefs are DTS discovery roots. They are especially
+    important for formula conformance cases where a referenced linkbase contains
+    only locators that discover the real arc/resource linkbases.
+    """
+    refs: list[Path] = []
+    seen: set[Path] = set()
+    for lb_ref in root.findall(_LINK_LINKBASE_REF):
+        href = (lb_ref.get(_XLINK_HREF) or "").strip()
+        if not href:
+            continue
+        href = href.split("#", 1)[0]
+        if not href or href.startswith(("http://", "https://")):
+            continue
+        base_dir = instance_path.parent
+        xml_base = (lb_ref.get(_XML_BASE) or "").strip()
+        if xml_base and not xml_base.startswith(("http://", "https://")):
+            base_dir = (base_dir / xml_base).resolve()
+        candidate = (base_dir / href).resolve() if not href.startswith("/") else Path(href).resolve()
+        if candidate.exists() and candidate not in seen:
+            seen.add(candidate)
+            refs.append(candidate)
+    return refs
+
+
 def _reject_xbrl_defined_attrs_on_tuple_fact(
     el: etree._Element,
     concept_qname: QName,
@@ -505,6 +602,39 @@ def _reject_xbrl_defined_attrs_on_tuple_fact(
                 "xbrl:schema-validation-error: Tuple fact "
                 f"'{concept_qname}' must not use XBRL-defined attribute '{attr_qname}'",
             )
+
+
+def _merge_taxonomies(
+    primary: TaxonomyStructure,
+    additional: TaxonomyStructure,
+) -> TaxonomyStructure:
+    presentation = dict(primary.presentation)
+    presentation.update(additional.presentation)
+
+    calculation = {elr: list(arcs) for elr, arcs in primary.calculation.items()}
+    for elr, arcs in additional.calculation.items():
+        calculation.setdefault(elr, []).extend(arcs)
+
+    definition = {elr: list(arcs) for elr, arcs in primary.definition.items()}
+    for elr, arcs in additional.definition.items():
+        definition.setdefault(elr, []).extend(arcs)
+
+    return replace(
+        primary,
+        concepts={**primary.concepts, **additional.concepts},
+        presentation=presentation,
+        calculation=calculation,
+        definition=definition,
+        hypercubes=tuple(primary.hypercubes) + tuple(additional.hypercubes),
+        dimensions={**primary.dimensions, **additional.dimensions},
+        tables=tuple(primary.tables) + tuple(additional.tables),
+        schema_files=tuple(sorted(set(primary.schema_files) | set(additional.schema_files))),
+        linkbase_files=tuple(sorted(set(primary.linkbase_files) | set(additional.linkbase_files))),
+        schema_substitution_groups={
+            **primary.schema_substitution_groups,
+            **additional.schema_substitution_groups,
+        },
+    )
 
 
 class InstanceParser:
@@ -551,16 +681,19 @@ class InstanceParser:
                 path_str,
                 f"Root element must be xbrli:xbrl, got '{root.tag}'",
             )
+        _reject_duplicate_instance_refs(root, path_str)
 
         # Stage 2: Extract schemaRef and load taxonomy
-        schema_ref_el = root.find(_LINK_SCHEMA_REF)
-        if schema_ref_el is None:
+        schema_ref_els = root.findall(_LINK_SCHEMA_REF)
+        if not schema_ref_els:
             raise InstanceParseError(path_str, "Missing link:schemaRef element")
+        schema_ref_el = schema_ref_els[0]
         schema_href = schema_ref_el.get(_XLINK_HREF, "")
         if not schema_href:
             raise InstanceParseError(path_str, "link:schemaRef missing xlink:href")
 
         progress("Resolving instance taxonomy…", 12)
+        instance_linkbase_refs = _resolve_instance_linkbase_refs(path, root)
 
         def taxonomy_progress(message: str, current: int, total: int) -> None:
             if total <= 0:
@@ -570,7 +703,7 @@ class InstanceParser:
             mapped = 12 + int((current / total) * 58)
             progress(f"Loading taxonomy… {message}", min(mapped, 70))
 
-        resolved_taxonomy_path = self._resolve_taxonomy_path(path, schema_href)
+        resolved_taxonomy_path = self._resolve_taxonomy_path(path, schema_href, schema_ref_el)
         if (
             preloaded_taxonomy is not None
             and resolved_taxonomy_path is not None
@@ -586,6 +719,28 @@ class InstanceParser:
                 progress_callback=taxonomy_progress,
                 resolved_taxonomy_path=resolved_taxonomy_path,
             )
+            for extra_schema_ref_el in schema_ref_els[1:]:
+                extra_href = extra_schema_ref_el.get(_XLINK_HREF, "")
+                if not extra_href:
+                    continue
+                extra_resolved_path = self._resolve_taxonomy_path(
+                    path,
+                    extra_href,
+                    extra_schema_ref_el,
+                )
+                try:
+                    extra_taxonomy = self._resolve_taxonomy(
+                        path,
+                        extra_href,
+                        path_str,
+                        progress_callback=taxonomy_progress,
+                        resolved_taxonomy_path=extra_resolved_path,
+                    )
+                except TaxonomyResolutionError:
+                    if _is_official_secondary_schema_ref(extra_href):
+                        continue
+                    raise
+                taxonomy = _merge_taxonomies(taxonomy, extra_taxonomy)
         if taxonomy_resolved_callback is not None:
             taxonomy_resolved_callback(taxonomy)
         progress(
@@ -677,8 +832,7 @@ class InstanceParser:
                     and footnote_role != _ROLE_FOOTNOTE
                 ):
                     footnote_errors.append(
-                        "link:footnote uses an invalid standard xlink:role "
-                        f"'{footnote_role}'"
+                        f"link:footnote uses an invalid standard xlink:role '{footnote_role}'"
                     )
                 if not _has_inherited_xml_lang(fn_el):
                     footnote_errors.append("link:footnote is missing required xml:lang attribute")
@@ -884,6 +1038,7 @@ class InstanceParser:
             orphaned_facts=orphaned,
             bde_preambulo=bde_preambulo,
             source_path=path,
+            instance_linkbase_refs=tuple(instance_linkbase_refs),
             _dirty=False,
         )
 
@@ -894,12 +1049,18 @@ class InstanceParser:
         self,
         instance_path: Path,
         schema_href: str,
+        schema_ref_el: etree._Element | None = None,
     ) -> Path | None:
         """Resolve schemaRef href to a local taxonomy path when possible."""
         is_remote = schema_href.startswith(("http://", "https://"))
+        base_dir = instance_path.parent
+        if schema_ref_el is not None:
+            xml_base = (schema_ref_el.get(_XML_BASE) or "").strip()
+            if xml_base and not xml_base.startswith(("http://", "https://")):
+                base_dir = (base_dir / xml_base).resolve()
 
         if not is_remote and not schema_href.startswith("/"):
-            candidate = (instance_path.parent / schema_href).resolve()
+            candidate = (base_dir / schema_href).resolve()
             if candidate.exists():
                 return candidate
 
@@ -917,6 +1078,9 @@ class InstanceParser:
                         for candidate in _catalog_path_candidates(local_root, rel):
                             if candidate.exists():
                                 return candidate
+            default_cache_path = _resolve_default_xbrl_org_cache_path(schema_href)
+            if default_cache_path is not None:
+                return default_cache_path
 
         if self._resolver is not None:
             resolved = self._resolver(schema_href)
@@ -932,12 +1096,17 @@ class InstanceParser:
         path_str: str,
         progress_callback: Callable[[str, int, int], None] | None = None,
         resolved_taxonomy_path: Path | None = None,
+        instance_linkbase_seeds: list[Path] | tuple[Path, ...] | None = None,
     ) -> TaxonomyStructure:
         """Resolve the schemaRef href to a taxonomy path and load it."""
         if resolved_taxonomy_path is None:
             resolved_taxonomy_path = self._resolve_taxonomy_path(instance_path, schema_href)
         if resolved_taxonomy_path is not None:
-            return self._loader.load(resolved_taxonomy_path, progress_callback=progress_callback)
+            return self._loader.load(
+                resolved_taxonomy_path,
+                progress_callback=progress_callback,
+                instance_linkbase_seeds=instance_linkbase_seeds,
+            )
 
         raise TaxonomyResolutionError(
             schema_href,

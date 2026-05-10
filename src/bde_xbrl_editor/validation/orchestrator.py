@@ -19,11 +19,13 @@ from bde_xbrl_editor.taxonomy.models import TaxonomyStructure
 from bde_xbrl_editor.validation.calculation import CalculationConsistencyValidator
 from bde_xbrl_editor.validation.dimensional import DimensionalConstraintValidator
 from bde_xbrl_editor.validation.formula.evaluator import FormulaEvaluator
+from bde_xbrl_editor.validation.formula.static import FormulaStaticValidator
 from bde_xbrl_editor.validation.models import (
     ValidationFinding,
     ValidationReport,
     ValidationSeverity,
 )
+from bde_xbrl_editor.validation.relationships import RelationshipSetValidator
 from bde_xbrl_editor.validation.structural import StructuralConformanceValidator
 
 ProgressCallback = Callable[[int, int, str], None]
@@ -42,11 +44,17 @@ class InstanceValidator:
         progress_callback: ProgressCallback | None = None,
         finding_callback: FindingCallback | None = None,
         cancel_event: threading.Event | None = None,
+        include_dimensional: bool = True,
+        include_relationships: bool = False,
+        general_variable_values: dict[str, str] | None = None,
     ) -> None:
         self._taxonomy = taxonomy
         self._progress_callback = progress_callback
         self._finding_callback = finding_callback
         self._cancel_event = cancel_event
+        self._include_dimensional = include_dimensional
+        self._include_relationships = include_relationships
+        self._general_variable_values = dict(general_variable_values or {})
 
     def validate_sync(self, instance: XbrlInstance) -> ValidationReport:
         """Run structural + dimensional + formula validation synchronously.
@@ -56,113 +64,170 @@ class InstanceValidator:
         """
         findings: list[ValidationFinding] = []
         stage_timings: list[StageTiming] = []
+        total_steps = 5 if self._include_relationships else 4
+        calculation_step = 2 if self._include_relationships else 1
+        dimensional_step = 3 if self._include_relationships else 2
+        formula_step = 4 if self._include_relationships else 3
 
         # --- 1. Structural checks -------------------------------------------
         if not (self._cancel_event and self._cancel_event.is_set()):
             stage_started_at = time.perf_counter()
             if self._progress_callback:
                 with contextlib.suppress(Exception):
-                    self._progress_callback(0, 4, "Running structural checks…")
+                    self._progress_callback(0, total_steps, "Running structural checks…")
             try:
                 sv = StructuralConformanceValidator()
                 stage_findings = tuple(sv.validate(instance, self._taxonomy))
                 findings.extend(stage_findings)
                 self._publish_findings(stage_findings)
             except Exception as exc:  # noqa: BLE001
-                stage_findings = (ValidationFinding(
-                    rule_id="internal:structural-error",
-                    severity=ValidationSeverity.ERROR,
-                    message=f"Structural validator failed unexpectedly: {exc}",
-                    source="structural",
-                ),)
+                stage_findings = (
+                    ValidationFinding(
+                        rule_id="internal:structural-error",
+                        severity=ValidationSeverity.ERROR,
+                        message=f"Structural validator failed unexpectedly: {exc}",
+                        source="structural",
+                    ),
+                )
                 findings.extend(stage_findings)
                 self._publish_findings(stage_findings)
-            stage_timings.append(
-                StageTiming("structural", time.perf_counter() - stage_started_at)
-            )
+            stage_timings.append(StageTiming("structural", time.perf_counter() - stage_started_at))
+
+        # --- 1b. Taxonomy relationship-set checks ---------------------------
+        if self._include_relationships and not (
+            self._cancel_event and self._cancel_event.is_set()
+        ):
+            stage_started_at = time.perf_counter()
+            if self._progress_callback:
+                with contextlib.suppress(Exception):
+                    self._progress_callback(
+                        1,
+                        total_steps,
+                        "Running taxonomy relationship checks…",
+                    )
+            try:
+                rv = RelationshipSetValidator()
+                stage_findings = tuple(rv.validate_taxonomy(self._taxonomy))
+                findings.extend(stage_findings)
+                self._publish_findings(stage_findings)
+            except Exception as exc:  # noqa: BLE001
+                stage_findings = (
+                    ValidationFinding(
+                        rule_id="internal:relationship-error",
+                        severity=ValidationSeverity.ERROR,
+                        message=f"Relationship-set validator failed unexpectedly: {exc}",
+                        source="relationships",
+                    ),
+                )
+                findings.extend(stage_findings)
+                self._publish_findings(stage_findings)
+            stage_timings.append(StageTiming("relationships", time.perf_counter() - stage_started_at))
 
         # --- 2. Calculation (summation-item) checks -------------------------
         if not (self._cancel_event and self._cancel_event.is_set()):
             stage_started_at = time.perf_counter()
             if self._progress_callback:
                 with contextlib.suppress(Exception):
-                    self._progress_callback(1, 4, "Running calculation checks…")
+                    self._progress_callback(
+                        calculation_step,
+                        total_steps,
+                        "Running calculation checks…",
+                    )
             try:
                 cv = CalculationConsistencyValidator()
                 stage_findings = tuple(cv.validate(instance, self._taxonomy))
                 findings.extend(stage_findings)
                 self._publish_findings(stage_findings)
             except Exception as exc:  # noqa: BLE001
-                stage_findings = (ValidationFinding(
-                    rule_id="internal:calculation-error",
-                    severity=ValidationSeverity.ERROR,
-                    message=f"Calculation validator failed unexpectedly: {exc}",
-                    source="calculation",
-                ),)
+                stage_findings = (
+                    ValidationFinding(
+                        rule_id="internal:calculation-error",
+                        severity=ValidationSeverity.ERROR,
+                        message=f"Calculation validator failed unexpectedly: {exc}",
+                        source="calculation",
+                    ),
+                )
                 findings.extend(stage_findings)
                 self._publish_findings(stage_findings)
-            stage_timings.append(
-                StageTiming("calculation", time.perf_counter() - stage_started_at)
-            )
+            stage_timings.append(StageTiming("calculation", time.perf_counter() - stage_started_at))
 
         # --- 3. Dimensional checks -------------------------------------------
-        if not (self._cancel_event and self._cancel_event.is_set()):
+        if self._include_dimensional and not (self._cancel_event and self._cancel_event.is_set()):
             stage_started_at = time.perf_counter()
             if self._progress_callback:
                 with contextlib.suppress(Exception):
-                    self._progress_callback(2, 4, "Running dimensional checks…")
+                    self._progress_callback(
+                        dimensional_step,
+                        total_steps,
+                        "Running dimensional checks…",
+                    )
             try:
                 dv = DimensionalConstraintValidator(self._taxonomy)
                 stage_findings = tuple(dv.validate(instance))
                 findings.extend(stage_findings)
                 self._publish_findings(stage_findings)
             except Exception as exc:  # noqa: BLE001
-                stage_findings = (ValidationFinding(
-                    rule_id="internal:dimensional-error",
-                    severity=ValidationSeverity.ERROR,
-                    message=f"Dimensional validator failed unexpectedly: {exc}",
-                    source="dimensional",
-                ),)
+                stage_findings = (
+                    ValidationFinding(
+                        rule_id="internal:dimensional-error",
+                        severity=ValidationSeverity.ERROR,
+                        message=f"Dimensional validator failed unexpectedly: {exc}",
+                        source="dimensional",
+                    ),
+                )
                 findings.extend(stage_findings)
                 self._publish_findings(stage_findings)
-            stage_timings.append(
-                StageTiming("dimensional", time.perf_counter() - stage_started_at)
-            )
+            stage_timings.append(StageTiming("dimensional", time.perf_counter() - stage_started_at))
 
         # --- 4. Formula assertions ------------------------------------------
-        formula_available = bool(
-            self._taxonomy.formula_assertion_set.assertions
-        )
+        formula_available = bool(self._taxonomy.formula_assertion_set.assertions)
         if not (self._cancel_event and self._cancel_event.is_set()):
             stage_started_at = time.perf_counter()
             if self._progress_callback:
                 with contextlib.suppress(Exception):
-                    self._progress_callback(3, 4, "Evaluating formula assertions…")
+                    self._progress_callback(
+                        formula_step,
+                        total_steps,
+                        "Evaluating formula assertions…",
+                    )
             try:
+                static_findings = tuple(
+                    FormulaStaticValidator(
+                        self._taxonomy,
+                        external_variable_names=self._general_variable_values.keys(),
+                    ).validate(instance)
+                )
+                findings.extend(static_findings)
+                self._publish_findings(static_findings)
                 fe = FormulaEvaluator(
                     taxonomy=self._taxonomy,
                     progress_callback=self._progress_callback,
                     finding_callback=self._publish_findings,
                     cancel_event=self._cancel_event,
+                    general_variable_values=self._general_variable_values,
                 )
                 findings.extend(fe.evaluate(instance))
             except Exception as exc:  # noqa: BLE001
-                stage_findings = (ValidationFinding(
-                    rule_id="internal:formula-error",
-                    severity=ValidationSeverity.ERROR,
-                    message=f"Formula evaluator failed unexpectedly: {exc}",
-                    source="formula",
-                ),)
+                stage_findings = (
+                    ValidationFinding(
+                        rule_id="internal:formula-error",
+                        severity=ValidationSeverity.ERROR,
+                        message=f"Formula evaluator failed unexpectedly: {exc}",
+                        source="formula",
+                    ),
+                )
                 findings.extend(stage_findings)
                 self._publish_findings(stage_findings)
-            stage_timings.append(
-                StageTiming("formula", time.perf_counter() - stage_started_at)
-            )
+            stage_timings.append(StageTiming("formula", time.perf_counter() - stage_started_at))
 
         if self._progress_callback:
             with contextlib.suppress(Exception):
                 elapsed_total = sum(stage.elapsed_seconds for stage in stage_timings)
-                self._progress_callback(4, 4, f"Validation complete ({elapsed_total:.2f}s)")
+                self._progress_callback(
+                    total_steps,
+                    total_steps,
+                    f"Validation complete ({elapsed_total:.2f}s)",
+                )
 
         meta = self._taxonomy.metadata
         return ValidationReport(
@@ -171,9 +236,8 @@ class InstanceValidator:
             taxonomy_version=meta.version,
             run_timestamp=datetime.now(),
             findings=tuple(findings),
-            formula_linkbase_available=formula_available or (
-                self._taxonomy.formula_linkbase_path is not None
-            ),
+            formula_linkbase_available=formula_available
+            or (self._taxonomy.formula_linkbase_path is not None),
             structural_checks_run=True,
             stage_timings=tuple(stage_timings),
         )

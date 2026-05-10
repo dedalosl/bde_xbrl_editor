@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import re
+from collections.abc import Iterable
+from copy import deepcopy
+from dataclasses import replace
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Literal
@@ -9,15 +13,26 @@ from urllib.parse import urldefrag
 
 from lxml import etree
 
-from bde_xbrl_editor.taxonomy.constants import NS_ASSERTION_SETS_20_PWD, NS_VALIDATION_V10
+from bde_xbrl_editor.taxonomy.constants import (
+    FORMULA_XPATH_DEFAULT_PREFIXES,
+    NS_ASSERTION_SETS_20_PWD,
+    NS_VALIDATION_V10,
+)
 from bde_xbrl_editor.taxonomy.models import (
     BooleanFilterDefinition,
     ConsistencyAssertionDefinition,
     DimensionFilter,
     ExistenceAssertionDefinition,
     FactVariableDefinition,
+    FormulaArc,
+    FormulaAspectRule,
     FormulaAssertion,
     FormulaAssertionSet,
+    FormulaFilterResource,
+    FormulaOutputDefinition,
+    GeneralVariableDefinition,
+    ParameterDefinition,
+    PreconditionDefinition,
     QName,
     TypedDimensionFilter,
     ValueAssertionDefinition,
@@ -42,31 +57,77 @@ _NS_DF = "http://xbrl.org/2008/filter/dimension"
 _NS_UF = "http://xbrl.org/2008/filter/unit"
 _NS_GF = "http://xbrl.org/2008/filter/general"
 _NS_BF = "http://xbrl.org/2008/filter/boolean"
+_NS_SSF = "http://xbrl.org/2008/filter/segment-scenario"
+_NS_TF = "http://xbrl.org/2008/filter/tuple"
+_NS_VF = "http://xbrl.org/2008/filter/value"
+_NS_MF = "http://xbrl.org/2008/filter/match"
+_NS_ACF = "http://xbrl.org/2010/filter/aspect-cover"
+_NS_CRF = "http://xbrl.org/2010/filter/concept-relation"
 _NS_LINK = "http://www.xbrl.org/2003/linkbase"
 _NS_XLINK = "http://www.w3.org/1999/xlink"
 
 # Clark-notation element tags — each assertion type lives in its own namespace
 _TAG_VALUE_ASSERTION = f"{{{_NS_VA}}}valueAssertion"
+_TAG_FORMULA = f"{{{_NS_FORMULA}}}formula"
+_TAG_FORMULA_ASPECTS = f"{{{_NS_FORMULA}}}aspects"
+_TAG_FORMULA_CONCEPT = f"{{{_NS_FORMULA}}}concept"
+_TAG_FORMULA_QNAME = f"{{{_NS_FORMULA}}}qname"
+_TAG_FORMULA_ENTITY_IDENTIFIER = f"{{{_NS_FORMULA}}}entityIdentifier"
+_TAG_FORMULA_PERIOD = f"{{{_NS_FORMULA}}}period"
+_TAG_FORMULA_UNIT = f"{{{_NS_FORMULA}}}unit"
+_TAG_FORMULA_INSTANT = f"{{{_NS_FORMULA}}}instant"
+_TAG_FORMULA_DURATION = f"{{{_NS_FORMULA}}}duration"
+_TAG_FORMULA_FOREVER = f"{{{_NS_FORMULA}}}forever"
+_TAG_FORMULA_EXPLICIT_DIMENSION = f"{{{_NS_FORMULA}}}explicitDimension"
+_TAG_FORMULA_TYPED_DIMENSION = f"{{{_NS_FORMULA}}}typedDimension"
 _TAG_EXISTENCE_ASSERTION = f"{{{_NS_EA}}}existenceAssertion"
 _TAG_CONSISTENCY_ASSERTION = f"{{{_NS_CA}}}consistencyAssertion"
 _TAG_FACT_VARIABLE = f"{{{_NS_VARIABLE}}}factVariable"
+_TAG_GENERAL_VARIABLE = f"{{{_NS_VARIABLE}}}generalVariable"
+_TAG_PARAMETER = f"{{{_NS_VARIABLE}}}parameter"
+_TAG_PRECONDITION = f"{{{_NS_VARIABLE}}}precondition"
 _TAG_VARIABLE_ARC = f"{{{_NS_VARIABLE}}}variableArc"
+_TAG_PARAMETER_ARC = f"{{{_NS_VARIABLE}}}parameterArc"
+_TAG_PRECONDITION_ARC = f"{{{_NS_VARIABLE}}}preconditionArc"
 _TAG_VARIABLE_FILTER_ARC = f"{{{_NS_VARIABLE}}}variableFilterArc"
+_TAG_GENERIC_ARC = "{http://xbrl.org/2008/generic}arc"
 _TAG_CF_CONCEPT_NAME = f"{{{_NS_CF}}}conceptName"
 _TAG_CF_CONCEPT = f"{{{_NS_CF}}}concept"
 _TAG_CF_QNAME = f"{{{_NS_CF}}}qname"
+_TAG_CF_QNAME_EXPRESSION = f"{{{_NS_CF}}}qnameExpression"
 _TAG_PF_INSTANT = f"{{{_NS_PF}}}instant"
 _TAG_PF_DURATION = f"{{{_NS_PF}}}duration"
-_TAG_PF_PERIOD = f"{{{_NS_PF}}}period"          # pf:period test="..." — XPath period filter
+_TAG_PF_PERIOD = f"{{{_NS_PF}}}period"  # pf:period test="..." — XPath period filter
 _TAG_DF_EXPLICIT_DIMENSION = f"{{{_NS_DF}}}explicitDimension"
 _TAG_DF_TYPED_DIMENSION = f"{{{_NS_DF}}}typedDimension"
 _TAG_DF_DIMENSION = f"{{{_NS_DF}}}dimension"
 _TAG_DF_MEMBER = f"{{{_NS_DF}}}member"
 _TAG_DF_QNAME = f"{{{_NS_DF}}}qname"
-_TAG_GF_GENERAL = f"{{{_NS_GF}}}general"        # gf:general test="..." — XPath general filter
+_TAG_GF_GENERAL = f"{{{_NS_GF}}}general"  # gf:general test="..." — XPath general filter
+_NS_EF = "http://xbrl.org/2008/filter/entity"
+_TAG_EF_IDENTIFIER = f"{{{_NS_EF}}}identifier"
+_TAG_SSF_SEGMENT = f"{{{_NS_SSF}}}segment"
+_TAG_UF_GENERAL_MEASURES = f"{{{_NS_UF}}}generalMeasures"
 _TAG_BF_AND_FILTER = f"{{{_NS_BF}}}andFilter"
 _TAG_BF_OR_FILTER = f"{{{_NS_BF}}}orFilter"
 _BOOLEAN_FILTER_TAGS = (_TAG_BF_AND_FILTER, _TAG_BF_OR_FILTER)
+_FILTER_NAMESPACES = frozenset(
+    {
+        _NS_CF,
+        _NS_PF,
+        _NS_DF,
+        _NS_UF,
+        _NS_GF,
+        _NS_BF,
+        _NS_EF,
+        _NS_SSF,
+        _NS_TF,
+        _NS_VF,
+        _NS_MF,
+        _NS_ACF,
+        _NS_CRF,
+    }
+)
 
 # XLink attribute names (Clark notation)
 _ATTR_XLINK_TYPE = f"{{{_NS_XLINK}}}type"
@@ -80,16 +141,20 @@ _ARCROLE_VARIABLE_SET = "http://xbrl.org/arcrole/2008/variable-set"
 _ARCROLE_VARIABLE_FILTER = "http://xbrl.org/arcrole/2008/variable-filter"
 _ARCROLE_VARIABLE_SET_FILTER = "http://xbrl.org/arcrole/2008/variable-set-filter"
 _ARCROLE_BOOLEAN_FILTER = "http://xbrl.org/arcrole/2008/boolean-filter"
+_ARCROLE_VARIABLE_SET_PRECONDITION = "http://xbrl.org/arcrole/2008/variable-set-precondition"
+_ARCROLE_VARIABLE_SET_PARAMETER = "http://xbrl.org/arcrole/2008/variable-set"
 _ARCROLE_ASSERTION_SET = "http://xbrl.org/arcrole/2008/assertion-set"
 _ARCROLE_APPLIES_TO_TABLE = "http://www.eurofiling.info/xbrl/arcrole/applies-to-table"
 
 _TAG_VARIABLE_SET_FILTER_ARC = f"{{{_NS_VARIABLE}}}variableSetFilterArc"
 _TAG_LINK_LOC = f"{{{_NS_LINK}}}loc"
+_VAR_REF_RE = re.compile(r"\$([A-Za-z_][A-Za-z0-9_.:-]*)")
 
 
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
 
 def _parse_severity(value: str | None) -> str:
     """Return 'warning' or 'error' string. The evaluator converts this to ValidationSeverity."""
@@ -125,8 +190,32 @@ def _clark_to_qname(clark: str, nsmap: dict[str, str] | None = None) -> QName | 
 
 
 def _element_nsmap(el: etree._Element) -> dict[str, str]:
-    """Return the namespace map (str → URI) for an element, filtering None keys."""
-    return {k: v for k, v in el.nsmap.items() if k is not None}
+    """Return Formula XPath/QName namespace context for *el*."""
+    return _xpath_ns_context(el)
+
+
+def _xpath_ns_context(el: etree._Element) -> dict[str, str]:
+    """Return Formula XPath namespace context for *el*.
+
+    Start with standard Formula/XBRL prefixes, then apply ancestor declarations
+    root-to-parent, and finally the element's declarations. This prevents static
+    XPath checks from failing when BDE/EBA rule packs put ``xbrli`` or ``link``
+    on ``link:linkbase`` rather than on the assertion/filter resource itself.
+    """
+    merged: dict[str, str] = dict(FORMULA_XPATH_DEFAULT_PREFIXES)
+    for ancestor in reversed(list(el.iterancestors())):
+        merged.update({k: v for k, v in ancestor.nsmap.items() if k is not None and v})
+    merged.update({k: v for k, v in el.nsmap.items() if k is not None and v})
+    return merged
+
+
+def _extract_referenced_names(*expressions: str | None) -> tuple[str, ...]:
+    names: set[str] = set()
+    for expr in expressions:
+        if not expr:
+            continue
+        names.update(_VAR_REF_RE.findall(expr))
+    return tuple(sorted(names))
 
 
 def _parse_qname_element(parent: etree._Element, tag: str) -> QName | None:
@@ -140,9 +229,18 @@ def _parse_qname_element(parent: etree._Element, tag: str) -> QName | None:
     return _clark_to_qname(text, _element_nsmap(child))
 
 
+def _qname_localname(name: str) -> str:
+    return etree.QName(name).localname if name.startswith("{") else name
+
+
+def _qname_namespace(name: str) -> str:
+    return etree.QName(name).namespace if name.startswith("{") else ""
+
+
 # ---------------------------------------------------------------------------
 # Filter extraction
 # ---------------------------------------------------------------------------
+
 
 def _extract_concept_filter(filter_el: etree._Element) -> QName | None:
     """Extract the concept QName from a cf:conceptName or cf:concept element."""
@@ -171,6 +269,26 @@ def _extract_concept_filter(filter_el: etree._Element) -> QName | None:
             return _clark_to_qname((qname_el.text or "").strip(), nsmap)
 
     return None
+
+
+def _extract_concept_qname_expression(filter_el: etree._Element) -> XPathFilterDefinition | None:
+    if filter_el.tag not in (_TAG_CF_CONCEPT_NAME, _TAG_CF_CONCEPT):
+        return None
+    qname_expr_el = filter_el.find(_TAG_CF_QNAME_EXPRESSION)
+    if qname_expr_el is None:
+        concept_el = filter_el.find(_TAG_CF_CONCEPT)
+        if concept_el is not None:
+            qname_expr_el = concept_el.find(_TAG_CF_QNAME_EXPRESSION)
+    if qname_expr_el is None:
+        return None
+    expr = (qname_expr_el.text or "").strip()
+    if not expr:
+        return None
+    return XPathFilterDefinition(
+        xpath_expr=expr,
+        namespaces=_element_nsmap(qname_expr_el),
+        filter_type="concept",
+    )
 
 
 def _extract_period_filter(filter_el: etree._Element) -> Literal["instant", "duration"] | None:
@@ -233,17 +351,121 @@ def _extract_typed_dimension_filter(filter_el: etree._Element) -> TypedDimension
     return TypedDimensionFilter(dimension_qname=dimension_qname)
 
 
+def _parse_filter_resource(filter_el: etree._Element) -> FormulaFilterResource:
+    """Preserve Formula filter resource metadata beyond the currently executable subset."""
+    attributes: dict[str, str] = {}
+    for attr_name, attr_value in filter_el.attrib.items():
+        if attr_name in {_ATTR_XLINK_TYPE, _ATTR_XLINK_LABEL}:
+            continue
+        attributes[_qname_localname(attr_name)] = attr_value
+
+    qnames: list[QName] = []
+    qname_expressions: list[str] = []
+    aspects: list[str] = []
+    text_exprs: list[str] = []
+    for descendant in filter_el.iter():
+        if descendant is filter_el or not isinstance(descendant.tag, str):
+            continue
+        local_name = _qname_localname(descendant.tag)
+        text = (descendant.text or "").strip()
+        if local_name == "qname" and text:
+            qname = _clark_to_qname(text, _element_nsmap(descendant))
+            if qname is not None:
+                qnames.append(qname)
+        elif local_name == "qnameExpression" and text:
+            qname_expressions.append(text)
+            text_exprs.append(text)
+        elif local_name == "aspect" and text:
+            aspects.append(text)
+
+    test_xpath = (filter_el.get("test") or "").strip() or None
+    variable = (filter_el.get("variable") or "").strip() or None
+    match_any_attr = (filter_el.get("matchAny") or "").strip()
+    match_any = match_any_attr.lower() == "true" if match_any_attr else None
+    referenced_names = _extract_referenced_names(
+        test_xpath,
+        *(attributes.get(name) for name in ("select", "value")),
+        *qname_expressions,
+        *text_exprs,
+    )
+    return FormulaFilterResource(
+        label=filter_el.get(_ATTR_XLINK_LABEL, ""),
+        namespace=_qname_namespace(filter_el.tag),
+        local_name=_qname_localname(filter_el.tag),
+        attributes=attributes,
+        test_xpath=test_xpath,
+        variable=variable,
+        match_any=match_any,
+        aspects=tuple(aspects),
+        qnames=tuple(qnames),
+        qname_expressions=tuple(qname_expressions),
+        namespaces=_element_nsmap(filter_el),
+        referenced_names=referenced_names,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Variable extraction
 # ---------------------------------------------------------------------------
 
-def _build_label_to_element(root: etree._Element, tag: str) -> dict[str, etree._Element]:
+
+def _build_locator_target_map(root: etree._Element) -> dict[str, str]:
+    locator_targets: dict[str, str] = {}
+    for locator in root.iter(_TAG_LINK_LOC):
+        label = (locator.get(_ATTR_XLINK_LABEL) or "").strip()
+        href = (locator.get(f"{{{_NS_XLINK}}}href") or "").strip()
+        fragment = _href_fragment(href)
+        if label and fragment:
+            locator_targets[label] = fragment
+    return locator_targets
+
+
+def _resource_index_keys(
+    el: etree._Element,
+    locator_labels_by_fragment: dict[str, list[str]] | None = None,
+) -> tuple[str, ...]:
+    keys: list[str] = []
+    label = (el.get(_ATTR_XLINK_LABEL) or "").strip()
+    if label:
+        keys.append(label)
+    xml_id = (el.get("id") or "").strip()
+    if xml_id:
+        keys.append(xml_id)
+        keys.extend(locator_labels_by_fragment.get(xml_id, []) if locator_labels_by_fragment else [])
+    return tuple(dict.fromkeys(keys))
+
+
+def _build_label_to_element(
+    root: etree._Element,
+    tag: str,
+    locator_labels_by_fragment: dict[str, list[str]] | None = None,
+) -> dict[str, etree._Element]:
     """Index all *tag* elements in the document by their @xlink:label attribute."""
     index: dict[str, etree._Element] = {}
     for el in root.iter(tag):
-        lbl = el.get(_ATTR_XLINK_LABEL, "")
-        if lbl:
-            index[lbl] = el
+        for key in _resource_index_keys(el, locator_labels_by_fragment):
+            index[key] = el
+    return index
+
+
+def _build_label_to_elements(
+    root: etree._Element,
+    tag: str,
+    locator_labels_by_fragment: dict[str, list[str]] | None = None,
+) -> dict[str, list[etree._Element]]:
+    index: dict[str, list[etree._Element]] = {}
+    for el in root.iter(tag):
+        for key in _resource_index_keys(el, locator_labels_by_fragment):
+            index.setdefault(key, []).append(el)
+    return index
+
+
+def _build_label_to_element_for_tags(
+    root: etree._Element, tags: tuple[str, ...]
+) -> dict[str, etree._Element]:
+    index: dict[str, etree._Element] = {}
+    for tag in tags:
+        index.update(_build_label_to_element(root, tag))
     return index
 
 
@@ -260,18 +482,93 @@ def _build_arc_map(root: etree._Element, arc_tags: list[str]) -> dict[str, list[
     return arc_map
 
 
-def _build_filter_arc_map(root: etree._Element) -> dict[str, list[str]]:
+def _build_filter_arc_map(
+    root: etree._Element,
+    locator_targets: dict[str, str] | None = None,
+) -> dict[str, list[str]]:
     """Build a variable-label→[filter-label, …] mapping from variableFilterArc elements."""
     arc_map: dict[str, list[str]] = {}
     for arc in root.iter(_TAG_VARIABLE_FILTER_ARC):
         frm = arc.get(_ATTR_XLINK_FROM, "")
         to = arc.get(_ATTR_XLINK_TO, "")
+        if locator_targets:
+            frm = locator_targets.get(frm, frm)
+            to = locator_targets.get(to, to)
         if frm and to:
             arc_map.setdefault(frm, []).append(to)
     return arc_map
 
 
-def _build_variable_set_filter_arc_map(root: etree._Element) -> dict[str, list[str]]:
+def _parse_arc_float(value: str | None) -> float | None:
+    try:
+        return float(value) if value not in (None, "") else None
+    except ValueError:
+        return None
+
+
+def _parse_arc_int(value: str | None) -> int | None:
+    try:
+        return int(value) if value not in (None, "") else None
+    except ValueError:
+        return None
+
+
+def _collect_formula_arc(arc: etree._Element) -> FormulaArc | None:
+    frm = arc.get(_ATTR_XLINK_FROM, "")
+    to = arc.get(_ATTR_XLINK_TO, "")
+    if not frm or not to:
+        return None
+    return FormulaArc(
+        from_label=frm,
+        to_label=to,
+        arcrole=arc.get(_ATTR_XLINK_ARCROLE, ""),
+        name=(arc.get("name") or "").strip() or None,
+        order=_parse_arc_float(arc.get("order")),
+        priority=_parse_arc_int(arc.get("priority")),
+        use=(arc.get("use") or "optional").strip() or "optional",
+        namespaces=_element_nsmap(arc),
+    )
+
+
+def _build_resource_arc_map(
+    root: etree._Element,
+    *,
+    tag: str,
+    locator_targets: dict[str, str] | None = None,
+) -> tuple[dict[str, list[FormulaArc]], dict[str, list[tuple[str, str]]]]:
+    arc_meta_map: dict[str, list[FormulaArc]] = {}
+    arc_name_map: dict[str, list[tuple[str, str]]] = {}
+    arc_tags = (tag,)
+    if tag == _TAG_PRECONDITION_ARC:
+        arc_tags = (tag, _TAG_GENERIC_ARC)
+    for arc_tag in arc_tags:
+        for arc in root.iter(arc_tag):
+            parsed = _collect_formula_arc(arc)
+            if parsed is None:
+                continue
+            if (
+                arc_tag == _TAG_GENERIC_ARC
+                and tag == _TAG_PRECONDITION_ARC
+                and parsed.arcrole != _ARCROLE_VARIABLE_SET_PRECONDITION
+            ):
+                continue
+            if locator_targets:
+                parsed = replace(
+                    parsed,
+                    from_label=locator_targets.get(parsed.from_label, parsed.from_label),
+                    to_label=locator_targets.get(parsed.to_label, parsed.to_label),
+                )
+            arc_meta_map.setdefault(parsed.from_label, []).append(parsed)
+            arc_name_map.setdefault(parsed.from_label, []).append(
+                (parsed.to_label, parsed.name or "")
+            )
+    return arc_meta_map, arc_name_map
+
+
+def _build_variable_set_filter_arc_map(
+    root: etree._Element,
+    locator_targets: dict[str, str] | None = None,
+) -> dict[str, list[str]]:
     """Build an assertion-label→[filter-label, …] mapping from variableSetFilterArc elements.
 
     These filters apply at the assertion level (to all variables in the set).
@@ -280,12 +577,18 @@ def _build_variable_set_filter_arc_map(root: etree._Element) -> dict[str, list[s
     for arc in root.iter(_TAG_VARIABLE_SET_FILTER_ARC):
         frm = arc.get(_ATTR_XLINK_FROM, "")
         to = arc.get(_ATTR_XLINK_TO, "")
+        if locator_targets:
+            frm = locator_targets.get(frm, frm)
+            to = locator_targets.get(to, to)
         if frm and to:
             arc_map.setdefault(frm, []).append(to)
     return arc_map
 
 
-def _build_boolean_filter_arc_map(root: etree._Element) -> dict[str, list[tuple[str, bool]]]:
+def _build_boolean_filter_arc_map(
+    root: etree._Element,
+    locator_targets: dict[str, str] | None = None,
+) -> dict[str, list[tuple[str, bool]]]:
     """Build a parent-label → [(child-label, complement), …] map from boolean-filter arcs.
 
     Both variableFilterArc and variableSetFilterArc elements can carry arcrole
@@ -299,6 +602,9 @@ def _build_boolean_filter_arc_map(root: etree._Element) -> dict[str, list[tuple[
                 continue
             frm = arc.get(_ATTR_XLINK_FROM, "")
             to = arc.get(_ATTR_XLINK_TO, "")
+            if locator_targets:
+                frm = locator_targets.get(frm, frm)
+                to = locator_targets.get(to, to)
             complement = arc.get("complement", "false").lower() == "true"
             if frm and to:
                 arc_map.setdefault(frm, []).append((to, complement))
@@ -339,8 +645,11 @@ def _build_boolean_filter(
         if child_el.tag in _BOOLEAN_FILTER_TAGS:
             # Nested boolean filter — recurse
             nested = _build_boolean_filter(
-                child_label, filter_index, bool_arc_map,
-                complement=child_complement, _seen=seen,
+                child_label,
+                filter_index,
+                bool_arc_map,
+                complement=child_complement,
+                _seen=seen,
             )
             if nested is not None:
                 children.append(nested)
@@ -370,10 +679,12 @@ def _build_boolean_filter(
         elif child_el.tag == _TAG_GF_GENERAL:
             test_expr = (child_el.get("test") or "").strip()
             if test_expr:
-                children.append(XPathFilterDefinition(
-                    xpath_expr=test_expr,
-                    namespaces=_element_nsmap(child_el),
-                ))
+                children.append(
+                    XPathFilterDefinition(
+                        xpath_expr=test_expr,
+                        namespaces=_element_nsmap(child_el),
+                    )
+                )
 
         elif child_el.tag in (_TAG_CF_CONCEPT_NAME, _TAG_CF_CONCEPT):
             # Concept filter inside a boolean filter is unusual but possible
@@ -384,6 +695,8 @@ def _build_boolean_filter(
                 # We represent it as a dimension-less DimensionFilter sentinel — not ideal,
                 # so skip for now; concept-inside-boolean is very rare in BDE taxonomies.
                 pass
+        else:
+            children.append(_parse_filter_resource(child_el))
 
     return BooleanFilterDefinition(
         filter_type=filter_type,  # type: ignore[arg-type]
@@ -401,19 +714,30 @@ _FILTER_TAGS = [
     _TAG_DF_EXPLICIT_DIMENSION,
     _TAG_DF_TYPED_DIMENSION,
     _TAG_GF_GENERAL,
+    _TAG_EF_IDENTIFIER,
+    _TAG_SSF_SEGMENT,
     _TAG_BF_AND_FILTER,
     _TAG_BF_OR_FILTER,
 ]
 
 
-def _build_filter_label_index(root: etree._Element) -> dict[str, etree._Element]:
+def _build_filter_label_index(
+    root: etree._Element,
+    locator_labels_by_fragment: dict[str, list[str]] | None = None,
+) -> dict[str, etree._Element]:
     """Index all known filter elements by their @xlink:label."""
     index: dict[str, etree._Element] = {}
     for tag in _FILTER_TAGS:
         for el in root.iter(tag):
-            lbl = el.get(_ATTR_XLINK_LABEL, "")
-            if lbl:
-                index[lbl] = el
+            for key in _resource_index_keys(el, locator_labels_by_fragment):
+                index[key] = el
+    for el in root.iter():
+        if not isinstance(el.tag, str):
+            continue
+        if _qname_namespace(el.tag) not in _FILTER_NAMESPACES:
+            continue
+        for key in _resource_index_keys(el, locator_labels_by_fragment):
+            index.setdefault(key, el)
     return index
 
 
@@ -427,6 +751,7 @@ def _parse_fact_variable(
     global_dimension_filters: list[DimensionFilter] | None = None,
     global_typed_dimension_filters: list[TypedDimensionFilter] | None = None,
     global_boolean_filters: list[BooleanFilterDefinition] | None = None,
+    global_xpath_filters: list[XPathFilterDefinition] | None = None,
 ) -> FactVariableDefinition:
     """Build a FactVariableDefinition from a variable:factVariable element.
 
@@ -437,6 +762,10 @@ def _parse_fact_variable(
     """
     variable_name = arc_name or var_el.get("name", "") or var_el.get(_ATTR_XLINK_LABEL, "")
     var_label = var_el.get(_ATTR_XLINK_LABEL, variable_name)
+    var_id = (var_el.get("id") or "").strip()
+    filter_labels = list(filter_arc_map.get(var_label, []))
+    if var_id and var_id != var_label:
+        filter_labels.extend(filter_arc_map.get(var_id, []))
 
     concept_filter: QName | None = None
     period_filter: Literal["instant", "duration"] | None = None
@@ -444,17 +773,22 @@ def _parse_fact_variable(
     typed_dimension_filters: list[TypedDimensionFilter] = []
     xpath_filters: list[XPathFilterDefinition] = []
     boolean_filters: list[BooleanFilterDefinition] = []
+    filter_resources: list[FormulaFilterResource] = []
 
-    for filter_label in filter_arc_map.get(var_label, []):
+    for filter_label in dict.fromkeys(filter_labels):
         filter_el = filter_index.get(filter_label)
         if filter_el is None:
             continue
+        filter_resources.append(_parse_filter_resource(filter_el))
 
         # Concept filter
         if filter_el.tag in (_TAG_CF_CONCEPT_NAME, _TAG_CF_CONCEPT):
             qn = _extract_concept_filter(filter_el)
             if qn is not None and concept_filter is None:
                 concept_filter = qn
+            qname_expr_filter = _extract_concept_qname_expression(filter_el)
+            if qname_expr_filter is not None:
+                xpath_filters.append(qname_expr_filter)
 
         # Period type filter (simple instant/duration)
         elif filter_el.tag in (_TAG_PF_INSTANT, _TAG_PF_DURATION):
@@ -470,6 +804,7 @@ def _parse_fact_variable(
                     XPathFilterDefinition(
                         xpath_expr=test_expr,
                         namespaces=_element_nsmap(filter_el),
+                        filter_type="period",
                     )
                 )
 
@@ -498,6 +833,27 @@ def _parse_fact_variable(
                     XPathFilterDefinition(
                         xpath_expr=test_expr,
                         namespaces=_element_nsmap(filter_el),
+                        filter_type="general",
+                    )
+                )
+        elif filter_el.tag == _TAG_EF_IDENTIFIER:
+            test_expr = (filter_el.get("test") or "").strip()
+            if test_expr:
+                xpath_filters.append(
+                    XPathFilterDefinition(
+                        xpath_expr=test_expr,
+                        namespaces=_element_nsmap(filter_el),
+                        filter_type="entity",
+                    )
+                )
+        elif filter_el.tag == _TAG_SSF_SEGMENT:
+            test_expr = (filter_el.get("test") or "").strip()
+            if test_expr:
+                xpath_filters.append(
+                    XPathFilterDefinition(
+                        xpath_expr=test_expr,
+                        namespaces=_element_nsmap(filter_el),
+                        filter_type="segment-scenario",
                     )
                 )
 
@@ -519,11 +875,15 @@ def _parse_fact_variable(
     # Append assertion-level boolean filters
     if global_boolean_filters:
         boolean_filters.extend(global_boolean_filters)
+    if global_xpath_filters:
+        xpath_filters.extend(global_xpath_filters)
 
     fallback_value: str | None = var_el.get("fallbackValue")
 
     return FactVariableDefinition(
         variable_name=variable_name,
+        bind_as_sequence=(var_el.get("bindAsSequence") or "false").lower() == "true",
+        matches=(var_el.get("matches") or "false").lower() == "true",
         concept_filter=concept_filter,
         period_filter=period_filter,
         dimension_filters=tuple(dimension_filters),
@@ -531,6 +891,80 @@ def _parse_fact_variable(
         fallback_value=fallback_value,
         xpath_filters=tuple(xpath_filters),
         boolean_filters=tuple(boolean_filters),
+        filter_resources=tuple(filter_resources),
+        arc_name=arc_name or None,
+        referenced_names=_extract_referenced_names(
+            fallback_value, *(xpath_filter.xpath_expr for xpath_filter in xpath_filters)
+        ),
+    )
+
+
+def _parse_general_variable(var_el: etree._Element, arc_name: str = "") -> GeneralVariableDefinition:
+    variable_name = arc_name or var_el.get("name", "") or var_el.get(_ATTR_XLINK_LABEL, "")
+    select_xpath = (var_el.get("select") or ".").strip() or "."
+    fallback_value = (var_el.get("fallbackValue") or "").strip() or None
+    return GeneralVariableDefinition(
+        variable_name=variable_name,
+        select_xpath=select_xpath,
+        bind_as_sequence=(var_el.get("bindAsSequence") or "false").lower() == "true",
+        fallback_value=fallback_value,
+        arc_name=arc_name or None,
+        namespaces=_element_nsmap(var_el),
+        referenced_names=_extract_referenced_names(select_xpath, fallback_value),
+    )
+
+
+def _parse_parameter(
+    parameter_el: etree._Element,
+    *,
+    arc_name: str = "",
+    scope: Literal["global", "local"] = "global",
+) -> ParameterDefinition:
+    parameter_name = arc_name or parameter_el.get("name", "") or parameter_el.get(_ATTR_XLINK_LABEL, "")
+    select_xpath = (parameter_el.get("select") or "").strip() or None
+    as_type = (parameter_el.get("as") or "").strip() or None
+    return ParameterDefinition(
+        parameter_name=parameter_name,
+        select_xpath=select_xpath,
+        as_type=as_type,
+        required=(parameter_el.get("required") or "false").lower() == "true",
+        arc_name=arc_name or None,
+        scope=scope,
+        namespaces=_element_nsmap(parameter_el),
+        referenced_names=_extract_referenced_names(select_xpath),
+    )
+
+
+def _with_effective_global_parameters(
+    variable_set: FormulaAssertion | FormulaOutputDefinition,
+    global_parameters: tuple[ParameterDefinition, ...],
+) -> FormulaAssertion | FormulaOutputDefinition:
+    if not global_parameters:
+        return variable_set
+    local_names = {parameter.parameter_name for parameter in variable_set.parameters}
+    inherited = tuple(
+        parameter for parameter in global_parameters if parameter.parameter_name not in local_names
+    )
+    if not inherited:
+        return variable_set
+    return replace(variable_set, parameters=variable_set.parameters + inherited)
+
+
+def _parse_precondition(precondition_el: etree._Element) -> PreconditionDefinition | None:
+    precondition_id = (
+        (precondition_el.get("id") or "").strip()
+        or (precondition_el.get(_ATTR_XLINK_LABEL) or "").strip()
+    )
+    if not precondition_id:
+        return None
+    test_xpath = (precondition_el.get("test") or "").strip()
+    if not test_xpath:
+        return None
+    return PreconditionDefinition(
+        precondition_id=precondition_id,
+        test_xpath=test_xpath,
+        namespaces=_element_nsmap(precondition_el),
+        referenced_names=_extract_referenced_names(test_xpath),
     )
 
 
@@ -553,7 +987,9 @@ _ASSERTION_SET_TAGS: tuple[str, ...] = (
 
 # QName filter for ``iterparse(..., tag=…)`` — jumps straight to matching elements so
 # huge FINREP-style linkbases (many filters/locs before the first assertion) are still found.
-_LINKBASE_FORMULA_SCAN_TAGS: tuple[str, ...] = _ASSERTION_TAGS + _ASSERTION_SET_TAGS
+_LINKBASE_FORMULA_SCAN_TAGS: tuple[str, ...] = (
+    _ASSERTION_TAGS + (_TAG_FORMULA,) + _ASSERTION_SET_TAGS
+)
 
 
 def linkbase_contains_formula_assertions(path: Path) -> bool:
@@ -570,7 +1006,9 @@ def linkbase_contains_formula_assertions(path: Path) -> bool:
     if not path.exists() or path.suffix.lower() not in (".xml", ".xbrl"):
         return False
     try:
-        for _evt, el in etree.iterparse(str(path), events=("end",), tag=_LINKBASE_FORMULA_SCAN_TAGS):
+        for _evt, el in etree.iterparse(
+            str(path), events=("end",), tag=_LINKBASE_FORMULA_SCAN_TAGS
+        ):
             el.clear()
             return True
     except Exception:  # noqa: BLE001
@@ -581,7 +1019,15 @@ def linkbase_contains_formula_assertions(path: Path) -> bool:
 def _parse_assertion(
     assertion_el: etree._Element,
     variable_arc_map: dict[str, list[tuple[str, str]]],
+    variable_arc_meta_map: dict[str, list[FormulaArc]],
+    parameter_arc_map: dict[str, list[tuple[str, str]]],
+    parameter_arc_meta_map: dict[str, list[FormulaArc]],
+    precondition_arc_map: dict[str, list[tuple[str, str]]],
+    precondition_arc_meta_map: dict[str, list[FormulaArc]],
     fact_variable_index: dict[str, etree._Element],
+    general_variable_index: dict[str, etree._Element],
+    parameter_index: dict[str, list[etree._Element]],
+    precondition_index: dict[str, etree._Element],
     filter_arc_map: dict[str, list[str]],
     filter_index: dict[str, etree._Element],
     variable_set_filter_arc_map: dict[str, list[str]] | None = None,
@@ -597,15 +1043,36 @@ def _parse_assertion(
     abstract = _parse_abstract(assertion_el.get("abstract"))
     severity = _parse_severity(assertion_el.get("severity"))
     label = _xlabel or _id or None
-    precondition_xpath: str | None = None  # preconditions not yet parsed
+    precondition_xpath: str | None = None
 
     # Collect bound fact variables via variable arcs (from=assertion_id or from=xlink:label)
     # variable_arc_map values are (to_label, arc_name) tuples where arc_name is the XPath
     # variable name (the ``name`` attribute on variable:variableArc).
     assertion_label = _xlabel or assertion_id
-    variable_entries = (
-        variable_arc_map.get(assertion_id, [])
-        + (variable_arc_map.get(assertion_label, []) if assertion_label != assertion_id else [])
+    variable_entries = variable_arc_map.get(assertion_id, []) + (
+        variable_arc_map.get(assertion_label, []) if assertion_label != assertion_id else []
+    )
+    variable_arcs = tuple(
+        variable_arc_meta_map.get(assertion_id, [])
+        + (variable_arc_meta_map.get(assertion_label, []) if assertion_label != assertion_id else [])
+    )
+    parameter_entries = parameter_arc_map.get(assertion_id, []) + (
+        parameter_arc_map.get(assertion_label, []) if assertion_label != assertion_id else []
+    )
+    parameter_arcs = tuple(
+        parameter_arc_meta_map.get(assertion_id, [])
+        + (parameter_arc_meta_map.get(assertion_label, []) if assertion_label != assertion_id else [])
+    )
+    precondition_entries = precondition_arc_map.get(assertion_id, []) + (
+        precondition_arc_map.get(assertion_label, []) if assertion_label != assertion_id else []
+    )
+    precondition_arcs = tuple(
+        precondition_arc_meta_map.get(assertion_id, [])
+        + (
+            precondition_arc_meta_map.get(assertion_label, [])
+            if assertion_label != assertion_id
+            else []
+        )
     )
 
     # Collect assertion-level filters from variableSetFilterArc
@@ -613,13 +1080,16 @@ def _parse_assertion(
     global_dimension_filters: list[DimensionFilter] = []
     global_typed_dimension_filters: list[TypedDimensionFilter] = []
     global_boolean_filters: list[BooleanFilterDefinition] = []
+    global_xpath_filters: list[XPathFilterDefinition] = []
+    variable_set_filters: list[FormulaFilterResource] = []
     if variable_set_filter_arc_map is not None:
         _bool_arc = bool_arc_map or {}
         # Deduplicate when assertion_id == assertion_label (both map to the same list)
         _seen_set_labels: set[str] = set()
-        _set_filter_labels = (
-            variable_set_filter_arc_map.get(assertion_id, [])
-            + (variable_set_filter_arc_map.get(assertion_label, []) if assertion_label != assertion_id else [])
+        _set_filter_labels = variable_set_filter_arc_map.get(assertion_id, []) + (
+            variable_set_filter_arc_map.get(assertion_label, [])
+            if assertion_label != assertion_id
+            else []
         )
         for set_filter_label in _set_filter_labels:
             if set_filter_label in _seen_set_labels:
@@ -628,6 +1098,7 @@ def _parse_assertion(
             filter_el = filter_index.get(set_filter_label)
             if filter_el is None:
                 continue
+            variable_set_filters.append(_parse_filter_resource(filter_el))
             if filter_el.tag in (_TAG_CF_CONCEPT_NAME, _TAG_CF_CONCEPT):
                 qn = _extract_concept_filter(filter_el)
                 if qn is not None and global_concept_filter is None:
@@ -644,8 +1115,21 @@ def _parse_assertion(
                 bf = _build_boolean_filter(set_filter_label, filter_index, _bool_arc)
                 if bf is not None:
                     global_boolean_filters.append(bf)
+            elif filter_el.tag in (_TAG_GF_GENERAL, _TAG_EF_IDENTIFIER):
+                test_expr = (filter_el.get("test") or "").strip()
+                if test_expr:
+                    global_xpath_filters.append(
+                        XPathFilterDefinition(
+                            xpath_expr=test_expr,
+                            namespaces=_element_nsmap(filter_el),
+                            filter_type="variable-set",
+                        )
+                    )
 
     variables: list[FactVariableDefinition] = []
+    general_variables: list[GeneralVariableDefinition] = []
+    local_parameters: list[ParameterDefinition] = []
+    seen_param_labels: set[str] = set()
     seen_var_labels: set[str] = set()
     for var_label, arc_name in variable_entries:
         if var_label in seen_var_labels:
@@ -655,15 +1139,57 @@ def _parse_assertion(
         if var_el is not None:
             variables.append(
                 _parse_fact_variable(
-                    var_el, filter_arc_map, filter_index,
+                    var_el,
+                    filter_arc_map,
+                    filter_index,
                     bool_arc_map=bool_arc_map or {},
                     arc_name=arc_name,
                     global_concept_filter=global_concept_filter,
                     global_dimension_filters=global_dimension_filters or None,
                     global_typed_dimension_filters=global_typed_dimension_filters or None,
                     global_boolean_filters=global_boolean_filters or None,
+                    global_xpath_filters=global_xpath_filters or None,
                 )
             )
+            continue
+        general_el = general_variable_index.get(var_label)
+        if general_el is not None:
+            general_variables.append(_parse_general_variable(general_el, arc_name=arc_name))
+            continue
+        parameter_els = parameter_index.get(var_label, [])
+        if parameter_els and var_label not in seen_param_labels:
+            seen_param_labels.add(var_label)
+            for parameter_el in parameter_els:
+                local_parameters.append(
+                    _parse_parameter(parameter_el, arc_name=arc_name, scope="local")
+                )
+
+    for parameter_label, arc_name in parameter_entries:
+        if parameter_label in seen_param_labels:
+            continue
+        seen_param_labels.add(parameter_label)
+        parameter_els = parameter_index.get(parameter_label, [])
+        if not parameter_els:
+            continue
+        for parameter_el in parameter_els:
+            local_parameters.append(
+                _parse_parameter(parameter_el, arc_name=arc_name, scope="local")
+            )
+
+    preconditions: list[PreconditionDefinition] = []
+    seen_precondition_labels: set[str] = set()
+    for precondition_label, _arc_name in precondition_entries:
+        if precondition_label in seen_precondition_labels:
+            continue
+        seen_precondition_labels.add(precondition_label)
+        precondition_el = precondition_index.get(precondition_label)
+        if precondition_el is None:
+            continue
+        parsed_precondition = _parse_precondition(precondition_el)
+        if parsed_precondition is not None:
+            preconditions.append(parsed_precondition)
+            if precondition_xpath is None:
+                precondition_xpath = parsed_precondition.test_xpath
 
     tag = assertion_el.tag
 
@@ -675,7 +1201,19 @@ def _parse_assertion(
         severity=severity,
         abstract=abstract,
         variables=tuple(variables),
+        general_variables=tuple(general_variables),
+        parameters=tuple(local_parameters),
+        preconditions=tuple(preconditions),
         precondition_xpath=precondition_xpath,
+        variable_arcs=variable_arcs,
+        parameter_arcs=parameter_arcs,
+        precondition_arcs=precondition_arcs,
+        variable_set_filters=tuple(variable_set_filters),
+        referenced_names=_extract_referenced_names(
+            assertion_el.get("test"),
+            assertion_el.get("formula"),
+            precondition_xpath,
+        ),
         namespaces=namespaces,
     )
 
@@ -717,9 +1255,262 @@ def _parse_assertion(
     return None  # unknown assertion type
 
 
+def _formula_rule_source(rule_el: etree._Element, inherited_source: str | None) -> str | None:
+    return (rule_el.get("source") or inherited_source or "").strip() or None
+
+
+def _parse_formula_period_kind(
+    period_el: etree._Element,
+) -> Literal["instant", "duration", "forever"] | None:
+    if period_el.find(_TAG_FORMULA_INSTANT) is not None:
+        return "instant"
+    if period_el.find(_TAG_FORMULA_DURATION) is not None:
+        return "duration"
+    if period_el.find(_TAG_FORMULA_FOREVER) is not None:
+        return "forever"
+    return None
+
+
+def _parse_formula_aspect_rules(formula_el: etree._Element) -> tuple[FormulaAspectRule, ...]:
+    rules: list[FormulaAspectRule] = []
+    for aspects_el in formula_el.findall(_TAG_FORMULA_ASPECTS):
+        inherited_source = (aspects_el.get("source") or "").strip() or None
+        for child in aspects_el:
+            if not isinstance(child.tag, str):
+                continue
+            source = _formula_rule_source(child, inherited_source)
+            if child.tag == _TAG_FORMULA_CONCEPT:
+                qname_el = child.find(_TAG_FORMULA_QNAME)
+                qname = _clark_to_qname(
+                    (qname_el.text if qname_el is not None else "") or "",
+                    _element_nsmap(child),
+                )
+                rules.append(
+                    FormulaAspectRule(
+                        aspect="concept",
+                        source=source,
+                        qname=qname,
+                        has_child_rules=len(child) > 0,
+                        inherited_source=inherited_source,
+                    )
+                )
+            elif child.tag == _TAG_FORMULA_ENTITY_IDENTIFIER:
+                rules.append(
+                    FormulaAspectRule(
+                        aspect="entityIdentifier",
+                        source=source,
+                        has_scheme=bool((child.get("scheme") or "").strip()),
+                        has_value=bool((child.get("value") or "").strip()),
+                        inherited_source=inherited_source,
+                    )
+                )
+            elif child.tag == _TAG_FORMULA_PERIOD:
+                rules.append(
+                    FormulaAspectRule(
+                        aspect="period",
+                        source=source,
+                        has_child_rules=len(child) > 0,
+                        period_kind=_parse_formula_period_kind(child),
+                        inherited_source=inherited_source,
+                    )
+                )
+            elif child.tag == _TAG_FORMULA_UNIT:
+                rules.append(
+                    FormulaAspectRule(
+                        aspect="unit",
+                        source=source,
+                        has_child_rules=len(child) > 0,
+                        inherited_source=inherited_source,
+                    )
+                )
+            elif child.tag == _TAG_FORMULA_EXPLICIT_DIMENSION:
+                rules.append(
+                    FormulaAspectRule(
+                        aspect="explicitDimension",
+                        source=source,
+                        dimension=_clark_to_qname(
+                            child.get("dimension") or "", _element_nsmap(child)
+                        ),
+                        has_child_rules=len(child) > 0,
+                        inherited_source=inherited_source,
+                    )
+                )
+            elif child.tag == _TAG_FORMULA_TYPED_DIMENSION:
+                rules.append(
+                    FormulaAspectRule(
+                        aspect="typedDimension",
+                        source=source,
+                        dimension=_clark_to_qname(
+                            child.get("dimension") or "", _element_nsmap(child)
+                        ),
+                        has_child_rules=len(child) > 0,
+                        inherited_source=inherited_source,
+                    )
+                )
+    return tuple(rules)
+
+
+def _parse_output_formula(
+    formula_el: etree._Element,
+    variable_arc_map: dict[str, list[tuple[str, str]]],
+    variable_arc_meta_map: dict[str, list[FormulaArc]],
+    parameter_arc_map: dict[str, list[tuple[str, str]]],
+    parameter_arc_meta_map: dict[str, list[FormulaArc]],
+    precondition_arc_map: dict[str, list[tuple[str, str]]],
+    precondition_arc_meta_map: dict[str, list[FormulaArc]],
+    fact_variable_index: dict[str, etree._Element],
+    general_variable_index: dict[str, etree._Element],
+    parameter_index: dict[str, list[etree._Element]],
+    precondition_index: dict[str, etree._Element],
+    filter_arc_map: dict[str, list[str]],
+    filter_index: dict[str, etree._Element],
+    variable_set_filter_arc_map: dict[str, list[str]] | None = None,
+    bool_arc_map: dict[str, list[tuple[str, bool]]] | None = None,
+    source_path: Path | None = None,
+) -> FormulaOutputDefinition | None:
+    _id = (formula_el.get("id") or "").strip()
+    _xlabel = (formula_el.get(_ATTR_XLINK_LABEL) or "").strip()
+    formula_id = _id or _xlabel
+    if not formula_id:
+        return None
+    formula_label = _xlabel or formula_id
+
+    global_xpath_filters: list[XPathFilterDefinition] = []
+    variable_set_filters: list[FormulaFilterResource] = []
+    if variable_set_filter_arc_map is not None:
+        seen_set_labels: set[str] = set()
+        set_filter_labels = variable_set_filter_arc_map.get(formula_id, []) + (
+            variable_set_filter_arc_map.get(formula_label, [])
+            if formula_label != formula_id
+            else []
+        )
+        for set_filter_label in set_filter_labels:
+            if set_filter_label in seen_set_labels:
+                continue
+            seen_set_labels.add(set_filter_label)
+            filter_el = filter_index.get(set_filter_label)
+            if filter_el is None:
+                continue
+            variable_set_filters.append(_parse_filter_resource(filter_el))
+            if filter_el.tag in (_TAG_GF_GENERAL, _TAG_EF_IDENTIFIER):
+                test_expr = (filter_el.get("test") or "").strip()
+                if test_expr:
+                    global_xpath_filters.append(
+                        XPathFilterDefinition(
+                            xpath_expr=test_expr,
+                            namespaces=_element_nsmap(filter_el),
+                            filter_type="variable-set",
+                        )
+                    )
+
+    variable_entries = variable_arc_map.get(formula_id, []) + (
+        variable_arc_map.get(_xlabel, []) if _xlabel and _xlabel != formula_id else []
+    )
+    variable_arcs = tuple(
+        variable_arc_meta_map.get(formula_id, [])
+        + (variable_arc_meta_map.get(_xlabel, []) if _xlabel and _xlabel != formula_id else [])
+    )
+    parameter_entries = parameter_arc_map.get(formula_id, []) + (
+        parameter_arc_map.get(_xlabel, []) if _xlabel and _xlabel != formula_id else []
+    )
+    parameter_arcs = tuple(
+        parameter_arc_meta_map.get(formula_id, [])
+        + (parameter_arc_meta_map.get(_xlabel, []) if _xlabel and _xlabel != formula_id else [])
+    )
+    precondition_entries = precondition_arc_map.get(formula_id, []) + (
+        precondition_arc_map.get(_xlabel, []) if _xlabel and _xlabel != formula_id else []
+    )
+    precondition_arcs = tuple(
+        precondition_arc_meta_map.get(formula_id, [])
+        + (
+            precondition_arc_meta_map.get(_xlabel, [])
+            if _xlabel and _xlabel != formula_id
+            else []
+        )
+    )
+    variables: list[FactVariableDefinition] = []
+    general_variables: list[GeneralVariableDefinition] = []
+    parameters: list[ParameterDefinition] = []
+    seen_param_labels: set[str] = set()
+    seen_var_labels: set[str] = set()
+    for var_label, arc_name in variable_entries:
+        if var_label in seen_var_labels:
+            continue
+        seen_var_labels.add(var_label)
+        var_el = fact_variable_index.get(var_label)
+        if var_el is None:
+            general_el = general_variable_index.get(var_label)
+            if general_el is not None:
+                general_variables.append(_parse_general_variable(general_el, arc_name=arc_name))
+                continue
+            parameter_els = parameter_index.get(var_label, [])
+            if parameter_els and var_label not in seen_param_labels:
+                seen_param_labels.add(var_label)
+                for parameter_el in parameter_els:
+                    parameters.append(
+                        _parse_parameter(parameter_el, arc_name=arc_name, scope="local")
+                    )
+            continue
+        variables.append(
+            _parse_fact_variable(
+                var_el,
+                filter_arc_map,
+                filter_index,
+                bool_arc_map=bool_arc_map or {},
+                arc_name=arc_name,
+                global_xpath_filters=global_xpath_filters or None,
+            )
+        )
+
+    for parameter_label, arc_name in parameter_entries:
+        if parameter_label in seen_param_labels:
+            continue
+        seen_param_labels.add(parameter_label)
+        parameter_els = parameter_index.get(parameter_label, [])
+        if not parameter_els:
+            continue
+        for parameter_el in parameter_els:
+            parameters.append(_parse_parameter(parameter_el, arc_name=arc_name, scope="local"))
+
+    preconditions: list[PreconditionDefinition] = []
+    seen_precondition_labels: set[str] = set()
+    for precondition_label, _arc_name in precondition_entries:
+        if precondition_label in seen_precondition_labels:
+            continue
+        seen_precondition_labels.add(precondition_label)
+        precondition_el = precondition_index.get(precondition_label)
+        if precondition_el is None:
+            continue
+        parsed_precondition = _parse_precondition(precondition_el)
+        if parsed_precondition is not None:
+            preconditions.append(parsed_precondition)
+
+    return FormulaOutputDefinition(
+        formula_id=formula_id,
+        label=_xlabel or _id or None,
+        value_xpath=formula_el.get("value", ""),
+        source=(formula_el.get("source") or "").strip() or None,
+        aspect_model=(formula_el.get("aspectModel") or "").strip() or None,
+        implicit_filtering=(formula_el.get("implicitFiltering") or "true").lower() != "false",
+        variables=tuple(variables),
+        general_variables=tuple(general_variables),
+        parameters=tuple(parameters),
+        preconditions=tuple(preconditions),
+        aspect_rules=_parse_formula_aspect_rules(formula_el),
+        variable_arcs=variable_arcs,
+        parameter_arcs=parameter_arcs,
+        precondition_arcs=precondition_arcs,
+        variable_set_filters=tuple(variable_set_filters),
+        referenced_names=_extract_referenced_names(formula_el.get("value")),
+        namespaces=_element_nsmap(formula_el),
+        source_path=str(source_path) if source_path is not None else None,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 def parse_formula_linkbase(path: Path) -> FormulaAssertionSet:
     """Parse a formula / validation linkbase and return a FormulaAssertionSet.
@@ -733,6 +1524,34 @@ def parse_formula_linkbase(path: Path) -> FormulaAssertionSet:
     """
     try:
         return _parse(path)
+    except Exception:  # noqa: BLE001
+        return FormulaAssertionSet()
+
+
+def parse_formula_linkbase_bundle(paths: Iterable[Path]) -> FormulaAssertionSet:
+    """Parse multiple Formula linkbases as one DTS relationship graph."""
+    try:
+        roots: list[etree._Element] = []
+        nsmap: dict[str, str] = {"link": _NS_LINK}
+        for path in paths:
+            if not path.exists():
+                continue
+            try:
+                root = parse_xml_file(path).getroot()
+            except etree.XMLSyntaxError:
+                continue
+            roots.append(root)
+            for prefix, namespace in root.nsmap.items():
+                if prefix is None or prefix in nsmap:
+                    continue
+                nsmap[prefix] = namespace
+        if not roots:
+            return FormulaAssertionSet()
+        synthetic_root = etree.Element(f"{{{_NS_LINK}}}linkbase", nsmap=nsmap)
+        for root in roots:
+            for child in root:
+                synthetic_root.append(deepcopy(child))
+        return _parse_formula_root(synthetic_root)
     except Exception:  # noqa: BLE001
         return FormulaAssertionSet()
 
@@ -761,7 +1580,7 @@ def _parse(path: Path) -> FormulaAssertionSet:
     except etree.XMLSyntaxError:
         return FormulaAssertionSet()
 
-    return _parse_formula_root(tree.getroot())
+    return _parse_formula_root(tree.getroot(), source_path=path)
 
 
 def _parse_assertion_table_mappings(path: Path) -> dict[str, str]:
@@ -829,23 +1648,42 @@ def _href_fragment(href: str) -> str:
     return fragment.strip()
 
 
-def _parse_formula_root(root: etree._Element) -> FormulaAssertionSet:
+def _parse_formula_root(
+    root: etree._Element, source_path: Path | None = None
+) -> FormulaAssertionSet:
     """Parse assertions from a link:linkbase root (including under gen:link / assertionSet)."""
-    fact_variable_index = _build_label_to_element(root, _TAG_FACT_VARIABLE)
-    filter_index = _build_filter_label_index(root)
-    filter_arc_map = _build_filter_arc_map(root)
-    variable_set_filter_arc_map = _build_variable_set_filter_arc_map(root)
-    bool_arc_map = _build_boolean_filter_arc_map(root)
+    locator_targets = _build_locator_target_map(root)
+    locator_labels_by_fragment: dict[str, list[str]] = {}
+    for label, fragment in locator_targets.items():
+        locator_labels_by_fragment.setdefault(fragment, []).append(label)
 
-    variable_arc_map: dict[str, list[tuple[str, str]]] = {}
-    for arc in root.iter(_TAG_VARIABLE_ARC):
-        frm = arc.get(_ATTR_XLINK_FROM, "")
-        to = arc.get(_ATTR_XLINK_TO, "")
-        arc_name = arc.get("name", "")
-        if frm and to:
-            variable_arc_map.setdefault(frm, []).append((to, arc_name))
+    fact_variable_index = _build_label_to_element(
+        root, _TAG_FACT_VARIABLE, locator_labels_by_fragment
+    )
+    general_variable_index = _build_label_to_element(
+        root, _TAG_GENERAL_VARIABLE, locator_labels_by_fragment
+    )
+    parameter_index = _build_label_to_elements(root, _TAG_PARAMETER, locator_labels_by_fragment)
+    precondition_index = _build_label_to_element(
+        root, _TAG_PRECONDITION, locator_labels_by_fragment
+    )
+    filter_index = _build_filter_label_index(root, locator_labels_by_fragment)
+    filter_arc_map = _build_filter_arc_map(root, locator_targets)
+    variable_set_filter_arc_map = _build_variable_set_filter_arc_map(root, locator_targets)
+    bool_arc_map = _build_boolean_filter_arc_map(root, locator_targets)
+
+    variable_arc_meta_map, variable_arc_map = _build_resource_arc_map(
+        root, tag=_TAG_VARIABLE_ARC, locator_targets=locator_targets
+    )
+    parameter_arc_meta_map, parameter_arc_map = _build_resource_arc_map(
+        root, tag=_TAG_PARAMETER_ARC, locator_targets=locator_targets
+    )
+    precondition_arc_meta_map, precondition_arc_map = _build_resource_arc_map(
+        root, tag=_TAG_PRECONDITION_ARC, locator_targets=locator_targets
+    )
 
     assertions: list[FormulaAssertion] = []
+    output_formulas: list[FormulaOutputDefinition] = []
     abstract_count = 0
 
     for tag in _ASSERTION_TAGS:
@@ -853,7 +1691,15 @@ def _parse_formula_root(root: etree._Element) -> FormulaAssertionSet:
             result = _parse_assertion(
                 assertion_el,
                 variable_arc_map,
+                variable_arc_meta_map,
+                parameter_arc_map,
+                parameter_arc_meta_map,
+                precondition_arc_map,
+                precondition_arc_meta_map,
                 fact_variable_index,
+                general_variable_index,
+                parameter_index,
+                precondition_index,
                 filter_arc_map,
                 filter_index,
                 variable_set_filter_arc_map=variable_set_filter_arc_map,
@@ -864,7 +1710,50 @@ def _parse_formula_root(root: etree._Element) -> FormulaAssertionSet:
                 if result.abstract:
                     abstract_count += 1
 
+    for formula_el in root.iter(_TAG_FORMULA):
+        result = _parse_output_formula(
+            formula_el,
+            variable_arc_map,
+            variable_arc_meta_map,
+            parameter_arc_map,
+            parameter_arc_meta_map,
+            precondition_arc_map,
+            precondition_arc_meta_map,
+            fact_variable_index,
+            general_variable_index,
+            parameter_index,
+            precondition_index,
+            filter_arc_map,
+            filter_index,
+            variable_set_filter_arc_map=variable_set_filter_arc_map,
+            bool_arc_map=bool_arc_map,
+            source_path=source_path,
+        )
+        if result is not None:
+            output_formulas.append(result)
+
+    global_parameter_targets: set[str] = {
+        to_label for arc_entries in parameter_arc_map.values() for to_label, _name in arc_entries
+    }
+    global_parameters = tuple(
+        _parse_parameter(parameter_el, scope="global")
+        for label, parameter_els in parameter_index.items()
+        if label not in global_parameter_targets
+        for parameter_el in parameter_els
+    )
+    if global_parameters:
+        assertions = [
+            _with_effective_global_parameters(assertion, global_parameters)
+            for assertion in assertions
+        ]
+        output_formulas = [
+            _with_effective_global_parameters(formula, global_parameters)
+            for formula in output_formulas
+        ]
+
     return FormulaAssertionSet(
         assertions=tuple(assertions),
+        output_formulas=tuple(output_formulas),
+        global_parameters=global_parameters,
         abstract_count=abstract_count,
     )

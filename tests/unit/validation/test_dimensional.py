@@ -1,4 +1,5 @@
 """Unit tests for DimensionalConstraintValidator (validation/dimensional.py)."""
+
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -194,6 +195,44 @@ def _not_all_hc() -> HypercubeModel:
         primary_items=(CONCEPT_QN,),
         dimensions=(DIM_QN,),
         extended_link_role="http://example.com/elr",
+        direct_primary_items=(CONCEPT_QN,),
+    )
+
+
+def _inherited_not_all_hc() -> HypercubeModel:
+    return HypercubeModel(
+        qname=HC_QN,
+        arcrole="notAll",
+        closed=False,
+        context_element="scenario",
+        primary_items=(CONCEPT_QN,),
+        dimensions=(DIM_QN,),
+        extended_link_role="http://example.com/elr",
+        direct_primary_items=(),
+    )
+
+
+def _all_empty_hc() -> HypercubeModel:
+    return HypercubeModel(
+        qname=_qn("PositiveHC"),
+        arcrole="all",
+        closed=False,
+        context_element="scenario",
+        primary_items=(CONCEPT_QN,),
+        dimensions=(),
+        extended_link_role="http://example.com/elr",
+    )
+
+
+def _not_all_closed_hc() -> HypercubeModel:
+    return HypercubeModel(
+        qname=HC_QN,
+        arcrole="notAll",
+        closed=True,
+        context_element="scenario",
+        primary_items=(CONCEPT_QN,),
+        dimensions=(DIM_QN,),
+        extended_link_role="http://example.com/elr",
     )
 
 
@@ -293,6 +332,133 @@ class TestUndeclaredDimension:
 
         assert not any(f.constraint_type == "UNDECLARED_DIMENSION" for f in findings)
 
+    def test_positive_hypercubes_in_same_elr_are_alternative_covering_candidates(self) -> None:
+        """A fact accepted by one covering hypercube is not failed by a sibling."""
+        dim_other = _qn("OtherDim", _DIM_NS)
+        hc_first = HypercubeModel(
+            qname=_qn("HC1"),
+            arcrole="all",
+            closed=True,
+            context_element="scenario",
+            primary_items=(CONCEPT_QN,),
+            dimensions=(DIM_QN,),
+            extended_link_role="http://example.com/elr",
+        )
+        hc_second = HypercubeModel(
+            qname=HC_QN,
+            arcrole="all",
+            closed=True,
+            context_element="scenario",
+            primary_items=(CONCEPT_QN,),
+            dimensions=(DIM_QN, dim_other),
+            extended_link_role="http://example.com/elr",
+        )
+        ctx = _make_context("ctx1", dims={DIM_QN: MEM_QN_ES})
+        fact = Fact(concept=CONCEPT_QN, context_ref="ctx1", unit_ref=None, value="1")
+        inst = _make_instance([fact], {"ctx1": ctx})
+        taxonomy = _make_taxonomy_with_hcs(
+            [hc_first, hc_second],
+            dims={
+                DIM_QN: _dim_model_with_members(),
+                dim_other: DimensionModel(
+                    qname=dim_other,
+                    dimension_type="explicit",
+                    default_member=None,
+                    members=(DomainMember(qname=MEM_QN_PT, parent=None, order=1.0),),
+                ),
+            },
+        )
+
+        findings = DimensionalConstraintValidator(taxonomy).validate(inst)
+
+        assert not any(f.constraint_type == "CLOSED_MISSING_DIMENSION" for f in findings)
+
+    def test_closed_hypercube_sibling_dimension_does_not_poison_valid_candidate(self) -> None:
+        """Closed sibling cubes do not reject dimensions owned by another match."""
+        dim_other = _qn("OtherDim", _DIM_NS)
+        hc_first = HypercubeModel(
+            qname=_qn("HC1"),
+            arcrole="all",
+            closed=True,
+            context_element="scenario",
+            primary_items=(CONCEPT_QN,),
+            dimensions=(DIM_QN,),
+            extended_link_role="http://example.com/elr",
+        )
+        hc_second = HypercubeModel(
+            qname=HC_QN,
+            arcrole="all",
+            closed=True,
+            context_element="scenario",
+            primary_items=(CONCEPT_QN,),
+            dimensions=(DIM_QN, dim_other),
+            extended_link_role="http://example.com/elr",
+        )
+        ctx = _make_context("ctx1", dims={DIM_QN: MEM_QN_ES, dim_other: MEM_QN_PT})
+        fact = Fact(concept=CONCEPT_QN, context_ref="ctx1", unit_ref=None, value="1")
+        inst = _make_instance([fact], {"ctx1": ctx})
+        taxonomy = _make_taxonomy_with_hcs(
+            [hc_first, hc_second],
+            dims={
+                DIM_QN: _dim_model_with_members(),
+                dim_other: DimensionModel(
+                    qname=dim_other,
+                    dimension_type="explicit",
+                    default_member=None,
+                    members=(DomainMember(qname=MEM_QN_PT, parent=None, order=1.0),),
+                ),
+            },
+        )
+
+        findings = DimensionalConstraintValidator(taxonomy).validate(inst)
+
+        assert not any(f.constraint_type == "UNDECLARED_DIMENSION" for f in findings)
+
+    def test_reused_closed_hypercube_qname_dimension_is_not_reported(self) -> None:
+        """A reused closed hypercube QName does not report dimensions from another signature."""
+        dim_other = _qn("OtherDim", _DIM_NS)
+        reused_hc_qname = _qn("ReusedHyp")
+        hc_first = HypercubeModel(
+            qname=reused_hc_qname,
+            arcrole="all",
+            closed=True,
+            context_element="scenario",
+            primary_items=(CONCEPT_QN,),
+            dimensions=(DIM_QN,),
+            extended_link_role="http://example.com/elr/one",
+        )
+        hc_second = HypercubeModel(
+            qname=reused_hc_qname,
+            arcrole="all",
+            closed=True,
+            context_element="scenario",
+            primary_items=(CONCEPT_QN,),
+            dimensions=(DIM_QN, dim_other),
+            extended_link_role="http://example.com/elr/two",
+        )
+        ctx = _make_context("ctx1", dims={DIM_QN: MEM_QN_ES, dim_other: MEM_QN_PT})
+        fact = Fact(concept=CONCEPT_QN, context_ref="ctx1", unit_ref=None, value="1")
+        inst = _make_instance([fact], {"ctx1": ctx})
+        taxonomy = _make_taxonomy_with_hcs(
+            [hc_first, hc_second],
+            dims={
+                DIM_QN: _dim_model_with_members(),
+                dim_other: DimensionModel(
+                    qname=dim_other,
+                    dimension_type="explicit",
+                    default_member=None,
+                    members=(DomainMember(qname=MEM_QN_PT, parent=None, order=1.0),),
+                ),
+            },
+        )
+
+        findings = DimensionalConstraintValidator(taxonomy).validate(inst)
+
+        assert not any(
+            f.constraint_type == "UNDECLARED_DIMENSION" and f.dimension_qname == dim_other
+            for f in findings
+        )
+
     def test_bde_agrupacion_is_ignored_for_hypercube_undeclared_checks(self) -> None:
         """BDE Agrupacion is a report-level dimension and must not fail closed HC checks."""
         agrupacion_dim = QName(namespace=BDE_DIM_NS, local_name="Agrupacion")
@@ -305,6 +471,26 @@ class TestUndeclaredDimension:
         findings = DimensionalConstraintValidator(taxonomy).validate(inst)
 
         assert not any(f.constraint_type == "UNDECLARED_DIMENSION" for f in findings)
+
+    def test_closed_hypercube_rejects_non_dimensional_scenario_content(self) -> None:
+        """Closed hypercubes reject non-xbrldi content in their context container."""
+        ctx = _make_context("ctx1", dims={DIM_QN: MEM_QN_ES})
+        ctx.scenario_xml = (
+            b'<xbrli:scenario xmlns:xbrli="http://www.xbrl.org/2003/instance" '
+            b'xmlns:xbrldi="http://xbrl.org/2006/xbrldi" '
+            b'xmlns:foo="http://example.com/foo">'
+            b'<xbrldi:explicitMember dimension="dim:CountryDim" '
+            b'xmlns:dim="http://example.com/dim">mem:ES</xbrldi:explicitMember>'
+            b"<foo:bar/>"
+            b"</xbrli:scenario>"
+        )
+        fact = Fact(concept=CONCEPT_QN, context_ref="ctx1", unit_ref=None, value="1")
+        inst = _make_instance([fact], {"ctx1": ctx})
+        taxonomy = _make_taxonomy(_all_closed_hc(), dims={DIM_QN: _dim_model_with_members()})
+
+        findings = DimensionalConstraintValidator(taxonomy).validate(inst)
+
+        assert any(f.constraint_type == "UNEXPECTED_DIMENSIONAL_CONTENT" for f in findings)
 
 
 # ---------------------------------------------------------------------------
@@ -319,9 +505,7 @@ class TestInvalidMember:
         ctx = _make_context("ctx1", dims={DIM_QN: bad_member})
         fact = Fact(concept=CONCEPT_QN, context_ref="ctx1", unit_ref=None, value="1")
         inst = _make_instance([fact], {"ctx1": ctx})
-        taxonomy = _make_taxonomy(
-            _all_open_hc(), dims={DIM_QN: _dim_model_with_members()}
-        )
+        taxonomy = _make_taxonomy(_all_open_hc(), dims={DIM_QN: _dim_model_with_members()})
         findings = DimensionalConstraintValidator(taxonomy).validate(inst)
         assert any(f.constraint_type == "INVALID_MEMBER" for f in findings)
 
@@ -330,9 +514,7 @@ class TestInvalidMember:
         ctx = _make_context("ctx1", dims={DIM_QN: MEM_QN_ES})
         fact = Fact(concept=CONCEPT_QN, context_ref="ctx1", unit_ref=None, value="1")
         inst = _make_instance([fact], {"ctx1": ctx})
-        taxonomy = _make_taxonomy(
-            _all_open_hc(), dims={DIM_QN: _dim_model_with_members()}
-        )
+        taxonomy = _make_taxonomy(_all_open_hc(), dims={DIM_QN: _dim_model_with_members()})
         findings = DimensionalConstraintValidator(taxonomy).validate(inst)
         assert not any(f.constraint_type == "INVALID_MEMBER" for f in findings)
 
@@ -357,13 +539,34 @@ class TestInvalidMember:
         ctx = _make_context("ctx1", dims={DIM_QN: bad_member})
         fact = Fact(concept=CONCEPT_QN, context_ref="ctx1", unit_ref=None, value="1")
         inst = _make_instance([fact], {"ctx1": ctx})
-        taxonomy = _make_taxonomy(
-            _all_open_hc(), dims={DIM_QN: _dim_model_with_members()}
-        )
+        taxonomy = _make_taxonomy(_all_open_hc(), dims={DIM_QN: _dim_model_with_members()})
         findings = DimensionalConstraintValidator(taxonomy).validate(inst)
         match = next((f for f in findings if f.constraint_type == "INVALID_MEMBER"), None)
         assert match is not None
         assert match.dimension_qname == DIM_QN
+
+    def test_open_empty_hypercube_ignores_rogue_context_dimensions(self) -> None:
+        """Dimensions outside an open empty hypercube are not validated."""
+        rogue_dim = _qn("RogueDim", _DIM_NS)
+        rogue_member = _qn("NotAConcept", _DIM_NS)
+        ctx = _make_context("ctx1", dims={rogue_dim: rogue_member})
+        fact = Fact(concept=CONCEPT_QN, context_ref="ctx1", unit_ref=None, value="1")
+        inst = _make_instance([fact], {"ctx1": ctx})
+        taxonomy = _make_taxonomy_with_hcs(
+            [_all_empty_hc()],
+            dims={},
+            extra_concepts={
+                rogue_dim: Concept(
+                    qname=rogue_dim,
+                    data_type=_qn("stringItemType"),
+                    period_type="duration",
+                )
+            },
+        )
+
+        findings = DimensionalConstraintValidator(taxonomy).validate(inst)
+
+        assert not any(f.constraint_type == "EXPLICIT_MEMBER_UNDEFINED_QNAME" for f in findings)
 
 
 # ---------------------------------------------------------------------------
@@ -377,9 +580,7 @@ class TestClosedMissingDimension:
         ctx = _make_context("ctx1", dims={})  # dimension absent, no default member
         fact = Fact(concept=CONCEPT_QN, context_ref="ctx1", unit_ref=None, value="1")
         inst = _make_instance([fact], {"ctx1": ctx})
-        taxonomy = _make_taxonomy(
-            _all_closed_hc(), dims={DIM_QN: _dim_model_with_members()}
-        )
+        taxonomy = _make_taxonomy(_all_closed_hc(), dims={DIM_QN: _dim_model_with_members()})
         findings = DimensionalConstraintValidator(taxonomy).validate(inst)
         assert any(f.constraint_type == "CLOSED_MISSING_DIMENSION" for f in findings)
 
@@ -388,9 +589,7 @@ class TestClosedMissingDimension:
         ctx = _make_context("ctx1", dims={DIM_QN: MEM_QN_ES})
         fact = Fact(concept=CONCEPT_QN, context_ref="ctx1", unit_ref=None, value="1")
         inst = _make_instance([fact], {"ctx1": ctx})
-        taxonomy = _make_taxonomy(
-            _all_closed_hc(), dims={DIM_QN: _dim_model_with_members()}
-        )
+        taxonomy = _make_taxonomy(_all_closed_hc(), dims={DIM_QN: _dim_model_with_members()})
         findings = DimensionalConstraintValidator(taxonomy).validate(inst)
         assert not any(f.constraint_type == "CLOSED_MISSING_DIMENSION" for f in findings)
 
@@ -399,9 +598,7 @@ class TestClosedMissingDimension:
         ctx = _make_context("ctx1", dims={})
         fact = Fact(concept=CONCEPT_QN, context_ref="ctx1", unit_ref=None, value="1")
         inst = _make_instance([fact], {"ctx1": ctx})
-        taxonomy = _make_taxonomy(
-            _all_open_hc(), dims={DIM_QN: _dim_model_with_members()}
-        )
+        taxonomy = _make_taxonomy(_all_open_hc(), dims={DIM_QN: _dim_model_with_members()})
         findings = DimensionalConstraintValidator(taxonomy).validate(inst)
         assert any(f.constraint_type == "CLOSED_MISSING_DIMENSION" for f in findings)
 
@@ -411,9 +608,7 @@ class TestClosedMissingDimension:
             qname=DIM_QN,
             dimension_type="explicit",
             default_member=MEM_QN_ES,  # has default
-            members=(
-                DomainMember(qname=MEM_QN_ES, parent=None, order=1.0),
-            ),
+            members=(DomainMember(qname=MEM_QN_ES, parent=None, order=1.0),),
         )
         ctx = _make_context("ctx1", dims={})  # dimension absent but has default
         fact = Fact(concept=CONCEPT_QN, context_ref="ctx1", unit_ref=None, value="1")
@@ -421,6 +616,67 @@ class TestClosedMissingDimension:
         taxonomy = _make_taxonomy(_all_closed_hc(), dims={DIM_QN: dim_with_default})
         findings = DimensionalConstraintValidator(taxonomy).validate(inst)
         assert not any(f.constraint_type == "CLOSED_MISSING_DIMENSION" for f in findings)
+
+    def test_missing_eba_null_dimension_is_not_required(self) -> None:
+        """EBA NullDimension is a placeholder and is not required in contexts."""
+        null_dim = QName(
+            namespace="http://www.eba.europa.eu/xbrl/ext/model",
+            local_name="NullDimension",
+        )
+        hc = HypercubeModel(
+            qname=QName(
+                namespace="http://www.eurofiling.info/xbrl/ext/model",
+                local_name="hyp",
+            ),
+            arcrole="all",
+            closed=True,
+            context_element="scenario",
+            primary_items=(CONCEPT_QN,),
+            dimensions=(null_dim,),
+            extended_link_role="http://example.com/elr",
+        )
+        ctx = _make_context("ctx1", dims={})
+        fact = Fact(concept=CONCEPT_QN, context_ref="ctx1", unit_ref=None, value="1")
+        inst = _make_instance([fact], {"ctx1": ctx})
+        taxonomy = _make_taxonomy(
+            hc,
+            dims={
+                null_dim: DimensionModel(
+                    qname=null_dim,
+                    dimension_type="explicit",
+                    default_member=None,
+                    members=(),
+                )
+            },
+        )
+
+        findings = DimensionalConstraintValidator(taxonomy).validate(inst)
+
+        assert not any(
+            f.constraint_type == "CLOSED_MISSING_DIMENSION" and f.dimension_qname == null_dim
+            for f in findings
+        )
+
+    def test_missing_dimension_with_unusable_default_is_invalid(self) -> None:
+        """A default only satisfies a missing dimension when the member is usable."""
+        dim_with_unusable_default = DimensionModel(
+            qname=DIM_QN,
+            dimension_type="explicit",
+            default_member=MEM_QN_ES,
+            members=(DomainMember(qname=MEM_QN_ES, parent=None, order=1.0, usable=False),),
+        )
+        ctx = _make_context("ctx1", dims={})
+        fact = Fact(concept=CONCEPT_QN, context_ref="ctx1", unit_ref=None, value="1")
+        inst = _make_instance([fact], {"ctx1": ctx})
+        taxonomy = _make_taxonomy(_all_open_hc(), dims={DIM_QN: dim_with_unusable_default})
+
+        findings = DimensionalConstraintValidator(taxonomy).validate(inst)
+
+        assert any(
+            f.rule_id == "xbrldie:PrimaryItemDimensionallyInvalidError"
+            and f.constraint_type == "CLOSED_MISSING_DIMENSION"
+            for f in findings
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -434,21 +690,52 @@ class TestProhibitedCombination:
         ctx = _make_context("ctx1", dims={DIM_QN: MEM_QN_ES})
         fact = Fact(concept=CONCEPT_QN, context_ref="ctx1", unit_ref=None, value="1")
         inst = _make_instance([fact], {"ctx1": ctx})
-        taxonomy = _make_taxonomy(
-            _not_all_hc(), dims={DIM_QN: _dim_model_with_members()}
+        taxonomy = _make_taxonomy_with_hcs(
+            [_all_empty_hc(), _not_all_hc()],
+            dims={DIM_QN: _dim_model_with_members()},
         )
         findings = DimensionalConstraintValidator(taxonomy).validate(inst)
         assert any(f.constraint_type == "PROHIBITED_COMBINATION" for f in findings)
+
+    def test_not_all_without_positive_hypercube_is_not_a_drs(self) -> None:
+        """An inherited negative hypercube only applies within positive ELR coverage."""
+        ctx = _make_context("ctx1", dims={DIM_QN: MEM_QN_ES})
+        fact = Fact(concept=CONCEPT_QN, context_ref="ctx1", unit_ref=None, value="1")
+        inst = _make_instance([fact], {"ctx1": ctx})
+        taxonomy = _make_taxonomy(_inherited_not_all_hc(), dims={DIM_QN: _dim_model_with_members()})
+
+        findings = DimensionalConstraintValidator(taxonomy).validate(inst)
+
+        assert not any(f.constraint_type == "PROHIBITED_COMBINATION" for f in findings)
 
     def test_not_all_dim_absent_no_finding(self) -> None:
         """When a notAll dimension is absent, the combination is not prohibited."""
         ctx = _make_context("ctx1", dims={})  # no dimensions present
         fact = Fact(concept=CONCEPT_QN, context_ref="ctx1", unit_ref=None, value="1")
         inst = _make_instance([fact], {"ctx1": ctx})
-        taxonomy = _make_taxonomy(
-            _not_all_hc(), dims={DIM_QN: _dim_model_with_members()}
+        taxonomy = _make_taxonomy_with_hcs(
+            [_all_empty_hc(), _not_all_hc()],
+            dims={DIM_QN: _dim_model_with_members()},
         )
         findings = DimensionalConstraintValidator(taxonomy).validate(inst)
+        assert not any(f.constraint_type == "PROHIBITED_COMBINATION" for f in findings)
+
+    def test_closed_not_all_with_extra_dimension_does_not_trigger(self) -> None:
+        """A closed notAll cube only prohibits contexts valid for that cube."""
+        extra_dim = _qn("ExtraDim", _DIM_NS)
+        ctx = _make_context("ctx1", dims={DIM_QN: MEM_QN_ES, extra_dim: MEM_QN_PT})
+        fact = Fact(concept=CONCEPT_QN, context_ref="ctx1", unit_ref=None, value="1")
+        inst = _make_instance([fact], {"ctx1": ctx})
+        taxonomy = _make_taxonomy_with_hcs(
+            [_all_empty_hc(), _not_all_closed_hc()],
+            dims={
+                DIM_QN: _dim_model_with_members(),
+                extra_dim: _dim_model_with_members(),
+            },
+        )
+
+        findings = DimensionalConstraintValidator(taxonomy).validate(inst)
+
         assert not any(f.constraint_type == "PROHIBITED_COMBINATION" for f in findings)
 
     def test_prohibited_combination_source_is_dimensional(self) -> None:
@@ -456,8 +743,9 @@ class TestProhibitedCombination:
         ctx = _make_context("ctx1", dims={DIM_QN: MEM_QN_ES})
         fact = Fact(concept=CONCEPT_QN, context_ref="ctx1", unit_ref=None, value="1")
         inst = _make_instance([fact], {"ctx1": ctx})
-        taxonomy = _make_taxonomy(
-            _not_all_hc(), dims={DIM_QN: _dim_model_with_members()}
+        taxonomy = _make_taxonomy_with_hcs(
+            [_all_empty_hc(), _not_all_hc()],
+            dims={DIM_QN: _dim_model_with_members()},
         )
         findings = DimensionalConstraintValidator(taxonomy).validate(inst)
         for f in findings:

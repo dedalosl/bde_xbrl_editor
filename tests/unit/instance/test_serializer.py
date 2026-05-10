@@ -89,9 +89,7 @@ class TestToXml:
     def test_filing_indicators_present(self):
         result = InstanceSerializer().to_xml(_make_minimal_instance())
         root = etree.fromstring(result)
-        indicators = root.findall(
-            f".//{{{FILING_IND_NS}}}filingIndicator"
-        )
+        indicators = root.findall(f".//{{{FILING_IND_NS}}}filingIndicator")
         assert len(indicators) == 1
         assert indicators[0].text == "T1"
 
@@ -105,7 +103,9 @@ class TestToXml:
             tipo_envio="Ordinario",
             context_ref=next(iter(inst.contexts)),
             estados_reportados=[
-                BdeEstadoReportado(codigo="3201", blanco=False, context_ref=next(iter(inst.contexts))),
+                BdeEstadoReportado(
+                    codigo="3201", blanco=False, context_ref=next(iter(inst.contexts))
+                ),
             ],
         )
 
@@ -152,6 +152,25 @@ class TestToXml:
         xml_text = result.decode("utf-8")
         assert "2024-01-01" in xml_text
         assert "2024-12-31" in xml_text
+
+    def test_forever_period_serialised(self):
+        entity = ReportingEntity(identifier="ES123", scheme="http://www.bde.es/")
+        period = ReportingPeriod(period_type="forever")
+        ctx_id = generate_context_id(entity, period)
+        ctx = XbrlContext(context_id=ctx_id, entity=entity, period=period)
+        inst = XbrlInstance(
+            taxonomy_entry_point=Path("/tmp/entry.xsd"),
+            schema_ref_href="/tmp/entry.xsd",
+            entity=entity,
+            period=period,
+            contexts={ctx_id: ctx},
+            _dirty=True,
+        )
+
+        result = InstanceSerializer().to_xml(inst)
+
+        xml_text = result.decode("utf-8")
+        assert "<xbrli:forever" in xml_text
 
     def test_unit_elements_present(self):
         result = InstanceSerializer().to_xml(_make_minimal_instance())

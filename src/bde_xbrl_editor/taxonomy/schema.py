@@ -35,35 +35,67 @@ _EXTENSION = f"{{{NS_XSD}}}extension"
 _SEQUENCE = f"{{{NS_XSD}}}sequence"
 _ENUMERATION = f"{{{NS_XSD}}}enumeration"
 _UNION = f"{{{NS_XSD}}}union"
+_PATTERN = f"{{{NS_XSD}}}pattern"
 
 # XBRL substitution groups that mark items and tuples
 _SG_ITEM = QName(NS_XBRLI, "item", prefix="xbrli")
 _SG_TUPLE = QName(NS_XBRLI, "tuple", prefix="xbrli")
 
 # Root SG QNames that definitively make an element an XBRL concept
-XBRL_SG_ROOTS: frozenset[QName] = frozenset({
-    QName(NS_XBRLI, "item"),
-    QName(NS_XBRLI, "tuple"),
-    QName(NS_XBRLDT, "hypercubeItem"),
-    QName(NS_XBRLDT, "dimensionItem"),
-})
+XBRL_SG_ROOTS: frozenset[QName] = frozenset(
+    {
+        QName(NS_XBRLI, "item"),
+        QName(NS_XBRLI, "tuple"),
+        QName(NS_XBRLDT, "hypercubeItem"),
+        QName(NS_XBRLDT, "dimensionItem"),
+    }
+)
 
 # Mapping from XSD built-in / XBRL type local names to canonical QNames
 _XBRLI_NS = NS_XBRLI
 _XBRLI_TYPES = {
-    "monetaryItemType", "decimalItemType", "floatItemType", "doubleItemType",
-    "integerItemType", "nonNegativeIntegerItemType", "positiveIntegerItemType",
-    "nonPositiveIntegerItemType", "negativeIntegerItemType",
-    "longItemType", "intItemType", "shortItemType", "byteItemType",
-    "unsignedLongItemType", "unsignedIntItemType", "unsignedShortItemType",
-    "unsignedByteItemType", "stringItemType", "booleanItemType",
-    "hexBinaryItemType", "base64BinaryItemType", "anyURIItemType",
-    "QNameItemType", "durationItemType", "dateTimeItemType", "timeItemType",
-    "dateItemType", "gYearMonthItemType", "gYearItemType",
-    "gMonthDayItemType", "gDayItemType", "gMonthItemType",
-    "normalizedStringItemType", "tokenItemType", "languageItemType",
-    "NameItemType", "NCNameItemType", "sharesItemType", "pureItemType",
-    "fractionItemType", "nonNumericItemType", "numericItemType",
+    "monetaryItemType",
+    "decimalItemType",
+    "floatItemType",
+    "doubleItemType",
+    "integerItemType",
+    "nonNegativeIntegerItemType",
+    "positiveIntegerItemType",
+    "nonPositiveIntegerItemType",
+    "negativeIntegerItemType",
+    "longItemType",
+    "intItemType",
+    "shortItemType",
+    "byteItemType",
+    "unsignedLongItemType",
+    "unsignedIntItemType",
+    "unsignedShortItemType",
+    "unsignedByteItemType",
+    "stringItemType",
+    "booleanItemType",
+    "hexBinaryItemType",
+    "base64BinaryItemType",
+    "anyURIItemType",
+    "QNameItemType",
+    "durationItemType",
+    "dateTimeItemType",
+    "timeItemType",
+    "dateItemType",
+    "gYearMonthItemType",
+    "gYearItemType",
+    "gMonthDayItemType",
+    "gDayItemType",
+    "gMonthItemType",
+    "normalizedStringItemType",
+    "tokenItemType",
+    "languageItemType",
+    "NameItemType",
+    "NCNameItemType",
+    "sharesItemType",
+    "pureItemType",
+    "fractionItemType",
+    "nonNumericItemType",
+    "numericItemType",
 }
 
 
@@ -86,6 +118,7 @@ def _build_concept(
     target_ns: str,
     ns_map: dict[str, str],
     schema_path_str: str,
+    type_accuracy_defaults: Mapping[QName, tuple[str | None, str | None]] | None = None,
 ) -> tuple[QName, Concept, QName] | None:
     """Build a (qname, concept, sg_qname) triple from an xs:element node.
 
@@ -106,6 +139,10 @@ def _build_concept(
         data_type = _resolve_qname(type_raw, ns_map, schema_path_str) or QName(NS_XSD, "anyType")
     else:
         data_type = QName(NS_XSD, "anyType")
+    default_decimals: str | None = None
+    default_precision: str | None = None
+    if type_accuracy_defaults is not None:
+        default_decimals, default_precision = type_accuracy_defaults.get(data_type, (None, None))
 
     period_raw = el.get(f"{{{NS_XBRLI}}}periodType", "duration")
     period_type = "instant" if period_raw == "instant" else "duration"
@@ -132,8 +169,10 @@ def _build_concept(
     )
     if enum_domain_raw and enumeration_domain is None:
         enum_linkrole = None
-    enumeration_head_usable = (
-        enum_head_raw is not None and str(enum_head_raw).strip().lower() in ("true", "1", "yes")
+    enumeration_head_usable = enum_head_raw is not None and str(enum_head_raw).strip().lower() in (
+        "true",
+        "1",
+        "yes",
     )
 
     concept = Concept(
@@ -150,6 +189,8 @@ def _build_concept(
         enumeration_domain=enumeration_domain,
         enumeration_linkrole=enum_linkrole if enum_linkrole else None,
         enumeration_head_usable=enumeration_head_usable,
+        default_decimals=default_decimals,
+        default_precision=default_precision,
     )
     return qname, concept, sg
 
@@ -170,12 +211,95 @@ def _is_true(raw: str | None) -> bool:
     return (raw or "").strip().lower() in {"true", "1"}
 
 
+def _direct_type_base(
+    type_el: etree._Element,
+    ns_map: dict[str, str],
+    schema_path_str: str,
+) -> QName | None:
+    for child in type_el:
+        if child.tag == _RESTRICTION:
+            return _resolve_qname(child.get("base"), ns_map, schema_path_str)
+        if child.tag == _SIMPLE_CONTENT:
+            for sc_child in child:
+                if sc_child.tag == _RESTRICTION:
+                    return _resolve_qname(sc_child.get("base"), ns_map, schema_path_str)
+        if child.tag == _EXTENSION:
+            return _resolve_qname(child.get("base"), ns_map, schema_path_str)
+    return None
+
+
+def _collect_local_type_bases(
+    root: etree._Element,
+    target_ns: str,
+    ns_map: dict[str, str],
+    schema_path_str: str,
+) -> dict[QName, QName]:
+    bases: dict[QName, QName] = {}
+    for tag in (_SIMPLE_TYPE, _COMPLEX_TYPE):
+        for type_el in root.iter(tag):
+            name = type_el.get("name")
+            if not name or not target_ns:
+                continue
+            base = _direct_type_base(type_el, ns_map, schema_path_str)
+            if base is not None:
+                bases[QName(target_ns, name)] = base
+    return bases
+
+
+def _type_derives_from(
+    type_qname: QName | None,
+    target_base: QName,
+    type_bases: Mapping[QName, QName],
+) -> bool:
+    seen: set[QName] = set()
+    current = type_qname
+    while current is not None and current not in seen:
+        if current == target_base:
+            return True
+        seen.add(current)
+        current = type_bases.get(current)
+    return False
+
+
+def _collect_accuracy_defaults(
+    root: etree._Element,
+    target_ns: str,
+    ns_map: dict[str, str],
+    schema_path_str: str,
+) -> dict[QName, tuple[str | None, str | None]]:
+    defaults: dict[QName, tuple[str | None, str | None]] = {}
+    if not target_ns:
+        return defaults
+    for type_el in root.iter(_COMPLEX_TYPE):
+        name = type_el.get("name")
+        if not name:
+            continue
+        decimals: str | None = None
+        precision: str | None = None
+        for attr in type_el.iter(_ATTRIBUTE):
+            attr_name = attr.get("name")
+            if attr_name == "decimals":
+                decimals = attr.get("fixed") or attr.get("default")
+            elif attr_name == "precision":
+                precision = attr.get("fixed") or attr.get("default")
+        if decimals is not None or precision is not None:
+            defaults[QName(target_ns, name)] = (decimals, precision)
+    return defaults
+
+
 def _validate_xbrl_item_and_tuple_constraints(
     root: etree._Element,
     ns_map: dict[str, str],
     schema_path_str: str,
+    target_ns: str,
 ) -> None:
     """Validate XBRL 2.1 schema constraints for directly declared items/tuples."""
+    type_bases = _collect_local_type_bases(root, target_ns, ns_map, schema_path_str)
+    complex_types_by_qname = {
+        QName(target_ns, type_el.get("name")): type_el
+        for type_el in root.iter(_COMPLEX_TYPE)
+        if target_ns and type_el.get("name")
+    }
     for el in root.iter(_ELEMENT):
         if el.getparent() is not root:
             continue
@@ -183,18 +307,49 @@ def _validate_xbrl_item_and_tuple_constraints(
         name = el.get("name", "<anonymous>")
         sg = _resolve_qname(el.get("substitutionGroup"), ns_map, schema_path_str)
         has_period_type = el.get(f"{{{NS_XBRLI}}}periodType") is not None
+        has_balance = el.get(f"{{{NS_XBRLI}}}balance") is not None
+        type_qname = _resolve_qname(el.get("type"), ns_map, schema_path_str)
 
         if sg == _SG_ITEM:
+            if not target_ns:
+                raise _schema_constraint_error(
+                    schema_path_str,
+                    f"Item '{name}' is declared in a schema with empty targetNamespace",
+                    el,
+                )
             if not has_period_type:
                 raise _schema_constraint_error(
                     schema_path_str,
                     f"Item '{name}' is missing required xbrli:periodType",
                     el,
                 )
+            if has_balance and not _type_derives_from(type_qname, _MONETARY_ITEM_TYPE, type_bases):
+                raise _schema_constraint_error(
+                    schema_path_str,
+                    f"Item '{name}' declares xbrli:balance but is not monetaryItemType-derived",
+                    el,
+                )
+            type_el = complex_types_by_qname.get(type_qname) if type_qname is not None else None
+            if (
+                type_el is not None
+                and next((c for c in type_el if c.tag == _SIMPLE_CONTENT), None) is None
+            ):
+                raise _schema_constraint_error(
+                    schema_path_str,
+                    f"Item '{name}' uses a complex-content type that is not fractionItemType-derived",
+                    el,
+                )
             continue
 
         if sg != _SG_TUPLE:
             continue
+
+        if has_balance:
+            raise _schema_constraint_error(
+                schema_path_str,
+                f"Tuple '{name}' must not declare xbrli:balance",
+                el,
+            )
 
         if has_period_type:
             raise _schema_constraint_error(
@@ -244,6 +399,48 @@ def _validate_xbrl_item_and_tuple_constraints(
                     )
 
 
+def _validate_unique_particle_attribution(
+    root: etree._Element,
+    schema_path_str: str,
+) -> None:
+    """Detect ambiguous repeated element particles in local sequence declarations.
+
+    This covers the XML Schema UPA pattern exercised by the XBRL 2.1 suite:
+    an optional particle followed later by the same element reference before a
+    required different particle can disambiguate the content model.
+    """
+    for sequence in root.iter(_SEQUENCE):
+        particles = [
+            child
+            for child in sequence
+            if isinstance(child.tag, str) and child.tag == _ELEMENT and child.get("ref")
+        ]
+        for index, left in enumerate(particles):
+            left_ref = left.get("ref")
+            if not left_ref or left.get("minOccurs", "1") != "0":
+                continue
+            for right in particles[index + 1 :]:
+                if right.get("ref") == left_ref:
+                    raise _schema_constraint_error(
+                        schema_path_str,
+                        f"XML Schema UPA violation for repeated particle '{left_ref}'",
+                        right,
+                    )
+                if right.get("minOccurs", "1") != "0":
+                    break
+
+
+def _validate_pattern_facets(root: etree._Element, schema_path_str: str) -> None:
+    for pattern in root.iter(_PATTERN):
+        value = pattern.get("value") or ""
+        if r"\@" in value:
+            raise _schema_constraint_error(
+                schema_path_str,
+                f"Invalid XML Schema pattern facet {value!r}",
+                pattern,
+            )
+
+
 def parse_schema_raw(
     schema_path: Path,
     namespace_override: str | None = None,
@@ -276,13 +473,24 @@ def parse_schema_raw(
     root = tree.getroot()
     # namespace_override is supplied for xs:include'd schemas that lack their
     # own targetNamespace but inherit it from the including schema.
-    target_ns = namespace_override if namespace_override is not None else root.get("targetNamespace", "")
+    target_ns = (
+        namespace_override if namespace_override is not None else root.get("targetNamespace", "")
+    )
     ns_map: dict[str, str] = {k or "": v for k, v in root.nsmap.items()}
-    _validate_xbrl_item_and_tuple_constraints(root, ns_map, str(schema_path))
+    _validate_xbrl_item_and_tuple_constraints(root, ns_map, str(schema_path), target_ns)
+    _validate_unique_particle_attribution(root, str(schema_path))
+    _validate_pattern_facets(root, str(schema_path))
+    type_accuracy_defaults = _collect_accuracy_defaults(root, target_ns, ns_map, str(schema_path))
 
     candidates: dict[QName, tuple[Concept, QName]] = {}
     for el in root.iter(_ELEMENT):
-        result = _build_concept(el, target_ns, ns_map, str(schema_path))
+        result = _build_concept(
+            el,
+            target_ns,
+            ns_map,
+            str(schema_path),
+            type_accuracy_defaults,
+        )
         if result is not None:
             qname, concept, sg = result
             candidates[qname] = (concept, sg)
@@ -317,9 +525,7 @@ def parse_schema(
     raw, _target_ns = parse_schema_raw(schema_path, namespace_override)
 
     # Phase 1: accept concepts whose SG is a known XBRL root
-    resolved: dict[QName, Concept] = {
-        qn: c for qn, (c, sg) in raw.items() if sg in XBRL_SG_ROOTS
-    }
+    resolved: dict[QName, Concept] = {qn: c for qn, (c, sg) in raw.items() if sg in XBRL_SG_ROOTS}
 
     # Phase 2: within-file transitive closure
     pending = [(qn, c, sg) for qn, (c, sg) in raw.items() if sg not in XBRL_SG_ROOTS]
@@ -339,9 +545,7 @@ def parse_schema(
         {schema_path: namespace_override} if namespace_override is not None else {},
     )
     enums = extract_concept_enumerations_for_schema(schema_path, namespace_override, registry)
-    return {
-        qn: replace(c, enumeration_values=enums.get(qn, ())) for qn, c in resolved.items()
-    }
+    return {qn: replace(c, enumeration_values=enums.get(qn, ())) for qn, c in resolved.items()}
 
 
 _MONETARY_ITEM_TYPE = QName(NS_XBRLI, "monetaryItemType")
@@ -578,7 +782,9 @@ def _element_enumeration_display_values(
                     continue
                 for r in cc:
                     if r.tag == _RESTRICTION:
-                        return _enums_from_restriction(r, ns_map, schema_path_str, registry, frozenset())
+                        return _enums_from_restriction(
+                            r, ns_map, schema_path_str, registry, frozenset()
+                        )
     return None
 
 
@@ -629,7 +835,9 @@ def extract_concept_enumerations_for_schema(
         return {}
 
     root = tree.getroot()
-    target_ns = namespace_override if namespace_override is not None else root.get("targetNamespace", "")
+    target_ns = (
+        namespace_override if namespace_override is not None else root.get("targetNamespace", "")
+    )
     ns_map: dict[str, str] = {k or "": v for k, v in root.nsmap.items()}
     path_str = str(schema_path)
     out: dict[QName, tuple[str, ...]] = {}

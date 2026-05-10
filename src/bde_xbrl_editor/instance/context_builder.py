@@ -35,12 +35,10 @@ def generate_context_id(
     containers = dim_containers or {}
     # Canonical representation — sort dimension pairs for determinism
     dim_str = "|".join(
-        f"{str(k)}={str(v)}"
-        for k, v in sorted(dims.items(), key=lambda kv: str(kv[0]))
+        f"{str(k)}={str(v)}" for k, v in sorted(dims.items(), key=lambda kv: str(kv[0]))
     )
     typed_dim_str = "|".join(
-        f"{str(k)}={str(v)}"
-        for k, v in sorted(typed_dims.items(), key=lambda kv: str(kv[0]))
+        f"{str(k)}={str(v)}" for k, v in sorted(typed_dims.items(), key=lambda kv: str(kv[0]))
     )
     container_str = "|".join(
         f"{str(k)}={v}" for k, v in sorted(containers.items(), key=lambda kv: str(kv[0]))
@@ -48,6 +46,8 @@ def generate_context_id(
     period_str = (
         str(period.instant_date)
         if period.period_type == "instant"
+        else "forever"
+        if period.period_type == "forever"
         else f"{period.start_date}/{period.end_date}"
     )
     canonical = (

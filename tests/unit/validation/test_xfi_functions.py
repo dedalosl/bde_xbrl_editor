@@ -21,6 +21,7 @@ from bde_xbrl_editor.validation.formula.xfi_functions import (
     clear_evaluation_context,
     iaf_numeric_add,
     iaf_sum,
+    normalize_formula_xpath_expression,
     set_evaluation_context,
     xfi_decimal,  # backward-compat alias
     xfi_decimals,
@@ -97,6 +98,20 @@ def _set_ctx(binding: dict) -> None:
     set_evaluation_context(binding)
 
 
+def test_normalize_formula_xpath_expression_strips_comments_outside_strings() -> None:
+    expr = "concat('(: literal :)', (: comment with ' quote :) 'ok')"
+
+    assert normalize_formula_xpath_expression(expr) == "concat('(: literal :)',   'ok')"
+
+
+def test_formula_parser_accepts_normalized_xpath_comments() -> None:
+    expr = "concat('planet ', (: table's integer is typed :) 'venus')"
+
+    token = build_formula_parser().parse(normalize_formula_xpath_expression(expr))
+
+    assert "".join(token.evaluate()) == "planet venus"
+
+
 # ---------------------------------------------------------------------------
 # Ensure context is cleared between tests
 # ---------------------------------------------------------------------------
@@ -163,13 +178,13 @@ class TestXfiPeriod:
         _set_ctx({"_context": ctx})
         assert xfi_is_duration_period(None) is True
 
-    def test_period_instant_returns_date_object(self) -> None:
-        """xfi_period_instant returns an elementpath Date10 for an instant period."""
+    def test_period_instant_returns_datetime_object(self) -> None:
+        """xfi_period_instant returns xs:dateTime (midnight) for an instant period."""
         ctx = _instant_ctx(instant=date(2024, 12, 31))
         period = ctx.period
         result = xfi_period_instant(period)
         assert result is not None
-        assert str(result) == "2024-12-31"
+        assert "2024-12-31" in str(result)
 
     def test_period_start_returns_date_object(self) -> None:
         """xfi_period_start returns a Date10 for a duration period."""
@@ -402,3 +417,11 @@ class TestIafFunctions:
         result = list(token.select(ctx))
 
         assert result == [Decimal("12.75")]
+
+
+class TestBuildFormulaParserNamespaces:
+    def test_standard_xbrl_prefixes_are_available_without_nsmap(self) -> None:
+        """Static parsing must not fail when BDE/EBA XPath uses standard prefixes."""
+        parser = build_formula_parser({})
+        parser.parse("link:schemaRef")
+        parser.parse("xbrli:context")

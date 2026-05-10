@@ -48,9 +48,20 @@ def _instance_load_process_entry(
             preloaded_taxonomy=preloaded_taxonomy,
         )
         taxonomy = resolved_taxonomy or preloaded_taxonomy
+        if resolved_taxonomy is not None and instance.instance_linkbase_refs:
+            on_progress("Preparing editor…", 96, 100)
+            taxonomy = loader.load(
+                instance.taxonomy_entry_point,
+                progress_callback=on_progress,
+                instance_linkbase_seeds=instance.instance_linkbase_refs,
+            )
         if taxonomy is None:
             on_progress("Preparing editor…", 96, 100)
-            taxonomy = loader.load(instance.taxonomy_entry_point, progress_callback=on_progress)
+            taxonomy = loader.load(
+                instance.taxonomy_entry_point,
+                progress_callback=on_progress,
+                instance_linkbase_seeds=instance.instance_linkbase_refs,
+            )
         result_queue.put(("finished", instance, taxonomy, len(orphaned_facts)))
     except TaxonomyResolutionError as exc:
         result_queue.put(("error", str(exc)))

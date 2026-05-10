@@ -59,6 +59,7 @@ def _round_fact(
     *,
     infer_decimals: bool = True,
     v_decimal: Decimal | None = None,
+    concept: Concept | None = None,
 ) -> Decimal:
     """Round a fact's value, or an explicit ``v_decimal`` using *fact*'s decimals/precision."""
     if v_decimal is None:
@@ -78,8 +79,16 @@ def _round_fact(
         except (ValueError, TypeError):
             v_float_fact = float("nan")
 
-    d_str = fact.decimals
-    p_str = fact.precision
+    d_str = (
+        fact.decimals
+        if fact.decimals is not None
+        else (concept.default_decimals if concept is not None else None)
+    )
+    p_str = (
+        fact.precision
+        if fact.precision is not None
+        else (concept.default_precision if concept is not None else None)
+    )
     if d_str == "INF" or p_str == "INF":
         return v_dec
 
@@ -190,7 +199,9 @@ class CalculationConsistencyValidator:
                 Decimal(fact.value.strip())
             except (InvalidOperation, AttributeError):
                 continue
-            rounded_value = _round_fact(fact, infer_decimals=True)
+            rounded_value = _round_fact(
+                fact, infer_decimals=True, concept=taxonomy.concepts.get(fact.concept)
+            )
             rounded_numeric_facts_by_key[key].append((fact, rounded_value))
 
         duplicate_blocked = {key for key, flist in by_key.items() if len(flist) > 1}
@@ -372,11 +383,11 @@ class CalculationConsistencyValidator:
                         sum_fact,
                         infer_decimals=True,
                         v_decimal=bound_sum,
+                        concept=taxonomy.concepts.get(sum_fact.concept),
                     )
                     if rounded_items_sum.is_nan() or rounded_sum.is_nan():
                         if not (
-                            _fact_has_zero_precision(sum_fact)
-                            or bound_items_have_zero_precision
+                            _fact_has_zero_precision(sum_fact) or bound_items_have_zero_precision
                         ):
                             continue
                     elif rounded_items_sum == rounded_sum:
