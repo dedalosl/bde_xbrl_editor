@@ -583,14 +583,23 @@ def xfi_fact_dimension_s_equal(fact_arg: Any, dim_qname_arg: Any, value_arg: Any
     return xfi_fact_has_explicit_dimension_value(fact_arg, dim_qname_arg, value_arg)
 
 
-def xfi_fact_dimension_s_equal2(fact1_arg: Any, fact2_arg: Any) -> bool:
-    """xfi:fact-dimension-s-equal2($fact1, $fact2) → dimensional context equality."""
+def xfi_fact_dimension_s_equal2(
+    fact1_arg: Any,
+    fact2_arg: Any,
+    dim_qname_arg: Any | None = None,
+) -> bool:
+    """xfi:fact-dimension-s-equal2(...) → dimensional context equality."""
     dims1 = _get_context_dimensions(fact1_arg)
     typed_dims1 = _get_context_typed_dimensions(fact1_arg)
     # For fact2, temporarily swap context
     ctx2 = _context_from_arg(fact2_arg)
     dims2 = _get_context_dimensions(fact2_arg) if ctx2 else {}
     typed_dims2 = _get_context_typed_dimensions(fact2_arg) if ctx2 else {}
+    if dim_qname_arg is not None:
+        qn = _qname_from_arg(dim_qname_arg)
+        if qn is None:
+            return False
+        return dims1.get(qn) == dims2.get(qn) and typed_dims1.get(qn) == typed_dims2.get(qn)
     return dims1 == dims2 and typed_dims1 == typed_dims2
 
 

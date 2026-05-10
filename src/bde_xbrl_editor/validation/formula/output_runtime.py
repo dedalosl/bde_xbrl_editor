@@ -40,7 +40,7 @@ class OutputFormulaRuntimeEvaluator:
             )
             for resolved in bindings:
                 if resolved.error is not None:
-                    findings.append(self._error_finding(formula.formula_id, resolved.error))
+                    findings.append(self._error_finding(formula, resolved.error))
                     continue
                 precondition_result = self._evaluate_preconditions(
                     formula,
@@ -49,7 +49,7 @@ class OutputFormulaRuntimeEvaluator:
                     general_values=resolved.general_values,
                 )
                 if isinstance(precondition_result, Exception):
-                    findings.append(self._error_finding(formula.formula_id, precondition_result))
+                    findings.append(self._error_finding(formula, precondition_result))
                     continue
                 if not precondition_result:
                     continue
@@ -63,7 +63,7 @@ class OutputFormulaRuntimeEvaluator:
                         fact_bindings_as_elements=True,
                     )
                 except Exception as exc:  # noqa: BLE001
-                    findings.append(self._error_finding(formula.formula_id, exc))
+                    findings.append(self._error_finding(formula, exc))
 
         return tuple(findings)
 
@@ -138,12 +138,14 @@ class OutputFormulaRuntimeEvaluator:
         )
 
     @staticmethod
-    def _error_finding(formula_id: str, exc: Exception) -> ValidationFinding:
+    def _error_finding(formula: FormulaOutputDefinition, exc: Exception) -> ValidationFinding:
         code = getattr(exc, "code", None)
         rule_id = code if isinstance(code, str) and code else "formula:runtime-error"
+        if ":" not in rule_id and formula.namespaces.get("eg") and rule_id == "aspect-issues":
+            rule_id = f"eg:{rule_id}"
         return ValidationFinding(
             rule_id=rule_id,
             severity=ValidationSeverity.ERROR,
-            message=f"Output formula '{formula_id}' runtime error: {exc}",
+            message=f"Output formula '{formula.formula_id}' runtime error: {exc}",
             source="formula",
         )

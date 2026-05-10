@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from inspect import Parameter, Signature
 from typing import Any
 
 from bde_xbrl_editor.taxonomy.models import CustomFunctionDefinition
@@ -108,9 +109,42 @@ def register_custom_functions(
             callback = make_callback(grouped_definitions, definitions)  # type: ignore[misc]
         except TypeError:
             callback = make_callback(grouped_definitions)
+        sequence_types: tuple[str, ...] = ()
+        if len(grouped_definitions) == 1:
+            _set_callback_signature(callback, len(definition.input_types))
+            sequence_types = _custom_function_sequence_types(definition)
         _register_external_function(
             parser,
             callback,
             name=definition.local_name,
             prefix=prefix,
+            sequence_types=sequence_types,
         )
+
+
+def _set_callback_signature(callback: Callable[..., Any], argument_count: int) -> None:
+    try:
+        callback.__signature__ = Signature(  # type: ignore[attr-defined]
+            [
+                Parameter(f"arg{i}", Parameter.POSITIONAL_OR_KEYWORD)
+                for i in range(argument_count)
+            ]
+        )
+    except Exception:  # noqa: BLE001
+        return
+
+
+def _custom_function_sequence_types(
+    definition: CustomFunctionDefinition,
+) -> tuple[str, ...]:
+    return tuple(
+        _normalize_custom_function_sequence_type(input_type)
+        for input_type in definition.input_types
+    ) + (_normalize_custom_function_sequence_type(definition.output_type or "item()*"),)
+
+
+def _normalize_custom_function_sequence_type(sequence_type: str) -> str:
+    stripped = sequence_type.strip()
+    if stripped.startswith("schema-element("):
+        return "item()*" if stripped.endswith("*") else "item()"
+    return stripped

@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 from datetime import date
 from decimal import Decimal
+from types import SimpleNamespace
 
 import elementpath
 import pytest
@@ -26,6 +27,7 @@ from bde_xbrl_editor.validation.formula.xfi_functions import (
     xfi_decimal,  # backward-compat alias
     xfi_decimals,
     xfi_entity,
+    xfi_fact_dimension_s_equal2,
     xfi_fact_explicit_dimensions,
     xfi_fact_has_explicit_dimension,
     xfi_fact_typed_dimension_value,
@@ -266,6 +268,39 @@ class TestTypedDimensions:
             assert xfi_fact_has_explicit_dimension(fact, "{http://example.com/dim") is False
 
         assert "Could not parse QName argument" in caplog.text
+
+    def test_fact_dimension_s_equal2_accepts_dimension_scoped_form(self) -> None:
+        dim_qname = QName(namespace="http://example.com/dim", local_name="ExposureDimension")
+        member_qname = QName(namespace="http://example.com/dim", local_name="RetailMember")
+        other_dim_qname = QName(namespace="http://example.com/dim", local_name="OtherDimension")
+        ctx1 = XbrlContext(
+            context_id="ctx1",
+            entity=_entity(),
+            period=ReportingPeriod(period_type="instant", instant_date=date(2024, 12, 31)),
+            dimensions={dim_qname: member_qname, other_dim_qname: member_qname},
+        )
+        ctx2 = XbrlContext(
+            context_id="ctx2",
+            entity=_entity(),
+            period=ReportingPeriod(period_type="instant", instant_date=date(2024, 12, 31)),
+            dimensions={dim_qname: member_qname},
+        )
+        fact1 = _fact(ctx_id="ctx1")
+        fact2 = _fact(ctx_id="ctx2")
+        instance = SimpleNamespace(contexts={"ctx1": ctx1, "ctx2": ctx2})
+        _set_ctx({"_instance": instance})
+
+        assert xfi_fact_dimension_s_equal2(fact1, fact2, dim_qname) is True
+        assert xfi_fact_dimension_s_equal2(fact1, fact2) is False
+
+    def test_formula_parser_accepts_fact_dimension_s_equal2_three_args(self) -> None:
+        expr = (
+            "xfi:fact-dimension-s-equal2(., $pd, "
+            "QName('http://example.com/dim', 'ExposureDimension'))"
+        )
+        parser = build_formula_parser({"xfi": "http://www.xbrl.org/2008/function/instance"})
+
+        parser.parse(normalize_formula_xpath_expression(expr))
 
 
 # ---------------------------------------------------------------------------

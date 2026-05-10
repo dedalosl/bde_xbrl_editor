@@ -37,7 +37,9 @@ from bde_xbrl_editor.validation.formula.output_runtime import OutputFormulaRunti
 from bde_xbrl_editor.validation.formula.static import (
     FormulaStaticValidator,
     validate_assertion_severity_linkbases,
+    validate_custom_function_linkbases,
     validate_generic_message_linkbases,
+    validate_typed_dimension_equality_linkbases,
 )
 from bde_xbrl_editor.validation.models import ValidationFinding, ValidationSeverity
 from bde_xbrl_editor.validation.orchestrator import InstanceValidator
@@ -79,7 +81,7 @@ _STRUCTURAL_ONLY_TEST_IDS = frozenset(
         _USED_ON_TEST_ID,
     }
 )
-_OUTPUT_RUNTIME_ERROR_TEST_PREFIXES = ("22010", "22040", "22050", "22140", "22170")
+_OUTPUT_RUNTIME_ERROR_TEST_PREFIXES = ("22010", "22040", "22050", "22140", "22170", "60200")
 _INPUT_ASSERTION_STATIC_TEST_PREFIXES = (
     "22010",
     "31110",
@@ -351,6 +353,12 @@ class TestCaseExecutor:
                     findings = findings + tuple(
                         validate_generic_message_linkbases(variation.input_files)
                     )
+                    findings = findings + tuple(
+                        validate_custom_function_linkbases(variation.input_files)
+                    )
+                    findings = findings + tuple(
+                        validate_typed_dimension_equality_linkbases(variation.input_files)
+                    )
                     if (
                         test_case.test_case_id.startswith(_OUTPUT_RUNTIME_ERROR_TEST_PREFIXES)
                         and variation.expected_outcome.outcome_type == ExpectedOutcomeType.ERROR
@@ -384,6 +392,12 @@ class TestCaseExecutor:
                     )
                     findings = findings + tuple(
                         validate_generic_message_linkbases(variation.input_files)
+                    )
+                    findings = findings + tuple(
+                        validate_custom_function_linkbases(variation.input_files)
+                    )
+                    findings = findings + tuple(
+                        validate_typed_dimension_equality_linkbases(variation.input_files)
                     )
                 if taxonomy_struct is not None and test_case.suite_id == "xbrl21":
                     findings = findings + tuple(
@@ -444,6 +458,12 @@ class TestCaseExecutor:
                     )
                     findings = findings + tuple(
                         validate_generic_message_linkbases(variation.input_files)
+                    )
+                    findings = findings + tuple(
+                        validate_custom_function_linkbases(variation.input_files)
+                    )
+                    findings = findings + tuple(
+                        validate_typed_dimension_equality_linkbases(variation.input_files)
                     )
                 if taxonomy_struct is not None and test_case.suite_id == "xbrl21":
                     findings = findings + tuple(
