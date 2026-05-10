@@ -34,7 +34,11 @@ from bde_xbrl_editor.taxonomy.settings import LoaderSettings
 from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
 from bde_xbrl_editor.validation.calculation import CalculationConsistencyValidator
 from bde_xbrl_editor.validation.formula.output_runtime import OutputFormulaRuntimeEvaluator
-from bde_xbrl_editor.validation.formula.static import FormulaStaticValidator
+from bde_xbrl_editor.validation.formula.static import (
+    FormulaStaticValidator,
+    validate_assertion_severity_linkbases,
+    validate_generic_message_linkbases,
+)
 from bde_xbrl_editor.validation.models import ValidationFinding, ValidationSeverity
 from bde_xbrl_editor.validation.orchestrator import InstanceValidator
 from bde_xbrl_editor.validation.relationships import RelationshipSetValidator
@@ -341,6 +345,12 @@ class TestCaseExecutor:
                     findings = report.findings
                 if test_case.suite_id == "formula" and taxonomy_struct is not None:
                     findings = findings + tuple(FormulaStaticValidator(taxonomy_struct).validate())
+                    findings = findings + tuple(
+                        validate_assertion_severity_linkbases(variation.input_files)
+                    )
+                    findings = findings + tuple(
+                        validate_generic_message_linkbases(variation.input_files)
+                    )
                     if (
                         test_case.test_case_id.startswith(_OUTPUT_RUNTIME_ERROR_TEST_PREFIXES)
                         and variation.expected_outcome.outcome_type == ExpectedOutcomeType.ERROR
@@ -369,6 +379,12 @@ class TestCaseExecutor:
                     )
                 if test_case.suite_id == "formula" and taxonomy_struct is not None:
                     findings = findings + tuple(FormulaStaticValidator(taxonomy_struct).validate())
+                    findings = findings + tuple(
+                        validate_assertion_severity_linkbases(variation.input_files)
+                    )
+                    findings = findings + tuple(
+                        validate_generic_message_linkbases(variation.input_files)
+                    )
                 if taxonomy_struct is not None and test_case.suite_id == "xbrl21":
                     findings = findings + tuple(
                         CalculationConsistencyValidator().validate_taxonomy(taxonomy_struct)
@@ -423,6 +439,12 @@ class TestCaseExecutor:
                     )
                 if test_case.suite_id == "formula" and taxonomy_struct is not None:
                     findings = findings + tuple(FormulaStaticValidator(taxonomy_struct).validate())
+                    findings = findings + tuple(
+                        validate_assertion_severity_linkbases(variation.input_files)
+                    )
+                    findings = findings + tuple(
+                        validate_generic_message_linkbases(variation.input_files)
+                    )
                 if taxonomy_struct is not None and test_case.suite_id == "xbrl21":
                     findings = findings + tuple(
                         CalculationConsistencyValidator().validate_taxonomy(taxonomy_struct)

@@ -7,6 +7,8 @@ from collections import defaultdict
 from collections.abc import Iterable
 from pathlib import Path
 
+from lxml import etree
+
 from bde_xbrl_editor.instance.models import XbrlInstance
 from bde_xbrl_editor.taxonomy.constants import NS_XBRLI
 from bde_xbrl_editor.taxonomy.models import (
@@ -22,6 +24,7 @@ from bde_xbrl_editor.taxonomy.models import (
     TaxonomyStructure,
     XPathFilterDefinition,
 )
+from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
 from bde_xbrl_editor.validation.formula.filters import apply_filters
 from bde_xbrl_editor.validation.formula.xfi_functions import (
     build_formula_parser,
@@ -44,6 +47,297 @@ _PROHIBITED_CUSTOM_FUNCTION_NAMESPACES = frozenset(
         "http://www.xbrl.org/2008/function/instance",
     }
 )
+_NS_XLINK = "http://www.w3.org/1999/xlink"
+_NS_LINK = "http://www.xbrl.org/2003/linkbase"
+_NS_GENERIC = "http://xbrl.org/2008/generic"
+_NS_MSG = "http://xbrl.org/2010/message"
+_NS_VARIABLE = "http://xbrl.org/2008/variable"
+_NS_VALUE_ASSERTION = "http://xbrl.org/2008/assertion/value"
+_NS_EXISTENCE_ASSERTION = "http://xbrl.org/2008/assertion/existence"
+_NS_CONSISTENCY_ASSERTION = "http://xbrl.org/2008/assertion/consistency"
+_ARCROLE_ASSERTION_UNSATISFIED_SEVERITY = (
+    "http://xbrl.org/arcrole/2016/assertion-unsatisfied-severity"
+)
+_ARCROLE_ASSERTION_UNSATISFIED_MESSAGE = (
+    "http://xbrl.org/arcrole/2010/assertion-unsatisfied-message"
+)
+_ARCROLE_ASSERTION_SATISFIED_MESSAGE = "http://xbrl.org/arcrole/2010/assertion-satisfied-message"
+_ARCROLE_VARIABLE_SET = "http://xbrl.org/arcrole/2008/variable-set"
+_STANDARD_SEVERITY_HREF_PREFIX = "http://www.xbrl.org/2016/severities.xml#"
+_STANDARD_SEVERITY_FRAGMENTS = frozenset({"ERROR", "WARNING", "OK"})
+_ASSERTION_TAGS = frozenset(
+    {
+        f"{{{_NS_VALUE_ASSERTION}}}valueAssertion",
+        f"{{{_NS_EXISTENCE_ASSERTION}}}existenceAssertion",
+        f"{{{_NS_CONSISTENCY_ASSERTION}}}consistencyAssertion",
+    }
+)
+_TAG_GENERIC_ARC = f"{{{_NS_GENERIC}}}arc"
+_TAG_LINK_LOC = f"{{{_NS_LINK}}}loc"
+_TAG_MESSAGE = f"{{{_NS_MSG}}}message"
+_TAG_VARIABLE_ARC = f"{{{_NS_VARIABLE}}}variableArc"
+_TAG_PARAMETER = f"{{{_NS_VARIABLE}}}parameter"
+_ATTR_XLINK_LABEL = f"{{{_NS_XLINK}}}label"
+_ATTR_XLINK_HREF = f"{{{_NS_XLINK}}}href"
+_ATTR_XLINK_FROM = f"{{{_NS_XLINK}}}from"
+_ATTR_XLINK_TO = f"{{{_NS_XLINK}}}to"
+_ATTR_XLINK_ARCROLE = f"{{{_NS_XLINK}}}arcrole"
+
+
+def validate_assertion_severity_linkbases(
+    linkbase_paths: Iterable[Path],
+) -> list[ValidationFinding]:
+    """Validate Formula assertion-severity extension relationships in linkbases."""
+    findings: list[ValidationFinding] = []
+    for path in linkbase_paths:
+        if path.suffix.lower() not in (".xml", ".xbrl"):
+            continue
+        findings.extend(_assertion_severity_linkbase_findings(path))
+    return findings
+
+
+def validate_generic_message_linkbases(
+    linkbase_paths: Iterable[Path],
+) -> list[ValidationFinding]:
+    """Validate Formula generic-message template expressions in linkbases."""
+    findings: list[ValidationFinding] = []
+    for path in linkbase_paths:
+        if path.suffix.lower() not in (".xml", ".xbrl"):
+            continue
+        findings.extend(_generic_message_linkbase_findings(path))
+    return findings
+
+
+def _generic_message_linkbase_findings(path: Path) -> list[ValidationFinding]:
+    try:
+        root = parse_xml_file(path).getroot()
+    except (OSError, etree.XMLSyntaxError):
+        return []
+
+    assertion_elements = {
+        (el.get(_ATTR_XLINK_LABEL) or "").strip(): el
+        for el in root.iter()
+        if isinstance(el.tag, str)
+        and el.tag in _ASSERTION_TAGS
+        and (el.get(_ATTR_XLINK_LABEL) or "").strip()
+    }
+    if not assertion_elements:
+        return []
+
+    message_elements = {
+        (el.get(_ATTR_XLINK_LABEL) or "").strip(): el
+        for el in root.iter(_TAG_MESSAGE)
+        if (el.get(_ATTR_XLINK_LABEL) or "").strip()
+    }
+    if not message_elements:
+        return []
+
+    parameter_labels: set[str] = set()
+    global_parameter_names: set[str] = set()
+    for parameter in root.iter(_TAG_PARAMETER):
+        label = (parameter.get(_ATTR_XLINK_LABEL) or "").strip()
+        name = (parameter.get("name") or "").strip()
+        if label:
+            parameter_labels.add(label)
+        if name:
+            global_parameter_names.add(name)
+
+    fact_variable_names_by_assertion: dict[str, set[str]] = defaultdict(set)
+    in_scope_names_by_assertion: dict[str, set[str]] = defaultdict(set)
+    for arc in root.iter(_TAG_VARIABLE_ARC):
+        if (arc.get(_ATTR_XLINK_ARCROLE) or "").strip() != _ARCROLE_VARIABLE_SET:
+            continue
+        source = (arc.get(_ATTR_XLINK_FROM) or "").strip()
+        target = (arc.get(_ATTR_XLINK_TO) or "").strip()
+        name = (arc.get("name") or "").strip()
+        if source and name:
+            in_scope_names_by_assertion[source].add(name)
+            if target not in parameter_labels:
+                fact_variable_names_by_assertion[source].add(name)
+
+    findings: list[ValidationFinding] = []
+    for arc in root.iter(_TAG_GENERIC_ARC):
+        arcrole = (arc.get(_ATTR_XLINK_ARCROLE) or "").strip()
+        if arcrole not in (
+            _ARCROLE_ASSERTION_UNSATISFIED_MESSAGE,
+            _ARCROLE_ASSERTION_SATISFIED_MESSAGE,
+        ):
+            continue
+        source = (arc.get(_ATTR_XLINK_FROM) or "").strip()
+        target = (arc.get(_ATTR_XLINK_TO) or "").strip()
+        assertion_el = assertion_elements.get(source)
+        message_el = message_elements.get(target)
+        if assertion_el is None or message_el is None:
+            continue
+        message_text = "".join(message_el.itertext())
+        expressions, message_error = _extract_generic_message_expressions(message_text)
+        if message_error is not None:
+            findings.append(_finding(message_error, "Generic message has unbalanced braces"))
+            continue
+        assertion_variables = fact_variable_names_by_assertion.get(source, set())
+        in_scope_names = (
+            in_scope_names_by_assertion.get(source, set())
+            | global_parameter_names
+            | {"ea:test-expression"}
+        )
+        if (
+            assertion_el.tag == f"{{{_NS_EXISTENCE_ASSERTION}}}existenceAssertion"
+            and _message_references_variable_set_variable(expressions, assertion_variables)
+        ):
+            findings.append(
+                _finding(
+                    "xqt-err:XPST0008",
+                    "Existence assertion generic message references a variable-set variable",
+                )
+            )
+            continue
+        if (
+            (assertion_el.get("implicitFiltering") or "true").lower() == "false"
+            and any("xff:uncovered-aspect" in expression for expression in expressions)
+        ):
+            findings.append(
+                _finding(
+                    "xffe:invalidFunctionUse",
+                    "Generic message uses xff:uncovered-aspect with implicit filtering disabled",
+                )
+            )
+            continue
+        unknown_refs = _unknown_message_variable_refs(expressions, in_scope_names)
+        if unknown_refs:
+            findings.append(
+                _finding(
+                    "xqt-err:XPST0008",
+                    "Generic message references unknown variables: "
+                    + ", ".join(sorted(unknown_refs)),
+                )
+            )
+            continue
+        for expression in expressions:
+            if not expression.strip():
+                continue
+            try:
+                parser = build_formula_parser(
+                    _message_namespace_context(message_el),
+                    expression_hints=(expression,),
+                )
+                parser.parse(normalize_formula_xpath_expression(expression))
+            except Exception as exc:  # noqa: BLE001
+                code = getattr(exc, "code", None)
+                if code == "err:XPST0003":
+                    findings.append(
+                        _finding(
+                            "xqt-err:XPST0003",
+                            f"Generic message has invalid XPath expression: {exc}",
+                        )
+                    )
+                    break
+    return findings
+
+
+def _extract_generic_message_expressions(message_text: str) -> tuple[list[str], str | None]:
+    expressions: list[str] = []
+    start: int | None = None
+    for index, char in enumerate(message_text):
+        if char == "{":
+            if start is not None:
+                return expressions, "xbrlmsge:missingRightCurlyBracketInMessage"
+            start = index + 1
+        elif char == "}":
+            if start is None:
+                return expressions, "xbrlmsge:missingLeftCurlyBracketInMessage"
+            expressions.append(message_text[start:index])
+            start = None
+    if start is not None:
+        return expressions, "xbrlmsge:missingRightCurlyBracketInMessage"
+    return expressions, None
+
+
+def _message_namespace_context(message_el: etree._Element) -> dict[str, str]:
+    namespaces = dict(message_el.nsmap or {})
+    namespaces.pop(None, None)
+    namespaces.setdefault("xff", "http://www.xbrl.org/2010/function/formula")
+    return namespaces
+
+
+def _message_references_variable_set_variable(
+    expressions: Iterable[str],
+    variable_names: set[str],
+) -> bool:
+    return bool(_unknown_message_variable_refs(expressions, set()) & variable_names)
+
+
+def _unknown_message_variable_refs(
+    expressions: Iterable[str],
+    variable_names: set[str],
+) -> set[str]:
+    refs: set[str] = set()
+    for expression in expressions:
+        refs.update(_extract_var_refs(expression))
+    return refs - variable_names
+
+
+def _assertion_severity_linkbase_findings(path: Path) -> list[ValidationFinding]:
+    try:
+        root = parse_xml_file(path).getroot()
+    except (OSError, etree.XMLSyntaxError):
+        return []
+
+    assertion_labels = {
+        (el.get(_ATTR_XLINK_LABEL) or "").strip()
+        for el in root.iter()
+        if isinstance(el.tag, str) and el.tag in _ASSERTION_TAGS
+    }
+    assertion_labels.discard("")
+
+    loc_hrefs: dict[str, set[str]] = defaultdict(set)
+    for loc in root.iter(_TAG_LINK_LOC):
+        label = (loc.get(_ATTR_XLINK_LABEL) or "").strip()
+        href = (loc.get(_ATTR_XLINK_HREF) or "").strip()
+        if label and href:
+            loc_hrefs[label].add(href)
+
+    severity_targets_by_source: dict[str, set[str]] = defaultdict(set)
+    findings: list[ValidationFinding] = []
+    for arc in root.iter(_TAG_GENERIC_ARC):
+        if (arc.get(_ATTR_XLINK_ARCROLE) or "").strip() != _ARCROLE_ASSERTION_UNSATISFIED_SEVERITY:
+            continue
+        source = (arc.get(_ATTR_XLINK_FROM) or "").strip()
+        target = (arc.get(_ATTR_XLINK_TO) or "").strip()
+        if source not in assertion_labels:
+            findings.append(
+                _finding(
+                    "seve:assertionSeveritySourceError",
+                    f"Assertion severity relationship source '{source}' is not an assertion",
+                )
+            )
+        target_hrefs = loc_hrefs.get(target, set())
+        valid_targets = {
+            href
+            for href in target_hrefs
+            if href.startswith(_STANDARD_SEVERITY_HREF_PREFIX)
+            and href.rsplit("#", 1)[-1] in _STANDARD_SEVERITY_FRAGMENTS
+        }
+        if not valid_targets:
+            findings.append(
+                _finding(
+                    "seve:assertionSeverityTargetError",
+                    (
+                        f"Assertion severity relationship target '{target}' does not reference "
+                        "a standard severity resource"
+                    ),
+                )
+            )
+        severity_targets_by_source[source].update(valid_targets)
+
+    for source, targets in severity_targets_by_source.items():
+        if len(targets) > 1:
+            findings.append(
+                _finding(
+                    "seve:multipleSeveritiesForAssertionError",
+                    f"Assertion '{source}' has multiple unsatisfied severity targets",
+                )
+            )
+    return findings
 
 
 def collect_formula_external_variable_names(taxonomy: TaxonomyStructure) -> tuple[str, ...]:

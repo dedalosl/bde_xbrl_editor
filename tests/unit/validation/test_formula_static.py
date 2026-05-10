@@ -28,6 +28,8 @@ from bde_xbrl_editor.taxonomy.models import (
 from bde_xbrl_editor.validation.formula.static import (
     FormulaStaticValidator,
     collect_formula_external_variable_names,
+    validate_assertion_severity_linkbases,
+    validate_generic_message_linkbases,
 )
 from bde_xbrl_editor.validation.models import ValidationSeverity
 
@@ -274,6 +276,169 @@ def test_formula_static_validation_rejects_inconsistent_aspect_cover_filters() -
     )
 
     assert "xbrlacfe:inconsistentAspectCoverFilters" in _rule_ids(assertion_set)
+
+
+def _severity_linkbase(tmp_path: Path, body: str) -> Path:
+    path = tmp_path / "severity-formula.xml"
+    path.write_text(
+        f"""<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+               xmlns:generic="http://xbrl.org/2008/generic"
+               xmlns:va="http://xbrl.org/2008/assertion/value"
+               xmlns:label="http://xbrl.org/2008/label"
+               xmlns:xlink="http://www.w3.org/1999/xlink">
+  <generic:link xlink:type="extended">
+    <va:valueAssertion xlink:type="resource" xlink:label="assertion1" id="assertion1" test="true()"/>
+    {body}
+  </generic:link>
+</link:linkbase>
+""",
+        encoding="utf-8",
+    )
+    return path
+
+
+def _severity_rule_ids(path: Path) -> set[str]:
+    return {finding.rule_id for finding in validate_assertion_severity_linkbases((path,))}
+
+
+def test_assertion_severity_validation_reports_bad_source(tmp_path: Path) -> None:
+    path = _severity_linkbase(
+        tmp_path,
+        """
+    <link:loc xlink:type="locator" xlink:label="sev" xlink:href="http://www.xbrl.org/2016/severities.xml#ERROR"/>
+    <label:label xlink:type="resource" xlink:label="wrong">Wrong source</label:label>
+    <generic:arc xlink:type="arc"
+                 xlink:arcrole="http://xbrl.org/arcrole/2016/assertion-unsatisfied-severity"
+                 xlink:from="wrong" xlink:to="sev"/>
+""",
+    )
+
+    assert "seve:assertionSeveritySourceError" in _severity_rule_ids(path)
+
+
+def test_assertion_severity_validation_reports_bad_target(tmp_path: Path) -> None:
+    path = _severity_linkbase(
+        tmp_path,
+        """
+    <label:label xlink:type="resource" xlink:label="wrong">Wrong target</label:label>
+    <generic:arc xlink:type="arc"
+                 xlink:arcrole="http://xbrl.org/arcrole/2016/assertion-unsatisfied-severity"
+                 xlink:from="assertion1" xlink:to="wrong"/>
+""",
+    )
+
+    assert "seve:assertionSeverityTargetError" in _severity_rule_ids(path)
+
+
+def test_assertion_severity_validation_reports_multiple_targets(tmp_path: Path) -> None:
+    path = _severity_linkbase(
+        tmp_path,
+        """
+    <link:loc xlink:type="locator" xlink:label="error" xlink:href="http://www.xbrl.org/2016/severities.xml#ERROR"/>
+    <link:loc xlink:type="locator" xlink:label="ok" xlink:href="http://www.xbrl.org/2016/severities.xml#OK"/>
+    <generic:arc xlink:type="arc"
+                 xlink:arcrole="http://xbrl.org/arcrole/2016/assertion-unsatisfied-severity"
+                 xlink:from="assertion1" xlink:to="error"/>
+    <generic:arc xlink:type="arc"
+                 xlink:arcrole="http://xbrl.org/arcrole/2016/assertion-unsatisfied-severity"
+                 xlink:from="assertion1" xlink:to="ok"/>
+""",
+    )
+
+    assert "seve:multipleSeveritiesForAssertionError" in _severity_rule_ids(path)
+
+
+def _message_linkbase(
+    tmp_path: Path,
+    message_text: str,
+    *,
+    assertion_tag: str = "va:valueAssertion",
+    implicit_filtering: bool = True,
+) -> Path:
+    path = tmp_path / "message-formula.xml"
+    path.write_text(
+        f"""<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+               xmlns:generic="http://xbrl.org/2008/generic"
+               xmlns:va="http://xbrl.org/2008/assertion/value"
+               xmlns:ea="http://xbrl.org/2008/assertion/existence"
+               xmlns:variable="http://xbrl.org/2008/variable"
+               xmlns:msg="http://xbrl.org/2010/message"
+               xmlns:xlink="http://www.w3.org/1999/xlink"
+               xmlns:xff="http://www.xbrl.org/2010/function/formula">
+  <generic:link xlink:type="extended">
+    <{assertion_tag} xlink:type="resource"
+                     xlink:label="assertion1"
+                     id="assertion1"
+                     implicitFiltering="{str(implicit_filtering).lower()}"
+                     test="$var = 1"/>
+    <msg:message xlink:type="resource"
+                 xlink:label="message1"
+                 xlink:role="http://www.xbrl.org/2010/role/message"
+                 xml:lang="en">{message_text}</msg:message>
+    <generic:arc xlink:type="arc"
+                 xlink:arcrole="http://xbrl.org/arcrole/2010/assertion-unsatisfied-message"
+                 xlink:from="assertion1"
+                 xlink:to="message1"/>
+    <variable:factVariable xlink:type="resource" xlink:label="fact1"/>
+    <variable:variableArc xlink:type="arc"
+                          xlink:arcrole="http://xbrl.org/arcrole/2008/variable-set"
+                          xlink:from="assertion1"
+                          xlink:to="fact1"
+                          name="var"/>
+  </generic:link>
+</link:linkbase>
+""",
+        encoding="utf-8",
+    )
+    return path
+
+
+def _message_rule_ids(path: Path) -> set[str]:
+    return {finding.rule_id for finding in validate_generic_message_linkbases((path,))}
+
+
+def test_generic_message_validation_reports_unknown_variable(tmp_path: Path) -> None:
+    path = _message_linkbase(tmp_path, "Bad variable { node-name($missing) }")
+
+    assert "xqt-err:XPST0008" in _message_rule_ids(path)
+
+
+def test_generic_message_validation_reports_missing_right_brace(tmp_path: Path) -> None:
+    path = _message_linkbase(tmp_path, "Missing right { 'abc' ")
+
+    assert "xbrlmsge:missingRightCurlyBracketInMessage" in _message_rule_ids(path)
+
+
+def test_generic_message_validation_reports_missing_left_brace(tmp_path: Path) -> None:
+    path = _message_linkbase(tmp_path, "Missing left 'abc' }")
+
+    assert "xbrlmsge:missingLeftCurlyBracketInMessage" in _message_rule_ids(path)
+
+
+def test_generic_message_validation_reports_existence_assertion_variable_reference(
+    tmp_path: Path,
+) -> None:
+    path = _message_linkbase(
+        tmp_path,
+        "Existence assertion message { node-name($var) }",
+        assertion_tag="ea:existenceAssertion",
+    )
+
+    assert "xqt-err:XPST0008" in _message_rule_ids(path)
+
+
+def test_generic_message_validation_reports_invalid_uncovered_aspect_use(
+    tmp_path: Path,
+) -> None:
+    path = _message_linkbase(
+        tmp_path,
+        "Bad uncovered aspect { xff:uncovered-aspect(xs:token('concept')) }",
+        implicit_filtering=False,
+    )
+
+    assert "xffe:invalidFunctionUse" in _message_rule_ids(path)
 
 
 def test_duplicate_inherited_global_parameters_do_not_name_clash() -> None:
