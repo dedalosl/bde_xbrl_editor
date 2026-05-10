@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from pathlib import Path
 
 from bde_xbrl_editor.taxonomy.linkbases.formula import parse_formula_linkbase
 from bde_xbrl_editor.taxonomy.models import (
     Concept,
+    ConsistencyAssertionDefinition,
+    CustomFunctionDefinition,
     FactVariableDefinition,
     FormulaAssertionSet,
     FormulaOutputDefinition,
@@ -68,6 +71,31 @@ def _taxonomy(assertion_set: FormulaAssertionSet) -> TaxonomyStructure:
     )
 
 
+def _taxonomy_with_custom_functions(
+    custom_functions: tuple[CustomFunctionDefinition, ...],
+) -> TaxonomyStructure:
+    return TaxonomyStructure(
+        metadata=TaxonomyMetadata(
+            name="Test",
+            version="1.0",
+            publisher="Example",
+            entry_point_path=Path("test.xsd"),
+            loaded_at=datetime(2026, 1, 1),
+            declared_languages=("en",),
+        ),
+        concepts={},
+        labels=_FakeLabels(),
+        presentation={},
+        calculation={},
+        definition={},
+        hypercubes=[],
+        dimensions={},
+        tables=[],
+        formula_assertion_set=FormulaAssertionSet(),
+        custom_functions=custom_functions,
+    )
+
+
 def _formula_set(tmp_path: Path, formula_body: str) -> FormulaAssertionSet:
     path = tmp_path / "static-analysis-formula.xml"
     path.write_text(
@@ -122,6 +150,68 @@ def test_static_parser_binds_standard_prefix_defaults() -> None:
     )
 
     assert "err:XPST0081" not in _rule_ids(FormulaAssertionSet(assertions=(assertion,)))
+
+
+def test_formula_static_validation_rejects_prohibited_custom_function_namespace() -> None:
+    taxonomy = _taxonomy_with_custom_functions(
+        (
+            CustomFunctionDefinition(
+                name="xfi:function",
+                namespace="http://www.xbrl.org/2008/function/instance",
+                local_name="function",
+                prefix="xfi",
+                input_names=("arg1",),
+                input_types=("xs:string",),
+                output_type="xs:string",
+            ),
+        )
+    )
+
+    findings = FormulaStaticValidator(taxonomy).validate()
+
+    assert any(
+        finding.rule_id == "xbrlve:noProhibitedNamespaceForCustomFunction"
+        for finding in findings
+    )
+
+
+def test_formula_static_validation_rejects_consistency_assertion_variables() -> None:
+    assertion_set = FormulaAssertionSet(
+        assertions=(
+            ConsistencyAssertionDefinition(
+                assertion_id="consistency1",
+                label="consistency1",
+                severity="error",
+                abstract=False,
+                variables=(
+                    FactVariableDefinition(
+                        variable_name="v:fact",
+                        bind_as_sequence=False,
+                    ),
+                ),
+            ),
+        )
+    )
+
+    assert "xbrlcae:variablesNotAllowed" in _rule_ids(assertion_set)
+
+
+def test_formula_static_validation_rejects_conflicting_consistency_acceptance_radii() -> None:
+    assertion_set = FormulaAssertionSet(
+        assertions=(
+            ConsistencyAssertionDefinition(
+                assertion_id="consistency1",
+                label="consistency1",
+                severity="error",
+                abstract=False,
+                variables=(),
+                absolute_radius=Decimal("100"),
+                relative_radius=Decimal("0.005"),
+            ),
+        )
+    )
+
+    assert "xbrlcae:acceptanceRadiusConflict" in _rule_ids(assertion_set)
 
 
 def test_duplicate_inherited_global_parameters_do_not_name_clash() -> None:

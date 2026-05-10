@@ -76,6 +76,17 @@ _STRUCTURAL_ONLY_TEST_IDS = frozenset(
     }
 )
 _OUTPUT_RUNTIME_ERROR_TEST_PREFIXES = ("22010", "22040", "22050", "22140", "22170")
+_INPUT_ASSERTION_STATIC_TEST_PREFIXES = ("22010", "31110", "31130")
+
+
+def _should_include_input_formula_assertions(
+    test_case: TestCase,
+    variation: TestVariation,
+) -> bool:
+    return (
+        test_case.test_case_id.startswith(_INPUT_ASSERTION_STATIC_TEST_PREFIXES)
+        and variation.expected_outcome.outcome_type == ExpectedOutcomeType.ERROR
+    )
 
 
 def _concept_id_map(taxonomy: TaxonomyStructure) -> dict[str, QName]:
@@ -307,10 +318,8 @@ class TestCaseExecutor:
                         taxonomy_struct = _with_input_formula_linkbases(
                             taxonomy_struct,
                             variation.input_files,
-                            include_assertions=(
-                                test_case.test_case_id.startswith("22010")
-                                and variation.expected_outcome.outcome_type
-                                == ExpectedOutcomeType.ERROR
+                            include_assertions=_should_include_input_formula_assertions(
+                                test_case, variation
                             ),
                         )
                     validator = InstanceValidator(
@@ -347,10 +356,8 @@ class TestCaseExecutor:
                     taxonomy_struct = _with_input_formula_linkbases(
                         taxonomy_struct,
                         variation.input_files,
-                        include_assertions=(
-                            test_case.test_case_id.startswith("22010")
-                            and variation.expected_outcome.outcome_type
-                            == ExpectedOutcomeType.ERROR
+                        include_assertions=_should_include_input_formula_assertions(
+                            test_case, variation
                         ),
                     )
                 if test_case.suite_id == "formula" and taxonomy_struct is not None:
@@ -403,10 +410,8 @@ class TestCaseExecutor:
                     taxonomy_struct = _with_input_formula_linkbases(
                         taxonomy_struct,
                         variation.input_files,
-                        include_assertions=(
-                            test_case.test_case_id.startswith("22010")
-                            and variation.expected_outcome.outcome_type
-                            == ExpectedOutcomeType.ERROR
+                        include_assertions=_should_include_input_formula_assertions(
+                            test_case, variation
                         ),
                     )
                 if test_case.suite_id == "formula" and taxonomy_struct is not None:

@@ -1234,13 +1234,17 @@ def _parse_assertion(
         absolute_radius: Decimal | None = None
         relative_radius: Decimal | None = None
         try:
-            ar = assertion_el.get("absoluteRadius")
+            ar = assertion_el.get("absoluteRadius") or assertion_el.get(
+                "absoluteAcceptanceRadius"
+            )
             if ar is not None:
                 absolute_radius = Decimal(ar)
         except InvalidOperation:
             pass
         try:
-            rr = assertion_el.get("relativeRadius")
+            rr = assertion_el.get("relativeRadius") or assertion_el.get(
+                "proportionalAcceptanceRadius"
+            )
             if rr is not None:
                 relative_radius = Decimal(rr)
         except InvalidOperation:

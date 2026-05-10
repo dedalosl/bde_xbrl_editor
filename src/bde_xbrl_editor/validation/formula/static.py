@@ -11,6 +11,7 @@ from bde_xbrl_editor.instance.models import XbrlInstance
 from bde_xbrl_editor.taxonomy.constants import NS_XBRLI
 from bde_xbrl_editor.taxonomy.models import (
     Concept,
+    ConsistencyAssertionDefinition,
     DimensionFilter,
     FactVariableDefinition,
     FormulaAspectRule,
@@ -37,6 +38,11 @@ _NUMERIC_TYPE_KEYWORDS = (
     "pure",
     "fraction",
 )
+_PROHIBITED_CUSTOM_FUNCTION_NAMESPACES = frozenset(
+    {
+        "http://www.xbrl.org/2008/function/instance",
+    }
+)
 
 
 def collect_formula_external_variable_names(taxonomy: TaxonomyStructure) -> tuple[str, ...]:
@@ -56,6 +62,49 @@ def collect_formula_external_variable_names(taxonomy: TaxonomyStructure) -> tupl
     return tuple(sorted(names))
 
 
+def _custom_function_static_findings(taxonomy: TaxonomyStructure) -> list[ValidationFinding]:
+    findings: list[ValidationFinding] = []
+    for definition in taxonomy.custom_functions:
+        if definition.namespace in _PROHIBITED_CUSTOM_FUNCTION_NAMESPACES:
+            findings.append(
+                _finding(
+                    "xbrlve:noProhibitedNamespaceForCustomFunction",
+                    (
+                        f"Custom function '{definition.name}' uses prohibited namespace "
+                        f"'{definition.namespace}'"
+                    ),
+                )
+            )
+    return findings
+
+
+def _consistency_assertion_static_findings(
+    assertion: ConsistencyAssertionDefinition,
+) -> list[ValidationFinding]:
+    findings: list[ValidationFinding] = []
+    if assertion.variables or assertion.general_variables:
+        findings.append(
+            _finding(
+                "xbrlcae:variablesNotAllowed",
+                (
+                    f"Consistency assertion '{assertion.assertion_id}' has variable bindings; "
+                    "only consistency assertion parameters are allowed"
+                ),
+            )
+        )
+    if assertion.absolute_radius is not None and assertion.relative_radius is not None:
+        findings.append(
+            _finding(
+                "xbrlcae:acceptanceRadiusConflict",
+                (
+                    f"Consistency assertion '{assertion.assertion_id}' defines both absolute "
+                    "and proportional acceptance radii"
+                ),
+            )
+        )
+    return findings
+
+
 class FormulaStaticValidator:
     """Validate static Formula 1.0 output-aspect rules from the loaded taxonomy."""
 
@@ -69,6 +118,7 @@ class FormulaStaticValidator:
 
     def validate(self, instance: XbrlInstance | None = None) -> list[ValidationFinding]:
         findings: list[ValidationFinding] = []
+        findings.extend(_custom_function_static_findings(self._taxonomy))
         findings.extend(self._validate_variable_sets())
         findings.extend(self._validate_assertion_filters(instance))
         for formula in self._taxonomy.formula_assertion_set.output_formulas:
@@ -97,6 +147,8 @@ class FormulaStaticValidator:
     def _validate_variable_sets(self) -> list[ValidationFinding]:
         findings: list[ValidationFinding] = []
         for assertion in self._taxonomy.formula_assertion_set.assertions:
+            if isinstance(assertion, ConsistencyAssertionDefinition):
+                findings.extend(_consistency_assertion_static_findings(assertion))
             findings.extend(
                 _variable_set_graph_findings(
                     assertion,
