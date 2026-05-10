@@ -351,7 +351,11 @@ def _extract_typed_dimension_filter(filter_el: etree._Element) -> TypedDimension
     return TypedDimensionFilter(dimension_qname=dimension_qname)
 
 
-def _parse_filter_resource(filter_el: etree._Element) -> FormulaFilterResource:
+def _parse_filter_resource(
+    filter_el: etree._Element,
+    *,
+    cover: bool | None = None,
+) -> FormulaFilterResource:
     """Preserve Formula filter resource metadata beyond the currently executable subset."""
     attributes: dict[str, str] = {}
     for attr_name, attr_value in filter_el.attrib.items():
@@ -396,6 +400,7 @@ def _parse_filter_resource(filter_el: etree._Element) -> FormulaFilterResource:
         test_xpath=test_xpath,
         variable=variable,
         match_any=match_any,
+        cover=cover,
         aspects=tuple(aspects),
         qnames=tuple(qnames),
         qname_expressions=tuple(qname_expressions),
@@ -485,17 +490,18 @@ def _build_arc_map(root: etree._Element, arc_tags: list[str]) -> dict[str, list[
 def _build_filter_arc_map(
     root: etree._Element,
     locator_targets: dict[str, str] | None = None,
-) -> dict[str, list[str]]:
-    """Build a variable-label→[filter-label, …] mapping from variableFilterArc elements."""
-    arc_map: dict[str, list[str]] = {}
+) -> dict[str, list[tuple[str, bool]]]:
+    """Build a variable-label→[(filter-label, cover), …] map from variableFilterArc elements."""
+    arc_map: dict[str, list[tuple[str, bool]]] = {}
     for arc in root.iter(_TAG_VARIABLE_FILTER_ARC):
         frm = arc.get(_ATTR_XLINK_FROM, "")
         to = arc.get(_ATTR_XLINK_TO, "")
+        cover = (arc.get("cover") or "true").strip().lower() != "false"
         if locator_targets:
             frm = locator_targets.get(frm, frm)
             to = locator_targets.get(to, to)
         if frm and to:
-            arc_map.setdefault(frm, []).append(to)
+            arc_map.setdefault(frm, []).append((to, cover))
     return arc_map
 
 
@@ -613,7 +619,7 @@ def _build_boolean_filter_arc_map(
 
 def _build_boolean_filter(
     label: str,
-    filter_index: dict[str, etree._Element],
+    filter_index: dict[str, list[etree._Element]],
     bool_arc_map: dict[str, list[tuple[str, bool]]],
     complement: bool = False,
     _seen: frozenset[str] | None = None,
@@ -628,7 +634,7 @@ def _build_boolean_filter(
         return None
     seen = seen | {label}
 
-    filter_el = filter_index.get(label)
+    filter_el = _first_filter_element(filter_index, label)
     if filter_el is None:
         return None
     if filter_el.tag not in _BOOLEAN_FILTER_TAGS:
@@ -638,7 +644,7 @@ def _build_boolean_filter(
     children: list[object] = []
 
     for child_label, child_complement in bool_arc_map.get(label, []):
-        child_el = filter_index.get(child_label)
+        child_el = _first_filter_element(filter_index, child_label)
         if child_el is None:
             continue
 
@@ -724,27 +730,44 @@ _FILTER_TAGS = [
 def _build_filter_label_index(
     root: etree._Element,
     locator_labels_by_fragment: dict[str, list[str]] | None = None,
-) -> dict[str, etree._Element]:
+) -> dict[str, list[etree._Element]]:
     """Index all known filter elements by their @xlink:label."""
-    index: dict[str, etree._Element] = {}
+    index: dict[str, list[etree._Element]] = {}
     for tag in _FILTER_TAGS:
         for el in root.iter(tag):
             for key in _resource_index_keys(el, locator_labels_by_fragment):
-                index[key] = el
+                index.setdefault(key, []).append(el)
     for el in root.iter():
         if not isinstance(el.tag, str):
             continue
         if _qname_namespace(el.tag) not in _FILTER_NAMESPACES:
             continue
         for key in _resource_index_keys(el, locator_labels_by_fragment):
-            index.setdefault(key, el)
+            bucket = index.setdefault(key, [])
+            if not any(existing is el for existing in bucket):
+                bucket.append(el)
     return index
+
+
+def _filter_elements(
+    filter_index: dict[str, list[etree._Element]],
+    label: str,
+) -> tuple[etree._Element, ...]:
+    return tuple(filter_index.get(label, ()))
+
+
+def _first_filter_element(
+    filter_index: dict[str, list[etree._Element]],
+    label: str,
+) -> etree._Element | None:
+    elements = _filter_elements(filter_index, label)
+    return elements[0] if elements else None
 
 
 def _parse_fact_variable(
     var_el: etree._Element,
-    filter_arc_map: dict[str, list[str]],
-    filter_index: dict[str, etree._Element],
+    filter_arc_map: dict[str, list[tuple[str, bool]]],
+    filter_index: dict[str, list[etree._Element]],
     bool_arc_map: dict[str, list[tuple[str, bool]]],
     arc_name: str = "",
     global_concept_filter: QName | None = None,
@@ -763,9 +786,9 @@ def _parse_fact_variable(
     variable_name = arc_name or var_el.get("name", "") or var_el.get(_ATTR_XLINK_LABEL, "")
     var_label = var_el.get(_ATTR_XLINK_LABEL, variable_name)
     var_id = (var_el.get("id") or "").strip()
-    filter_labels = list(filter_arc_map.get(var_label, []))
+    filter_entries = list(filter_arc_map.get(var_label, []))
     if var_id and var_id != var_label:
-        filter_labels.extend(filter_arc_map.get(var_id, []))
+        filter_entries.extend(filter_arc_map.get(var_id, []))
 
     concept_filter: QName | None = None
     period_filter: Literal["instant", "duration"] | None = None
@@ -775,87 +798,85 @@ def _parse_fact_variable(
     boolean_filters: list[BooleanFilterDefinition] = []
     filter_resources: list[FormulaFilterResource] = []
 
-    for filter_label in dict.fromkeys(filter_labels):
-        filter_el = filter_index.get(filter_label)
-        if filter_el is None:
-            continue
-        filter_resources.append(_parse_filter_resource(filter_el))
+    for filter_label, cover in dict.fromkeys(filter_entries):
+        for filter_el in _filter_elements(filter_index, filter_label):
+            filter_resources.append(_parse_filter_resource(filter_el, cover=cover))
 
-        # Concept filter
-        if filter_el.tag in (_TAG_CF_CONCEPT_NAME, _TAG_CF_CONCEPT):
-            qn = _extract_concept_filter(filter_el)
-            if qn is not None and concept_filter is None:
-                concept_filter = qn
-            qname_expr_filter = _extract_concept_qname_expression(filter_el)
-            if qname_expr_filter is not None:
-                xpath_filters.append(qname_expr_filter)
+            # Concept filter
+            if filter_el.tag in (_TAG_CF_CONCEPT_NAME, _TAG_CF_CONCEPT):
+                qn = _extract_concept_filter(filter_el)
+                if qn is not None and concept_filter is None:
+                    concept_filter = qn
+                qname_expr_filter = _extract_concept_qname_expression(filter_el)
+                if qname_expr_filter is not None:
+                    xpath_filters.append(qname_expr_filter)
 
-        # Period type filter (simple instant/duration)
-        elif filter_el.tag in (_TAG_PF_INSTANT, _TAG_PF_DURATION):
-            pf = _extract_period_filter(filter_el)
-            if pf is not None and period_filter is None:
-                period_filter = pf
+            # Period type filter (simple instant/duration)
+            elif filter_el.tag in (_TAG_PF_INSTANT, _TAG_PF_DURATION):
+                pf = _extract_period_filter(filter_el)
+                if pf is not None and period_filter is None:
+                    period_filter = pf
 
-        # Period filter with XPath test expression
-        elif filter_el.tag == _TAG_PF_PERIOD:
-            test_expr = (filter_el.get("test") or "").strip()
-            if test_expr:
-                xpath_filters.append(
-                    XPathFilterDefinition(
-                        xpath_expr=test_expr,
-                        namespaces=_element_nsmap(filter_el),
-                        filter_type="period",
+            # Period filter with XPath test expression
+            elif filter_el.tag == _TAG_PF_PERIOD:
+                test_expr = (filter_el.get("test") or "").strip()
+                if test_expr:
+                    xpath_filters.append(
+                        XPathFilterDefinition(
+                            xpath_expr=test_expr,
+                            namespaces=_element_nsmap(filter_el),
+                            filter_type="period",
+                        )
                     )
-                )
 
-        # Dimension filter
-        elif filter_el.tag == _TAG_DF_EXPLICIT_DIMENSION:
-            df = _extract_dimension_filter(filter_el)
-            if df is not None:
-                dimension_filters.append(df)
+            # Dimension filter
+            elif filter_el.tag == _TAG_DF_EXPLICIT_DIMENSION:
+                df = _extract_dimension_filter(filter_el)
+                if df is not None:
+                    dimension_filters.append(df)
 
-        elif filter_el.tag == _TAG_DF_TYPED_DIMENSION:
-            tf = _extract_typed_dimension_filter(filter_el)
-            if tf is not None:
-                typed_dimension_filters.append(tf)
+            elif filter_el.tag == _TAG_DF_TYPED_DIMENSION:
+                tf = _extract_typed_dimension_filter(filter_el)
+                if tf is not None:
+                    typed_dimension_filters.append(tf)
 
-        # Boolean filter (bf:andFilter / bf:orFilter)
-        elif filter_el.tag in _BOOLEAN_FILTER_TAGS:
-            bf = _build_boolean_filter(filter_label, filter_index, bool_arc_map)
-            if bf is not None:
-                boolean_filters.append(bf)
+            # Boolean filter (bf:andFilter / bf:orFilter)
+            elif filter_el.tag in _BOOLEAN_FILTER_TAGS:
+                bf = _build_boolean_filter(filter_label, filter_index, bool_arc_map)
+                if bf is not None:
+                    boolean_filters.append(bf)
 
-        # General XPath filter
-        elif filter_el.tag == _TAG_GF_GENERAL:
-            test_expr = (filter_el.get("test") or "").strip()
-            if test_expr:
-                xpath_filters.append(
-                    XPathFilterDefinition(
-                        xpath_expr=test_expr,
-                        namespaces=_element_nsmap(filter_el),
-                        filter_type="general",
+            # General XPath filter
+            elif filter_el.tag == _TAG_GF_GENERAL:
+                test_expr = (filter_el.get("test") or "").strip()
+                if test_expr:
+                    xpath_filters.append(
+                        XPathFilterDefinition(
+                            xpath_expr=test_expr,
+                            namespaces=_element_nsmap(filter_el),
+                            filter_type="general",
+                        )
                     )
-                )
-        elif filter_el.tag == _TAG_EF_IDENTIFIER:
-            test_expr = (filter_el.get("test") or "").strip()
-            if test_expr:
-                xpath_filters.append(
-                    XPathFilterDefinition(
-                        xpath_expr=test_expr,
-                        namespaces=_element_nsmap(filter_el),
-                        filter_type="entity",
+            elif filter_el.tag == _TAG_EF_IDENTIFIER:
+                test_expr = (filter_el.get("test") or "").strip()
+                if test_expr:
+                    xpath_filters.append(
+                        XPathFilterDefinition(
+                            xpath_expr=test_expr,
+                            namespaces=_element_nsmap(filter_el),
+                            filter_type="entity",
+                        )
                     )
-                )
-        elif filter_el.tag == _TAG_SSF_SEGMENT:
-            test_expr = (filter_el.get("test") or "").strip()
-            if test_expr:
-                xpath_filters.append(
-                    XPathFilterDefinition(
-                        xpath_expr=test_expr,
-                        namespaces=_element_nsmap(filter_el),
-                        filter_type="segment-scenario",
+            elif filter_el.tag == _TAG_SSF_SEGMENT:
+                test_expr = (filter_el.get("test") or "").strip()
+                if test_expr:
+                    xpath_filters.append(
+                        XPathFilterDefinition(
+                            xpath_expr=test_expr,
+                            namespaces=_element_nsmap(filter_el),
+                            filter_type="segment-scenario",
+                        )
                     )
-                )
 
     # Append assertion-level filters (from variableSetFilterArc)
     if global_concept_filter is not None and concept_filter is None:
@@ -1028,8 +1049,8 @@ def _parse_assertion(
     general_variable_index: dict[str, etree._Element],
     parameter_index: dict[str, list[etree._Element]],
     precondition_index: dict[str, etree._Element],
-    filter_arc_map: dict[str, list[str]],
-    filter_index: dict[str, etree._Element],
+    filter_arc_map: dict[str, list[tuple[str, bool]]],
+    filter_index: dict[str, list[etree._Element]],
     variable_set_filter_arc_map: dict[str, list[str]] | None = None,
     bool_arc_map: dict[str, list[tuple[str, bool]]] | None = None,
 ) -> FormulaAssertion | None:
@@ -1095,7 +1116,7 @@ def _parse_assertion(
             if set_filter_label in _seen_set_labels:
                 continue
             _seen_set_labels.add(set_filter_label)
-            filter_el = filter_index.get(set_filter_label)
+            filter_el = _first_filter_element(filter_index, set_filter_label)
             if filter_el is None:
                 continue
             variable_set_filters.append(_parse_filter_resource(filter_el))
@@ -1366,8 +1387,8 @@ def _parse_output_formula(
     general_variable_index: dict[str, etree._Element],
     parameter_index: dict[str, list[etree._Element]],
     precondition_index: dict[str, etree._Element],
-    filter_arc_map: dict[str, list[str]],
-    filter_index: dict[str, etree._Element],
+    filter_arc_map: dict[str, list[tuple[str, bool]]],
+    filter_index: dict[str, list[etree._Element]],
     variable_set_filter_arc_map: dict[str, list[str]] | None = None,
     bool_arc_map: dict[str, list[tuple[str, bool]]] | None = None,
     source_path: Path | None = None,
@@ -1392,7 +1413,7 @@ def _parse_output_formula(
             if set_filter_label in seen_set_labels:
                 continue
             seen_set_labels.add(set_filter_label)
-            filter_el = filter_index.get(set_filter_label)
+            filter_el = _first_filter_element(filter_index, set_filter_label)
             if filter_el is None:
                 continue
             variable_set_filters.append(_parse_filter_resource(filter_el))

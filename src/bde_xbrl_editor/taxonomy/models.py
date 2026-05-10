@@ -423,6 +423,7 @@ class FormulaFilterResource:
     test_xpath: str | None = None
     variable: str | None = None
     match_any: bool | None = None
+    cover: bool | None = None
     aspects: tuple[str, ...] = field(default_factory=tuple)
     qnames: tuple[QName, ...] = field(default_factory=tuple)
     qname_expressions: tuple[str, ...] = field(default_factory=tuple)

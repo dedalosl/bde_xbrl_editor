@@ -76,7 +76,14 @@ _STRUCTURAL_ONLY_TEST_IDS = frozenset(
     }
 )
 _OUTPUT_RUNTIME_ERROR_TEST_PREFIXES = ("22010", "22040", "22050", "22140", "22170")
-_INPUT_ASSERTION_STATIC_TEST_PREFIXES = ("22010", "31110", "31130")
+_INPUT_ASSERTION_STATIC_TEST_PREFIXES = (
+    "22010",
+    "31110",
+    "31130",
+    "32110",
+    "32210",
+    "33210",
+)
 
 
 def _should_include_input_formula_assertions(

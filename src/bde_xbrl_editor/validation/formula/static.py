@@ -13,6 +13,7 @@ from bde_xbrl_editor.taxonomy.models import (
     Concept,
     ConsistencyAssertionDefinition,
     DimensionFilter,
+    ExistenceAssertionDefinition,
     FactVariableDefinition,
     FormulaAspectRule,
     FormulaAssertion,
@@ -105,6 +106,31 @@ def _consistency_assertion_static_findings(
     return findings
 
 
+def _existence_assertion_static_findings(
+    assertion: ExistenceAssertionDefinition,
+    fact_and_general_names: set[str],
+) -> list[ValidationFinding]:
+    if not assertion.test_xpath:
+        return []
+    referenced_names = {
+        name
+        for name in _extract_var_refs(assertion.test_xpath)
+        if _resolve_name(name, assertion.namespaces)[0] in fact_and_general_names
+    }
+    if not referenced_names:
+        return []
+    return [
+        _finding(
+            "xbrleae:variableReferenceNotAllowed",
+            (
+                f"Existence assertion '{assertion.assertion_id}' test expression references "
+                "fact or general variables: "
+                + ", ".join(sorted(referenced_names))
+            ),
+        )
+    ]
+
+
 class FormulaStaticValidator:
     """Validate static Formula 1.0 output-aspect rules from the loaded taxonomy."""
 
@@ -149,6 +175,18 @@ class FormulaStaticValidator:
         for assertion in self._taxonomy.formula_assertion_set.assertions:
             if isinstance(assertion, ConsistencyAssertionDefinition):
                 findings.extend(_consistency_assertion_static_findings(assertion))
+            if isinstance(assertion, ExistenceAssertionDefinition):
+                parameters = _effective_parameters(
+                    assertion,
+                    self._taxonomy.formula_assertion_set.global_parameters,
+                )
+                name_ctx = _build_name_context(assertion, parameters)
+                findings.extend(
+                    _existence_assertion_static_findings(
+                        assertion,
+                        fact_and_general_names=set(name_ctx["fact_general_names"]),
+                    )
+                )
             findings.extend(
                 _variable_set_graph_findings(
                     assertion,
@@ -175,6 +213,7 @@ class FormulaStaticValidator:
         findings: list[ValidationFinding],
         seen_codes: set[str],
     ) -> None:
+        self._append_aspect_cover_filter_findings(variable, findings, seen_codes)
         for filter_def in variable.dimension_filters:
             self._append_filter_dimension_findings(filter_def, findings, seen_codes)
         self._append_xpath_filter_findings(variable, variables, instance, findings, seen_codes)
@@ -191,6 +230,31 @@ class FormulaStaticValidator:
                 (
                     f"Variable '{variable.variable_name}' is a matched sequence; "
                     "its matched aspect values must be singleton-consistent"
+                ),
+            )
+
+    def _append_aspect_cover_filter_findings(
+        self,
+        variable: FactVariableDefinition,
+        findings: list[ValidationFinding],
+        seen_codes: set[str],
+    ) -> None:
+        cover_by_aspect: dict[str, set[bool]] = defaultdict(set)
+        for resource in variable.filter_resources:
+            if resource.local_name != "aspectCover":
+                continue
+            if resource.cover is None:
+                continue
+            for aspect in resource.aspects:
+                cover_by_aspect[aspect].add(resource.cover)
+        if any(len(values) > 1 for values in cover_by_aspect.values()):
+            _append_once(
+                findings,
+                seen_codes,
+                "xbrlacfe:inconsistentAspectCoverFilters",
+                (
+                    f"Variable '{variable.variable_name}' has inconsistent aspect-cover "
+                    "filter cover values"
                 ),
             )
 

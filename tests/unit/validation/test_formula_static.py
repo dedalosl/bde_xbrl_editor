@@ -11,8 +11,10 @@ from bde_xbrl_editor.taxonomy.models import (
     Concept,
     ConsistencyAssertionDefinition,
     CustomFunctionDefinition,
+    ExistenceAssertionDefinition,
     FactVariableDefinition,
     FormulaAssertionSet,
+    FormulaFilterResource,
     FormulaOutputDefinition,
     GeneralVariableDefinition,
     ParameterDefinition,
@@ -212,6 +214,66 @@ def test_formula_static_validation_rejects_conflicting_consistency_acceptance_ra
     )
 
     assert "xbrlcae:acceptanceRadiusConflict" in _rule_ids(assertion_set)
+
+
+def test_formula_static_validation_rejects_existence_assertion_fact_reference() -> None:
+    assertion_set = FormulaAssertionSet(
+        assertions=(
+            ExistenceAssertionDefinition(
+                assertion_id="existence1",
+                label="existence1",
+                severity="error",
+                abstract=False,
+                variables=(
+                    FactVariableDefinition(
+                        variable_name="v:fact",
+                        bind_as_sequence=False,
+                    ),
+                ),
+                test_xpath="string-length($v:fact) ge 3",
+                namespaces={"v": "http://example.com/variables"},
+            ),
+        )
+    )
+
+    assert "xbrleae:variableReferenceNotAllowed" in _rule_ids(assertion_set)
+
+
+def test_formula_static_validation_rejects_inconsistent_aspect_cover_filters() -> None:
+    variable = FactVariableDefinition(
+        variable_name="v:fact",
+        filter_resources=(
+            FormulaFilterResource(
+                label="unit-covered",
+                namespace="http://xbrl.org/2010/filter/aspect-cover",
+                local_name="aspectCover",
+                cover=True,
+                aspects=("unit",),
+            ),
+            FormulaFilterResource(
+                label="unit-uncovered",
+                namespace="http://xbrl.org/2010/filter/aspect-cover",
+                local_name="aspectCover",
+                cover=False,
+                aspects=("unit",),
+            ),
+        ),
+    )
+    assertion_set = FormulaAssertionSet(
+        output_formulas=(
+            FormulaOutputDefinition(
+                formula_id="f1",
+                label="f1",
+                value_xpath="1",
+                source=None,
+                aspect_model="dimensional",
+                implicit_filtering=True,
+                variables=(variable,),
+            ),
+        )
+    )
+
+    assert "xbrlacfe:inconsistentAspectCoverFilters" in _rule_ids(assertion_set)
 
 
 def test_duplicate_inherited_global_parameters_do_not_name_clash() -> None:
