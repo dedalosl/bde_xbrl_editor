@@ -273,8 +273,16 @@ class TestCaseExecutor:
             loader = TaxonomyLoader(self._taxonomy_cache, settings)
 
             taxonomy_struct = None
+            if test_case.suite_id == "table-linkbase":
+                from bde_xbrl_editor.taxonomy.linkbases.table_10_validator import (
+                    TableLinkbase10Validator,
+                )
 
-            if variation.instance_file is not None:
+                findings = validate_xlink_inputs(variation.input_files) + tuple(
+                    TableLinkbase10Validator().validate_variation(variation)
+                )
+
+            elif variation.instance_file is not None:
                 # Parse instance (also loads taxonomy via schemaRef)
                 inst_parser = InstanceParser(loader)
                 parsed_taxonomies: list[TaxonomyStructure] = []

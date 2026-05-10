@@ -58,7 +58,7 @@ from bde_xbrl_editor.taxonomy.linkbases.presentation import (
     PresentationLinkbaseParseResult,
     parse_presentation_linkbase,
 )
-from bde_xbrl_editor.taxonomy.linkbases.table_pwd import parse_table_linkbase
+from bde_xbrl_editor.taxonomy.linkbases.table import parse_table_linkbase
 from bde_xbrl_editor.taxonomy.models import (
     AssertionTextResource,
     Concept,

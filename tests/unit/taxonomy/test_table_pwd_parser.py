@@ -284,6 +284,28 @@ TABLE_WITH_MALFORMED_ASPECT_NODE_FILTER = TABLE_WITH_ASPECT_NODE_FILTER.replace(
 
 
 class TestMinimalTableParsing:
+    def test_version_dispatch_detects_pwd_namespace(self, tmp_path):
+        from bde_xbrl_editor.taxonomy.linkbases.table import (
+            TableLinkbaseVersion,
+            detect_table_linkbase_version,
+        )
+
+        lb = tmp_path / "table.xml"
+        lb.write_text(TABLE_WITH_BREAKDOWN, encoding="utf-8")
+
+        assert detect_table_linkbase_version(lb) == TableLinkbaseVersion.PWD_2013
+
+    def test_version_dispatch_detects_2014_namespace(self, tmp_path):
+        from bde_xbrl_editor.taxonomy.linkbases.table import (
+            TableLinkbaseVersion,
+            detect_table_linkbase_version,
+        )
+
+        lb = tmp_path / "table-2014.xml"
+        lb.write_text(TABLE_WITH_BREAKDOWN_2014, encoding="utf-8")
+
+        assert detect_table_linkbase_version(lb) == TableLinkbaseVersion.REC_2014
+
     def test_parse_minimal_returns_empty_tables_or_one(self, tmp_path):
         lb = tmp_path / "table.xml"
         lb.write_text(MINIMAL_TABLE_LB, encoding="utf-8")

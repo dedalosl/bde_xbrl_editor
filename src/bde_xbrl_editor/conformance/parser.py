@@ -96,6 +96,21 @@ class ConformanceSuiteParser:
         index_path = suite_dir / suite_def.index_filename
 
         if not index_path.exists():
+            fallback_names = {
+                "xbrl21": ("xbrl.xml",),
+                "dimensions": ("xdt.xml",),
+                "table-linkbase": ("testcases-index.xml",),
+                "formula": ("index.xml",),
+            }
+            index_path = next(
+                (
+                    suite_dir / fallback_name
+                    for fallback_name in fallback_names.get(suite_def.suite_id, ())
+                    if (suite_dir / fallback_name).exists()
+                ),
+                index_path,
+            )
+        if not index_path.exists():
             raise SuiteDataMissingError(suite_def.suite_id, index_path)
 
         try:
