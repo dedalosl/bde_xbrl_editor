@@ -549,44 +549,20 @@ def _rows_from_instance_aspect_dimensions(
 def _find_fact_indexes(
     instance: XbrlInstance,
     coordinate: CellCoordinate,
+    taxonomy: TaxonomyStructure | None = None,
+    table_elr: str = "",
 ) -> list[int]:
+    """Fact indexes that match ``coordinate`` after dimensional disambiguation."""
+    from types import SimpleNamespace
+
+    from bde_xbrl_editor.table_renderer.fact_mapper import FactMapper
+
     if coordinate.concept is None:
         return []
-
-    coord_dims = coordinate.explicit_dimensions or {}
-    coord_typed_dims = {
-        dim_qname: value.strip()
-        for dim_qname, value in (coordinate.typed_dimensions or {}).items()
-        if value.strip()
-    }
-    matches: list[int] = []
-    for idx, fact in enumerate(instance.facts):
-        if fact.concept != coordinate.concept:
-            continue
-        context = instance.contexts.get(fact.context_ref)
-        if context is None:
-            continue
-        typed_dim_keys = set((getattr(context, "typed_dimensions", {}) or {}).keys())
-        fact_dims = {
-            dim_qname: member_qname
-            for dim_qname, member_qname in (getattr(context, "dimensions", {}) or {}).items()
-            if dim_qname not in typed_dim_keys
-        }
-        fact_typed_dims = {
-            dim_qname: value.strip()
-            for dim_qname, value in (getattr(context, "typed_dimensions", {}) or {}).items()
-            if value.strip()
-        }
-        if any(fact_dims.get(dim) != member for dim, member in coord_dims.items()):
-            continue
-        if any(fact_typed_dims.get(dim) != value for dim, value in coord_typed_dims.items()):
-            continue
-        if any(dim not in coord_dims for dim in fact_dims):
-            continue
-        if any(dim not in coord_typed_dims for dim in fact_typed_dims):
-            continue
-        matches.append(idx)
-    return matches
+    t = taxonomy if taxonomy is not None else SimpleNamespace(dimensions={})
+    mapper = FactMapper(t)
+    facts = mapper.resolve_matching_facts(coordinate, instance, table_elr=table_elr)
+    return [instance.facts.index(f) for f in facts]
 
 
 def _normalise_explicit_dimensions(
@@ -637,10 +613,11 @@ def _coordinate_matches_fact_context(
         for dim_qname, value in (coordinate.typed_dimensions or {}).items()
         if value.strip()
     }
-    return (
-        coordinate_explicit_dims == context_explicit_dims
-        and coordinate_typed_dims == context_typed_dims
-    )
+    if coordinate_explicit_dims or coordinate_typed_dims:
+        return all(context_explicit_dims.get(dim) == member for dim, member in coordinate_explicit_dims.items()) and all(
+            context_typed_dims.get(dim) == value for dim, value in coordinate_typed_dims.items()
+        )
+    return not context_explicit_dims and not context_typed_dims
 
 
 def _ensure_context_ref_for_dimensions(
@@ -765,6 +742,8 @@ def _append_open_rows_to_layout(
     if not layout.column_header.ordered_leaves:
         return layout, []
 
+    layout_elr = getattr(layout, "table_extended_link_role", "") or (table.extended_link_role or "") or ""
+
     row_levels: list[list[HeaderCell]] = list(layout.row_header.levels)
     body_rows: list[list[BodyCell]] = list(layout.body)
     inserted_candidates: list[dict[str, object]] = list(candidates)
@@ -847,7 +826,7 @@ def _append_open_rows_to_layout(
                         cell_code=None,
                     )
                     if fact_mapper is not None:
-                        result = fact_mapper.match(cell.coordinate, instance)
+                        result = fact_mapper.match(cell.coordinate, instance, table_elr=layout_elr)
                         if result.matched or result.duplicate_count > 0:
                             cell.fact_value = result.fact_value
                             cell.fact_decimals = result.fact_decimals
@@ -1015,6 +994,7 @@ def _append_open_rows_to_layout(
             active_z_index=layout.active_z_index,
             body=body_rows,
             active_z_constraints=dict(layout.active_z_constraints),
+            table_extended_link_role=layout_elr,
         )
     else:
         layout = ComputedTableLayout(
@@ -1026,6 +1006,7 @@ def _append_open_rows_to_layout(
             active_z_index=layout.active_z_index,
             body=body_rows,
             active_z_constraints=dict(layout.active_z_constraints),
+            table_extended_link_role=layout_elr,
         )
 
     for row_idx, row in enumerate(body_rows):
@@ -1047,6 +1028,7 @@ def _append_open_rows_to_layout(
         active_z_index=layout.active_z_index,
         body=body_rows,
         active_z_constraints=dict(layout.active_z_constraints),
+        table_extended_link_role=layout_elr,
     ), inserted_candidates
 
 
@@ -1061,6 +1043,8 @@ def _append_open_aspect_rows_to_layout(
 ) -> tuple[ComputedTableLayout, list[dict[str, object]], bool]:
     if table is None or taxonomy is None:
         return layout, [], False
+
+    layout_elr = getattr(layout, "table_extended_link_role", "") or (table.extended_link_role or "") or ""
 
     aspect_dimensions = _iter_open_aspect_row_dimensions(table.y_breakdown, taxonomy)
     if not aspect_dimensions:
@@ -1245,7 +1229,7 @@ def _append_open_aspect_rows_to_layout(
                 fact_options=_enumeration_fact_options(taxonomy, coord.concept),
             )
             if fact_mapper is not None:
-                result = fact_mapper.match(coord, instance)
+                result = fact_mapper.match(coord, instance, table_elr=layout_elr)
                 if result.matched or result.duplicate_count > 0:
                     cell.fact_value = result.fact_value
                     cell.fact_decimals = result.fact_decimals
@@ -1273,6 +1257,7 @@ def _append_open_aspect_rows_to_layout(
             active_z_index=layout.active_z_index,
             body=body_rows,
             active_z_constraints=dict(layout.active_z_constraints),
+            table_extended_link_role=layout_elr,
         ),
         aspect_dimensions,
         True,
@@ -2579,6 +2564,7 @@ class XbrlTableView(QFrame):
             return False
         if row >= len(self._layout.body) or col >= len(self._layout.body[row]):
             return False
+        table_elr = getattr(self._layout, "table_extended_link_role", "") or ""
         cell = self._layout.body[row][col]
         signature = cell.open_key_signature
         if signature is None:
@@ -2634,7 +2620,7 @@ class XbrlTableView(QFrame):
                                     dim_qname,
                                 )
                     old_context = None
-                    matches = _find_fact_indexes(self._instance, row_cell.coordinate)
+                    matches = _find_fact_indexes(self._instance, row_cell.coordinate, self._taxonomy, table_elr=table_elr)
                     if matches:
                         old_context = self._instance.contexts.get(self._instance.facts[matches[0]].context_ref)
                     if old_context is not None:
@@ -2647,7 +2633,9 @@ class XbrlTableView(QFrame):
                         typed_dimension_elements=target_typed_elements,
                         context_element=getattr(old_context, "context_element", "scenario"),
                     )
-                existing_fact_indexes.extend(_find_fact_indexes(self._instance, row_cell.coordinate))
+                    existing_fact_indexes.extend(
+                        _find_fact_indexes(self._instance, row_cell.coordinate, self._taxonomy, table_elr=table_elr)
+                    )
 
             if existing_fact_indexes and target_context_ref is not None:
                 try:
@@ -2681,7 +2669,7 @@ class XbrlTableView(QFrame):
                 if cell.open_key_dimension is not None and selected_member is not None:
                     target_dimensions[cell.open_key_dimension] = selected_member
                 old_context = None
-                matches = _find_fact_indexes(self._instance, row_cell.coordinate)
+                matches = _find_fact_indexes(self._instance, row_cell.coordinate, self._taxonomy, table_elr=table_elr)
                 if matches:
                     old_context = self._instance.contexts.get(self._instance.facts[matches[0]].context_ref)
                 target_context_ref = _ensure_context_ref_for_dimensions(
@@ -2689,7 +2677,9 @@ class XbrlTableView(QFrame):
                     dimensions=target_dimensions,
                     context_element=getattr(old_context, "context_element", "scenario"),
                 )
-            existing_fact_indexes.extend(_find_fact_indexes(self._instance, row_cell.coordinate))
+            existing_fact_indexes.extend(
+                _find_fact_indexes(self._instance, row_cell.coordinate, self._taxonomy, table_elr=table_elr)
+            )
 
         if existing_fact_indexes and target_context_ref is not None:
             try:
