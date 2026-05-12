@@ -318,18 +318,24 @@ def _candidate_label_files_for_rend_path(
         return candidates
     cache_root = cache_root.resolve()
 
-    eba_prefixes = (
-        cache_root / "www.eba.europa.eu" / "eu" / "fr" / "xbrl" / "crr" / "fws" / "corep",
-        cache_root / "www.eba.europa.eu" / "fr" / "xbrl" / "crr" / "fws" / "corep",
+    resolved_linkbase_path = linkbase_path.resolve()
+    eba_fws_roots = (
+        cache_root / "www.eba.europa.eu" / "eu" / "fr" / "xbrl" / "crr" / "fws",
+        cache_root / "www.eba.europa.eu" / "fr" / "xbrl" / "crr" / "fws",
     )
-    bde_prefix = cache_root / "www.bde.es" / "es" / "fr" / "xbrl" / "fws" / "ebacrr_corep"
-    for eba_prefix in eba_prefixes:
+    bde_fws_root = cache_root / "www.bde.es" / "es" / "fr" / "xbrl" / "fws"
+    for eba_fws_root in eba_fws_roots:
         try:
-            rel_to_eba = linkbase_path.resolve().relative_to(eba_prefix)
+            rel_to_fws = resolved_linkbase_path.relative_to(eba_fws_root)
         except ValueError:
             continue
 
-        bde_dir = (bde_prefix / rel_to_eba.parent).resolve()
+        if not rel_to_fws.parts:
+            continue
+        fws_module = rel_to_fws.parts[0]
+        bde_dir = (
+            bde_fws_root / f"ebacrr_{fws_module}" / Path(*rel_to_fws.parts[1:]).parent
+        ).resolve()
         for lang in language_preference:
             _add(bde_dir / f"{base}-lab-{lang}.xml")
         _add(bde_dir / f"{base}-lab-codes.xml")

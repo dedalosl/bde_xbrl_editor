@@ -414,6 +414,51 @@ class TestMinimalTableParsing:
         tables = parse_table_linkbase(rend, language_preference=("en", "es"))
         assert tables[0].label == "English table"
 
+    def test_bde_pay_table_fin_code_is_loaded_for_eba_render_file(self, tmp_path):
+        eba_dir = (
+            tmp_path
+            / "cache"
+            / "www.eba.europa.eu"
+            / "eu"
+            / "fr"
+            / "xbrl"
+            / "crr"
+            / "fws"
+            / "pay"
+            / "4.2"
+            / "tab"
+            / "s_04.00"
+        )
+        bde_dir = (
+            tmp_path
+            / "cache"
+            / "www.bde.es"
+            / "es"
+            / "fr"
+            / "xbrl"
+            / "fws"
+            / "ebacrr_pay"
+            / "4.2"
+            / "tab"
+            / "s_04.00"
+        )
+        eba_dir.mkdir(parents=True)
+        bde_dir.mkdir(parents=True)
+
+        rend = eba_dir / "s_04.00-rend.xml"
+        rend.write_text(MINIMAL_TABLE_LB.replace('id="t1"', 'id="eba_tS_04.00"'), encoding="utf-8")
+        codes = bde_dir / "s_04.00-lab-codes.xml"
+        codes.write_text(
+            TABLE_LABEL_CODES.replace('t1"', 'eba_tS_04.00"').replace(">0010<", ">7816<"),
+            encoding="utf-8",
+        )
+
+        tables = parse_table_linkbase(rend)
+
+        assert len(tables) == 1
+        assert tables[0].table_id == "eba_tS_04.00"
+        assert tables[0].table_code == "7816"
+
 
 class TestBreakdownNodeTypes:
     def test_rule_node_type(self):
