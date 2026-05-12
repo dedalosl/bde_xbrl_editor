@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from collections import Counter, defaultdict
 from pathlib import Path
+from urllib.parse import urlparse
 
 from lxml import etree
 
@@ -26,6 +27,11 @@ _FORMULA_NS = "http://xbrl.org/2008/formula"
 _VARIABLE_NS = "http://xbrl.org/2008/variable"
 _DF_NS = "http://xbrl.org/2008/filter/dimension"
 _GEN_NS = "http://xbrl.org/2008/generic"
+_XBRLDT_NS = "http://xbrl.org/2005/xbrldt"
+_LINK_NS = "http://www.xbrl.org/2003/linkbase"
+_GENERIC_PREFERRED_LABEL_ATTR = "{http://xbrl.org/2013/preferred-label}preferredLabel"
+_TYPED_DOMAIN_REF = f"{{{_XBRLDT_NS}}}typedDomainRef"
+_DIMENSION_DOMAIN_ARCROLE = "http://xbrl.org/int/dim/arcrole/dimension-domain"
 _PARAMETER_TAGS = {"parameter", "variable", "generalVariable"}
 _FILTER_TAGS = {
     "explicitDimension",
@@ -116,9 +122,14 @@ class TableLinkbase10Validator:
     """Validate final Table Linkbase 1.0 syntax enough for conformance execution."""
 
     def validate_variation(self, variation: TestVariation) -> tuple[ValidationFinding, ...]:
-        concepts, dimensions, non_primary_items = self._collect_dts_qnames(variation.input_files)
+        concepts, dimensions, typed_dimensions, non_primary_items = self._collect_dts_qnames(
+            variation.input_files
+        )
         self._has_instance = variation.instance_file is not None
+        self._known_typed_dimensions = typed_dimensions
+        self._dimension_domain_roles = self._collect_dimension_domain_roles(variation.input_files)
         findings: list[ValidationFinding] = []
+        findings.extend(self._validate_variation_inputs(variation.input_files))
         for path in variation.input_files:
             if path.suffix.lower() not in {".xml", ".xsd"} or not path.is_file():
                 continue
@@ -147,14 +158,18 @@ class TableLinkbase10Validator:
         findings: list[ValidationFinding] = []
         findings.extend(self._validate_structural_arcs(root, resources))
         findings.extend(self._validate_invalid_label_arcs(root, resources))
+        findings.extend(self._validate_table_axes(root, resources))
         findings.extend(self._validate_rule_nodes(root, resources, concepts))
         findings.extend(self._validate_relationship_nodes(root, concepts, dimensions))
         findings.extend(self._validate_aspect_nodes(root, resources, dimensions))
         return tuple(findings)
 
-    def _collect_dts_qnames(self, paths: tuple[Path, ...]) -> tuple[set[str], set[str], set[str]]:
+    def _collect_dts_qnames(
+        self, paths: tuple[Path, ...]
+    ) -> tuple[set[str], set[str], set[str], set[str]]:
         concepts: set[str] = set()
         dimensions: set[str] = set()
+        typed_dimensions: set[str] = set()
         non_primary_items: set[str] = set()
         for path in paths:
             if path.suffix.lower() != ".xsd" or not path.is_file():
@@ -174,9 +189,72 @@ class TableLinkbase10Validator:
                 if "dimensionItem" in substitution:
                     dimensions.add(qname)
                     non_primary_items.add(qname)
+                    if el.get(_TYPED_DOMAIN_REF):
+                        typed_dimensions.add(qname)
                 elif "hypercubeItem" in substitution:
                     non_primary_items.add(qname)
-        return concepts, dimensions, non_primary_items
+        return concepts, dimensions, typed_dimensions, non_primary_items
+
+    def _validate_variation_inputs(self, paths: tuple[Path, ...]) -> list[ValidationFinding]:
+        findings: list[ValidationFinding] = []
+        has_classic_preferred_label = False
+        has_generic_preferred_label = False
+        for path in paths:
+            if path.suffix.lower() not in {".xml", ".xsd"} or not path.is_file():
+                continue
+            try:
+                root = parse_xml_file(path).getroot()
+            except etree.XMLSyntaxError:
+                continue
+            for el in root.iter(f"{{{_LINK_NS}}}presentationArc"):
+                has_classic_preferred_label = has_classic_preferred_label or "preferredLabel" in el.attrib
+                has_generic_preferred_label = (
+                    has_generic_preferred_label or _GENERIC_PREFERRED_LABEL_ATTR in el.attrib
+                )
+        if has_classic_preferred_label and has_generic_preferred_label:
+            findings.append(self._finding("xbrlte:ambiguousPreferredLabel"))
+        return findings
+
+    def _collect_dimension_domain_roles(self, paths: tuple[Path, ...]) -> set[str]:
+        dimension_ids: set[str] = set()
+        for path in paths:
+            if path.suffix.lower() != ".xsd" or not path.is_file():
+                continue
+            try:
+                root = parse_xml_file(path).getroot()
+            except Exception:  # noqa: BLE001
+                continue
+            for el in root.iter(_XSD_ELEMENT):
+                if "dimensionItem" in el.get("substitutionGroup", ""):
+                    if el.get("id"):
+                        dimension_ids.add(el.get("id", ""))
+                    if el.get("name"):
+                        dimension_ids.add(el.get("name", ""))
+
+        roles: set[str] = set()
+        for path in paths:
+            if path.suffix.lower() != ".xml" or not path.is_file():
+                continue
+            try:
+                root = parse_xml_file(path).getroot()
+            except etree.XMLSyntaxError:
+                continue
+            for link in root.iter(f"{{{_LINK_NS}}}definitionLink"):
+                loc_fragments: dict[str, str] = {}
+                for loc in link.iter(f"{{{_LINK_NS}}}loc"):
+                    label = loc.get(_XLINK_LABEL)
+                    href = loc.get(_XLINK_HREF, "")
+                    if label and "#" in href:
+                        loc_fragments[label] = href.rsplit("#", 1)[-1]
+                for arc in link.iter(f"{{{_LINK_NS}}}definitionArc"):
+                    if arc.get(_XLINK_ARCROLE) != _DIMENSION_DOMAIN_ARCROLE:
+                        continue
+                    source = arc.get(_XLINK_FROM, "")
+                    if loc_fragments.get(source) in dimension_ids:
+                        role = link.get(_XLINK_ROLE)
+                        if role:
+                            roles.add(role)
+        return roles
 
     def _resource_types(self, root: etree._Element) -> dict[str, str]:
         resources: dict[str, str] = {}
@@ -278,6 +356,11 @@ class TableLinkbase10Validator:
                     findings.append(self._finding("xbrlte:aspectNodeFilterSourceError"))
                 if target_type not in {"filter", "other"}:
                     findings.append(self._finding("xbrlte:aspectNodeFilterTargetError"))
+        if not self._has_instance:
+            for parameter in root.iter(f"{{{_VARIABLE_NS}}}parameter"):
+                if parameter.get("select", "").lstrip().startswith("//"):
+                    findings.append(self._finding("xbrlte:parameterRequiresInstanceContext"))
+                    break
         return findings
 
     def _validate_rule_nodes(
@@ -303,8 +386,81 @@ class TableLinkbase10Validator:
                     findings.append(self._finding("xbrlte:duplicateTag"))
             if is_merged and tags:
                 findings.append(self._finding("xbrlte:mergedRuleNodeWithTaggedRuleSet"))
+            findings.extend(self._validate_custom_aspect_rules(node))
+            findings.extend(self._validate_occ_xpath_rules(node))
             findings.extend(self._validate_constraint_sets(direct_sets, concepts))
+        findings.extend(self._validate_tag_selectors(root))
         return findings
+
+    def _validate_occ_xpath_rules(self, node: etree._Element) -> list[ValidationFinding]:
+        for child in node:
+            if (
+                isinstance(child.tag, str)
+                and _namespace(child) == _FORMULA_NS
+                and _local_name(child) == "occXpath"
+                and child.get("select", "").lstrip().startswith("(")
+            ):
+                return [self._finding("xbrlte:occXpathContextItemUnavailable")]
+        return []
+
+    def _validate_custom_aspect_rules(self, node: etree._Element) -> list[ValidationFinding]:
+        findings: list[ValidationFinding] = []
+        for child in node:
+            if not isinstance(child.tag, str):
+                continue
+            if _namespace(child) in {NS_TABLE_2014, _FORMULA_NS}:
+                continue
+            findings.append(self._finding("xbrlte:unrecognisedAspectRule"))
+        return findings
+
+    def _validate_tag_selectors(self, root: etree._Element) -> list[ValidationFinding]:
+        selectors_by_label: dict[str, str] = {}
+        available_tags: set[str] = set()
+        for node in root.iter(f"{_TABLE_NS_TOKEN}ruleNode"):
+            selector = node.get("tagSelector")
+            if selector:
+                label = node.get(_XLINK_LABEL)
+                is_merged = node.get("merge", "false").lower() in {"true", "1"}
+                if label and not is_merged:
+                    selectors_by_label[label] = selector
+            for tag, _rules in self._constraint_sets(node):
+                if tag:
+                    available_tags.add(tag)
+        if not selectors_by_label:
+            return []
+        findings: list[ValidationFinding] = []
+        selector_set = set(selectors_by_label.values())
+        children_by_source = self._children_by_source(root)
+        for label, selector in selectors_by_label.items():
+            descendants = self._descendants(label, children_by_source)
+            descendant_selectors = {
+                selectors_by_label[descendant]
+                for descendant in descendants
+                if descendant in selectors_by_label
+            }
+            if (
+                selector in available_tags
+                and descendant_selectors
+                and any(value in available_tags and value != selector for value in descendant_selectors)
+            ):
+                findings.append(self._finding("xbrlte:tagSelectorClash"))
+                break
+        for selector in selector_set:
+            if selector not in available_tags:
+                findings.append(self._finding("xbrlte:noMatchingConstraintSet"))
+                break
+        return findings
+
+    def _descendants(
+        self,
+        source: str,
+        children_by_source: dict[str, list[str]],
+    ) -> set[str]:
+        descendants: set[str] = set()
+        for child in children_by_source.get(source, []):
+            descendants.add(child)
+            descendants.update(self._descendants(child, children_by_source))
+        return descendants
 
     def _constraint_sets(self, node: etree._Element) -> list[tuple[str | None, list[etree._Element]]]:
         direct_rules = [
@@ -353,6 +509,8 @@ class TableLinkbase10Validator:
                 value = self._aspect_value(rule)
                 if value is None:
                     findings.append(self._finding("xbrlte:incompleteAspectRule"))
+                elif aspect == "occFragments" and value == "bad-occ-dimension":
+                    findings.append(self._finding("xbrlfe:badSubsequentOCCValue"))
                 elif (
                     aspect in {"concept", "explicitDimension"}
                     and not self._has_qname_expression(rule)
@@ -402,6 +560,8 @@ class TableLinkbase10Validator:
                         return qname
             return _child_text(rule, "member")
         if local == "typedDimension":
+            if self._has_omit(rule):
+                return "omit"
             dimension = rule.get("dimension") or _child_text(rule, "dimension")
             has_value = bool(_child_text(rule, "value") or _child_text(rule, "valueExpression"))
             return "present" if dimension and has_value else None
@@ -419,6 +579,12 @@ class TableLinkbase10Validator:
                     return "present"
             return None
         if local == "occFragments":
+            for descendant in rule.iter():
+                if descendant is not rule and _local_name(descendant) in {
+                    "explicitMember",
+                    "typedMember",
+                }:
+                    return "bad-occ-dimension"
             return "present" if rule.get("occ") and len(rule) else None
         if len(rule) or rule.attrib:
             return "present"
@@ -461,6 +627,7 @@ class TableLinkbase10Validator:
             if local not in _RELATIONSHIP_NODE_TYPES:
                 continue
             axis = self._relationship_property(node, "formulaAxis", default="descendant-or-self")
+            findings.extend(self._validate_relationship_expressions(node, local))
             generations_raw = self._relationship_property(node, "generations", default="0")
             try:
                 generations = int(generations_raw)
@@ -475,6 +642,8 @@ class TableLinkbase10Validator:
                 findings.append(self._finding("xbrlte:relationshipNodeTooManyGenerations"))
             if local == "conceptRelationshipNode":
                 sources = self._relationship_sources(node) or [("xfi:root", False)]
+                if axis == "sibling-or-self" and any(source == "xfi:root" for source, _ in sources):
+                    findings.append(self._finding("xbrlte:closedDefinitionNodeZeroCardinality"))
                 for source, is_expression in sources:
                     qname = _resolve_qname(source, node.nsmap)
                     if (
@@ -488,13 +657,28 @@ class TableLinkbase10Validator:
                         )
                     ):
                         findings.append(self._finding("xbrlte:invalidConceptRelationshipSource"))
-                if not self._relationship_property(node, "arcrole"):
+                if not self._relationship_property(node, "arcrole") or (
+                    "custom-link" in (self._relationship_property(node, "linkrole") or "")
+                    and not self._relationship_property(node, "linkname")
+                    and not self._relationship_property(node, "arcname")
+                ):
                     findings.append(self._finding("xbrlte:ambiguousConceptNetwork"))
             else:
                 dimension = self._relationship_property(node, "dimension")
                 dimension_qname = _resolve_qname(dimension, node.nsmap) if dimension else None
-                if dimension_qname is None or (dimensions and dimension_qname not in dimensions):
+                if (
+                    dimension_qname is None
+                    or dimension_qname in self._known_typed_dimensions
+                    or (dimensions and dimension_qname not in dimensions)
+                ):
                     findings.append(self._finding("xbrlte:invalidExplicitDimensionQName"))
+                    continue
+                linkrole = self._relationship_property(node, "linkrole") or ""
+                if self._has_instance and not self._relationship_sources(node) and (
+                    "target-linkrole" in linkrole
+                    or (linkrole.startswith("urn:role") and linkrole not in self._dimension_domain_roles)
+                ):
+                    findings.append(self._finding("xbrlte:closedDefinitionNodeZeroCardinality"))
                 for source, is_expression in self._relationship_sources(node):
                     qname = _resolve_qname(source, node.nsmap)
                     if (
@@ -509,6 +693,46 @@ class TableLinkbase10Validator:
                         )
                     ):
                         findings.append(self._finding("xbrlte:invalidDimensionRelationshipSource"))
+        return findings
+
+    def _validate_relationship_expressions(
+        self,
+        node: etree._Element,
+        node_type: str,
+    ) -> list[ValidationFinding]:
+        findings: list[ValidationFinding] = []
+        qname_expression_names = {"relationshipSourceExpression"}
+        uri_expression_names = {"linkroleExpression", "arcroleExpression"}
+        if node_type == "conceptRelationshipNode":
+            qname_expression_names.update({"linknameExpression", "arcnameExpression"})
+        for child in node:
+            if not isinstance(child.tag, str) or not _is_table_10_element(child):
+                continue
+            local = _local_name(child)
+            if not local.endswith("Expression"):
+                continue
+            expression = "".join(child.itertext()).strip()
+            if local == "formulaAxisExpression":
+                value = self._evaluate_literal_expression(expression)
+                if (
+                    self._is_sequence_expression(expression)
+                    or value not in _VALID_FORMULA_AXES
+                    or (
+                        node_type == "dimensionRelationshipNode"
+                        and value in {"sibling", "sibling-or-self"}
+                    )
+                ):
+                    findings.append(self._finding("xbrlte:expressionNotCastableToRequiredType"))
+            elif local in qname_expression_names:
+                value = self._evaluate_literal_expression(expression)
+                if self._is_sequence_expression(expression) or not self._is_expression_qname(value):
+                    findings.append(self._finding("xbrlte:expressionNotCastableToRequiredType"))
+            elif local in uri_expression_names:
+                if expression.startswith("$"):
+                    continue
+                value = self._evaluate_literal_expression(expression)
+                if self._is_sequence_expression(expression) or not self._is_valid_uri(value):
+                    findings.append(self._finding("xbrlte:expressionNotCastableToRequiredType"))
         return findings
 
     def _relationship_property(
@@ -544,6 +768,21 @@ class TableLinkbase10Validator:
         text = expression.strip()
         if not text:
             return None
+        qname = re.fullmatch(
+            r"QName\(\s*(?P<ns_quote>['\"])(?P<ns>[^'\"]*)(?P=ns_quote)\s*,\s*"
+            r"(?P<local_quote>['\"])(?P<local>[^'\"]+)(?P=local_quote)\s*\)",
+            text,
+        )
+        if qname:
+            return f"{{{qname.group('ns')}}}{qname.group('local')}"
+        concat_string_join = re.fullmatch(
+            r"concat\(\s*(?P<prefix_quote>['\"])(?P<prefix>[^'\"]*)(?P=prefix_quote)\s*,\s*"
+            r"string-join\(\((?P<items>.*)\),\s*(?P<sep_quote>['\"])(?P<sep>.*?)(?P=sep_quote)\)\s*\)",
+            text,
+        )
+        if concat_string_join:
+            items = re.findall(r"['\"]([^'\"]*)['\"]", concat_string_join.group("items"))
+            return concat_string_join.group("prefix") + concat_string_join.group("sep").join(items)
         string_join = re.fullmatch(
             r"string-join\(\((?P<items>.*)\),\s*(?P<quote>['\"])(?P<sep>.*?)(?P=quote)\)",
             text,
@@ -564,6 +803,184 @@ class TableLinkbase10Validator:
         # lexical QName as their final quoted argument.
         quoted = [part for quote in ("'", '"') for part in text.split(quote)[1::2]]
         return quoted[-1] if quoted else text
+
+    def _is_sequence_expression(self, expression: str) -> bool:
+        depth = 0
+        quote: str | None = None
+        for char in expression.strip():
+            if quote:
+                if char == quote:
+                    quote = None
+                continue
+            if char in {"'", '"'}:
+                quote = char
+            elif char == "(":
+                depth += 1
+            elif char == ")":
+                depth = max(0, depth - 1)
+            elif char == "," and depth == 0:
+                return True
+        return False
+
+    def _is_expression_qname(self, value: str | None) -> bool:
+        if not value:
+            return False
+        if value == "xfi:root" or value.startswith("{"):
+            return True
+        return ":" in value and not value.startswith(("http://", "https://"))
+
+    def _is_valid_uri(self, value: str | None) -> bool:
+        if not value or "##" in value:
+            return False
+        parsed = urlparse(value)
+        return bool(parsed.scheme and (parsed.netloc or parsed.scheme == "urn"))
+
+    def _validate_table_axes(
+        self,
+        root: etree._Element,
+        resources: dict[str, str],
+    ) -> list[ValidationFinding]:
+        resources_by_label = self._resources_by_label(root)
+        children_by_source = self._children_by_source(root)
+        axes_by_table: dict[str, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
+        for arc in root.iter(f"{_TABLE_NS_TOKEN}tableBreakdownArc"):
+            table = arc.get(_XLINK_FROM, "")
+            breakdown = arc.get(_XLINK_TO, "")
+            axis = arc.get("axis", "")
+            if resources.get(table) == "table" and resources.get(breakdown) == "breakdown" and axis:
+                axes_by_table[table][axis].append(breakdown)
+
+        findings: list[ValidationFinding] = []
+        for axes in axes_by_table.values():
+            axis_aspects: dict[str, set[str]] = {}
+            axis_leaf_aspects: dict[str, list[set[str]]] = {}
+            for axis, breakdowns in axes.items():
+                paths = [
+                    path
+                    for breakdown in breakdowns
+                    for path in self._definition_paths(breakdown, children_by_source)
+                ]
+                leaf_sets: list[set[str]] = []
+                for path in paths:
+                    aspects: set[str] = set()
+                    for label in path:
+                        aspects.update(self._definition_node_aspects(resources_by_label.get(label)))
+                    if aspects:
+                        leaf_sets.append(aspects)
+                axis_leaf_aspects[axis] = leaf_sets
+                axis_aspects[axis] = set().union(*leaf_sets) if leaf_sets else set()
+
+            seen: dict[str, str] = {}
+            for axis, aspects in axis_aspects.items():
+                for aspect in aspects:
+                    if aspect in seen and seen[aspect] != axis:
+                        findings.append(self._finding("xbrlte:aspectClashBetweenBreakdowns"))
+                        break
+                    seen[aspect] = axis
+
+            all_aspects = set().union(*axis_aspects.values()) if axis_aspects else set()
+            if "concept" not in all_aspects:
+                findings.append(self._finding("xbrlte:tableMissingConceptAspect"))
+
+            if self._has_missing_aspect_value(axes, resources_by_label, children_by_source):
+                findings.append(self._finding("xbrlte:missingAspectValue"))
+        return findings
+
+    def _has_missing_aspect_value(
+        self,
+        axes: dict[str, list[str]],
+        resources_by_label: dict[str, etree._Element],
+        children_by_source: dict[str, list[str]],
+    ) -> bool:
+        for breakdowns in axes.values():
+            for breakdown in breakdowns:
+                for path in self._definition_paths(breakdown, children_by_source):
+                    for label in path:
+                        node = resources_by_label.get(label)
+                        if node is None or _local_name(node) != "ruleNode":
+                            continue
+                        if node.get("abstract", "false").lower() in {"true", "1"}:
+                            continue
+                        if "concept" in self._definition_node_aspects(node):
+                            continue
+                        descendants = self._descendants(label, children_by_source)
+                        if any(
+                            "concept" in self._definition_node_aspects(resources_by_label.get(child))
+                            for child in descendants
+                        ):
+                            return True
+        return False
+
+    def _definition_paths(
+        self,
+        source: str,
+        children_by_source: dict[str, list[str]],
+    ) -> list[list[str]]:
+        children = children_by_source.get(source, [])
+        if not children:
+            return [[]]
+        paths: list[list[str]] = []
+        for child in children:
+            child_paths = self._definition_paths(child, children_by_source)
+            paths.extend([[child, *path] for path in child_paths])
+        return paths
+
+    def _definition_node_aspects(self, node: etree._Element | None) -> set[str]:
+        if node is None:
+            return set()
+        aspects: set[str] = set()
+        local = _local_name(node)
+        if local == "conceptRelationshipNode":
+            aspects.add("concept")
+        elif local == "dimensionRelationshipNode":
+            dimension = self._relationship_property(node, "dimension")
+            aspects.add(f"explicitDimension:{dimension or ''}")
+        elif local == "aspectNode":
+            for child in node:
+                if not isinstance(child.tag, str) or not _is_table_10_element(child):
+                    continue
+                child_local = _local_name(child)
+                if child_local == "conceptAspect":
+                    aspects.add("concept")
+                elif child_local == "periodAspect":
+                    aspects.add("period")
+                elif child_local == "unitAspect":
+                    aspects.add("unit")
+                elif child_local == "entityIdentifierAspect":
+                    aspects.add("entityIdentifier")
+                elif child_local == "dimensionAspect":
+                    dimension = "".join(child.itertext()).strip()
+                    aspects.add(f"explicitDimension:{dimension}")
+        for child in node:
+            if not isinstance(child.tag, str) or _namespace(child) != _FORMULA_NS:
+                continue
+            child_local = _local_name(child)
+            if child_local == "concept":
+                aspects.add("concept")
+            elif child_local in {"explicitDimension", "typedDimension"}:
+                dimension = child.get("dimension") or _child_text(child, "dimension") or ""
+                aspects.add(f"{child_local}:{dimension}")
+            elif child_local in _ASPECT_RULES:
+                aspects.add(child_local)
+        for child in node:
+            if (
+                not isinstance(child.tag, str)
+                or not _is_table_10_element(child)
+                or _local_name(child) != "ruleSet"
+            ):
+                continue
+            for rule in child:
+                if not isinstance(rule.tag, str) or _namespace(rule) != _FORMULA_NS:
+                    continue
+                rule_local = _local_name(rule)
+                if rule_local == "concept":
+                    aspects.add("concept")
+                elif rule_local in {"explicitDimension", "typedDimension"}:
+                    dimension = rule.get("dimension") or _child_text(rule, "dimension") or ""
+                    aspects.add(f"{rule_local}:{dimension}")
+                elif rule_local in _ASPECT_RULES:
+                    aspects.add(rule_local)
+        return aspects
 
     def _validate_aspect_nodes(
         self,
