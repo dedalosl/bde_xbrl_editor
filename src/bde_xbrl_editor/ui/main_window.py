@@ -157,18 +157,19 @@ class MainWindow(QMainWindow):
     def _apply_stylesheet(self) -> None:
         self.setStyleSheet(f"""
             QMainWindow, QWidget {{
-                font-family: "Helvetica Neue", Arial, sans-serif;
+                font-family: "Inter", "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
                 font-size: 12px;
                 color: {theme.TEXT_MAIN};
             }}
             QMenuBar {{
-                background: {theme.NAV_BG_DEEP};
-                color: {theme.TEXT_INVERSE};
-                padding: 2px 4px;
-                border-bottom: 1px solid {theme.BORDER_STRONG};
+                background: {theme.SURFACE_BG};
+                color: {theme.TEXT_MAIN};
+                padding: 3px 8px;
+                border-bottom: 1px solid {theme.BORDER};
             }}
             QMenuBar::item:selected {{
-                background: {theme.NAV_BG};
+                background: {theme.HOVER_BG};
+                border-radius: 4px;
             }}
             QMenu {{
                 background: {theme.SURFACE_BG};
@@ -180,11 +181,11 @@ class MainWindow(QMainWindow):
                 color: {theme.TEXT_MAIN};
             }}
             QStatusBar {{
-                background: {theme.PANEL_BG};
-                color: {theme.TEXT_MAIN};
+                background: {theme.SURFACE_BG};
+                color: {theme.TEXT_MUTED};
                 border-top: 1px solid {theme.BORDER};
                 font-size: 11px;
-                padding: 2px 6px;
+                padding: 3px 8px;
             }}
             QTableView, QTreeView, QListView {{
                 background: {theme.CELL_BG};
@@ -198,22 +199,27 @@ class MainWindow(QMainWindow):
             QHeaderView::section {{
                 background: {theme.HEADER_BG_LIGHT};
                 color: {theme.TEXT_MAIN};
-                border: 1px solid {theme.BORDER};
-                padding: 4px 6px;
+                border: none;
+                border-right: 1px solid {theme.BORDER};
+                border-bottom: 1px solid {theme.BORDER};
+                padding: 5px 8px;
                 font-weight: 600;
             }}
             QPushButton, QComboBox, QLineEdit, QTextEdit {{
                 background: {theme.INPUT_BG};
                 color: {theme.TEXT_MAIN};
                 border: 1px solid {theme.BORDER};
-                border-radius: 4px;
+                border-radius: 6px;
             }}
             QPushButton {{
-                padding: 4px 10px;
+                padding: 5px 11px;
             }}
             QPushButton:hover, QComboBox:hover, QLineEdit:hover {{
-                border-color: {theme.BORDER_STRONG};
-                background: {theme.SURFACE_BG};
+                border-color: {theme.ACCENT};
+                background: {theme.INPUT_BG};
+            }}
+            QPushButton:pressed {{
+                background: {theme.HOVER_BG};
             }}
             QPushButton:disabled, QComboBox:disabled, QLineEdit:disabled {{
                 background: {theme.DISABLED_BG};
@@ -225,30 +231,32 @@ class MainWindow(QMainWindow):
                 selection-color: {theme.SELECTION_FG};
             }}
             QScrollBar:vertical {{
-                width: 10px;
-                background: {theme.SURFACE_ALT_BG};
+                width: 11px;
+                background: {theme.SURFACE_BG};
                 border: none;
             }}
             QScrollBar::handle:vertical {{
-                background: {theme.ACCENT_SOFT};
-                border-radius: 4px;
+                background: {theme.BORDER};
+                border-radius: 5px;
+                margin: 2px;
                 min-height: 20px;
             }}
             QScrollBar::handle:vertical:hover {{
-                background: {theme.ACCENT};
+                background: {theme.BORDER_STRONG};
             }}
             QScrollBar:horizontal {{
-                height: 10px;
-                background: {theme.SURFACE_ALT_BG};
+                height: 11px;
+                background: {theme.SURFACE_BG};
                 border: none;
             }}
             QScrollBar::handle:horizontal {{
-                background: {theme.ACCENT_SOFT};
-                border-radius: 4px;
+                background: {theme.BORDER};
+                border-radius: 5px;
+                margin: 2px;
                 min-width: 20px;
             }}
             QScrollBar::handle:horizontal:hover {{
-                background: {theme.ACCENT};
+                background: {theme.BORDER_STRONG};
             }}
             QSplitter::handle {{
                 background: {theme.BORDER};
@@ -482,13 +490,14 @@ class MainWindow(QMainWindow):
     def _build_context_bar(self, instance=None) -> QFrame:
         """Return a structured workspace header with context on the left and actions on the right."""
         bar = QFrame()
-        bar.setFixedHeight(72)
+        bar.setObjectName("ContextBar")
+        bar.setFixedHeight(68)
         bar.setStyleSheet(
-            f"QFrame {{ background: {theme.SURFACE_ALT_BG}; }}"
+            f"QFrame#ContextBar {{ background: {theme.SURFACE_BG}; border-bottom: 1px solid {theme.BORDER}; }}"
         )
 
         layout = QHBoxLayout(bar)
-        layout.setContentsMargins(14, 10, 14, 10)
+        layout.setContentsMargins(16, 9, 16, 9)
         layout.setSpacing(14)
 
         context_block = QWidget(bar)
@@ -498,13 +507,13 @@ class MainWindow(QMainWindow):
 
         eyebrow = QLabel("Workspace")
         eyebrow.setStyleSheet(
-            f"color: {theme.TEXT_SUBTLE}; font-size: 10px; font-weight: bold;"
+            f"color: {theme.TEXT_SUBTLE}; font-size: 10px; font-weight: 700; letter-spacing: 0;"
         )
         context_layout.addWidget(eyebrow)
 
         title = QLabel()
         title.setStyleSheet(
-            f"color: {theme.TEXT_MAIN}; font-size: 18px; font-weight: bold; background: transparent;"
+            f"color: {theme.TEXT_MAIN}; font-size: 17px; font-weight: 700; background: transparent;"
         )
         context_layout.addWidget(title)
         self._context_title_label = title
@@ -553,16 +562,16 @@ class MainWindow(QMainWindow):
 
         btn_style = (
             f"QPushButton {{ color: {theme.TEXT_MAIN}; background: {theme.SURFACE_BG};"
-            f" border: 1px solid {theme.BORDER}; border-radius: 8px;"
-            " font-size: 10px; font-weight: 600; padding: 0 12px; }"
-            f"QPushButton:hover {{ background: {theme.INPUT_BG}; border-color: {theme.BORDER_STRONG}; }}"
+            f" border: 1px solid {theme.BORDER}; border-radius: 6px;"
+            " font-size: 11px; font-weight: 600; padding: 0 12px; }"
+            f"QPushButton:hover {{ background: {theme.HOVER_BG}; border-color: {theme.ACCENT}; }}"
             f"QPushButton:disabled {{ color: {theme.DISABLED_FG}; background: transparent;"
             f" border-color: {theme.BORDER}; }}"
         )
         primary_btn_style = (
-            f"QPushButton {{ color: {theme.TEXT_INVERSE}; background: {theme.NAV_BG_DEEP};"
-            " border: none; border-radius: 8px; font-size: 10px; font-weight: 600; padding: 0 12px; }"
-            f"QPushButton:hover {{ background: {theme.NAV_BG_DARK}; }}"
+            f"QPushButton {{ color: {theme.TEXT_INVERSE}; background: {theme.ACCENT};"
+            " border: none; border-radius: 6px; font-size: 11px; font-weight: 700; padding: 0 12px; }"
+            f"QPushButton:hover {{ background: {theme.NAV_BG}; }}"
             f"QPushButton:disabled {{ background: {theme.DISABLED_BG}; color: {theme.DISABLED_FG}; }}"
         )
 
@@ -663,8 +672,8 @@ class MainWindow(QMainWindow):
         combo.setToolTip("Table label language")
         combo.setStyleSheet(
             f"QComboBox {{ color: {theme.TEXT_MAIN}; background: {theme.SURFACE_BG};"
-            f" border: 1px solid {theme.BORDER}; border-radius: 8px;"
-            " font-size: 10px; font-weight: 600; padding: 0 8px; min-width: 72px; }"
+            f" border: 1px solid {theme.BORDER}; border-radius: 6px;"
+            " font-size: 11px; font-weight: 600; padding: 0 8px; min-width: 72px; }"
         )
         languages: list[str] = []
         for lang in self._settings.language_preference:

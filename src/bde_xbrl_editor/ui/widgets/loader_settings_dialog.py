@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QPushButton,
@@ -26,6 +27,7 @@ from PySide6.QtWidgets import (
 )
 
 from bde_xbrl_editor.taxonomy import LoaderSettings
+from bde_xbrl_editor.ui import theme
 
 _SETTINGS_FILE = Path.home() / ".bde_xbrl_editor" / "settings.json"
 _MAX_RECENT = 5
@@ -112,13 +114,99 @@ class LoaderSettingsDialog(QDialog):
     def __init__(self, current: LoaderSettings, parent=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("Loader Settings")
-        self.setMinimumWidth(640)
+        self.setMinimumSize(760, 520)
         self._settings = current
         self._setup_ui(current)
 
     def _setup_ui(self, settings: LoaderSettings) -> None:
+        self.setStyleSheet(
+            f"""
+            QDialog {{
+                background: {theme.WINDOW_BG};
+                color: {theme.TEXT_MAIN};
+                font-family: "Inter", "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+                font-size: 12px;
+            }}
+            QLabel {{
+                color: {theme.TEXT_MAIN};
+                background: transparent;
+            }}
+            QGroupBox {{
+                background: {theme.SURFACE_BG};
+                border: 1px solid {theme.BORDER};
+                border-radius: 8px;
+                margin-top: 18px;
+                padding: 14px 12px 12px 12px;
+                font-weight: 700;
+            }}
+            QGroupBox::title {{
+                subcontrol-origin: margin;
+                left: 12px;
+                padding: 0 4px;
+                color: {theme.TEXT_MAIN};
+            }}
+            QLineEdit {{
+                background: {theme.INPUT_BG};
+                color: {theme.TEXT_MAIN};
+                border: 1px solid {theme.BORDER};
+                border-radius: 6px;
+                padding: 6px 8px;
+            }}
+            QLineEdit:focus {{
+                border-color: {theme.ACCENT};
+            }}
+            QPushButton {{
+                background: {theme.SURFACE_BG};
+                color: {theme.TEXT_MAIN};
+                border: 1px solid {theme.BORDER};
+                border-radius: 6px;
+                padding: 6px 12px;
+                font-weight: 600;
+            }}
+            QPushButton:hover {{
+                background: {theme.HOVER_BG};
+                border-color: {theme.ACCENT};
+            }}
+            QTableWidget {{
+                background: {theme.SURFACE_BG};
+                alternate-background-color: {theme.CELL_BG_MUTED};
+                color: {theme.TEXT_MAIN};
+                border: 1px solid {theme.BORDER};
+                gridline-color: {theme.BORDER};
+                selection-background-color: {theme.SELECTION_BG};
+                selection-color: {theme.SELECTION_FG};
+            }}
+            QHeaderView::section {{
+                background: {theme.HEADER_BG_LIGHT};
+                color: {theme.TEXT_MAIN};
+                border: none;
+                border-right: 1px solid {theme.BORDER};
+                border-bottom: 1px solid {theme.BORDER};
+                padding: 7px 8px;
+                font-weight: 700;
+            }}
+            """
+        )
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(18, 18, 18, 16)
+        layout.setSpacing(12)
+
+        title = QLabel("Loader settings")
+        title.setStyleSheet(
+            f"color: {theme.TEXT_MAIN}; font-size: 18px; font-weight: 750; background: transparent;"
+        )
+        layout.addWidget(title)
+
+        subtitle = QLabel("Control schema resolution and local URL mapping for taxonomy loads.")
+        subtitle.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: 11px; background: transparent;"
+        )
+        layout.addWidget(subtitle)
+
         form = QFormLayout()
+        form.setContentsMargins(0, 6, 0, 0)
+        form.setHorizontalSpacing(14)
+        form.setVerticalSpacing(9)
 
         self._allow_network = QCheckBox("Allow network resolution of remote schema references")
         self._allow_network.setChecked(settings.allow_network)
@@ -132,19 +220,29 @@ class LoaderSettingsDialog(QDialog):
         # --- Catalog group ---
         catalog_group = QGroupBox("URL-to-Path Catalog")
         catalog_layout = QVBoxLayout(catalog_group)
+        catalog_layout.setContentsMargins(12, 16, 12, 12)
+        catalog_layout.setSpacing(10)
 
-        catalog_layout.addWidget(QLabel(
+        catalog_help = QLabel(
             "Map remote URL prefixes to local directories. "
-            "The first matching prefix wins — use Move Up/Down to control evaluation order."
-        ))
+            "The first matching prefix wins; use Move Up and Move Down to set priority."
+        )
+        catalog_help.setWordWrap(True)
+        catalog_help.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: 11px; background: transparent;"
+        )
+        catalog_layout.addWidget(catalog_help)
 
         # Table showing existing mappings
         self._catalog_table = QTableWidget(0, 2)
         self._catalog_table.setHorizontalHeaderLabels(["URL Prefix", "Local Path"])
-        self._catalog_table.horizontalHeader().setStretchLastSection(True)
+        self._catalog_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        self._catalog_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self._catalog_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._catalog_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self._catalog_table.verticalHeader().setVisible(False)
+        self._catalog_table.setAlternatingRowColors(True)
+        self._catalog_table.setMinimumHeight(210)
         catalog_layout.addWidget(self._catalog_table)
 
         # Populate from existing settings
@@ -184,7 +282,11 @@ class LoaderSettingsDialog(QDialog):
 
         layout.addWidget(catalog_group)
 
-        layout.addWidget(QLabel("<small>Settings are saved to ~/.bde_xbrl_editor/settings.json</small>"))
+        saved_label = QLabel("Settings are saved to ~/.bde_xbrl_editor/settings.json")
+        saved_label.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: 11px; background: transparent;"
+        )
+        layout.addWidget(saved_label)
 
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self._on_accept)

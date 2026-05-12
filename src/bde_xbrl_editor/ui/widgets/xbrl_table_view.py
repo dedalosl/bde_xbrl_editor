@@ -1747,19 +1747,21 @@ class XbrlTableView(QFrame):
         self._cell_selection_connected = False
 
         # Layout
+        self.setObjectName("XbrlTableView")
         self._outer_layout = QVBoxLayout(self)
         self._outer_layout.setContentsMargins(0, 0, 0, 0)
         self._outer_layout.setSpacing(0)
 
-        self.setStyleSheet(f"QFrame {{ background: {theme.SURFACE_BG}; }}")
+        self.setStyleSheet(f"QFrame#XbrlTableView {{ background: {theme.SURFACE_BG}; }}")
 
         # Table workspace header
         self._table_header = QFrame(self)
+        self._table_header.setObjectName("TableWorkspaceHeader")
         self._table_header.setStyleSheet(
-            f"QFrame {{ background: {theme.SURFACE_BG}; }}"
+            f"QFrame#TableWorkspaceHeader {{ background: {theme.SURFACE_BG}; border-bottom: 1px solid {theme.BORDER}; }}"
         )
         header_layout = QHBoxLayout(self._table_header)
-        header_layout.setContentsMargins(16, 12, 16, 12)
+        header_layout.setContentsMargins(16, 10, 16, 10)
         header_layout.setSpacing(16)
 
         title_col = QVBoxLayout()
@@ -1768,7 +1770,7 @@ class XbrlTableView(QFrame):
 
         self._title_label = QLabel("No table selected", self._table_header)
         self._title_label.setStyleSheet(
-            f"color: {theme.TEXT_MAIN}; font-size: 18px; font-weight: 700; background: transparent;"
+            f"color: {theme.TEXT_MAIN}; font-size: 17px; font-weight: 750; background: transparent;"
         )
         title_col.addWidget(self._title_label)
 
@@ -1817,8 +1819,8 @@ class XbrlTableView(QFrame):
                 background: {theme.DISABLED_BG};
             }}
             QCheckBox::indicator:checked {{
-                background: {theme.NAV_BG_DEEP};
-                border-color: {theme.NAV_BG_DEEP};
+                background: {theme.ACCENT};
+                border-color: {theme.ACCENT};
             }}
             """
         )
@@ -1855,7 +1857,7 @@ class XbrlTableView(QFrame):
         self._body_view.horizontalHeader().setDefaultSectionSize(_DEFAULT_BODY_COLUMN_WIDTH)
         self._body_view.horizontalHeader().setMinimumSectionSize(120)
         self._body_view.setStyleSheet(
-            f"QTableView {{ background: {theme.CELL_BG}; border: none; }}"
+            f"QTableView {{ background: {theme.CELL_BG}; border: none; gridline-color: {theme.BORDER}; }}"
         )
         self._body_view.setEditTriggers(QTableView.EditTrigger.NoEditTriggers)
         self._cell_info_tooltip = _CellInfoTooltipPopup(self._body_view)
