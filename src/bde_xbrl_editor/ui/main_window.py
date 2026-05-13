@@ -1234,6 +1234,9 @@ class MainWindow(QMainWindow):
         self._validation_panel = ValidationPanel(self)
         self._validation_panel.revalidate_requested.connect(self._trigger_validation)
         self._validation_panel.navigate_to_cell.connect(self._on_navigate_to_cell)
+        self._validation_panel.collapse_requested.connect(
+            lambda: self._set_validation_panel_expanded(False)
+        )
 
         self._validation_stack = QStackedWidget(self)
         self._validation_collapsed_button = QPushButton("  ●  Validation — not run")
