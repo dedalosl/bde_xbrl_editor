@@ -13,7 +13,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6", reason="PySide6 not available - UI flow tests skipped")
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QScrollArea, QSplitter
+from PySide6.QtWidgets import QDockWidget, QPushButton, QScrollArea, QSplitter
 
 from bde_xbrl_editor.instance.models import ReportingEntity, ReportingPeriod, XbrlInstance
 from bde_xbrl_editor.performance import LoadTiming, StageTiming
@@ -274,6 +274,16 @@ def test_instance_open_uses_instance_sidebar_only(qtbot, qapp) -> None:
 
     assert window._sidebar is not None
     assert [btn.text() for btn in window._sidebar._buttons if not btn.isHidden()] == ["INS"]
+
+    context_actions = [btn.text() for btn in window._context_bar.findChildren(QPushButton)]
+    assert "Back" not in context_actions
+    assert "Close Instance" in context_actions
+
+    dock = window.findChild(QDockWidget, "ValidationDock")
+    assert dock is not None
+    assert not dock.isHidden()
+    assert dock.maximumHeight() == 44
+    assert window._validation_stack.currentIndex() == 0
 
 
 def test_new_instance_load_enables_editing_mode_immediately(qtbot, qapp) -> None:

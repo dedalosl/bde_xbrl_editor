@@ -227,20 +227,15 @@ class TaxonomyLoaderWidget(QWidget):
         header.setStyleSheet(
             f"QFrame#LoaderHeader {{ background: {theme.SURFACE_BG}; border-bottom: 1px solid {theme.BORDER}; }}"
         )
-        header.setFixedHeight(112)
+        header.setFixedHeight(104)
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(36, 16, 36, 16)
         header_layout.setSpacing(24)
 
         title_col = QVBoxLayout()
-        title_col.setSpacing(6)
-
-        eyebrow = QLabel("XBRL filing workspace")
-        eyebrow.setStyleSheet(
-            f"color: {theme.TEXT_SUBTLE}; font-size: 11px; font-weight: 700; "
-            "background: transparent;"
-        )
-        title_col.addWidget(eyebrow)
+        title_col.setContentsMargins(0, 0, 0, 0)
+        title_col.setSpacing(5)
+        title_col.addStretch(1)
 
         app_title = QLabel("BDE XBRL Editor")
         app_title.setStyleSheet(
@@ -253,34 +248,17 @@ class TaxonomyLoaderWidget(QWidget):
             f"color: {theme.TEXT_MUTED}; font-size: 12px; background: transparent;"
         )
         title_col.addWidget(subtitle)
+        title_col.addStretch(1)
 
-        header_layout.addLayout(title_col)
+        header_layout.addLayout(title_col, stretch=1)
         header_layout.addStretch()
 
-        summary = QFrame()
-        summary.setObjectName("FlowSummary")
-        summary.setMinimumSize(260, 64)
-        summary.setStyleSheet(
-            f"QFrame#FlowSummary {{ background: {theme.SURFACE_ALT_BG}; border: 1px solid {theme.BORDER};"
-            " border-radius: 8px; }"
-        )
-        summary_layout = QVBoxLayout(summary)
-        summary_layout.setContentsMargins(16, 12, 16, 12)
-        summary_layout.setSpacing(2)
-
-        summary_label = QLabel("Recommended flow")
-        summary_label.setStyleSheet(
-            f"color: {theme.TEXT_MAIN}; font-size: 11px; font-weight: 700; background: transparent;"
-        )
-        summary_layout.addWidget(summary_label)
-
-        summary_text = QLabel("Open a taxonomy to unlock tables, validation, and instance editing.")
-        summary_text.setWordWrap(True)
-        summary_text.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: 11px; background: transparent;"
-        )
-        summary_layout.addWidget(summary_text)
-        header_layout.addWidget(summary, stretch=0)
+        settings_btn = QPushButton("Settings…")
+        settings_btn.setFixedHeight(34)
+        settings_btn.setMinimumWidth(106)
+        settings_btn.setStyleSheet(self._settings_btn_style())
+        settings_btn.clicked.connect(self._on_settings)
+        header_layout.addWidget(settings_btn, alignment=Qt.AlignmentFlag.AlignVCenter)
 
         outer.addWidget(header)
 
@@ -291,33 +269,12 @@ class TaxonomyLoaderWidget(QWidget):
         content_layout.setSpacing(18)
 
         primary_card = self._build_taxonomy_card()
-        primary_card.setMinimumWidth(560)
-        content_layout.addWidget(primary_card, stretch=13)
+        primary_card.setMinimumWidth(520)
+        content_layout.addWidget(primary_card, stretch=1)
 
-        secondary_col = QVBoxLayout()
-        secondary_col.setContentsMargins(0, 0, 0, 0)
-        secondary_col.setSpacing(14)
-        secondary_col.addWidget(self._build_instance_card(), stretch=0)
-        secondary_col.addWidget(self._build_guidance_panel(), stretch=0)
-        secondary_col.addStretch(1)
-
-        footer = QHBoxLayout()
-        footer.addStretch()
-        settings_btn = QPushButton("Settings…")
-        settings_btn.setFlat(True)
-        settings_btn.setStyleSheet(
-            f"QPushButton {{ color: {_TEXT_MUTED}; font-size: 11px; border: none;"
-            f" padding: 5px 8px; background: transparent; }}"
-            f"QPushButton:hover {{ color: {_ACCENT}; }}"
-        )
-        settings_btn.clicked.connect(self._on_settings)
-        footer.addWidget(settings_btn)
-        secondary_col.addLayout(footer)
-
-        secondary = QWidget()
-        secondary.setLayout(secondary_col)
-        secondary.setMinimumWidth(340)
-        content_layout.addWidget(secondary, stretch=7)
+        instance_card = self._build_instance_card()
+        instance_card.setMinimumWidth(420)
+        content_layout.addWidget(instance_card, stretch=1)
 
         outer.addWidget(content, stretch=1)
 
@@ -471,33 +428,6 @@ class TaxonomyLoaderWidget(QWidget):
         layout.addStretch()
         return card
 
-    def _build_guidance_panel(self) -> QFrame:
-        panel, layout = self._make_card()
-        panel.setMaximumHeight(142)
-
-        title = QLabel("Workspace notes")
-        title.setStyleSheet(
-            f"color: {_TEXT_MAIN}; font-size: 13px; font-weight: bold; background: transparent;"
-        )
-        layout.addWidget(title)
-        layout.addSpacing(8)
-
-        notes = (
-            "1. Load a taxonomy to unlock tables and validation rules.",
-            "2. Open an instance to edit facts against that structure.",
-            "3. Use recent files to jump back into previous work.",
-        )
-        for note in notes:
-            row = QLabel(note)
-            row.setWordWrap(True)
-            row.setStyleSheet(
-                f"color: {_TEXT_MUTED}; font-size: 10px; background: transparent; padding-bottom: 4px;"
-            )
-            layout.addWidget(row)
-
-        layout.addStretch()
-        return panel
-
     # ── Button / input styles ──────────────────────────────────────────────
 
     def _input_style(self) -> str:
@@ -524,6 +454,15 @@ class TaxonomyLoaderWidget(QWidget):
             f" border: 1px solid {_BORDER}; border-radius: 6px;"
             f" font-size: 12px; padding: 6px 12px; }}"
             f"QPushButton:hover {{ background: {_HOVER_ROW}; border-color: {_ACCENT}; }}"
+        )
+
+    def _settings_btn_style(self) -> str:
+        return (
+            f"QPushButton {{ background: {theme.SURFACE_BG}; color: {_TEXT_MAIN};"
+            f" border: 1px solid {_BORDER}; border-radius: 6px;"
+            f" font-size: 12px; font-weight: 650; padding: 6px 14px; }}"
+            f"QPushButton:hover {{ background: {_HOVER_ROW}; border-color: {_ACCENT}; color: {_ACCENT}; }}"
+            f"QPushButton:pressed {{ background: {theme.ACCENT_SOFT}; }}"
         )
 
     # ── Taxonomy slots ─────────────────────────────────────────────────────

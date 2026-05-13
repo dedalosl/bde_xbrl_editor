@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPushButton,
     QSplitter,
+    QStackedWidget,
     QStatusBar,
     QVBoxLayout,
     QWidget,
@@ -128,6 +129,8 @@ class MainWindow(QMainWindow):
         self._validation_thread: QThread | None = None
         self._validation_worker = None  # ValidationWorker | None
         self._validation_panel = None  # ValidationPanel | None
+        self._validation_stack: QStackedWidget | None = None
+        self._validation_collapsed_button: QPushButton | None = None
         self._pending_validation_navigation = None
 
         self._setup_menu()
@@ -491,14 +494,14 @@ class MainWindow(QMainWindow):
         """Return a structured workspace header with context on the left and actions on the right."""
         bar = QFrame()
         bar.setObjectName("ContextBar")
-        bar.setFixedHeight(68)
+        bar.setFixedHeight(70)
         bar.setStyleSheet(
             f"QFrame#ContextBar {{ background: {theme.SURFACE_BG}; border-bottom: 1px solid {theme.BORDER}; }}"
         )
 
         layout = QHBoxLayout(bar)
-        layout.setContentsMargins(16, 9, 16, 9)
-        layout.setSpacing(14)
+        layout.setContentsMargins(16, 10, 16, 10)
+        layout.setSpacing(12)
 
         context_block = QWidget(bar)
         context_layout = QVBoxLayout(context_block)
@@ -531,39 +534,16 @@ class MainWindow(QMainWindow):
 
         meta_row.addStretch()
         context_layout.addLayout(meta_row)
-        layout.addWidget(context_block, stretch=1)
-
-        info_group = QWidget(bar)
-        info_layout = QHBoxLayout(info_group)
-        info_layout.setContentsMargins(0, 0, 0, 0)
-        info_layout.setSpacing(14)
-
-        context_note_style = (
-            f"color: {theme.TEXT_MUTED}; font-size: 10px; font-weight: 600; background: transparent;"
-        )
-
-        if self._current_taxonomy:
-            meta = self._current_taxonomy.metadata
-            tax_label = QLabel(f"Taxonomy {meta.name}  |  Version {meta.version}")
-            tax_label.setStyleSheet(context_note_style)
-            info_layout.addWidget(tax_label)
-
-        if instance is not None:
-            fname = Path(instance.source_path).name if instance.source_path else "Unsaved instance"
-            inst_label = QLabel(f"Instance {fname}")
-            inst_label.setStyleSheet(context_note_style)
-            info_layout.addWidget(inst_label)
-
         self._table_chip_label = None
         self._table_chip_sep = None
         self._language_combo = None
 
-        layout.addWidget(info_group, stretch=0)
+        layout.addWidget(context_block, stretch=1)
 
         btn_style = (
             f"QPushButton {{ color: {theme.TEXT_MAIN}; background: {theme.SURFACE_BG};"
             f" border: 1px solid {theme.BORDER}; border-radius: 6px;"
-            " font-size: 11px; font-weight: 600; padding: 0 12px; }"
+            " font-size: 11px; font-weight: 600; padding: 0 11px; }"
             f"QPushButton:hover {{ background: {theme.HOVER_BG}; border-color: {theme.ACCENT}; }}"
             f"QPushButton:disabled {{ color: {theme.DISABLED_FG}; background: transparent;"
             f" border-color: {theme.BORDER}; }}"
@@ -578,66 +558,60 @@ class MainWindow(QMainWindow):
         action_group = QWidget(bar)
         action_layout = QHBoxLayout(action_group)
         action_layout.setContentsMargins(0, 0, 0, 0)
-        action_layout.setSpacing(8)
+        action_layout.setSpacing(7)
 
         if self._current_taxonomy is not None:
             self._language_combo = self._build_language_combo(bar)
             action_layout.addWidget(self._language_combo)
 
         if instance is not None:
-            back_btn = QPushButton("Back")
-            back_btn.setStyleSheet(btn_style)
-            back_btn.setFixedHeight(28)
-            back_btn.clicked.connect(self._on_close_taxonomy)
-            action_layout.addWidget(back_btn)
-
             close_inst_btn = QPushButton("Close Instance")
             close_inst_btn.setStyleSheet(btn_style)
-            close_inst_btn.setFixedHeight(28)
+            close_inst_btn.setFixedHeight(30)
             close_inst_btn.clicked.connect(self._on_close_instance)
             action_layout.addWidget(close_inst_btn)
 
             validate_btn = QPushButton("Validate")
             validate_btn.setStyleSheet(primary_btn_style)
-            validate_btn.setFixedHeight(28)
+            validate_btn.setFixedHeight(30)
             validate_btn.setToolTip("Run validation on the current instance (Ctrl+Shift+V)")
             validate_btn.clicked.connect(self._on_validate_from_context_bar)
             action_layout.addWidget(validate_btn)
 
             save_btn = QPushButton("Save")
             save_btn.setStyleSheet(primary_btn_style)
-            save_btn.setFixedHeight(28)
+            save_btn.setFixedHeight(30)
             save_btn.clicked.connect(self._on_save)
             action_layout.addWidget(save_btn)
 
             open_inst_btn = QPushButton("Open Instance…")
             open_inst_btn.setStyleSheet(btn_style)
-            open_inst_btn.setFixedHeight(28)
+            open_inst_btn.setFixedHeight(30)
             open_inst_btn.clicked.connect(self._on_open_instance)
             action_layout.addWidget(open_inst_btn)
 
             new_inst_btn = QPushButton("New Instance…")
             new_inst_btn.setStyleSheet(btn_style)
-            new_inst_btn.setFixedHeight(28)
+            new_inst_btn.setFixedHeight(30)
             new_inst_btn.clicked.connect(self._on_new_instance)
             action_layout.addWidget(new_inst_btn)
 
         elif self._current_taxonomy is not None:
             back_btn = QPushButton("Back")
             back_btn.setStyleSheet(btn_style)
-            back_btn.setFixedHeight(28)
+            back_btn.setFixedHeight(30)
             back_btn.clicked.connect(self._on_close_taxonomy)
             action_layout.addWidget(back_btn)
 
             open_inst_btn = QPushButton("Open Instance…")
             open_inst_btn.setStyleSheet(btn_style)
-            open_inst_btn.setFixedHeight(28)
+            open_inst_btn.setFixedHeight(30)
             open_inst_btn.clicked.connect(self._on_open_instance)
             action_layout.addWidget(open_inst_btn)
 
             new_inst_btn = QPushButton("New Instance…")
             new_inst_btn.setStyleSheet(primary_btn_style)
-            new_inst_btn.setFixedHeight(28)
+            new_inst_btn.setFixedHeight(30)
             new_inst_btn.clicked.connect(self._on_new_instance)
             action_layout.addWidget(new_inst_btn)
 
@@ -737,6 +711,9 @@ class MainWindow(QMainWindow):
         self._validate_action.setEnabled(False)
         self._close_instance_action.setEnabled(False)
         self._close_taxonomy_action.setEnabled(False)
+        if dock := self._find_validation_dock():
+            dock.setVisible(False)
+        self._set_validation_panel_expanded(False, "Validation — not run")
 
         self.setWindowTitle("BDE XBRL Editor[*]")
         self.setWindowModified(False)
@@ -760,6 +737,9 @@ class MainWindow(QMainWindow):
         self._save_as_action.setEnabled(False)
         self._validate_action.setEnabled(False)
         self._close_instance_action.setEnabled(False)
+        if dock := self._find_validation_dock():
+            dock.setVisible(False)
+        self._set_validation_panel_expanded(False, "Validation — not run")
 
         # Return the sidebar to browse mode before rebuilding the layout
         if self._sidebar is not None:
@@ -994,6 +974,7 @@ class MainWindow(QMainWindow):
         dock = self._find_validation_dock()
         if dock:
             dock.setVisible(True)
+            self._set_validation_panel_expanded(False, "Validation — not run")
         if self._validation_panel:
             self._validation_panel.clear()
         self._show_validation_panel_action.setEnabled(True)
@@ -1254,18 +1235,70 @@ class MainWindow(QMainWindow):
         self._validation_panel.revalidate_requested.connect(self._trigger_validation)
         self._validation_panel.navigate_to_cell.connect(self._on_navigate_to_cell)
 
-        dock = QDockWidget("Validation", self)
+        self._validation_stack = QStackedWidget(self)
+        self._validation_collapsed_button = QPushButton("  ●  Validation — not run")
+        self._validation_collapsed_button.setFixedHeight(34)
+        self._validation_collapsed_button.setStyleSheet(
+            f"""
+            QPushButton {{
+                text-align: left;
+                color: {theme.TEXT_MAIN};
+                background: {theme.SURFACE_BG};
+                border: 1px solid {theme.BORDER};
+                border-radius: 6px;
+                font-size: 11px;
+                font-weight: 650;
+                padding: 0 12px;
+            }}
+            QPushButton:hover {{
+                background: {theme.HOVER_BG};
+                border-color: {theme.ACCENT};
+            }}
+            """
+        )
+        self._validation_collapsed_button.clicked.connect(self._show_validation_panel)
+        self._validation_stack.addWidget(self._validation_collapsed_button)
+        self._validation_stack.addWidget(self._validation_panel)
+
+        dock = QDockWidget("", self)
         dock.setObjectName("ValidationDock")
-        dock.setWidget(self._validation_panel)
+        dock.setTitleBarWidget(QWidget(dock))
+        dock.setFeatures(QDockWidget.DockWidgetFeature.NoDockWidgetFeatures)
+        dock.setStyleSheet(
+            f"""
+            QDockWidget {{
+                background: {theme.WINDOW_BG};
+                border-top: 1px solid {theme.BORDER};
+            }}
+            """
+        )
+        dock.setWidget(self._validation_stack)
         self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, dock)
+        self._set_validation_panel_expanded(False, "Validation — not run")
         self._show_validation_panel_action.setEnabled(True)
 
     def _show_validation_panel(self) -> None:
         self._ensure_validation_panel()
+        self._set_validation_panel_expanded(True)
         dock = self._find_validation_dock()
         if dock:
             dock.setVisible(True)
             dock.raise_()
+
+    def _set_validation_panel_expanded(self, expanded: bool, label: str | None = None) -> None:
+        dock = self._find_validation_dock()
+        stack = self._validation_stack
+        if dock is None or stack is None:
+            return
+        if self._validation_collapsed_button is not None and label is not None:
+            self._validation_collapsed_button.setText(f"  ●  {label}")
+        stack.setCurrentIndex(1 if expanded else 0)
+        if expanded:
+            dock.setMinimumHeight(220)
+            dock.setMaximumHeight(420)
+        else:
+            dock.setMinimumHeight(44)
+            dock.setMaximumHeight(44)
 
     def _find_validation_dock(self) -> QDockWidget | None:
         for dock in self.findChildren(QDockWidget):
@@ -1274,8 +1307,7 @@ class MainWindow(QMainWindow):
         return None
 
     def _on_validate_from_context_bar(self) -> None:
-        """Show the validation dock and start a validation run."""
-        self._show_validation_panel()
+        """Start a validation run from the compact command bar."""
         self._trigger_validation()
 
     def _trigger_validation(self) -> None:
@@ -1291,6 +1323,7 @@ class MainWindow(QMainWindow):
 
         self._ensure_validation_panel()
         assert self._validation_panel is not None  # guaranteed by _ensure_validation_panel
+        self._set_validation_panel_expanded(True)
 
         from bde_xbrl_editor.ui.widgets.validation_panel import ValidationWorker  # noqa: PLC0415
 
@@ -1428,6 +1461,12 @@ class MainWindow(QMainWindow):
         self._cleanup_validation_thread()
         if self._validation_panel:
             self._validation_panel.show_report(report)
+        label = (
+            "Validation — passed"
+            if report.passed
+            else f"Validation — {report.error_count} error(s)"
+        )
+        self._set_validation_panel_expanded(True, label)
         status = "PASSED" if report.passed else f"FAILED ({report.error_count} error(s))"
         if report.stage_timings:
             self._status.showMessage(
@@ -1441,6 +1480,7 @@ class MainWindow(QMainWindow):
         self._cleanup_validation_thread()
         if self._validation_panel:
             self._validation_panel.clear()
+        self._set_validation_panel_expanded(False, "Validation — failed")
         QMessageBox.critical(self, "Validation Error", error_message)
 
     def _cleanup_validation_thread(self) -> None:
