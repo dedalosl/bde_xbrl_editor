@@ -684,6 +684,7 @@ def _collect_facts_under_element(
                     precision=precision,
                     is_nil=is_nil,
                     tuple_path=tuple_path,
+                    position_path=tuple_path + (idx,),
                 )
             )
         else:
@@ -1101,6 +1102,7 @@ class InstanceParser:
                                 precision=precision,
                                 is_nil=is_nil,
                                 tuple_path=(),
+                                position_path=(root_idx,),
                             )
                         )
                     else:
