@@ -33,6 +33,7 @@ from bde_xbrl_editor.taxonomy.models import (
 from bde_xbrl_editor.taxonomy.settings import LoaderSettings
 from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
 from bde_xbrl_editor.validation.calculation import CalculationConsistencyValidator
+from bde_xbrl_editor.validation.essence_alias import EssenceAliasValidator
 from bde_xbrl_editor.validation.formula.output_runtime import OutputFormulaRuntimeEvaluator
 from bde_xbrl_editor.validation.formula.static import (
     FormulaStaticValidator,
@@ -353,6 +354,10 @@ class TestCaseExecutor:
                     )
                     report = validator.validate_sync(instance)
                     findings = report.findings
+                if taxonomy_struct is not None and test_case.suite_id == "xbrl21":
+                    findings = findings + tuple(
+                        EssenceAliasValidator().validate_taxonomy(taxonomy_struct)
+                    )
                 if test_case.suite_id == "formula" and taxonomy_struct is not None:
                     findings = findings + tuple(FormulaStaticValidator(taxonomy_struct).validate())
                     findings = findings + tuple(
@@ -413,6 +418,9 @@ class TestCaseExecutor:
                     )
                     findings = findings + tuple(
                         RelationshipSetValidator().validate_taxonomy(taxonomy_struct)
+                    )
+                    findings = findings + tuple(
+                        EssenceAliasValidator().validate_taxonomy(taxonomy_struct)
                     )
                 if test_case.test_case_id == _LAX_VALIDATION_TEST_ID:
                     findings = findings + validate_lax_known_declarations(variation.input_files)
@@ -479,6 +487,9 @@ class TestCaseExecutor:
                     )
                     findings = findings + tuple(
                         RelationshipSetValidator().validate_taxonomy(taxonomy_struct)
+                    )
+                    findings = findings + tuple(
+                        EssenceAliasValidator().validate_taxonomy(taxonomy_struct)
                     )
                 if test_case.test_case_id == _LAX_VALIDATION_TEST_ID:
                     findings = findings + validate_lax_known_declarations(variation.input_files)
