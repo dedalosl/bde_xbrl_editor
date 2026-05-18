@@ -82,26 +82,11 @@ def _relationship_equivalence_key(
     return tuple(attrs)
 
 
-def parse_calculation_linkbase(
-    linkbase_path: Path,
+def parse_calculation_linkbase_from_root(
+    root: etree._Element,
     concept_map: dict[str, QName],
 ) -> dict[str, list[CalculationArc]]:
-    """Parse a calculation linkbase and return CalculationArcs grouped by ELR.
-
-    Raises:
-        TaxonomyParseError: If the file is not well-formed XML.
-    """
-    try:
-        tree = parse_xml_file(linkbase_path)
-    except etree.XMLSyntaxError as exc:
-        raise TaxonomyParseError(
-            file_path=str(linkbase_path),
-            message=str(exc),
-            line=exc.lineno,
-            column=exc.offset,
-        ) from exc
-
-    root = tree.getroot()
+    """Parse calculation links from a linkbase root element."""
     result: dict[str, list[CalculationArc]] = {}
 
     for link_el in root.iter(_CALC_LINK):
@@ -164,3 +149,25 @@ def parse_calculation_linkbase(
                     )
 
     return result
+
+
+def parse_calculation_linkbase(
+    linkbase_path: Path,
+    concept_map: dict[str, QName],
+) -> dict[str, list[CalculationArc]]:
+    """Parse a calculation linkbase and return CalculationArcs grouped by ELR.
+
+    Raises:
+        TaxonomyParseError: If the file is not well-formed XML.
+    """
+    try:
+        tree = parse_xml_file(linkbase_path)
+    except etree.XMLSyntaxError as exc:
+        raise TaxonomyParseError(
+            file_path=str(linkbase_path),
+            message=str(exc),
+            line=exc.lineno,
+            column=exc.offset,
+        ) from exc
+
+    return parse_calculation_linkbase_from_root(tree.getroot(), concept_map)

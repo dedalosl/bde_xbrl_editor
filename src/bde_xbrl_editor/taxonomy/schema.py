@@ -20,6 +20,7 @@ from bde_xbrl_editor.taxonomy.constants import (
 from bde_xbrl_editor.taxonomy.models import (
     Concept,
     QName,
+    SchemaElementDefaults,
     TaxonomyParseError,
 )
 from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
@@ -175,6 +176,10 @@ def _build_concept(
         "yes",
     )
 
+    schema_default_value = el.get("default")
+    if schema_default_value is not None:
+        schema_default_value = schema_default_value.strip() or None
+
     concept = Concept(
         qname=qname,
         data_type=data_type,
@@ -191,6 +196,7 @@ def _build_concept(
         enumeration_head_usable=enumeration_head_usable,
         default_decimals=default_decimals,
         default_precision=default_precision,
+        schema_default_value=schema_default_value,
     )
     return qname, concept, sg
 
@@ -439,6 +445,45 @@ def _validate_pattern_facets(root: etree._Element, schema_path_str: str) -> None
                 f"Invalid XML Schema pattern facet {value!r}",
                 pattern,
             )
+
+
+def collect_schema_element_defaults(
+    schema_path: Path,
+    namespace_override: str | None = None,
+) -> dict[QName, SchemaElementDefaults]:
+    """Collect XSD element and attribute defaults for S-equal and infer-calc."""
+    try:
+        tree = parse_xml_file(schema_path)
+    except etree.XMLSyntaxError:
+        return {}
+
+    root = tree.getroot()
+    target_ns = (
+        namespace_override if namespace_override is not None else root.get("targetNamespace", "")
+    )
+    if not target_ns:
+        return {}
+
+    defaults: dict[QName, SchemaElementDefaults] = {}
+    for el in root.iter(_ELEMENT):
+        name = el.get("name")
+        if not name:
+            continue
+        value_def = el.get("default")
+        if value_def is not None:
+            value_def = value_def.strip() or None
+        attrs: list[tuple[str, str]] = []
+        for attr_el in el.iter(_ATTRIBUTE):
+            attr_name = attr_el.get("name")
+            attr_default = attr_el.get("default")
+            if attr_name and attr_default is not None:
+                attrs.append((attr_name, attr_default.strip()))
+        if value_def or attrs:
+            defaults[QName(namespace=target_ns, local_name=name)] = SchemaElementDefaults(
+                value=value_def,
+                attributes=tuple(attrs),
+            )
+    return defaults
 
 
 def parse_schema_raw(

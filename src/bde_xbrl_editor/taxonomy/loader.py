@@ -41,7 +41,10 @@ from bde_xbrl_editor.taxonomy.label_resolver import LabelResolver
 from bde_xbrl_editor.taxonomy.linkbases.assertion_resources import (
     parse_assertion_resource_linkbase,
 )
-from bde_xbrl_editor.taxonomy.linkbases.calculation import parse_calculation_linkbase
+from bde_xbrl_editor.taxonomy.linkbases.calculation import (
+    parse_calculation_linkbase,
+    parse_calculation_linkbase_from_root,
+)
 from bde_xbrl_editor.taxonomy.linkbases.custom_functions import (
     parse_custom_function_linkbase,
 )
@@ -61,6 +64,7 @@ from bde_xbrl_editor.taxonomy.linkbases.presentation import (
 from bde_xbrl_editor.taxonomy.linkbases.table import parse_table_linkbase
 from bde_xbrl_editor.taxonomy.models import (
     AssertionTextResource,
+    CalculationArc,
     Concept,
     CustomFunctionDefinition,
     DefinitionArc,
@@ -68,6 +72,7 @@ from bde_xbrl_editor.taxonomy.models import (
     DomainMember,
     HypercubeModel,
     QName,
+    SchemaElementDefaults,
     TaxonomyMetadata,
     TaxonomyParseError,
     TaxonomyStructure,
@@ -78,6 +83,7 @@ from bde_xbrl_editor.taxonomy.schema import (
     build_global_named_type_registry,
     extract_concept_enumerations_for_schema,
     extract_monetary_value_type_qnames,
+    collect_schema_element_defaults,
     parse_schema_raw,
 )
 from bde_xbrl_editor.taxonomy.settings import LoaderSettings
@@ -123,6 +129,31 @@ def _schema_text_references_xbrl_linkbase_namespace(path: Path) -> bool:
     except OSError:
         return False
     return NS_LINK in snippet
+
+
+_XSD_APPINFO = f"{{{NS_XSD}}}appinfo"
+_EMBEDDED_LINKBASE = f"{{{NS_LINK}}}linkbase"
+
+
+def _parse_embedded_calculation_linkbases(
+    schema_paths: list[Path],
+    concept_id_map: dict[str, QName],
+) -> dict[str, list[CalculationArc]]:
+    """Parse calculation links embedded in XSD annotation/appinfo."""
+    merged: dict[str, list[CalculationArc]] = {}
+    for schema_path in schema_paths:
+        try:
+            tree = parse_xml_file(schema_path)
+        except etree.XMLSyntaxError:
+            continue
+        for appinfo in tree.getroot().iter(_XSD_APPINFO):
+            for child in appinfo:
+                if child.tag != _EMBEDDED_LINKBASE:
+                    continue
+                parsed = parse_calculation_linkbase_from_root(child, concept_id_map)
+                for elr, arc_list in parsed.items():
+                    merged.setdefault(elr, []).extend(arc_list)
+    return merged
 
 
 def _schema_embeds_linkbase_or_role_declarations(path: Path) -> bool:
@@ -1609,6 +1640,21 @@ class TaxonomyLoader:
                 )
         progress(f"Schemas parsed — {len(concepts)} concepts ready", 2)
 
+        element_defaults: dict[QName, SchemaElementDefaults] = {}
+        for schema_path in schema_paths:
+            element_defaults.update(
+                collect_schema_element_defaults(
+                    schema_path,
+                    include_ns_map.get(schema_path),
+                )
+            )
+        for concept in concepts.values():
+            if concept.schema_default_value and concept.qname not in element_defaults:
+                element_defaults[concept.qname] = SchemaElementDefaults(
+                    value=concept.schema_default_value,
+                    attributes=(),
+                )
+
         monetary_workers = _schema_parse_workers(len(schema_paths))
         parsed_monetary_types = _run_path_jobs(
             schema_paths,
@@ -1751,6 +1797,12 @@ class TaxonomyLoader:
         for _lb_path, arcs in parsed_calculation_linkbases:
             for elr, arc_list in arcs.items():
                 calculation.setdefault(elr, []).extend(arc_list)
+
+        for elr, arc_list in _parse_embedded_calculation_linkbases(
+            list(schema_paths),
+            concept_id_map,
+        ).items():
+            calculation.setdefault(elr, []).extend(arc_list)
 
         parsed_definition_linkbases = _run_path_jobs(
             definition_linkbases,
@@ -1989,6 +2041,7 @@ class TaxonomyLoader:
             schema_files=tuple(sorted(schema_paths)),
             linkbase_files=tuple(sorted(all_linkbase_paths)),
             schema_substitution_groups=schema_substitution_groups,
+            element_defaults=element_defaults,
         )
 
         progress("Taxonomy loaded successfully", _TOTAL_STEPS)
