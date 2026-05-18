@@ -129,6 +129,10 @@ def parse_calculation_linkbase(
             except ValueError:
                 weight = 1.0
             use = arc.get("use", "optional")
+            try:
+                arc_priority = int(arc.get("priority", "0"))
+            except ValueError:
+                arc_priority = 0
             result.setdefault(elr, []).append(
                 CalculationArc(
                     parent=parent,
@@ -137,6 +141,7 @@ def parse_calculation_linkbase(
                     weight=weight,
                     extended_link_role=elr,
                     use=use,
+                    priority=arc_priority,
                     equivalence_key=_relationship_equivalence_key(arc, parent, child),
                 )
             )

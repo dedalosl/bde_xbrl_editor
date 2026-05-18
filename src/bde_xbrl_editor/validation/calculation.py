@@ -301,6 +301,51 @@ class CalculationConsistencyValidator:
             )
         return findings
 
+    @staticmethod
+    def _effective_summation_arcs(arcs: list[CalculationArc]) -> list[CalculationArc]:
+        """Resolve equivalent summation-item arcs inside one ELR (XBRL 2.1 arc overrides, 3.5.3.9).
+
+        Arcs judged equivalent share the same ``equivalence_key``. Among each group only the arcs
+        with the highest numeric ``priority`` survive; among that tier ``use=\"prohibited\"``
+        arcs suppress the relationship whenever present (including ties with optional arcs).
+        """
+        keyed_groups: defaultdict[tuple[object, ...], list[CalculationArc]] = defaultdict(list)
+        unkeyed_sets: list[list[CalculationArc]] = []
+
+        for arc in arcs:
+            if arc.equivalence_key:
+                keyed_groups[tuple(arc.equivalence_key)].append(arc)
+            else:
+                unkeyed_sets.append([arc])
+
+        def normalize_use(use: str | None) -> str:
+            result = (use or "optional").strip() or "optional"
+            return result
+
+        effective: list[CalculationArc] = []
+
+        def resolve_group(group: list[CalculationArc]) -> None:
+            max_pri = max(a.priority for a in group)
+            tier = [a for a in group if a.priority == max_pri]
+
+            # Among highest-priority equivalent arcs any prohibition suppresses this relationship.
+            if any(normalize_use(a.use) == "prohibited" for a in tier):
+                return
+
+            non_prohibited = [
+                a for a in tier
+                if normalize_use(a.use) != "prohibited"
+            ]
+            if non_prohibited:
+                effective.append(non_prohibited[0])
+
+        for group in keyed_groups.values():
+            resolve_group(group)
+        for group in unkeyed_sets:
+            resolve_group(group)
+
+        return effective
+
     def _validate_elr(
         self,
         elr: str,
@@ -312,15 +357,7 @@ class CalculationConsistencyValidator:
         if not arcs:
             return findings
 
-        prohibited = {
-            arc.equivalence_key for arc in arcs if arc.use == "prohibited" and arc.equivalence_key
-        }
-        active_arcs = [
-            arc
-            for arc in arcs
-            if arc.use != "prohibited"
-            and (not arc.equivalence_key or arc.equivalence_key not in prohibited)
-        ]
+        active_arcs = self._effective_summation_arcs(arcs)
 
         by_parent: dict[QName, list[CalculationArc]] = defaultdict(list)
         for arc in active_arcs:
