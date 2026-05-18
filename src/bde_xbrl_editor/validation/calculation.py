@@ -141,7 +141,7 @@ class CalculationConsistencyValidator:
         if not taxonomy.calculation:
             return findings
 
-        canon_ctx = canonical_context_refs_by_s_equal(instance)
+        canon_ctx = canonical_context_refs_by_s_equal(instance, taxonomy)
         canon_unit = canonical_unit_refs_by_structure(instance)
 
         fact_index = self._build_fact_index(instance, taxonomy, canon_ctx, canon_unit)
@@ -200,7 +200,8 @@ class CalculationConsistencyValidator:
             sum_key: _FactKey = (fact.concept, parent_path, bind_ctx, bind_unit)
             prior_sum = duplicate_sum_keys.get(sum_key)
             if prior_sum is not None and prior_sum is not fact:
-                dup_bind_keys.add((parent_path, bind_ctx, bind_unit))
+                for anc_path in _tuple_path_prefixes(parent_path):
+                    dup_bind_keys.add((anc_path, bind_ctx, bind_unit))
                 duplicate_fact_ids.add(id(prior_sum))
                 duplicate_fact_ids.add(id(fact))
             else:
@@ -209,21 +210,32 @@ class CalculationConsistencyValidator:
             item_immediate_key: _FactKey = (fact.concept, parent_path, bind_ctx, bind_unit)
             prior_item = duplicate_item_keys.get(item_immediate_key)
             if prior_item is not None and prior_item is not fact:
-                dup_bind_keys.add((parent_path, bind_ctx, bind_unit))
+                for anc_path in _tuple_path_prefixes(parent_path):
+                    dup_bind_keys.add((anc_path, bind_ctx, bind_unit))
                 duplicate_fact_ids.add(id(prior_item))
                 duplicate_fact_ids.add(id(fact))
             else:
                 duplicate_item_keys[item_immediate_key] = fact
 
+            concept_def = taxonomy.concepts.get(fact.concept)
             if _fact_is_nil_numeric(fact):
-                continue
-            try:
-                Decimal(fact.value.strip())
-            except (InvalidOperation, AttributeError):
-                continue
-            rounded_value = _round_fact(
-                fact, infer_decimals=True, concept=taxonomy.concepts.get(fact.concept)
-            )
+                default_raw = concept_def.schema_default_value if concept_def else None
+                if not default_raw:
+                    continue
+                try:
+                    rounded_value = Decimal(default_raw.strip())
+                except InvalidOperation:
+                    continue
+            else:
+                try:
+                    Decimal(fact.value.strip())
+                except (InvalidOperation, AttributeError):
+                    continue
+                rounded_value = _round_fact(
+                    fact,
+                    infer_decimals=True,
+                    concept=concept_def,
+                )
 
             for anc_path in prefix_paths:
                 item_key: _FactKey = (fact.concept, anc_path, bind_ctx, bind_unit)
