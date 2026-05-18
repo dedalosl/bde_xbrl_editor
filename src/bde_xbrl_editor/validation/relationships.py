@@ -114,6 +114,10 @@ class _ArcUse:
     target: str
     source_path: Path
     priority: int
+    use: str = "optional"
+    source_from_loc: bool = False
+    target_from_loc: bool = False
+    target_from_resource: bool = False
 
 
 @dataclass(frozen=True)
@@ -432,13 +436,105 @@ def _declaration_by_href(
     return None
 
 
+def _is_schema_concept_href(href: str) -> bool:
+    lowered = href.lower()
+    return ".xsd#" in lowered or lowered.endswith(".xsd")
+
+
+def _arc_equivalence_key(arc: _ArcUse) -> tuple[str, str, str, str, str, str]:
+    return (
+        arc.arcrole,
+        arc.link_tag,
+        arc.arc_tag,
+        arc.extended_link_role,
+        arc.source,
+        arc.target,
+    )
+
+
+def _effective_relationship_arcs(all_arcs: list[_ArcUse]) -> list[_ArcUse]:
+    """Resolve equivalent arcs by priority tier (summation-item override semantics)."""
+    groups: dict[tuple[str, str, str, str, str, str], list[_ArcUse]] = defaultdict(list)
+    for arc in all_arcs:
+        groups[_arc_equivalence_key(arc)].append(arc)
+
+    effective: list[_ArcUse] = []
+    for group in groups.values():
+        max_pri = max(arc.priority for arc in group)
+        tier = [arc for arc in group if arc.priority == max_pri]
+        if any(arc.use == "prohibited" for arc in tier):
+            continue
+        optional = [arc for arc in tier if arc.use != "prohibited"]
+        if optional:
+            effective.append(optional[0])
+    return effective
+
+
+def _collect_arc_override_findings(all_arcs: list[_ArcUse]) -> list[ValidationFinding]:
+    findings: list[ValidationFinding] = []
+    prohibited_by_equiv: dict[tuple[str, str, str, str, str, str], int] = {}
+
+    for arc in all_arcs:
+        if arc.use == "prohibited":
+            key = _arc_equivalence_key(arc)
+            prohibited_by_equiv[key] = max(prohibited_by_equiv.get(key, 0), arc.priority)
+
+    for arc in all_arcs:
+        equiv_key = _arc_equivalence_key(arc)
+        if (
+            arc.arc_tag in {"labelArc", "referenceArc"}
+            and arc.use != "prohibited"
+            and equiv_key in prohibited_by_equiv
+        ):
+            findings.append(
+                _finding(
+                    "xbrl:arc-override-reinstated",
+                    "A prohibited relationship was reinstated by a non-prohibited arc.",
+                )
+            )
+            continue
+
+        if arc.arc_tag not in {"labelArc", "referenceArc"}:
+            continue
+
+        if (
+            arc.source_from_loc
+            and arc.target_from_loc
+            and not arc.target_from_resource
+            and _is_schema_concept_href(arc.source)
+            and _is_schema_concept_href(arc.target)
+        ):
+            findings.append(
+                _finding(
+                    "xbrl:arc-override-concept-to-concept",
+                    f"{arc.arc_tag} must not relate one schema concept directly to another.",
+                )
+            )
+            continue
+
+        if (
+            arc.use != "prohibited"
+            and arc.source_from_loc
+            and arc.target_from_loc
+            and not arc.target_from_resource
+            and _is_schema_concept_href(arc.source)
+            and not _is_schema_concept_href(arc.target)
+        ):
+            findings.append(
+                _finding(
+                    "xbrl:arc-override-missing-prohibited",
+                    f"Overriding {arc.arc_tag} must use use=\"prohibited\".",
+                )
+            )
+    return findings
+
+
 def _collect_arcs(
     roots: list[tuple[Path, etree._Element]],
     declarations: dict[str, list[_ArcroleDeclaration]],
     href_resolver: _HrefResolver,
 ) -> tuple[list[_ArcUse], set[str], list[ValidationFinding]]:
-    arcs: list[_ArcUse] = []
-    prohibited: dict[tuple[str, str, str, str, str, str], int] = {}
+    all_arcs: list[_ArcUse] = []
     referenced_arcroles: set[str] = set()
     findings: list[ValidationFinding] = []
 
@@ -501,46 +597,32 @@ def _collect_arcs(
                     priority = int(arc_el.get("priority", "0"))
                 except ValueError:
                     priority = 0
-                if (arc_el.get("use") or "optional") == "prohibited":
-                    key = (arcrole, link_tag, _local_name(arc_el.tag), elr, source, target)
-                    prohibited[key] = max(priority, prohibited.get(key, priority))
-                    continue
-                arcs.append(
-                    _ArcUse(
-                        arcrole=arcrole,
-                        link_tag=link_tag,
-                        arc_tag=_local_name(arc_el.tag),
-                        extended_link_role=elr,
-                        source=source,
-                        target=target,
-                        source_path=path,
-                        priority=priority,
-                    )
+                use = (arc_el.get("use") or "optional").strip() or "optional"
+                arc_use = _ArcUse(
+                    arcrole=arcrole,
+                    link_tag=link_tag,
+                    arc_tag=_local_name(arc_el.tag),
+                    extended_link_role=elr,
+                    source=source,
+                    target=target,
+                    source_path=path,
+                    priority=priority,
+                    use=use,
+                    source_from_loc=frm in locs,
+                    target_from_loc=to in locs,
+                    target_from_resource=to in resources,
                 )
-    arcs = [
-        arc
-        for arc in arcs
-        if (
-            arc.arcrole,
-            arc.link_tag,
-            arc.arc_tag,
-            arc.extended_link_role,
-            arc.source,
-            arc.target,
-        )
-        not in prohibited
-        or prohibited[
-            (
-                arc.arcrole,
-                arc.link_tag,
-                arc.arc_tag,
-                arc.extended_link_role,
-                arc.source,
-                arc.target,
-            )
-        ]
-        < arc.priority
-    ]
+                equiv_key = (
+                    arcrole,
+                    link_tag,
+                    arc_use.arc_tag,
+                    elr,
+                    source,
+                    target,
+                )
+                all_arcs.append(arc_use)
+    arcs = _effective_relationship_arcs(all_arcs)
+    findings.extend(_collect_arc_override_findings(all_arcs))
     return arcs, referenced_arcroles, findings
 
 
