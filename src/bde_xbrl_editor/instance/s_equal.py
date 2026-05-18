@@ -18,7 +18,9 @@ from bde_xbrl_editor.instance.models import ReportingEntity, ReportingPeriod, Xb
 from bde_xbrl_editor.taxonomy.models import QName
 
 if TYPE_CHECKING:
-    from bde_xbrl_editor.instance.models import XbrlInstance
+    from bde_xbrl_editor.instance.models import XbrlInstance, XbrlUnit
+else:
+    from bde_xbrl_editor.instance.models import XbrlUnit
 
 _XBRLDI_EXPLICIT = f"{{{XBRLDI_NS}}}explicitMember"
 _XBRLDI_TYPED = f"{{{XBRLDI_NS}}}typedMember"
@@ -172,6 +174,29 @@ def effective_s_equal_key(ctx: XbrlContext) -> tuple:
     if ctx.s_equal_key is not None:
         return ctx.s_equal_key
     return build_s_equal_key_from_model(ctx)
+
+
+def _unit_structure_key(unit: XbrlUnit) -> tuple:
+    if unit.unit_form == "divide":
+        return (
+            "divide",
+            unit.numerator_measure_qnames,
+            unit.denominator_measure_qnames,
+        )
+    return ("simple", unit.simple_measure_qnames)
+
+
+def canonical_unit_refs_by_structure(instance: XbrlInstance) -> dict[str, str]:
+    """Map each unit id to a canonical id (lexicographic min within each u-equal class)."""
+    groups: dict[tuple, list[str]] = defaultdict(list)
+    for uid, unit in instance.units.items():
+        groups[_unit_structure_key(unit)].append(uid)
+    out: dict[str, str] = {}
+    for ids in groups.values():
+        rep = min(ids)
+        for uid in ids:
+            out[uid] = rep
+    return out
 
 
 def canonical_context_refs_by_s_equal(instance: XbrlInstance) -> dict[str, str]:

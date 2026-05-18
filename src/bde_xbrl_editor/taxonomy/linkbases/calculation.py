@@ -107,7 +107,7 @@ def parse_calculation_linkbase(
     for link_el in root.iter(_CALC_LINK):
         elr = link_el.get(_XLINK_ROLE, "http://www.xbrl.org/2003/role/link")
 
-        loc_map: dict[str, QName] = {}
+        loc_map: dict[str, list[QName]] = {}
         for loc in link_el.iter(_LOC):
             href = loc.get(_XLINK_HREF, "")
             xlink_label = loc.get(_XLINK_LABEL, "")
@@ -115,7 +115,7 @@ def parse_calculation_linkbase(
                 fragment = unquote(href.rsplit("#", 1)[1])
                 qname = concept_map.get(fragment)
                 if qname:
-                    loc_map[xlink_label] = qname
+                    loc_map.setdefault(xlink_label, []).append(qname)
 
         for arc in link_el.iter(_CALC_ARC):
             arcrole = arc.get(_XLINK_ARCROLE, "")
@@ -124,12 +124,12 @@ def parse_calculation_linkbase(
             frm = arc.get(_XLINK_FROM, "")
             to = arc.get(_XLINK_TO, "")
             if arcrole == _ARCROLE_CALCULATION_11:
-                parent = loc_map.get(to)
-                child = loc_map.get(frm)
+                sources = loc_map.get(to, [])
+                targets = loc_map.get(frm, [])
             else:
-                parent = loc_map.get(frm)
-                child = loc_map.get(to)
-            if not parent or not child:
+                sources = loc_map.get(frm, [])
+                targets = loc_map.get(to, [])
+            if not sources or not targets:
                 continue
             try:
                 order = float(arc.get("order", "1"))
@@ -144,17 +144,23 @@ def parse_calculation_linkbase(
                 arc_priority = int(arc.get("priority", "0"))
             except ValueError:
                 arc_priority = 0
-            result.setdefault(elr, []).append(
-                CalculationArc(
-                    parent=parent,
-                    child=child,
-                    order=order,
-                    weight=weight,
-                    extended_link_role=elr,
-                    use=use,
-                    priority=arc_priority,
-                    equivalence_key=_relationship_equivalence_key(arc, parent, child),
-                )
-            )
+            for parent in sources:
+                for child in targets:
+                    if parent == child:
+                        continue
+                    result.setdefault(elr, []).append(
+                        CalculationArc(
+                            parent=parent,
+                            child=child,
+                            order=order,
+                            weight=weight,
+                            extended_link_role=elr,
+                            use=use,
+                            priority=arc_priority,
+                            equivalence_key=_relationship_equivalence_key(
+                                arc, parent, child
+                            ),
+                        )
+                    )
 
     return result

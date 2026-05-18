@@ -126,6 +126,40 @@ def test_calculation_equivalence_key_uses_resolved_endpoints_not_labels(
     assert arcs[0].equivalence_key == arcs[1].equivalence_key
 
 
+def test_parse_calculation_expands_shared_locator_label_to_all_concepts(
+    tmp_path: Path,
+) -> None:
+    """397-ABC-calculation.xml: one arc to label shared by B and C."""
+    linkbase = tmp_path / "calc.xml"
+    linkbase.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+               xmlns:xlink="http://www.w3.org/1999/xlink">
+  <link:calculationLink xlink:type="extended" xlink:role="http://example.com/role">
+    <link:loc xlink:type="locator" xlink:href="tax.xsd#A" xlink:label="sum"/>
+    <link:loc xlink:type="locator" xlink:href="tax.xsd#B" xlink:label="item"/>
+    <link:loc xlink:type="locator" xlink:href="tax.xsd#C" xlink:label="item"/>
+    <link:calculationArc xlink:type="arc"
+                         xlink:arcrole="http://www.xbrl.org/2003/arcrole/summation-item"
+                         xlink:from="sum"
+                         xlink:to="item"
+                         weight="1"/>
+  </link:calculationLink>
+</link:linkbase>
+""",
+        encoding="utf-8",
+    )
+    qa = QName("http://example.com", "A")
+    qb = QName("http://example.com", "B")
+    qc = QName("http://example.com", "C")
+    arcs = parse_calculation_linkbase(
+        linkbase, {"A": qa, "B": qb, "C": qc}
+    )["http://example.com/role"]
+    children = {arc.child for arc in arcs}
+    assert children == {qb, qc}
+    assert all(arc.parent == qa for arc in arcs)
+
+
 def test_calculation_equivalence_key_treats_missing_order_as_default(
     tmp_path: Path,
 ) -> None:
