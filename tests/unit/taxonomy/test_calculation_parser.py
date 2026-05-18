@@ -126,6 +126,47 @@ def test_calculation_equivalence_key_uses_resolved_endpoints_not_labels(
     assert arcs[0].equivalence_key == arcs[1].equivalence_key
 
 
+def test_calculation_equivalence_key_treats_missing_order_as_default(
+    tmp_path: Path,
+) -> None:
+    """210.03: arcs with no order attribute are equivalent to order=1."""
+    linkbase = tmp_path / "calc.xml"
+    linkbase.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+               xmlns:xlink="http://www.w3.org/1999/xlink">
+  <link:calculationLink xlink:type="extended" xlink:role="http://example.com/role">
+    <link:loc xlink:type="locator" xlink:href="tax.xsd#p" xlink:label="parent"/>
+    <link:loc xlink:type="locator" xlink:href="tax.xsd#c" xlink:label="child"/>
+    <link:calculationArc xlink:type="arc"
+                         xlink:arcrole="http://www.xbrl.org/2003/arcrole/summation-item"
+                         xlink:from="parent"
+                         xlink:to="child"
+                         order="1"
+                         weight="1"
+                         use="optional"/>
+    <link:calculationArc xlink:type="arc"
+                         xlink:arcrole="http://www.xbrl.org/2003/arcrole/summation-item"
+                         xlink:from="parent"
+                         xlink:to="child"
+                         weight="1"
+                         use="prohibited"
+                         priority="1"/>
+  </link:calculationLink>
+</link:linkbase>
+""",
+        encoding="utf-8",
+    )
+    parent = QName("http://example.com", "Parent")
+    child = QName("http://example.com", "Child")
+
+    arcs = parse_calculation_linkbase(linkbase, {"p": parent, "c": child})[
+        "http://example.com/role"
+    ]
+
+    assert arcs[0].equivalence_key == arcs[1].equivalence_key
+
+
 def test_parse_calculation_arc_priority_defaults_to_zero(
     tmp_path: Path,
 ) -> None:

@@ -36,6 +36,12 @@ _RELATIONSHIP_EQUIVALENCE_EXCLUDED_ATTRS = frozenset(
     }
 )
 
+# Arc attributes omitted from XML use the same defaults as summation-item parsing (XBRL 2.1).
+_EQUIVALENCE_ATTR_DEFAULTS: dict[str, str] = {
+    "order": "1",
+    "weight": "1",
+}
+
 
 def _normalise_equivalence_value(raw: str) -> tuple[str, str]:
     s = raw.strip()
@@ -60,14 +66,19 @@ def _relationship_equivalence_key(
     parent: QName,
     child: QName,
 ) -> tuple:
+    prop_attrs: dict[str, tuple[str, str]] = {}
+    for name in arc.attrib:
+        if name in _RELATIONSHIP_EQUIVALENCE_EXCLUDED_ATTRS:
+            continue
+        prop_attrs[name] = _normalise_equivalence_value(arc.attrib[name])
+    for name, default in _EQUIVALENCE_ATTR_DEFAULTS.items():
+        prop_attrs.setdefault(name, _normalise_equivalence_value(default))
+
     attrs = [
         ("parent", ("qname", str(parent))),
         ("child", ("qname", str(child))),
     ]
-    for name in sorted(arc.attrib):
-        if name in _RELATIONSHIP_EQUIVALENCE_EXCLUDED_ATTRS:
-            continue
-        attrs.append((name, _normalise_equivalence_value(arc.attrib[name])))
+    attrs.extend(sorted(prop_attrs.items()))
     return tuple(attrs)
 
 
