@@ -11,6 +11,7 @@ from pathlib import Path
 
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -27,6 +28,7 @@ from PySide6.QtWidgets import (
 )
 
 from bde_xbrl_editor.taxonomy import LoaderSettings
+from bde_xbrl_editor.taxonomy_catalog.models import LoaderPageMode
 from bde_xbrl_editor.ui import theme
 
 _SETTINGS_FILE = Path.home() / ".bde_xbrl_editor" / "settings.json"
@@ -105,6 +107,60 @@ def save_settings(settings: LoaderSettings) -> None:
         "language_preference": list(settings.language_preference),
         "local_catalog": catalog,
     })
+    _write_raw(data)
+
+
+def load_loader_page_mode() -> LoaderPageMode:
+    """Return persisted welcome-screen mode (classic file picker or taxonomy catalog)."""
+    mode = _read_raw().get("loader_page_mode", "classic")
+    return "catalog" if mode == "catalog" else "classic"
+
+
+def save_loader_page_mode(mode: LoaderPageMode) -> None:
+    data = _read_raw()
+    data["loader_page_mode"] = mode
+    _write_raw(data)
+
+
+def load_taxonomy_catalog_path() -> str | None:
+    path = _read_raw().get("taxonomy_catalog_json_path")
+    if isinstance(path, str) and path.strip():
+        return path.strip()
+    return None
+
+
+def save_taxonomy_catalog_path(path: str | None) -> None:
+    data = _read_raw()
+    if path:
+        data["taxonomy_catalog_json_path"] = path
+    else:
+        data.pop("taxonomy_catalog_json_path", None)
+    _write_raw(data)
+
+
+def load_catalog_last_seen() -> tuple[str | None, dict[str, dict[str, str]] | None]:
+    """Return (last_run, file_snapshot) from the last acknowledged catalog check."""
+    raw = _read_raw().get("taxonomy_catalog_last_seen")
+    if not isinstance(raw, dict):
+        return None, None
+    last_run = raw.get("last_run")
+    snapshot = raw.get("file_snapshot")
+    if not isinstance(last_run, str):
+        last_run = None
+    if not isinstance(snapshot, dict):
+        snapshot = None
+    return last_run, snapshot
+
+
+def save_catalog_last_seen(
+    last_run: str,
+    file_snapshot: dict[str, dict[str, str]],
+) -> None:
+    data = _read_raw()
+    data["taxonomy_catalog_last_seen"] = {
+        "last_run": last_run,
+        "file_snapshot": file_snapshot,
+    }
     _write_raw(data)
 
 
@@ -208,6 +264,31 @@ class LoaderSettingsDialog(QDialog):
         form.setHorizontalSpacing(14)
         form.setVerticalSpacing(9)
 
+        self._loader_page_mode = QComboBox()
+        self._loader_page_mode.addItem("Classic — browse for entry-point files", "classic")
+        self._loader_page_mode.addItem(
+            "Catalog — BDE taxonomy browser (taxonomies.json)", "catalog"
+        )
+        saved_mode = load_loader_page_mode()
+        mode_index = self._loader_page_mode.findData(saved_mode)
+        if mode_index >= 0:
+            self._loader_page_mode.setCurrentIndex(mode_index)
+        form.addRow("Welcome screen:", self._loader_page_mode)
+
+        catalog_row = QHBoxLayout()
+        self._catalog_path_edit = QLineEdit()
+        self._catalog_path_edit.setPlaceholderText(
+            "Default: ~/git/bde_taxonomies_checker/scraper/data/taxonomies.json"
+        )
+        saved_catalog = load_taxonomy_catalog_path()
+        if saved_catalog:
+            self._catalog_path_edit.setText(saved_catalog)
+        catalog_browse = QPushButton("Browse…")
+        catalog_browse.clicked.connect(self._browse_catalog_json)
+        catalog_row.addWidget(self._catalog_path_edit, stretch=1)
+        catalog_row.addWidget(catalog_browse)
+        form.addRow("Catalog JSON:", catalog_row)
+
         self._allow_network = QCheckBox("Allow network resolution of remote schema references")
         self._allow_network.setChecked(settings.allow_network)
         form.addRow("Network:", self._allow_network)
@@ -308,6 +389,16 @@ class LoaderSettingsDialog(QDialog):
         if directory:
             self._new_path_edit.setText(directory)
 
+    def _browse_catalog_json(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select taxonomies.json",
+            str(Path.home()),
+            "JSON Files (*.json);;All Files (*)",
+        )
+        if path:
+            self._catalog_path_edit.setText(path)
+
     def _add_entry(self) -> None:
         url = self._new_url_edit.text().strip()
         path = self._new_path_edit.text().strip()
@@ -350,6 +441,11 @@ class LoaderSettingsDialog(QDialog):
     def _on_accept(self) -> None:
         settings = self.get_settings()
         save_settings(settings)
+        mode = self._loader_page_mode.currentData()
+        if mode in ("classic", "catalog"):
+            save_loader_page_mode(mode)  # type: ignore[arg-type]
+        catalog_path = self._catalog_path_edit.text().strip()
+        save_taxonomy_catalog_path(catalog_path or None)
         self.accept()
 
     def get_settings(self) -> LoaderSettings:

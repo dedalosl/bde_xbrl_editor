@@ -36,12 +36,18 @@ from bde_xbrl_editor.performance import (
     format_duration,
     format_stage_timings,
 )
-from bde_xbrl_editor.taxonomy import TaxonomyCache, TaxonomyStructure
+from bde_xbrl_editor.taxonomy import TaxonomyCache, TaxonomyLoader, TaxonomyStructure
 from bde_xbrl_editor.ui import theme
-from bde_xbrl_editor.ui.loading import InstanceLoadWorker
+from bde_xbrl_editor.ui.loading import FormulaHydrationWorker, InstanceLoadWorker
 from bde_xbrl_editor.ui.widgets.activity_sidebar import ActivitySidebar
-from bde_xbrl_editor.ui.widgets.loader_settings_dialog import load_saved_settings
+from bde_xbrl_editor.ui.widgets.loader_settings_dialog import (
+    load_loader_page_mode,
+    load_saved_settings,
+)
 from bde_xbrl_editor.ui.widgets.progress_dialog import TaxonomyProgressDialog
+from bde_xbrl_editor.ui.widgets.taxonomy_catalog_loader_widget import (
+    TaxonomyCatalogLoaderWidget,
+)
 from bde_xbrl_editor.ui.widgets.taxonomy_loader_widget import TaxonomyLoaderWidget
 
 
@@ -121,6 +127,9 @@ class MainWindow(QMainWindow):
         self._loading_dialog: TaxonomyProgressDialog | None = None
         self._instance_open_thread: QThread | None = None
         self._instance_open_worker: InstanceLoadWorker | None = None
+        self._formula_hydration_thread: QThread | None = None
+        self._formula_hydration_worker: FormulaHydrationWorker | None = None
+        self._formula_hydration_entry_point: Path | None = None
         self._pending_load_timing: LoadTiming | None = None
         self._pending_initial_table_started_at: float | None = None
         self._instance_open_started_at: float | None = None
@@ -331,7 +340,7 @@ class MainWindow(QMainWindow):
         self._show_validation_panel_action.triggered.connect(self._show_validation_panel)
 
     def _setup_central(self) -> None:
-        self._loader_widget: TaxonomyLoaderWidget | None = None
+        self._loader_widget: TaxonomyLoaderWidget | TaxonomyCatalogLoaderWidget | None = None
         self._show_loader_widget()
 
     def _clear_browser_view_refs(self) -> None:
@@ -347,7 +356,7 @@ class MainWindow(QMainWindow):
         self._language_combo = None
 
     def _show_loader_widget(self, path: str | None = None) -> None:
-        """Create a fresh TaxonomyLoaderWidget and set it as the central widget.
+        """Create a fresh welcome screen and set it as the central widget.
 
         Qt takes ownership of (and deletes) the previous central widget, so we
         must never reuse the old reference — always construct a new instance.
@@ -363,16 +372,27 @@ class MainWindow(QMainWindow):
         self._clear_browser_view_refs()
         self._pending_load_timing = None
         self._pending_initial_table_started_at = None
+        self._cleanup_formula_hydration_thread(cancel=True)
 
-        widget = TaxonomyLoaderWidget(
-            cache=self._cache,
-            settings=self._settings,
-            parent=self,
-        )
+        if load_loader_page_mode() == "catalog":
+            widget: TaxonomyLoaderWidget | TaxonomyCatalogLoaderWidget = TaxonomyCatalogLoaderWidget(
+                cache=self._cache,
+                settings=self._settings,
+                parent=self,
+            )
+        else:
+            widget = TaxonomyLoaderWidget(
+                cache=self._cache,
+                settings=self._settings,
+                parent=self,
+            )
         widget.taxonomy_loaded.connect(self._on_taxonomy_loaded)
         widget.instance_loaded.connect(self._on_instance_loaded_from_widget)
         if path is not None:
-            widget._path_edit.setText(path)
+            if isinstance(widget, TaxonomyLoaderWidget):
+                widget._path_edit.setText(path)
+            else:
+                widget.load_entry_point_path(path)
         self._loader_widget = widget
         self.setCentralWidget(widget)
 
@@ -423,6 +443,7 @@ class MainWindow(QMainWindow):
                 f"Loaded: {meta.name} v{meta.version} — "
                 f"{concept_count} concepts, {table_count} tables"
             )
+        self._start_formula_hydration_if_needed()
 
     def _on_instance_loaded_from_widget(self, instance, taxonomy: TaxonomyStructure) -> None:
         """Handle an instance+taxonomy loaded directly from the welcome screen."""
@@ -757,6 +778,7 @@ class MainWindow(QMainWindow):
         )
 
         self._setup_browser_layout()
+        self._start_formula_hydration_if_needed()
 
     def _select_first_taxonomy_table(self) -> None:
         if self._sidebar is not None and isValid(self._sidebar):
@@ -764,10 +786,13 @@ class MainWindow(QMainWindow):
             self._sidebar.select_first_table()
 
     def _on_reload(self) -> None:
-        if self._current_taxonomy:
+        if self._current_taxonomy and self._loader_widget is not None:
             entry_point = self._current_taxonomy.metadata.entry_point_path
             self._show_loader_widget(path=str(entry_point))
-            self._loader_widget._on_load()
+            if isinstance(self._loader_widget, TaxonomyLoaderWidget):
+                self._loader_widget._on_load()
+            else:
+                self._loader_widget.load_entry_point_path(str(entry_point))
 
     def _on_new_instance(self) -> None:
         if self._current_taxonomy is None:
@@ -989,6 +1014,90 @@ class MainWindow(QMainWindow):
 
         # Give Qt a chance to paint the workspace shell before the first table render starts.
         QTimer.singleShot(self._INITIAL_TABLE_RENDER_DELAY_MS, self._select_initial_instance_table)
+        self._start_formula_hydration_if_needed()
+
+    def _start_formula_hydration_if_needed(self) -> None:
+        taxonomy = self._current_taxonomy
+        if taxonomy is None:
+            return
+
+        entry_point = taxonomy.metadata.entry_point_path.resolve()
+        if (
+            self._formula_hydration_thread is not None
+            and self._formula_hydration_thread.isRunning()
+        ):
+            if self._formula_hydration_entry_point == entry_point:
+                return
+            self._cleanup_formula_hydration_thread(cancel=True)
+
+        loader = TaxonomyLoader(cache=self._cache, settings=self._settings)
+        if not loader.has_deferred_formula_assertions(taxonomy):
+            return
+
+        self._formula_hydration_entry_point = entry_point
+        self._formula_hydration_worker = FormulaHydrationWorker(loader, taxonomy)
+        self._formula_hydration_thread = QThread(self)
+        self._formula_hydration_worker.moveToThread(self._formula_hydration_thread)
+        self._formula_hydration_thread.started.connect(self._formula_hydration_worker.run)
+        self._formula_hydration_worker.progress.connect(
+            self._on_formula_hydration_progress,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self._formula_hydration_worker.partial.connect(
+            self._on_formula_hydration_partial,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self._formula_hydration_worker.finished.connect(
+            self._on_formula_hydration_finished,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self._formula_hydration_worker.error.connect(
+            self._on_formula_hydration_error,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self._status.showMessage("Loading validation rules in background…")
+        self._formula_hydration_thread.start()
+
+    def _on_formula_hydration_progress(self, message: str, current: int, total: int) -> None:
+        if total > 0:
+            percent = int(current / total * 100)
+            self._status.showMessage(f"{message} ({percent}%)")
+        else:
+            self._status.showMessage(message)
+
+    def _on_formula_hydration_partial(self, taxonomy: TaxonomyStructure) -> None:
+        if not self._same_taxonomy(taxonomy):
+            return
+        self._current_taxonomy = taxonomy
+        if self._sidebar is not None and isValid(self._sidebar):
+            self._sidebar.update_taxonomy_validations(taxonomy)
+
+    def _on_formula_hydration_finished(self, taxonomy: TaxonomyStructure) -> None:
+        self._cleanup_formula_hydration_thread()
+        if not self._same_taxonomy(taxonomy):
+            return
+        self._current_taxonomy = taxonomy
+        if self._sidebar is not None and isValid(self._sidebar):
+            self._sidebar.update_taxonomy_validations(taxonomy)
+        assertion_count = len(taxonomy.formula_assertion_set.assertions)
+        self._cache.put(str(taxonomy.metadata.entry_point_path.resolve()), taxonomy)
+        self._status.showMessage(f"Validation rules loaded — {assertion_count} assertion(s)")
+
+    def _on_formula_hydration_error(self, message: str) -> None:
+        self._cleanup_formula_hydration_thread()
+        self._status.showMessage(f"Validation rule loading failed: {message}")
+
+    def _cleanup_formula_hydration_thread(self, *, cancel: bool = False) -> None:
+        worker = self._formula_hydration_worker
+        if cancel and worker is not None:
+            worker.cancel()
+        thread = self._formula_hydration_thread
+        if thread is not None:
+            thread.quit()
+            thread.wait()
+        self._formula_hydration_thread = None
+        self._formula_hydration_worker = None
+        self._formula_hydration_entry_point = None
 
     def _on_sidebar_width_changed(self, width: int) -> None:
         splitter = self._browser_splitter
@@ -1524,6 +1633,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event) -> None:  # type: ignore[override]
         """Warn if there are unsaved changes before closing (T034)."""
         if self._current_instance is None or not self._current_instance.has_unsaved_changes:
+            self._cleanup_formula_hydration_thread(cancel=True)
             event.accept()
             return
         reply = QMessageBox.question(
@@ -1536,8 +1646,10 @@ class MainWindow(QMainWindow):
         )
         if reply == QMessageBox.StandardButton.Save:
             self._on_save()
+            self._cleanup_formula_hydration_thread(cancel=True)
             event.accept()
         elif reply == QMessageBox.StandardButton.Discard:
+            self._cleanup_formula_hydration_thread(cancel=True)
             event.accept()
         else:
             event.ignore()

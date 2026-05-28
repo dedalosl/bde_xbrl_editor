@@ -1,0 +1,878 @@
+"""Catalog-based welcome screen — browse BDE taxonomies from taxonomies.json."""
+
+from __future__ import annotations
+
+import contextlib
+import time
+import webbrowser
+from datetime import datetime
+from pathlib import Path
+
+from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtGui import QMouseEvent
+from PySide6.QtWidgets import (
+    QComboBox,
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QMessageBox,
+    QPushButton,
+    QScrollArea,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
+
+from bde_xbrl_editor.performance import LoadTiming, StageTiming, format_duration
+from bde_xbrl_editor.taxonomy import LoaderSettings, TaxonomyCache, TaxonomyLoader
+from bde_xbrl_editor.taxonomy_catalog.changes import build_file_snapshot, detect_catalog_changes
+from bde_xbrl_editor.taxonomy_catalog.filter_sort import (
+    filter_taxonomies,
+    sort_taxonomies,
+    unique_categories,
+)
+from bde_xbrl_editor.taxonomy_catalog.loader import (
+    TaxonomyCatalogError,
+    load_catalog,
+    resolve_catalog_path,
+)
+from bde_xbrl_editor.taxonomy_catalog.models import EntryPoint, Taxonomy, TaxonomyCatalogData
+from bde_xbrl_editor.taxonomy_catalog.resolve import resolve_entry_point_path
+from bde_xbrl_editor.ui import theme
+from bde_xbrl_editor.ui.loading import InstanceLoadWorker, TaxonomyLoadWorker
+from bde_xbrl_editor.ui.widgets.catalog_updates_dialog import CatalogUpdatesDialog
+from bde_xbrl_editor.ui.widgets.loader_settings_dialog import (
+    add_recent_file,
+    add_recent_instance,
+    load_catalog_last_seen,
+    load_taxonomy_catalog_path,
+    save_catalog_last_seen,
+)
+from bde_xbrl_editor.ui.widgets.progress_dialog import TaxonomyProgressDialog
+from bde_xbrl_editor.ui.widgets.taxonomy_loader_widget import _RecentFileRow
+
+_CATALOG_ACCENT = "#1E4D72"
+_CATALOG_ACCENT_HOVER = "#163A57"
+_CATALOG_SURFACE = "#F4F6F8"
+_UPDATE_BORDER = "#F59E0B"
+_UPDATE_BG = "#FFFBEB"
+
+
+class _CardHeader(QFrame):
+    """Clickable card header — QPushButton cannot host child layouts on macOS."""
+
+    clicked = Signal()
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setObjectName("TaxonomyCardHeader")
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._hovered = False
+        self._apply_style()
+
+    def _apply_style(self) -> None:
+        background = theme.HOVER_BG if self._hovered else "transparent"
+        self.setStyleSheet(
+            f"""
+            QFrame#TaxonomyCardHeader {{
+                background: {background};
+                border: none;
+                border-radius: 6px;
+            }}
+            """
+        )
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(event)
+
+    def enterEvent(self, event) -> None:  # type: ignore[override]
+        self._hovered = True
+        self._apply_style()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event) -> None:  # type: ignore[override]
+        self._hovered = False
+        self._apply_style()
+        super().leaveEvent(event)
+
+
+class _TaxonomyCard(QFrame):
+    """Collapsible taxonomy card with entry points and reporting documents."""
+
+    load_entry_point = Signal(str, str)  # url, alternate_url (entry point name)
+
+    def __init__(self, taxonomy: Taxonomy, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._taxonomy = taxonomy
+        self._expanded = False
+        self.setObjectName("TaxonomyCatalogCard")
+        self._apply_card_style()
+        self._build_ui()
+
+    def _apply_card_style(self) -> None:
+        border = _UPDATE_BORDER if self._taxonomy.has_updates else theme.BORDER
+        ring = f"border: 2px solid {_UPDATE_BORDER};" if self._taxonomy.has_updates else ""
+        self.setStyleSheet(
+            f"""
+            QFrame#TaxonomyCatalogCard {{
+                background: {theme.SURFACE_BG};
+                border: 1px solid {border};
+                border-radius: 10px;
+                {ring}
+            }}
+            QFrame#TaxonomyCatalogCard QLabel {{
+                color: {theme.TEXT_MAIN};
+                background: transparent;
+            }}
+            QFrame#TaxonomyCatalogCard QPushButton {{
+                background: {theme.SURFACE_BG};
+                color: {theme.TEXT_MAIN};
+                border: 1px solid {theme.BORDER};
+            }}
+            """
+        )
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+
+    def _build_ui(self) -> None:
+        root = QVBoxLayout(self)
+        root.setContentsMargins(16, 14, 16, 14)
+        root.setSpacing(8)
+
+        header = _CardHeader()
+        header.clicked.connect(self._toggle_expanded)
+        header_layout = QVBoxLayout(header)
+        header_layout.setContentsMargins(4, 4, 4, 4)
+        header_layout.setSpacing(4)
+
+        title_row = QHBoxLayout()
+        name_lbl = QLabel(self._taxonomy.name)
+        name_lbl.setWordWrap(True)
+        name_lbl.setStyleSheet(
+            f"font-size: 15px; font-weight: 700; color: {theme.TEXT_MAIN}; background: transparent;"
+        )
+        title_row.addWidget(name_lbl, stretch=1)
+
+        badges = QVBoxLayout()
+        badges.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight)
+        if self._taxonomy.has_entry_point_updates:
+            badges.addWidget(self._badge("Puntos actualizados"))
+        if self._taxonomy.has_reporting_file_updates:
+            badges.addWidget(self._badge("Documentos actualizados"))
+        status_text = "Vigente" if self._taxonomy.status == "vigente" else "No vigente"
+        status_color = "#065F46" if self._taxonomy.status == "vigente" else theme.TEXT_MUTED
+        status_bg = "#D1FAE5" if self._taxonomy.status == "vigente" else theme.SURFACE_ALT_BG
+        status_lbl = QLabel(status_text)
+        status_lbl.setStyleSheet(
+            f"background: {status_bg}; color: {status_color}; font-size: 10px;"
+            f" font-weight: 650; padding: 3px 8px; border-radius: 10px;"
+        )
+        badges.addWidget(status_lbl, alignment=Qt.AlignmentFlag.AlignRight)
+        if self._taxonomy.date:
+            date_lbl = QLabel(self._taxonomy.date)
+            date_lbl.setStyleSheet(
+                f"color: {theme.TEXT_MUTED}; font-size: 10px; background: transparent;"
+            )
+            badges.addWidget(date_lbl, alignment=Qt.AlignmentFlag.AlignRight)
+        title_row.addLayout(badges)
+        header_layout.addLayout(title_row)
+
+        cat_lbl = QLabel(self._taxonomy.category)
+        cat_lbl.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 12px; background: transparent;")
+        header_layout.addWidget(cat_lbl)
+        if self._taxonomy.subcategory:
+            sub_lbl = QLabel(self._taxonomy.subcategory)
+            sub_lbl.setStyleSheet(
+                f"color: {theme.TEXT_SUBTLE}; font-size: 11px; background: transparent;"
+            )
+            header_layout.addWidget(sub_lbl)
+
+        ep_count = len(self._taxonomy.entry_points)
+        doc_count = len(self._taxonomy.reporting_files)
+        meta = f"{ep_count} punto(s) de entrada"
+        if doc_count:
+            meta += f" · {doc_count} documento(s)"
+        meta_row = QHBoxLayout()
+        meta_lbl = QLabel(meta)
+        meta_lbl.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: 11px; background: transparent;"
+        )
+        meta_row.addWidget(meta_lbl, stretch=1)
+        if len(self._taxonomy.entry_points) == 1:
+            ep = self._taxonomy.entry_points[0]
+            quick_load = QPushButton("Cargar taxonomía")
+            quick_load.setCursor(Qt.CursorShape.PointingHandCursor)
+            quick_load.clicked.connect(
+                lambda _checked=False, u=ep.url, n=ep.name: self.load_entry_point.emit(u, n)
+            )
+            quick_load.setStyleSheet(self._primary_chip_style())
+            meta_row.addWidget(quick_load)
+
+        meta_sep = QFrame()
+        meta_sep.setFrameShape(QFrame.Shape.HLine)
+        meta_sep.setStyleSheet(f"color: {theme.BORDER}; background: {theme.BORDER}; max-height: 1px;")
+        header_layout.addWidget(meta_sep)
+        header_layout.addLayout(meta_row)
+        root.addWidget(header)
+
+        self._details = QWidget()
+        details_layout = QVBoxLayout(self._details)
+        details_layout.setContentsMargins(4, 0, 4, 4)
+        details_layout.setSpacing(10)
+
+        if self._taxonomy.owner or self._taxonomy.spec_version or self._taxonomy.comments:
+            meta_grid = QLabel(
+                " · ".join(
+                    part
+                    for part in (
+                        f"Propietario: {self._taxonomy.owner}" if self._taxonomy.owner else "",
+                        self._taxonomy.spec_version if self._taxonomy.spec_version else "",
+                        self._taxonomy.comments if self._taxonomy.comments else "",
+                    )
+                    if part
+                )
+            )
+            meta_grid.setWordWrap(True)
+            meta_grid.setStyleSheet(
+                f"color: {theme.TEXT_MAIN}; font-size: 11px; background: transparent;"
+            )
+            details_layout.addWidget(meta_grid)
+
+        if self._taxonomy.entry_points:
+            details_layout.addWidget(self._section_title("Puntos de entrada"))
+            for ep in self._taxonomy.entry_points:
+                details_layout.addWidget(self._entry_point_row(ep))
+
+        if self._taxonomy.reporting_files:
+            details_layout.addWidget(self._section_title("Documentos de reporting"))
+            for doc in self._taxonomy.reporting_files:
+                details_layout.addWidget(self._resource_row(doc.label, doc.url, doc.is_updated_since_last_check))
+
+        if self._taxonomy.source_url:
+            link_btn = QPushButton("Abrir página BDE")
+            link_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            link_btn.clicked.connect(lambda: webbrowser.open(self._taxonomy.source_url))
+            link_btn.setStyleSheet(self._link_btn_style())
+            details_layout.addWidget(link_btn, alignment=Qt.AlignmentFlag.AlignLeft)
+
+        self._details.setVisible(False)
+        root.addWidget(self._details)
+
+    def _badge(self, text: str) -> QLabel:
+        lbl = QLabel(text)
+        lbl.setStyleSheet(
+            f"background: {_UPDATE_BG}; color: #92400E; font-size: 10px; font-weight: 650;"
+            f" padding: 3px 8px; border-radius: 10px;"
+        )
+        return lbl
+
+    def _section_title(self, text: str) -> QLabel:
+        lbl = QLabel(text.upper())
+        lbl.setStyleSheet(
+            f"color: {theme.TEXT_SUBTLE}; font-size: 10px; font-weight: 700;"
+            f" letter-spacing: 0.06em; background: transparent;"
+        )
+        return lbl
+
+    def _entry_point_row(self, ep: EntryPoint) -> QWidget:
+        row = QWidget()
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 4, 0, 4)
+        layout.setSpacing(8)
+
+        name = ep.name.rsplit("/", 1)[-1] if ep.name else ep.url.rsplit("/", 1)[-1]
+        name_lbl = QLabel(name)
+        name_lbl.setToolTip(ep.url)
+        name_lbl.setStyleSheet(f"color: {theme.TEXT_MAIN}; font-size: 11px; background: transparent;")
+        if ep.is_updated_since_last_check:
+            name_lbl.setStyleSheet(
+                f"color: #92400E; font-size: 11px; font-weight: 650; background: {_UPDATE_BG};"
+                f" padding: 4px 6px; border-radius: 4px;"
+            )
+        layout.addWidget(name_lbl, stretch=1)
+
+        load_btn = QPushButton("Cargar")
+        load_btn.setFixedHeight(28)
+        load_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        load_btn.clicked.connect(
+            lambda _checked=False, u=ep.url, n=ep.name: self.load_entry_point.emit(u, n)
+        )
+        load_btn.setStyleSheet(self._primary_chip_style())
+        layout.addWidget(load_btn)
+        return row
+
+    def _resource_row(self, label: str, url: str, updated: bool) -> QWidget:
+        row = QWidget()
+        layout = QHBoxLayout(row)
+        layout.setContentsMargins(0, 2, 0, 2)
+        lbl = QLabel(label)
+        lbl.setToolTip(url)
+        style = f"color: {theme.TEXT_MAIN}; font-size: 11px; background: transparent;"
+        if updated:
+            style = (
+                f"color: #92400E; font-size: 11px; background: {_UPDATE_BG};"
+                f" padding: 4px 6px; border-radius: 4px;"
+            )
+        lbl.setStyleSheet(style)
+        layout.addWidget(lbl, stretch=1)
+        open_btn = QPushButton("Abrir")
+        open_btn.setFixedHeight(26)
+        open_btn.clicked.connect(lambda: webbrowser.open(url))
+        open_btn.setStyleSheet(self._link_btn_style())
+        layout.addWidget(open_btn)
+        return row
+
+    def _toggle_expanded(self) -> None:
+        self._expanded = not self._expanded
+        self._details.setVisible(self._expanded)
+
+    @staticmethod
+    def _primary_chip_style() -> str:
+        return (
+            f"QPushButton {{ background: {_CATALOG_ACCENT}; color: white; border: none;"
+            f" border-radius: 6px; font-size: 11px; font-weight: 650; padding: 4px 12px; }}"
+            f"QPushButton:hover {{ background: {_CATALOG_ACCENT_HOVER}; }}"
+        )
+
+    @staticmethod
+    def _link_btn_style() -> str:
+        return (
+            f"QPushButton {{ color: {_CATALOG_ACCENT}; border: none; background: transparent;"
+            f" font-size: 11px; font-weight: 600; padding: 2px 6px; }}"
+            f"QPushButton:hover {{ color: {_CATALOG_ACCENT_HOVER}; background: {theme.HOVER_BG};"
+            f" border-radius: 4px; }}"
+        )
+
+
+class TaxonomyCatalogLoaderWidget(QWidget):
+    """Welcome screen that browses taxonomies from taxonomies.json."""
+
+    taxonomy_loaded = Signal(object)
+    instance_loaded = Signal(object, object)
+
+    def __init__(
+        self,
+        cache: TaxonomyCache | None = None,
+        settings: LoaderSettings | None = None,
+        *,
+        catalog_path: str | Path | None = None,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._cache = cache or TaxonomyCache()
+        self._settings = settings or LoaderSettings()
+        self._loader = TaxonomyLoader(cache=self._cache, settings=self._settings)
+        self._catalog_path_override = catalog_path
+        self._catalog_data: TaxonomyCatalogData | None = None
+        self._thread: QThread | None = None
+        self._worker: TaxonomyLoadWorker | None = None
+        self._inst_thread: QThread | None = None
+        self._inst_worker: InstanceLoadWorker | None = None
+        self._progress_dialog: TaxonomyProgressDialog | None = None
+        self.last_taxonomy_load_timing: LoadTiming | None = None
+        self.last_instance_load_timing: LoadTiming | None = None
+        self._taxonomy_load_started_at: float | None = None
+        self._instance_load_started_at: float | None = None
+        self._pending_entry_url: str | None = None
+        self._pending_local_path: str | None = None
+        self._loading = False
+        self._setup_ui()
+        self._reload_catalog(show_errors=True)
+        self._maybe_show_update_notification()
+
+    def _setup_ui(self) -> None:
+        self.setStyleSheet(f"TaxonomyCatalogLoaderWidget {{ background: {_CATALOG_SURFACE}; }}")
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        header = QFrame()
+        header.setStyleSheet(
+            f"QFrame {{ background: {theme.SURFACE_BG}; border-bottom: 1px solid {theme.BORDER}; }}"
+        )
+        header_layout = QVBoxLayout(header)
+        header_layout.setContentsMargins(28, 18, 28, 14)
+        header_layout.setSpacing(6)
+
+        top_row = QHBoxLayout()
+        title = QLabel("Información financiera BDE")
+        title.setStyleSheet(
+            f"font-size: 22px; font-weight: 750; color: {theme.TEXT_MAIN}; background: transparent;"
+        )
+        top_row.addWidget(title, stretch=1)
+        settings_btn = QPushButton("Settings…")
+        settings_btn.clicked.connect(self._on_settings)
+        settings_btn.setStyleSheet(self._secondary_btn_style())
+        top_row.addWidget(settings_btn)
+        header_layout.addLayout(top_row)
+
+        self._meta_label = QLabel()
+        self._meta_label.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: 12px; background: transparent;"
+        )
+        header_layout.addWidget(self._meta_label)
+        outer.addWidget(header)
+
+        body = QHBoxLayout()
+        body.setContentsMargins(20, 16, 20, 16)
+        body.setSpacing(16)
+
+        catalog_col = QVBoxLayout()
+        catalog_col.setSpacing(10)
+
+        controls = QHBoxLayout()
+        controls.setSpacing(8)
+        self._search_edit = QLineEdit()
+        self._search_edit.setPlaceholderText("Buscar taxonomías, categorías, documentos…")
+        self._search_edit.textChanged.connect(self._refresh_cards)
+        self._search_edit.setStyleSheet(self._input_style())
+        controls.addWidget(self._search_edit, stretch=2)
+
+        self._status_combo = QComboBox()
+        self._status_combo.addItem("Todos los estados", "all")
+        self._status_combo.addItem("Vigente", "vigente")
+        self._status_combo.addItem("No vigente", "no-vigente")
+        self._status_combo.currentIndexChanged.connect(self._refresh_cards)
+        controls.addWidget(self._status_combo)
+
+        self._category_combo = QComboBox()
+        self._category_combo.addItem("Todas las categorías", "")
+        self._category_combo.currentIndexChanged.connect(self._refresh_cards)
+        controls.addWidget(self._category_combo, stretch=1)
+
+        self._sort_combo = QComboBox()
+        self._sort_combo.addItem("Fecha ↓", "date-desc")
+        self._sort_combo.addItem("Fecha ↑", "date-asc")
+        self._sort_combo.addItem("Nombre A–Z", "name-asc")
+        self._sort_combo.addItem("Nombre Z–A", "name-desc")
+        self._sort_combo.currentIndexChanged.connect(self._refresh_cards)
+        controls.addWidget(self._sort_combo)
+        catalog_col.addLayout(controls)
+
+        self._results_label = QLabel()
+        self._results_label.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: 11px; background: transparent;"
+        )
+        catalog_col.addWidget(self._results_label)
+
+        self._cards_scroll = QScrollArea()
+        self._cards_scroll.setWidgetResizable(True)
+        self._cards_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        self._cards_host = QWidget()
+        self._cards_layout = QVBoxLayout(self._cards_host)
+        self._cards_layout.setContentsMargins(0, 0, 8, 0)
+        self._cards_layout.setSpacing(12)
+        self._cards_layout.addStretch()
+        self._cards_scroll.setWidget(self._cards_host)
+        catalog_col.addWidget(self._cards_scroll, stretch=1)
+
+        catalog_wrap = QWidget()
+        catalog_wrap.setLayout(catalog_col)
+        body.addWidget(catalog_wrap, stretch=3)
+
+        instance_card = self._build_instance_panel()
+        body.addWidget(instance_card, stretch=1)
+        outer.addLayout(body, stretch=1)
+
+    def _build_instance_panel(self) -> QFrame:
+        card = QFrame()
+        card.setStyleSheet(
+            f"QFrame {{ background: {theme.SURFACE_BG}; border: 1px solid {theme.BORDER};"
+            f" border-radius: 10px; }}"
+        )
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setSpacing(10)
+
+        title = QLabel("Abrir instancia existente")
+        title.setStyleSheet(
+            f"font-size: 16px; font-weight: 750; color: {theme.TEXT_MAIN}; background: transparent;"
+        )
+        layout.addWidget(title)
+
+        hint = QLabel(
+            "Selecciona un archivo .xbrl si ya tienes un envío preparado. "
+            "La taxonomía se resolverá automáticamente."
+        )
+        hint.setWordWrap(True)
+        hint.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px; background: transparent;")
+        layout.addWidget(hint)
+
+        from bde_xbrl_editor.ui.widgets.loader_settings_dialog import load_recent_instances
+
+        self._inst_path_edit = QLineEdit()
+        self._inst_path_edit.setPlaceholderText("Archivo de instancia…")
+        self._inst_path_edit.setStyleSheet(self._input_style())
+        layout.addWidget(self._inst_path_edit)
+
+        browse_row = QHBoxLayout()
+        browse_btn = QPushButton("Examinar…")
+        browse_btn.clicked.connect(self._on_browse_instance)
+        browse_btn.setStyleSheet(self._secondary_btn_style())
+        self._load_inst_btn = QPushButton("Cargar instancia")
+        self._load_inst_btn.clicked.connect(self._on_load_instance)
+        self._load_inst_btn.setStyleSheet(self._primary_btn_style())
+        browse_row.addWidget(browse_btn)
+        browse_row.addWidget(self._load_inst_btn)
+        layout.addLayout(browse_row)
+
+        recent = load_recent_instances()
+        if recent:
+            layout.addSpacing(8)
+            rec_title = QLabel("Recientes")
+            rec_title.setStyleSheet(
+                f"color: {theme.TEXT_MAIN}; font-size: 12px; font-weight: 700; background: transparent;"
+            )
+            layout.addWidget(rec_title)
+            for path in recent:
+                row = _RecentFileRow(path)
+                row.clicked.connect(self._on_recent_instance_clicked)
+                layout.addWidget(row)
+
+        layout.addStretch()
+        reload_btn = QPushButton("Recargar catálogo")
+        reload_btn.clicked.connect(lambda: self._reload_catalog(show_errors=True))
+        reload_btn.setStyleSheet(self._secondary_btn_style())
+        layout.addWidget(reload_btn)
+        return card
+
+    def _reload_catalog(self, *, show_errors: bool) -> None:
+        explicit = self._catalog_path_override or load_taxonomy_catalog_path()
+        path = resolve_catalog_path(explicit)
+        if path is None:
+            if show_errors:
+                candidates = "\n".join(f"  • {p}" for p in (
+                    Path.home() / "git/bde_taxonomies_checker/scraper/data/taxonomies.json",
+                ))
+                QMessageBox.warning(
+                    self,
+                    "Catálogo no encontrado",
+                    "No se encontró taxonomies.json.\n\n"
+                    "Configura la ruta en Settings → Catalog JSON, o ejecuta el scraper en "
+                    "bde_taxonomies_checker.\n\n"
+                    f"Ubicaciones probadas:\n{candidates}",
+                )
+            self._catalog_data = None
+            self._meta_label.setText("Catálogo no disponible")
+            self._refresh_cards()
+            return
+        try:
+            self._catalog_data = load_catalog(path)
+        except TaxonomyCatalogError as exc:
+            if show_errors:
+                QMessageBox.critical(self, "Error al cargar catálogo", str(exc))
+            self._catalog_data = None
+            self._meta_label.setText("Error al cargar el catálogo")
+            self._refresh_cards()
+            return
+
+        meta = self._catalog_data.metadata
+        try:
+            last_run = datetime.fromisoformat(meta.last_run.replace("Z", "+00:00"))
+            last_run_text = last_run.strftime("%d/%m/%Y %H:%M")
+        except ValueError:
+            last_run_text = meta.last_run
+
+        reporting_total = sum(len(t.reporting_files) for t in self._catalog_data.taxonomies)
+        meta_parts = [
+            f"Última actualización: {last_run_text}",
+            f"{meta.total_count} taxonomías",
+        ]
+        if reporting_total:
+            meta_parts.append(f"{reporting_total} documentos de reporting")
+        if meta.files_with_updates:
+            meta_parts.append(f"{meta.files_with_updates} con archivos actualizados")
+        self._meta_label.setText(" • ".join(meta_parts))
+
+        self._category_combo.blockSignals(True)
+        current_cat = self._category_combo.currentData()
+        self._category_combo.clear()
+        self._category_combo.addItem("Todas las categorías", "")
+        for category in unique_categories(self._catalog_data.taxonomies):
+            self._category_combo.addItem(category, category)
+        if current_cat:
+            idx = self._category_combo.findData(current_cat)
+            if idx >= 0:
+                self._category_combo.setCurrentIndex(idx)
+        self._category_combo.blockSignals(False)
+        self._refresh_cards()
+
+    def _maybe_show_update_notification(self) -> None:
+        if self._catalog_data is None:
+            return
+        prev_run, prev_snapshot = load_catalog_last_seen()
+        report = detect_catalog_changes(
+            self._catalog_data,
+            previous_last_run=prev_run,
+            previous_snapshot=prev_snapshot,
+        )
+        if not report.has_updates and prev_run is not None:
+            return
+        if not report.updated_files and not report.scrape_is_newer:
+            if prev_run is None:
+                self._acknowledge_catalog_state()
+            return
+        dialog = CatalogUpdatesDialog(report, self)
+        dialog.exec()
+        self._acknowledge_catalog_state()
+
+    def _acknowledge_catalog_state(self) -> None:
+        if self._catalog_data is None:
+            return
+        save_catalog_last_seen(
+            self._catalog_data.metadata.last_run,
+            build_file_snapshot(self._catalog_data),
+        )
+
+    def _filtered_taxonomies(self) -> tuple[Taxonomy, ...]:
+        if self._catalog_data is None:
+            return ()
+        status = self._status_combo.currentData() or "all"
+        category = self._category_combo.currentData() or ""
+        sort = self._sort_combo.currentData() or "date-desc"
+        filtered = filter_taxonomies(
+            self._catalog_data.taxonomies,
+            search=self._search_edit.text(),
+            status=status,  # type: ignore[arg-type]
+            category=category,
+        )
+        return sort_taxonomies(filtered, sort)  # type: ignore[arg-type]
+
+    def _refresh_cards(self) -> None:
+        while self._cards_layout.count() > 1:
+            item = self._cards_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        taxonomies = self._filtered_taxonomies()
+        count = len(taxonomies)
+        self._results_label.setText(
+            f"Mostrando {count} resultado{'s' if count != 1 else ''}"
+        )
+
+        if self._catalog_data is None:
+            empty = QLabel(
+                "Configura la ruta al catálogo en Settings o ejecuta el scraper de "
+                "bde_taxonomies_checker."
+            )
+            empty.setWordWrap(True)
+            empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            empty.setStyleSheet(f"color: {theme.TEXT_MUTED}; padding: 40px; background: transparent;")
+            self._cards_layout.insertWidget(0, empty)
+            return
+
+        for tax in taxonomies:
+            card = _TaxonomyCard(tax)
+            card.load_entry_point.connect(self._on_entry_point_requested)
+            self._cards_layout.insertWidget(self._cards_layout.count() - 1, card)
+
+    def load_entry_point_path(self, path: str) -> None:
+        """Load a taxonomy from a local entry-point path (reload from menu)."""
+        self._start_taxonomy_load(path)
+
+    def _on_entry_point_requested(self, url: str, alternate_url: str = "") -> None:
+        if self._loading:
+            return
+        alternates = tuple(u for u in (alternate_url,) if u and u != url)
+        local = resolve_entry_point_path(
+            url,
+            local_catalog=self._settings.local_catalog,
+            alternate_urls=alternates,
+        )
+        if local is None:
+            cache_hint = Path.cwd() / "cache" / "www.bde.es"
+            QMessageBox.warning(
+                self,
+                "Ruta local no encontrada",
+                "No se pudo resolver este punto de entrada a un archivo .xsd local.\n\n"
+                f"URL: {url}\n"
+                + (f"Nombre: {alternate_url}\n" if alternate_url and alternate_url != url else "")
+                + "\nDescarga la taxonomía en la carpeta cache (p. ej. "
+                f"{cache_hint}) o añade un mapeo en Settings → URL-to-Path Catalog.\n"
+                "También puedes usar la pantalla clásica para seleccionar el .xsd directamente.",
+            )
+            return
+        self._start_taxonomy_load(str(local), entry_url=url)
+
+    def _start_taxonomy_load(self, path: str, *, entry_url: str | None = None) -> None:
+        self._loading = True
+        self._pending_entry_url = entry_url
+        self._pending_local_path = path
+        self._taxonomy_load_started_at = time.perf_counter()
+        self.last_taxonomy_load_timing = None
+
+        progress = self._show_progress_dialog("Loading Taxonomy…", "Initialising taxonomy load…")
+        progress.set_context("Taxonomy", path)
+
+        self._worker = TaxonomyLoadWorker(self._loader, path)
+        self._thread = QThread(self)
+        self._worker.moveToThread(self._thread)
+        self._thread.started.connect(self._worker.run)
+        self._worker.finished.connect(self._on_load_finished, Qt.ConnectionType.QueuedConnection)
+        self._worker.error.connect(self._on_load_error, Qt.ConnectionType.QueuedConnection)
+        self._worker.progress.connect(progress.update_progress)
+        self._thread.start()
+
+    def _on_load_finished(self, payload: object) -> None:
+        structure, skipped_urls = payload  # type: ignore[misc]
+        self._cleanup_thread()
+        self._loading = False
+        elapsed = 0.0
+        if self._taxonomy_load_started_at is not None:
+            elapsed = time.perf_counter() - self._taxonomy_load_started_at
+        self.last_taxonomy_load_timing = LoadTiming(
+            total_seconds=elapsed,
+            stages=(StageTiming("taxonomy load", elapsed),),
+        )
+        local_path = self._pending_local_path or ""
+        with contextlib.suppress(OSError):
+            if local_path:
+                add_recent_file(local_path)
+        self._pending_entry_url = None
+        self._pending_local_path = None
+
+        if skipped_urls:
+            url_list = "\n".join(f"  • {u}" for u in skipped_urls[:20])
+            suffix = f"\n  … and {len(skipped_urls) - 20} more" if len(skipped_urls) > 20 else ""
+            QMessageBox.warning(
+                self,
+                "Remote References Skipped",
+                "Some remote references were skipped.\n\n"
+                f"{url_list}{suffix}",
+            )
+
+        if self._progress_dialog is not None and elapsed > 0:
+            self._progress_dialog.update_progress(
+                f"Taxonomy parsed in {format_duration(elapsed)}",
+                100,
+                100,
+            )
+        self.taxonomy_loaded.emit(structure)
+        self._close_progress_dialog()
+
+    def _on_load_error(self, message: str) -> None:
+        self._cleanup_thread()
+        self._loading = False
+        self._pending_local_path = None
+        self._close_progress_dialog()
+        QMessageBox.critical(self, "Taxonomy Load Error", message)
+
+    def _cleanup_thread(self) -> None:
+        if self._thread:
+            self._thread.quit()
+            self._thread.wait()
+            self._thread = None
+            self._worker = None
+
+    def _on_browse_instance(self) -> None:
+        from PySide6.QtWidgets import QFileDialog
+
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Open XBRL Instance",
+            "",
+            "XBRL Files (*.xbrl *.xml);;All Files (*)",
+        )
+        if path:
+            self._inst_path_edit.setText(path)
+
+    def _on_recent_instance_clicked(self, path: str) -> None:
+        self._inst_path_edit.setText(path)
+        self._on_load_instance()
+
+    def _on_load_instance(self) -> None:
+        path = self._inst_path_edit.text().strip()
+        if not path:
+            QMessageBox.warning(self, "No File Selected", "Please select an XBRL instance file.")
+            return
+        if not Path(path).exists():
+            QMessageBox.warning(self, "File Not Found", f"File not found:\n{path}")
+            return
+
+        self._load_inst_btn.setEnabled(False)
+        self._instance_load_started_at = time.perf_counter()
+        progress = self._show_progress_dialog("Loading Instance…", "Initialising instance load…")
+        progress.set_context("Instance", path)
+
+        self._inst_worker = InstanceLoadWorker(self._cache, self._settings, path)
+        self._inst_thread = QThread(self)
+        self._inst_worker.moveToThread(self._inst_thread)
+        self._inst_thread.started.connect(self._inst_worker.run)
+        self._inst_worker.finished.connect(
+            self._on_inst_load_finished, Qt.ConnectionType.QueuedConnection
+        )
+        self._inst_worker.error.connect(
+            self._on_inst_load_error, Qt.ConnectionType.QueuedConnection
+        )
+        self._inst_worker.progress.connect(progress.update_progress)
+        self._inst_thread.start()
+
+    def _on_inst_load_finished(self, instance: object, taxonomy: object) -> None:
+        self._cleanup_inst_thread()
+        self._load_inst_btn.setEnabled(True)
+        with contextlib.suppress(OSError):
+            add_recent_instance(self._inst_path_edit.text().strip())
+        self.instance_loaded.emit(instance, taxonomy)
+        self._close_progress_dialog()
+
+    def _on_inst_load_error(self, message: str) -> None:
+        self._cleanup_inst_thread()
+        self._load_inst_btn.setEnabled(True)
+        self._close_progress_dialog()
+        QMessageBox.critical(self, "Instance Load Error", message)
+
+    def _cleanup_inst_thread(self) -> None:
+        if self._inst_thread:
+            self._inst_thread.quit()
+            self._inst_thread.wait()
+            self._inst_thread = None
+            self._inst_worker = None
+
+    def _on_settings(self) -> None:
+        from bde_xbrl_editor.ui.widgets.loader_settings_dialog import LoaderSettingsDialog
+
+        dialog = LoaderSettingsDialog(self._settings, self)
+        if dialog.exec():
+            self._settings = dialog.get_settings()
+            self._loader = TaxonomyLoader(cache=self._cache, settings=self._settings)
+            self._reload_catalog(show_errors=False)
+
+    def _show_progress_dialog(self, title: str, message: str) -> TaxonomyProgressDialog:
+        if self._progress_dialog is None:
+            self._progress_dialog = TaxonomyProgressDialog(self)
+        self._progress_dialog.setWindowTitle(title)
+        self._progress_dialog.reset()
+        self._progress_dialog.setLabelText(message)
+        self._progress_dialog.show()
+        return self._progress_dialog
+
+    def _close_progress_dialog(self) -> None:
+        if self._progress_dialog is not None:
+            self._progress_dialog.close()
+
+    @staticmethod
+    def _input_style() -> str:
+        return (
+            f"QLineEdit, QComboBox {{ border: 1px solid {theme.BORDER}; border-radius: 6px;"
+            f" padding: 6px 10px; background: {theme.INPUT_BG}; color: {theme.TEXT_MAIN}; }}"
+            f"QLineEdit:focus {{ border-color: {_CATALOG_ACCENT}; }}"
+        )
+
+    @staticmethod
+    def _primary_btn_style() -> str:
+        return (
+            f"QPushButton {{ background: {_CATALOG_ACCENT}; color: white; border: none;"
+            f" border-radius: 6px; font-weight: 700; padding: 8px 14px; }}"
+            f"QPushButton:hover {{ background: {_CATALOG_ACCENT_HOVER}; }}"
+        )
+
+    @staticmethod
+    def _secondary_btn_style() -> str:
+        return (
+            f"QPushButton {{ background: {theme.SURFACE_BG}; color: {theme.TEXT_MAIN};"
+            f" border: 1px solid {theme.BORDER}; border-radius: 6px; padding: 6px 12px; }}"
+            f"QPushButton:hover {{ background: {theme.HOVER_BG}; border-color: {_CATALOG_ACCENT}; }}"
+        )

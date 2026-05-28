@@ -98,6 +98,29 @@ def _should_parse_linkbase_for_discovery(path: Path) -> bool:
     return _should_follow_locators(path)
 
 
+def find_taxonomy_cache_root(entry_point: Path) -> Path | None:
+    """Return the nearest ancestor directory named ``cache``, if any."""
+    for parent in entry_point.resolve().parents:
+        if parent.name == "cache":
+            return parent
+    return None
+
+
+def _resolve_href_from_cache_mirror(href: str, cache_root: Path) -> Path | None:
+    """Map a remote taxonomy URL to ``cache/<host>/…`` when that mirror exists."""
+    parsed = urlparse(href)
+    if parsed.scheme not in ("http", "https", "ftp") or not parsed.netloc:
+        return None
+    host_dir = cache_root / parsed.netloc
+    if not host_dir.is_dir():
+        return None
+    rel = parsed.path.lstrip("/")
+    for candidate in _catalog_path_candidates(host_dir, rel):
+        if candidate.exists():
+            return candidate
+    return None
+
+
 def _catalog_path_candidates(local_root: Path, rel: str) -> list[Path]:
     """Return local-catalog candidate paths for a remote href suffix.
 
@@ -120,7 +143,13 @@ def _catalog_path_candidates(local_root: Path, rel: str) -> list[Path]:
     return candidates
 
 
-def _resolve_href(href: str, base_dir: Path, settings: LoaderSettings) -> Path | None:
+def _resolve_href(
+    href: str,
+    base_dir: Path,
+    settings: LoaderSettings,
+    *,
+    cache_root: Path | None = None,
+) -> Path | None:
     """Resolve an href relative to base_dir, applying local_catalog overrides.
 
     Returns the resolved absolute Path, or None if the reference should be skipped
@@ -141,6 +170,10 @@ def _resolve_href(href: str, base_dir: Path, settings: LoaderSettings) -> Path |
                         if candidate.exists():
                             return candidate
                     return _catalog_path_candidates(local_root, rel)[0]
+        if cache_root is not None:
+            mirrored = _resolve_href_from_cache_mirror(href, cache_root)
+            if mirrored is not None:
+                return mirrored
         if not settings.allow_network:
             return None  # caller will record as failing URI
         # network allowed — cannot resolve without HTTP client; skip gracefully
@@ -229,6 +262,7 @@ def discover_dts(
         TaxonomyParseError — a file in the DTS is not well-formed XML.
     """
     entry_point = entry_point.resolve()
+    cache_root = find_taxonomy_cache_root(entry_point)
 
     if not entry_point.exists():
         raise UnsupportedTaxonomyFormatError(
@@ -340,7 +374,7 @@ def discover_dts(
                 href = href.split("#")[0]
                 if not href:
                     continue
-                resolved = _resolve_href(href, _element_base_dir(ref_el, base_dir), settings)
+                resolved = _resolve_href(href, _element_base_dir(ref_el, base_dir), settings, cache_root=cache_root)
                 if resolved is None:
                     if _is_remote(href):
                         skipped_remote.append(href)
@@ -362,7 +396,7 @@ def discover_dts(
                 href = href.split("#")[0]
                 if not href:
                     continue
-                resolved = _resolve_href(href, _element_base_dir(lb_ref, base_dir), settings)
+                resolved = _resolve_href(href, _element_base_dir(lb_ref, base_dir), settings, cache_root=cache_root)
                 if resolved is None:
                     if _is_remote(href):
                         skipped_remote.append(href)
@@ -395,6 +429,7 @@ def discover_dts(
                         file_part,
                         _element_base_dir(loc_el, base_dir),
                         settings,
+                        cache_root=cache_root,
                     )
                     if resolved is None:
                         if _is_remote(file_part):
@@ -431,7 +466,7 @@ def discover_dts(
             schema_loc = el.get("schemaLocation")
             if not schema_loc:
                 continue
-            resolved = _resolve_href(schema_loc, _element_base_dir(el, base_dir), settings)
+            resolved = _resolve_href(schema_loc, _element_base_dir(el, base_dir), settings, cache_root=cache_root)
             if resolved is None:
                 if _is_remote(schema_loc):
                     skipped_remote.append(schema_loc)
@@ -451,7 +486,7 @@ def discover_dts(
             schema_loc = el.get("schemaLocation")
             if not schema_loc:
                 continue
-            resolved = _resolve_href(schema_loc, _element_base_dir(el, base_dir), settings)
+            resolved = _resolve_href(schema_loc, _element_base_dir(el, base_dir), settings, cache_root=cache_root)
             if resolved is None:
                 if _is_remote(schema_loc):
                     skipped_remote.append(schema_loc)
@@ -479,7 +514,7 @@ def discover_dts(
                 href = href.split("#")[0]
                 if not href:
                     continue
-                resolved = _resolve_href(href, _element_base_dir(lb_ref, base_dir), settings)
+                resolved = _resolve_href(href, _element_base_dir(lb_ref, base_dir), settings, cache_root=cache_root)
                 if resolved is None:
                     if _is_remote(href):
                         skipped_remote.append(href)
@@ -505,7 +540,7 @@ def discover_dts(
             href = href.split("#")[0]
             if not href:
                 continue
-            resolved = _resolve_href(href, _element_base_dir(lb_ref, base_dir), settings)
+            resolved = _resolve_href(href, _element_base_dir(lb_ref, base_dir), settings, cache_root=cache_root)
             if resolved is None:
                 if _is_remote(href):
                     skipped_remote.append(href)

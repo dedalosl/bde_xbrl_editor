@@ -465,6 +465,11 @@ class TaxonomyLoaderWidget(QWidget):
             f"QPushButton:pressed {{ background: {theme.ACCENT_SOFT}; }}"
         )
 
+    def load_entry_point_path(self, path: str) -> None:
+        """Set the entry-point path and start loading (used when reloading from the menu)."""
+        self._path_edit.setText(path)
+        self._on_load()
+
     # ── Taxonomy slots ─────────────────────────────────────────────────────
 
     def _on_browse_taxonomy(self) -> None:

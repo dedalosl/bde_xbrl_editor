@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from copy import deepcopy
 from dataclasses import replace
 from decimal import Decimal, InvalidOperation
@@ -440,16 +440,24 @@ def _resource_index_keys(
     return tuple(dict.fromkeys(keys))
 
 
+def _detach_resource_element(el: etree._Element) -> etree._Element:
+    """Copy a resource subtree so the source document tree can be released."""
+    return deepcopy(el)
+
+
 def _build_label_to_element(
     root: etree._Element,
     tag: str,
     locator_labels_by_fragment: dict[str, list[str]] | None = None,
+    *,
+    detach: bool = False,
 ) -> dict[str, etree._Element]:
     """Index all *tag* elements in the document by their @xlink:label attribute."""
     index: dict[str, etree._Element] = {}
     for el in root.iter(tag):
+        stored = _detach_resource_element(el) if detach else el
         for key in _resource_index_keys(el, locator_labels_by_fragment):
-            index[key] = el
+            index[key] = stored
     return index
 
 
@@ -457,11 +465,14 @@ def _build_label_to_elements(
     root: etree._Element,
     tag: str,
     locator_labels_by_fragment: dict[str, list[str]] | None = None,
+    *,
+    detach: bool = False,
 ) -> dict[str, list[etree._Element]]:
     index: dict[str, list[etree._Element]] = {}
     for el in root.iter(tag):
+        stored = _detach_resource_element(el) if detach else el
         for key in _resource_index_keys(el, locator_labels_by_fragment):
-            index.setdefault(key, []).append(el)
+            index.setdefault(key, []).append(stored)
     return index
 
 
@@ -730,22 +741,26 @@ _FILTER_TAGS = [
 def _build_filter_label_index(
     root: etree._Element,
     locator_labels_by_fragment: dict[str, list[str]] | None = None,
+    *,
+    detach: bool = False,
 ) -> dict[str, list[etree._Element]]:
     """Index all known filter elements by their @xlink:label."""
     index: dict[str, list[etree._Element]] = {}
     for tag in _FILTER_TAGS:
         for el in root.iter(tag):
+            stored = _detach_resource_element(el) if detach else el
             for key in _resource_index_keys(el, locator_labels_by_fragment):
-                index.setdefault(key, []).append(el)
+                index.setdefault(key, []).append(stored)
     for el in root.iter():
         if not isinstance(el.tag, str):
             continue
         if _qname_namespace(el.tag) not in _FILTER_NAMESPACES:
             continue
+        stored = _detach_resource_element(el) if detach else el
         for key in _resource_index_keys(el, locator_labels_by_fragment):
             bucket = index.setdefault(key, [])
-            if not any(existing is el for existing in bucket):
-                bucket.append(el)
+            if not any(existing is stored for existing in bucket):
+                bucket.append(stored)
     return index
 
 
@@ -1554,31 +1569,218 @@ def parse_formula_linkbase(path: Path) -> FormulaAssertionSet:
 
 
 def parse_formula_linkbase_bundle(paths: Iterable[Path]) -> FormulaAssertionSet:
-    """Parse multiple Formula linkbases as one DTS relationship graph."""
+    """Parse multiple Formula linkbases as one DTS relationship graph.
+
+    Cross-file ``xlink:href`` locators are resolved by indexing all linkbases
+    without building a single merged DOM. For large DTS sets, each file is parsed
+    and indexed in turn so only detached resource subtrees are retained.
+    """
     try:
-        roots: list[etree._Element] = []
-        nsmap: dict[str, str] = {"link": _NS_LINK}
-        for path in paths:
-            if not path.exists():
-                continue
-            try:
-                root = parse_xml_file(path).getroot()
-            except etree.XMLSyntaxError:
-                continue
-            roots.append(root)
-            for prefix, namespace in root.nsmap.items():
-                if prefix is None or prefix in nsmap:
-                    continue
-                nsmap[prefix] = namespace
-        if not roots:
+        path_list = [path for path in paths if path.exists()]
+        if not path_list:
             return FormulaAssertionSet()
-        synthetic_root = etree.Element(f"{{{_NS_LINK}}}linkbase", nsmap=nsmap)
-        for root in roots:
-            for child in root:
-                synthetic_root.append(deepcopy(child))
-        return _parse_formula_root(synthetic_root)
+        if len(path_list) <= 32:
+            roots: list[etree._Element] = []
+            for path in path_list:
+                try:
+                    roots.append(parse_xml_file(path).getroot())
+                except etree.XMLSyntaxError:
+                    continue
+            if not roots:
+                return FormulaAssertionSet()
+            return _parse_formula_roots(roots)
+        return _parse_formula_linkbase_bundle_incremental(path_list)
     except Exception:  # noqa: BLE001
         return FormulaAssertionSet()
+
+
+def _locator_labels_by_fragment(locator_targets: dict[str, str]) -> dict[str, list[str]]:
+    locator_labels_by_fragment: dict[str, list[str]] = {}
+    for label, fragment in locator_targets.items():
+        locator_labels_by_fragment.setdefault(fragment, []).append(label)
+    return locator_labels_by_fragment
+
+
+def _absorb_formula_root_indexes(
+    root: etree._Element,
+    *,
+    locator_targets: dict[str, str],
+    fact_variable_index: dict[str, etree._Element],
+    general_variable_index: dict[str, etree._Element],
+    parameter_index: dict[str, list[etree._Element]],
+    precondition_index: dict[str, etree._Element],
+    filter_index: dict[str, list[etree._Element]],
+    filter_arc_map: dict[str, list[tuple[str, bool]]],
+    variable_set_filter_arc_map: dict[str, list[tuple[str, bool]]],
+    bool_arc_map: dict[str, list[tuple[str, bool]]],
+    variable_arc_meta_map: dict[str, list[FormulaArc]],
+    variable_arc_map: dict[str, list[tuple[str, str]]],
+    parameter_arc_meta_map: dict[str, list[FormulaArc]],
+    parameter_arc_map: dict[str, list[tuple[str, str]]],
+    precondition_arc_meta_map: dict[str, list[FormulaArc]],
+    precondition_arc_map: dict[str, list[tuple[str, str]]],
+) -> None:
+    locator_targets.update(_build_locator_target_map(root))
+    locator_labels_by_fragment = _locator_labels_by_fragment(locator_targets)
+    fact_variable_index.update(
+        _build_label_to_element(
+            root, _TAG_FACT_VARIABLE, locator_labels_by_fragment, detach=True
+        )
+    )
+    general_variable_index.update(
+        _build_label_to_element(
+            root, _TAG_GENERAL_VARIABLE, locator_labels_by_fragment, detach=True
+        )
+    )
+    _merge_label_to_elements(
+        parameter_index,
+        _build_label_to_elements(root, _TAG_PARAMETER, locator_labels_by_fragment, detach=True),
+    )
+    precondition_index.update(
+        _build_label_to_element(
+            root, _TAG_PRECONDITION, locator_labels_by_fragment, detach=True
+        )
+    )
+    _merge_label_to_elements(
+        filter_index,
+        _build_filter_label_index(root, locator_labels_by_fragment, detach=True),
+    )
+    _merge_filter_arc_map(filter_arc_map, _build_filter_arc_map(root, locator_targets))
+    _merge_filter_arc_map(
+        variable_set_filter_arc_map,
+        _build_variable_set_filter_arc_map(root, locator_targets),
+    )
+    _merge_filter_arc_map(bool_arc_map, _build_boolean_filter_arc_map(root, locator_targets))
+    meta, names = _build_resource_arc_map(
+        root, tag=_TAG_VARIABLE_ARC, locator_targets=locator_targets
+    )
+    _merge_resource_arc_maps(variable_arc_meta_map, variable_arc_map, meta, names)
+    meta, names = _build_resource_arc_map(
+        root, tag=_TAG_PARAMETER_ARC, locator_targets=locator_targets
+    )
+    _merge_resource_arc_maps(parameter_arc_meta_map, parameter_arc_map, meta, names)
+    meta, names = _build_resource_arc_map(
+        root, tag=_TAG_PRECONDITION_ARC, locator_targets=locator_targets
+    )
+    _merge_resource_arc_maps(precondition_arc_meta_map, precondition_arc_map, meta, names)
+
+
+def _parse_formula_linkbase_bundle_incremental(paths: list[Path]) -> FormulaAssertionSet:
+    locator_targets: dict[str, str] = {}
+    fact_variable_index: dict[str, etree._Element] = {}
+    general_variable_index: dict[str, etree._Element] = {}
+    parameter_index: dict[str, list[etree._Element]] = {}
+    precondition_index: dict[str, etree._Element] = {}
+    filter_index: dict[str, list[etree._Element]] = {}
+    filter_arc_map: dict[str, list[tuple[str, bool]]] = {}
+    variable_set_filter_arc_map: dict[str, list[tuple[str, bool]]] = {}
+    bool_arc_map: dict[str, list[tuple[str, bool]]] = {}
+    variable_arc_meta_map: dict[str, list[FormulaArc]] = {}
+    variable_arc_map: dict[str, list[tuple[str, str]]] = {}
+    parameter_arc_meta_map: dict[str, list[FormulaArc]] = {}
+    parameter_arc_map: dict[str, list[tuple[str, str]]] = {}
+    precondition_arc_meta_map: dict[str, list[FormulaArc]] = {}
+    precondition_arc_map: dict[str, list[tuple[str, str]]] = {}
+
+    assertions: list[FormulaAssertion] = []
+    output_formulas: list[FormulaOutputDefinition] = []
+    abstract_count = 0
+
+    for path in paths:
+        try:
+            tree = parse_xml_file(path)
+        except etree.XMLSyntaxError:
+            continue
+        root = tree.getroot()
+        _absorb_formula_root_indexes(
+            root,
+            locator_targets=locator_targets,
+            fact_variable_index=fact_variable_index,
+            general_variable_index=general_variable_index,
+            parameter_index=parameter_index,
+            precondition_index=precondition_index,
+            filter_index=filter_index,
+            filter_arc_map=filter_arc_map,
+            variable_set_filter_arc_map=variable_set_filter_arc_map,
+            bool_arc_map=bool_arc_map,
+            variable_arc_meta_map=variable_arc_meta_map,
+            variable_arc_map=variable_arc_map,
+            parameter_arc_meta_map=parameter_arc_meta_map,
+            parameter_arc_map=parameter_arc_map,
+            precondition_arc_meta_map=precondition_arc_meta_map,
+            precondition_arc_map=precondition_arc_map,
+        )
+        for tag in _ASSERTION_TAGS:
+            for assertion_el in root.iter(tag):
+                result = _parse_assertion(
+                    assertion_el,
+                    variable_arc_map,
+                    variable_arc_meta_map,
+                    parameter_arc_map,
+                    parameter_arc_meta_map,
+                    precondition_arc_map,
+                    precondition_arc_meta_map,
+                    fact_variable_index,
+                    general_variable_index,
+                    parameter_index,
+                    precondition_index,
+                    filter_arc_map,
+                    filter_index,
+                    variable_set_filter_arc_map=variable_set_filter_arc_map,
+                    bool_arc_map=bool_arc_map,
+                )
+                if result is not None:
+                    assertions.append(result)
+                    if result.abstract:
+                        abstract_count += 1
+        for formula_el in root.iter(_TAG_FORMULA):
+            result = _parse_output_formula(
+                formula_el,
+                variable_arc_map,
+                variable_arc_meta_map,
+                parameter_arc_map,
+                parameter_arc_meta_map,
+                precondition_arc_map,
+                precondition_arc_meta_map,
+                fact_variable_index,
+                general_variable_index,
+                parameter_index,
+                precondition_index,
+                filter_arc_map,
+                filter_index,
+                variable_set_filter_arc_map=variable_set_filter_arc_map,
+                bool_arc_map=bool_arc_map,
+                source_path=path,
+            )
+            if result is not None:
+                output_formulas.append(result)
+        del tree
+
+    global_parameter_targets: set[str] = {
+        to_label for arc_entries in parameter_arc_map.values() for to_label, _name in arc_entries
+    }
+    global_parameters = tuple(
+        _parse_parameter(parameter_el, scope="global")
+        for label, parameter_els in parameter_index.items()
+        if label not in global_parameter_targets
+        for parameter_el in parameter_els
+    )
+    if global_parameters:
+        assertions = [
+            _with_effective_global_parameters(assertion, global_parameters)
+            for assertion in assertions
+        ]
+        output_formulas = [
+            _with_effective_global_parameters(formula, global_parameters)
+            for formula in output_formulas
+        ]
+
+    return FormulaAssertionSet(
+        assertions=tuple(assertions),
+        output_formulas=tuple(output_formulas),
+        global_parameters=global_parameters,
+        abstract_count=abstract_count,
+    )
 
 
 def parse_assertion_table_mappings(path: Path) -> dict[str, str]:
@@ -1673,48 +1875,139 @@ def _href_fragment(href: str) -> str:
     return fragment.strip()
 
 
+def _merge_label_to_elements(
+    target: dict[str, list[etree._Element]],
+    source: dict[str, list[etree._Element]],
+) -> None:
+    for key, elements in source.items():
+        target.setdefault(key, []).extend(elements)
+
+
+def _merge_filter_arc_map(
+    target: dict[str, list[tuple[str, bool]]],
+    source: dict[str, list[tuple[str, bool]]],
+) -> None:
+    for key, values in source.items():
+        target.setdefault(key, []).extend(values)
+
+
+def _merge_resource_arc_maps(
+    meta_target: dict[str, list[FormulaArc]],
+    name_target: dict[str, list[tuple[str, str]]],
+    meta_source: dict[str, list[FormulaArc]],
+    name_source: dict[str, list[tuple[str, str]]],
+) -> None:
+    for key, arcs in meta_source.items():
+        meta_target.setdefault(key, []).extend(arcs)
+    for key, entries in name_source.items():
+        name_target.setdefault(key, []).extend(entries)
+
+
 def _parse_formula_root(
     root: etree._Element, source_path: Path | None = None
 ) -> FormulaAssertionSet:
     """Parse assertions from a link:linkbase root (including under gen:link / assertionSet)."""
-    locator_targets = _build_locator_target_map(root)
+    return _parse_formula_roots((root,), source_path=source_path)
+
+
+def _parse_formula_roots(
+    roots: Sequence[etree._Element],
+    source_path: Path | None = None,
+) -> FormulaAssertionSet:
+    """Parse assertions across one or more linkbase roots without merging DOM trees."""
+    locator_targets: dict[str, str] = {}
+    for root in roots:
+        locator_targets.update(_build_locator_target_map(root))
+
     locator_labels_by_fragment: dict[str, list[str]] = {}
     for label, fragment in locator_targets.items():
         locator_labels_by_fragment.setdefault(fragment, []).append(label)
 
-    fact_variable_index = _build_label_to_element(
-        root, _TAG_FACT_VARIABLE, locator_labels_by_fragment
-    )
-    general_variable_index = _build_label_to_element(
-        root, _TAG_GENERAL_VARIABLE, locator_labels_by_fragment
-    )
-    parameter_index = _build_label_to_elements(root, _TAG_PARAMETER, locator_labels_by_fragment)
-    precondition_index = _build_label_to_element(
-        root, _TAG_PRECONDITION, locator_labels_by_fragment
-    )
-    filter_index = _build_filter_label_index(root, locator_labels_by_fragment)
-    filter_arc_map = _build_filter_arc_map(root, locator_targets)
-    variable_set_filter_arc_map = _build_variable_set_filter_arc_map(root, locator_targets)
-    bool_arc_map = _build_boolean_filter_arc_map(root, locator_targets)
+    fact_variable_index: dict[str, etree._Element] = {}
+    general_variable_index: dict[str, etree._Element] = {}
+    parameter_index: dict[str, list[etree._Element]] = {}
+    precondition_index: dict[str, etree._Element] = {}
+    filter_index: dict[str, list[etree._Element]] = {}
+    filter_arc_map: dict[str, list[tuple[str, bool]]] = {}
+    variable_set_filter_arc_map: dict[str, list[tuple[str, bool]]] = {}
+    bool_arc_map: dict[str, list[tuple[str, bool]]] = {}
+    variable_arc_meta_map: dict[str, list[FormulaArc]] = {}
+    variable_arc_map: dict[str, list[tuple[str, str]]] = {}
+    parameter_arc_meta_map: dict[str, list[FormulaArc]] = {}
+    parameter_arc_map: dict[str, list[tuple[str, str]]] = {}
+    precondition_arc_meta_map: dict[str, list[FormulaArc]] = {}
+    precondition_arc_map: dict[str, list[tuple[str, str]]] = {}
 
-    variable_arc_meta_map, variable_arc_map = _build_resource_arc_map(
-        root, tag=_TAG_VARIABLE_ARC, locator_targets=locator_targets
-    )
-    parameter_arc_meta_map, parameter_arc_map = _build_resource_arc_map(
-        root, tag=_TAG_PARAMETER_ARC, locator_targets=locator_targets
-    )
-    precondition_arc_meta_map, precondition_arc_map = _build_resource_arc_map(
-        root, tag=_TAG_PRECONDITION_ARC, locator_targets=locator_targets
-    )
+    for root in roots:
+        fact_variable_index.update(
+            _build_label_to_element(root, _TAG_FACT_VARIABLE, locator_labels_by_fragment)
+        )
+        general_variable_index.update(
+            _build_label_to_element(root, _TAG_GENERAL_VARIABLE, locator_labels_by_fragment)
+        )
+        _merge_label_to_elements(
+            parameter_index,
+            _build_label_to_elements(root, _TAG_PARAMETER, locator_labels_by_fragment),
+        )
+        precondition_index.update(
+            _build_label_to_element(root, _TAG_PRECONDITION, locator_labels_by_fragment)
+        )
+        _merge_label_to_elements(
+            filter_index, _build_filter_label_index(root, locator_labels_by_fragment)
+        )
+        _merge_filter_arc_map(filter_arc_map, _build_filter_arc_map(root, locator_targets))
+        _merge_filter_arc_map(
+            variable_set_filter_arc_map,
+            _build_variable_set_filter_arc_map(root, locator_targets),
+        )
+        _merge_filter_arc_map(
+            bool_arc_map, _build_boolean_filter_arc_map(root, locator_targets)
+        )
+        meta, names = _build_resource_arc_map(
+            root, tag=_TAG_VARIABLE_ARC, locator_targets=locator_targets
+        )
+        _merge_resource_arc_maps(variable_arc_meta_map, variable_arc_map, meta, names)
+        meta, names = _build_resource_arc_map(
+            root, tag=_TAG_PARAMETER_ARC, locator_targets=locator_targets
+        )
+        _merge_resource_arc_maps(parameter_arc_meta_map, parameter_arc_map, meta, names)
+        meta, names = _build_resource_arc_map(
+            root, tag=_TAG_PRECONDITION_ARC, locator_targets=locator_targets
+        )
+        _merge_resource_arc_maps(precondition_arc_meta_map, precondition_arc_map, meta, names)
 
     assertions: list[FormulaAssertion] = []
     output_formulas: list[FormulaOutputDefinition] = []
     abstract_count = 0
 
-    for tag in _ASSERTION_TAGS:
-        for assertion_el in root.iter(tag):
-            result = _parse_assertion(
-                assertion_el,
+    for root in roots:
+        for tag in _ASSERTION_TAGS:
+            for assertion_el in root.iter(tag):
+                result = _parse_assertion(
+                    assertion_el,
+                    variable_arc_map,
+                    variable_arc_meta_map,
+                    parameter_arc_map,
+                    parameter_arc_meta_map,
+                    precondition_arc_map,
+                    precondition_arc_meta_map,
+                    fact_variable_index,
+                    general_variable_index,
+                    parameter_index,
+                    precondition_index,
+                    filter_arc_map,
+                    filter_index,
+                    variable_set_filter_arc_map=variable_set_filter_arc_map,
+                    bool_arc_map=bool_arc_map,
+                )
+                if result is not None:
+                    assertions.append(result)
+                    if result.abstract:
+                        abstract_count += 1
+
+        for formula_el in root.iter(_TAG_FORMULA):
+            result = _parse_output_formula(
+                formula_el,
                 variable_arc_map,
                 variable_arc_meta_map,
                 parameter_arc_map,
@@ -1729,33 +2022,10 @@ def _parse_formula_root(
                 filter_index,
                 variable_set_filter_arc_map=variable_set_filter_arc_map,
                 bool_arc_map=bool_arc_map,
+                source_path=source_path,
             )
             if result is not None:
-                assertions.append(result)
-                if result.abstract:
-                    abstract_count += 1
-
-    for formula_el in root.iter(_TAG_FORMULA):
-        result = _parse_output_formula(
-            formula_el,
-            variable_arc_map,
-            variable_arc_meta_map,
-            parameter_arc_map,
-            parameter_arc_meta_map,
-            precondition_arc_map,
-            precondition_arc_meta_map,
-            fact_variable_index,
-            general_variable_index,
-            parameter_index,
-            precondition_index,
-            filter_arc_map,
-            filter_index,
-            variable_set_filter_arc_map=variable_set_filter_arc_map,
-            bool_arc_map=bool_arc_map,
-            source_path=source_path,
-        )
-        if result is not None:
-            output_formulas.append(result)
+                output_formulas.append(result)
 
     global_parameter_targets: set[str] = {
         to_label for arc_entries in parameter_arc_map.values() for to_label, _name in arc_entries

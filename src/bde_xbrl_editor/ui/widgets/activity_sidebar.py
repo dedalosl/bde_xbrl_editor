@@ -1290,6 +1290,7 @@ class ActivitySidebar(QWidget):
         self._lazy_builders: dict[int, Callable[[], QWidget]] = {}
         self._loaded_indexes: set[int] = set()
         self._active_index: int | None = None
+        self._validations_panel: _ValidationsPanel | None = None
         self._target_width = _BAR_W + _PANEL_W
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
         self._width_anim = QVariantAnimation(self)
@@ -1373,7 +1374,7 @@ class ActivitySidebar(QWidget):
         if 3 in self._visible_indexes:
             self._loaded_indexes.add(3)
         if 2 in self._visible_indexes:
-            self._lazy_builders[2] = lambda: _ValidationsPanel(taxonomy)
+            self._lazy_builders[2] = self._build_validations_panel
 
         root_layout.addWidget(self._panel_root)
 
@@ -1470,9 +1471,31 @@ class ActivitySidebar(QWidget):
         old_widget.deleteLater()
         self._loaded_indexes.add(idx)
 
+    def _build_validations_panel(self) -> _ValidationsPanel:
+        self._validations_panel = _ValidationsPanel(self._taxonomy)
+        return self._validations_panel
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def update_taxonomy_validations(self, taxonomy: TaxonomyStructure) -> None:
+        """Refresh the Validations activity after background formula loading."""
+        self._taxonomy = taxonomy
+        if 2 not in self._visible_indexes:
+            return
+        self._lazy_builders[2] = self._build_validations_panel
+        if 2 not in self._loaded_indexes:
+            return
+
+        replacement = self._build_validations_panel()
+        old_widget = self._stack.widget(2)
+        was_active = self._stack.currentIndex() == 2
+        self._stack.removeWidget(old_widget)
+        self._stack.insertWidget(2, replacement)
+        if was_active:
+            self._stack.setCurrentIndex(2)
+        old_widget.deleteLater()
 
     def select_first_table(self) -> None:
         """Activate the Tables panel and select the first table."""
