@@ -13,7 +13,14 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6", reason="PySide6 not available - UI flow tests skipped")
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QDockWidget, QPushButton, QScrollArea, QSplitter
+from PySide6.QtWidgets import (
+    QDockWidget,
+    QPushButton,
+    QScrollArea,
+    QSplitter,
+    QVBoxLayout,
+    QWidget,
+)
 
 from bde_xbrl_editor.instance.models import ReportingEntity, ReportingPeriod, XbrlInstance
 from bde_xbrl_editor.performance import LoadTiming, StageTiming
@@ -456,6 +463,38 @@ def test_collapsing_active_sidebar_button_reallocates_splitter_space(qtbot, qapp
     assert after[0] < before[0]
     assert after[1] > before[1]
     assert window._sidebar.width() == 44
+
+
+def test_sidebar_width_sync_recovers_table_pane_after_bad_initial_split(qtbot, qapp) -> None:
+    """A width sync during early layout must not leave the table pane collapsed."""
+    container = QWidget()
+    qtbot.addWidget(container)
+    layout = QVBoxLayout(container)
+    splitter = QSplitter(container)
+    sidebar = QWidget(splitter)
+    sidebar.setFixedWidth(304)
+    table_area = QWidget(splitter)
+    splitter.addWidget(sidebar)
+    splitter.addWidget(table_area)
+    layout.addWidget(splitter)
+    container.resize(1200, 700)
+
+    class _WindowStub:
+        def __init__(self, browser_splitter: QSplitter) -> None:
+            self._browser_splitter = browser_splitter
+
+        @staticmethod
+        def width() -> int:
+            return 1200
+
+    container.show()
+    qtbot.waitUntil(lambda: splitter.width() > 0, timeout=1000)
+    sidebar_width = sidebar.width()
+    splitter.setSizes([sidebar_width, 0])
+    MainWindow._on_sidebar_width_changed(_WindowStub(splitter), sidebar_width)
+
+    assert splitter.sizes()[0] <= sidebar_width + 2
+    assert splitter.sizes()[1] > 0
 
 
 def test_validation_details_are_wrapped_in_scroll_area(qtbot, qapp) -> None:

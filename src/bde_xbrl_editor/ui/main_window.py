@@ -491,6 +491,8 @@ class MainWindow(QMainWindow):
         splitter.addWidget(self._table_view)
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
+        splitter.setCollapsible(0, False)
+        splitter.setCollapsible(1, False)
         self._browser_splitter = splitter
 
         container = QWidget(self)
@@ -503,6 +505,7 @@ class MainWindow(QMainWindow):
         container_layout.addWidget(splitter, stretch=1)
 
         self.setCentralWidget(container)
+        self._on_sidebar_width_changed(self._sidebar.width())
 
         # Give Qt a chance to paint the workspace shell before the first table render starts.
         QTimer.singleShot(self._INITIAL_TABLE_RENDER_DELAY_MS, self._select_first_taxonomy_table)
@@ -969,6 +972,8 @@ class MainWindow(QMainWindow):
         splitter.addWidget(self._table_view)
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
+        splitter.setCollapsible(0, False)
+        splitter.setCollapsible(1, False)
         self._browser_splitter = splitter
 
         container = QWidget(self)
@@ -981,6 +986,7 @@ class MainWindow(QMainWindow):
         container_layout.addWidget(splitter, stretch=1)
 
         self.setCentralWidget(container)
+        self._on_sidebar_width_changed(self._sidebar.width())
 
         self._save_action.setEnabled(True)
         self._save_as_action.setEnabled(True)
@@ -1107,10 +1113,12 @@ class MainWindow(QMainWindow):
         def _apply() -> None:
             if not isValid(splitter):
                 return
-            total = sum(splitter.sizes())
-            if total <= 0:
-                total = splitter.width()
-            main_width = max(total - width, 0)
+            parent_width = 0
+            parent = splitter.parentWidget()
+            if parent is not None and isValid(parent):
+                parent_width = parent.width()
+            total = max(sum(splitter.sizes()), splitter.width(), parent_width, self.width())
+            main_width = max(total - width, 1)
             splitter.setSizes([width, main_width])
 
         if splitter.width() > 0 or sum(splitter.sizes()) > 0:
