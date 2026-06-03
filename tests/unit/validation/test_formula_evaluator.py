@@ -214,6 +214,18 @@ class TestValueAssertion:
         assert findings[0].rule_id == "VA_FAIL"
         assert findings[0].source == "formula"
 
+    def test_qname_effective_boolean_value_reports_forg0006(self) -> None:
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(assertion_id="VA_QNAME_EBV"),
+            test_xpath="QName('http://example.com/tax', 'eg:Amount')",
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
+        inst = _instance([_fact()])
+
+        findings = FormulaEvaluator(taxonomy).evaluate(inst)
+
+        assert [finding.rule_id for finding in findings] == ["err:FORG0006"]
+
     def test_false_assertion_severity_from_definition(self) -> None:
         """The finding severity matches the assertion's declared severity."""
         assertion = ValueAssertionDefinition(
@@ -841,6 +853,19 @@ class TestExistenceAssertion:
         findings = FormulaEvaluator(taxonomy).evaluate(inst)
         assert len(findings) == 1
         assert findings[0].rule_id == "EA_FAIL"
+
+    def test_qname_test_effective_boolean_value_reports_forg0006(self) -> None:
+        var_def = FactVariableDefinition(variable_name="v", concept_filter=_qn("Amount"))
+        assertion = ExistenceAssertionDefinition(
+            **_base_assertion_kwargs(assertion_id="EA_QNAME_EBV", variables=(var_def,)),
+            test_xpath="QName('http://example.com/tax', 'eg:Amount')",
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
+        inst = _instance([_fact("Amount", value="10")])
+
+        findings = FormulaEvaluator(taxonomy).evaluate(inst)
+
+        assert [finding.rule_id for finding in findings] == ["err:FORG0006"]
 
     def test_existence_assertion_finding_source_is_formula(self) -> None:
         """Existence assertion findings have source='formula'."""

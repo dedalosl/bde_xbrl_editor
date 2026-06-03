@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from bde_xbrl_editor.taxonomy import LoaderSettings, TaxonomyCache
+from bde_xbrl_editor.taxonomy import loader as loader_module
 from bde_xbrl_editor.taxonomy.linkbases.formula import (
     linkbase_contains_formula_assertions,
     parse_assertion_table_mappings,
@@ -101,6 +102,130 @@ def test_linkbase_contains_formula_assertions_finds_assertion_after_many_nodes(
         encoding="utf-8",
     )
     assert linkbase_contains_formula_assertions(lb) is True
+
+
+def test_loader_skips_eager_formula_parse_for_large_formula_sets(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entry = tmp_path / "entry.xsd"
+    formula_a = tmp_path / "formula-a.xml"
+    formula_b = tmp_path / "formula-b.xml"
+    entry.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:xbrli="http://www.xbrl.org/2003/instance"
+           xmlns:link="http://www.xbrl.org/2003/linkbase"
+           xmlns:xlink="http://www.w3.org/1999/xlink"
+           targetNamespace="http://example.com/taxonomy"
+           elementFormDefault="qualified">
+  <xs:annotation>
+    <xs:appinfo>
+      <link:linkbaseRef xlink:type="simple" xlink:href="formula-a.xml"/>
+      <link:linkbaseRef xlink:type="simple" xlink:href="formula-b.xml"/>
+    </xs:appinfo>
+  </xs:annotation>
+  <xs:element name="Amount" id="ex_Amount" substitutionGroup="xbrli:item"
+              type="xbrli:stringItemType" xbrli:periodType="duration"/>
+</xs:schema>
+""",
+        encoding="utf-8",
+    )
+    for path, assertion_id in ((formula_a, "a1"), (formula_b, "a2")):
+        path.write_text(
+            f"""<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:gen="http://xbrl.org/2008/generic"
+  xmlns:va="http://xbrl.org/2008/assertion/value"
+  xmlns:xlink="http://www.w3.org/1999/xlink">
+  <gen:link xlink:type="extended" xlink:role="http://www.xbrl.org/2008/role/link">
+    <va:valueAssertion xlink:type="resource" xlink:label="{assertion_id}"
+                       id="{assertion_id}" test="true()"/>
+  </gen:link>
+</link:linkbase>
+""",
+            encoding="utf-8",
+        )
+
+    def fail_parse_bundle(_paths):
+        raise AssertionError("large formula sets must not be eagerly parsed")
+
+    monkeypatch.setattr(loader_module, "_SKIP_EAGER_FORMULA_PARSE_THRESHOLD", 1)
+    monkeypatch.setattr(loader_module, "parse_formula_linkbase_bundle", fail_parse_bundle)
+
+    progress_messages: list[str] = []
+    taxonomy = TaxonomyLoader(
+        cache=TaxonomyCache(),
+        settings=LoaderSettings(allow_network=False),
+    ).load(
+        entry,
+        progress_callback=lambda msg, _current, _total: progress_messages.append(msg),
+    )
+
+    assert len(taxonomy.concepts) == 1
+    assert taxonomy.formula_assertion_set.assertions == ()
+    assert any("Skipping eager formula assertion parse" in msg for msg in progress_messages)
+
+
+def test_loader_hydrates_deferred_formula_assertions_in_chunks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entry = tmp_path / "entry.xsd"
+    formula_a = tmp_path / "formula-a.xml"
+    formula_b = tmp_path / "formula-b.xml"
+    entry.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:xbrli="http://www.xbrl.org/2003/instance"
+           xmlns:link="http://www.xbrl.org/2003/linkbase"
+           xmlns:xlink="http://www.w3.org/1999/xlink"
+           targetNamespace="http://example.com/taxonomy"
+           elementFormDefault="qualified">
+  <xs:annotation>
+    <xs:appinfo>
+      <link:linkbaseRef xlink:type="simple" xlink:href="formula-a.xml"/>
+      <link:linkbaseRef xlink:type="simple" xlink:href="formula-b.xml"/>
+    </xs:appinfo>
+  </xs:annotation>
+  <xs:element name="Amount" id="ex_Amount" substitutionGroup="xbrli:item"
+              type="xbrli:stringItemType" xbrli:periodType="duration"/>
+</xs:schema>
+""",
+        encoding="utf-8",
+    )
+    for path, assertion_id in ((formula_a, "a1"), (formula_b, "a2")):
+        path.write_text(
+            f"""<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:gen="http://xbrl.org/2008/generic"
+  xmlns:va="http://xbrl.org/2008/assertion/value"
+  xmlns:xlink="http://www.w3.org/1999/xlink">
+  <gen:link xlink:type="extended" xlink:role="http://www.xbrl.org/2008/role/link">
+    <va:valueAssertion xlink:type="resource" xlink:label="{assertion_id}"
+                       id="{assertion_id}" test="true()"/>
+  </gen:link>
+</link:linkbase>
+""",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(loader_module, "_SKIP_EAGER_FORMULA_PARSE_THRESHOLD", 1)
+    loader = TaxonomyLoader(cache=TaxonomyCache(), settings=LoaderSettings(allow_network=False))
+    taxonomy = loader.load(entry)
+
+    progress_messages: list[str] = []
+    chunks: list[int] = []
+    hydrated = loader.hydrate_deferred_formula_assertions(
+        taxonomy,
+        progress_callback=lambda msg, _current, _total: progress_messages.append(msg),
+        chunk_callback=lambda assertion_set: chunks.append(len(assertion_set.assertions)),
+    )
+
+    assert taxonomy.formula_assertion_set.assertions == ()
+    assert [a.assertion_id for a in hydrated.formula_assertion_set.assertions] == ["a1", "a2"]
+    assert chunks[-1] == 2
+    assert any("Loaded 2 validation assertion" in msg for msg in progress_messages)
 
 
 def test_parse_value_assertion_uses_xlink_label_when_id_absent(tmp_path: Path) -> None:

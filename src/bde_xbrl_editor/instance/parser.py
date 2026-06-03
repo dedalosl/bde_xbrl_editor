@@ -604,6 +604,103 @@ def _reject_xbrl_defined_attrs_on_tuple_fact(
             )
 
 
+def _collect_facts_under_element(
+    el: etree._Element,
+    *,
+    tuple_path: tuple[int, ...],
+    path_str: str,
+    known_concepts: dict,
+    taxonomy: TaxonomyStructure | None,
+    facts: list[Fact],
+    orphaned: list[OrphanedFact],
+) -> None:
+    """Collect item facts nested under tuples (XBRL 2.1 summation-item binding)."""
+    for idx, child in enumerate(el):
+        if not isinstance(child.tag, str):
+            continue
+        tag = child.tag
+        if tag in _NON_FACT_TAGS:
+            continue
+        try:
+            concept_qname = _tag_to_qname(tag)
+        except ValueError as exc:
+            raise InstanceParseError(
+                path_str,
+                f"QName parse error for element '{tag}': {exc}",
+            ) from exc
+
+        if taxonomy is not None and concept_qname in known_concepts:
+            if _concept_substitution_chain_reaches(
+                concept_qname, taxonomy, _XBRLI_TUPLE_QNAME
+            ):
+                _reject_xbrl_defined_attrs_on_tuple_fact(
+                    child,
+                    concept_qname,
+                    taxonomy,
+                    path_str,
+                )
+                if "contextRef" in child.attrib:
+                    raise InstanceParseError(
+                        path_str,
+                        f"Tuple '{concept_qname}' must not carry contextRef.",
+                    )
+                _collect_facts_under_element(
+                    child,
+                    tuple_path=tuple_path + (idx,),
+                    path_str=path_str,
+                    known_concepts=known_concepts,
+                    taxonomy=taxonomy,
+                    facts=facts,
+                    orphaned=orphaned,
+                )
+                continue
+
+        if "contextRef" not in child.attrib:
+            continue
+
+        if concept_qname in known_concepts and taxonomy is not None:
+            _reject_xbrl_defined_attrs_on_tuple_fact(
+                child,
+                concept_qname,
+                taxonomy,
+                path_str,
+            )
+
+        context_ref = child.get("contextRef", "")
+        unit_ref = child.get("unitRef")
+        decimals = child.get("decimals")
+        precision = child.get("precision")
+        is_nil = (child.get(_XSI_NIL, "") or "").strip().lower() in {"true", "1"}
+        value = (child.text or "").strip()
+
+        if concept_qname in known_concepts:
+            facts.append(
+                Fact(
+                    concept=concept_qname,
+                    context_ref=context_ref,
+                    unit_ref=unit_ref,
+                    value=value,
+                    decimals=decimals,
+                    precision=precision,
+                    is_nil=is_nil,
+                    tuple_path=tuple_path,
+                    position_path=tuple_path + (idx,),
+                )
+            )
+        else:
+            raw_xml = etree.tostring(child, encoding="unicode").encode("utf-8")
+            orphaned.append(
+                OrphanedFact(
+                    concept_qname_str=tag,
+                    context_ref=context_ref,
+                    unit_ref=unit_ref,
+                    value=value,
+                    decimals=decimals,
+                    raw_element_xml=raw_xml,
+                )
+            )
+
+
 def _merge_taxonomies(
     primary: TaxonomyStructure,
     additional: TaxonomyStructure,
@@ -889,7 +986,7 @@ class InstanceParser:
         blanco_attr = f"{{{BDE_PBLO_NS}}}blanco"
 
         index = 0
-        for child in root:
+        for root_idx, child in enumerate(root):
             if not isinstance(child.tag, str):
                 continue
             index += 1
@@ -942,6 +1039,36 @@ class InstanceParser:
                             f"QName parse error for element '{tag}': {exc}",
                         ) from exc
 
+                    if (
+                        taxonomy is not None
+                        and concept_qname in known_concepts
+                        and _concept_substitution_chain_reaches(
+                            concept_qname, taxonomy, _XBRLI_TUPLE_QNAME
+                        )
+                    ):
+                        _reject_xbrl_defined_attrs_on_tuple_fact(
+                            child,
+                            concept_qname,
+                            taxonomy,
+                            path_str,
+                        )
+                        if "contextRef" in child.attrib:
+                            raise InstanceParseError(
+                                path_str,
+                                f"Tuple '{concept_qname}' must not carry contextRef.",
+                            )
+                        facts_seen += 1
+                        _collect_facts_under_element(
+                            child,
+                            tuple_path=(root_idx,),
+                            path_str=path_str,
+                            known_concepts=known_concepts,
+                            taxonomy=taxonomy,
+                            facts=facts,
+                            orphaned=orphaned,
+                        )
+                        continue
+
                     if concept_qname in known_concepts and taxonomy is not None:
                         _reject_xbrl_defined_attrs_on_tuple_fact(
                             child,
@@ -974,6 +1101,8 @@ class InstanceParser:
                                 decimals=decimals,
                                 precision=precision,
                                 is_nil=is_nil,
+                                tuple_path=(),
+                                position_path=(root_idx,),
                             )
                         )
                     else:

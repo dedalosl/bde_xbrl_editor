@@ -736,9 +736,12 @@ class TableLayoutEngine:
 
                     self._fact_mapper = FactMapper(self._taxonomy)
                 mapper = self._fact_mapper
+                table_elr = table.extended_link_role or ""
                 for row in body:
                     for cell in row:
-                        result: FactMatchResult = mapper.match(cell.coordinate, instance)
+                        result: FactMatchResult = mapper.match(
+                            cell.coordinate, instance, table_elr=table_elr
+                        )
                         if result.matched or result.duplicate_count > 0:
                             cell.fact_value = result.fact_value
                             cell.fact_decimals = result.fact_decimals
@@ -764,6 +767,7 @@ class TableLayoutEngine:
             active_z_index=active_index,
             active_z_constraints=active_constraints,
             body=body,
+            table_extended_link_role=table.extended_link_role or "",
         )
 
     def populate_facts(
@@ -785,9 +789,10 @@ class TableLayoutEngine:
 
             self._fact_mapper = FactMapper(self._taxonomy)
         mapper = self._fact_mapper
+        table_elr = getattr(layout, "table_extended_link_role", "") or ""
         for row in layout.body:
             for cell in row:
-                result: FactMatchResult = mapper.match(cell.coordinate, instance)
+                result: FactMatchResult = mapper.match(cell.coordinate, instance, table_elr=table_elr)
                 if result.matched or result.duplicate_count > 0:
                     cell.fact_value = result.fact_value
                     cell.fact_decimals = result.fact_decimals

@@ -33,8 +33,15 @@ from bde_xbrl_editor.taxonomy.models import (
 from bde_xbrl_editor.taxonomy.settings import LoaderSettings
 from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
 from bde_xbrl_editor.validation.calculation import CalculationConsistencyValidator
+from bde_xbrl_editor.validation.essence_alias import EssenceAliasValidator
 from bde_xbrl_editor.validation.formula.output_runtime import OutputFormulaRuntimeEvaluator
-from bde_xbrl_editor.validation.formula.static import FormulaStaticValidator
+from bde_xbrl_editor.validation.formula.static import (
+    FormulaStaticValidator,
+    validate_assertion_severity_linkbases,
+    validate_custom_function_linkbases,
+    validate_generic_message_linkbases,
+    validate_typed_dimension_equality_linkbases,
+)
 from bde_xbrl_editor.validation.models import ValidationFinding, ValidationSeverity
 from bde_xbrl_editor.validation.orchestrator import InstanceValidator
 from bde_xbrl_editor.validation.relationships import RelationshipSetValidator
@@ -75,7 +82,25 @@ _STRUCTURAL_ONLY_TEST_IDS = frozenset(
         _USED_ON_TEST_ID,
     }
 )
-_OUTPUT_RUNTIME_ERROR_TEST_PREFIXES = ("22010", "22040", "22050", "22140", "22170")
+_OUTPUT_RUNTIME_ERROR_TEST_PREFIXES = ("22010", "22040", "22050", "22140", "22170", "60200")
+_INPUT_ASSERTION_STATIC_TEST_PREFIXES = (
+    "22010",
+    "31110",
+    "31130",
+    "32110",
+    "32210",
+    "33210",
+)
+
+
+def _should_include_input_formula_assertions(
+    test_case: TestCase,
+    variation: TestVariation,
+) -> bool:
+    return (
+        test_case.test_case_id.startswith(_INPUT_ASSERTION_STATIC_TEST_PREFIXES)
+        and variation.expected_outcome.outcome_type == ExpectedOutcomeType.ERROR
+    )
 
 
 def _concept_id_map(taxonomy: TaxonomyStructure) -> dict[str, QName]:
@@ -249,8 +274,16 @@ class TestCaseExecutor:
             loader = TaxonomyLoader(self._taxonomy_cache, settings)
 
             taxonomy_struct = None
+            if test_case.suite_id == "table-linkbase":
+                from bde_xbrl_editor.taxonomy.linkbases.table_10_validator import (
+                    TableLinkbase10Validator,
+                )
 
-            if variation.instance_file is not None:
+                findings = validate_xlink_inputs(variation.input_files) + tuple(
+                    TableLinkbase10Validator().validate_variation(variation)
+                )
+
+            elif variation.instance_file is not None:
                 # Parse instance (also loads taxonomy via schemaRef)
                 inst_parser = InstanceParser(loader)
                 parsed_taxonomies: list[TaxonomyStructure] = []
@@ -307,10 +340,8 @@ class TestCaseExecutor:
                         taxonomy_struct = _with_input_formula_linkbases(
                             taxonomy_struct,
                             variation.input_files,
-                            include_assertions=(
-                                test_case.test_case_id.startswith("22010")
-                                and variation.expected_outcome.outcome_type
-                                == ExpectedOutcomeType.ERROR
+                            include_assertions=_should_include_input_formula_assertions(
+                                test_case, variation
                             ),
                         )
                     validator = InstanceValidator(
@@ -323,8 +354,24 @@ class TestCaseExecutor:
                     )
                     report = validator.validate_sync(instance)
                     findings = report.findings
+                if taxonomy_struct is not None and test_case.suite_id == "xbrl21":
+                    findings = findings + tuple(
+                        EssenceAliasValidator().validate_taxonomy(taxonomy_struct)
+                    )
                 if test_case.suite_id == "formula" and taxonomy_struct is not None:
                     findings = findings + tuple(FormulaStaticValidator(taxonomy_struct).validate())
+                    findings = findings + tuple(
+                        validate_assertion_severity_linkbases(variation.input_files)
+                    )
+                    findings = findings + tuple(
+                        validate_generic_message_linkbases(variation.input_files)
+                    )
+                    findings = findings + tuple(
+                        validate_custom_function_linkbases(variation.input_files)
+                    )
+                    findings = findings + tuple(
+                        validate_typed_dimension_equality_linkbases(variation.input_files)
+                    )
                     if (
                         test_case.test_case_id.startswith(_OUTPUT_RUNTIME_ERROR_TEST_PREFIXES)
                         and variation.expected_outcome.outcome_type == ExpectedOutcomeType.ERROR
@@ -347,20 +394,33 @@ class TestCaseExecutor:
                     taxonomy_struct = _with_input_formula_linkbases(
                         taxonomy_struct,
                         variation.input_files,
-                        include_assertions=(
-                            test_case.test_case_id.startswith("22010")
-                            and variation.expected_outcome.outcome_type
-                            == ExpectedOutcomeType.ERROR
+                        include_assertions=_should_include_input_formula_assertions(
+                            test_case, variation
                         ),
                     )
                 if test_case.suite_id == "formula" and taxonomy_struct is not None:
                     findings = findings + tuple(FormulaStaticValidator(taxonomy_struct).validate())
+                    findings = findings + tuple(
+                        validate_assertion_severity_linkbases(variation.input_files)
+                    )
+                    findings = findings + tuple(
+                        validate_generic_message_linkbases(variation.input_files)
+                    )
+                    findings = findings + tuple(
+                        validate_custom_function_linkbases(variation.input_files)
+                    )
+                    findings = findings + tuple(
+                        validate_typed_dimension_equality_linkbases(variation.input_files)
+                    )
                 if taxonomy_struct is not None and test_case.suite_id == "xbrl21":
                     findings = findings + tuple(
                         CalculationConsistencyValidator().validate_taxonomy(taxonomy_struct)
                     )
                     findings = findings + tuple(
                         RelationshipSetValidator().validate_taxonomy(taxonomy_struct)
+                    )
+                    findings = findings + tuple(
+                        EssenceAliasValidator().validate_taxonomy(taxonomy_struct)
                     )
                 if test_case.test_case_id == _LAX_VALIDATION_TEST_ID:
                     findings = findings + validate_lax_known_declarations(variation.input_files)
@@ -403,20 +463,33 @@ class TestCaseExecutor:
                     taxonomy_struct = _with_input_formula_linkbases(
                         taxonomy_struct,
                         variation.input_files,
-                        include_assertions=(
-                            test_case.test_case_id.startswith("22010")
-                            and variation.expected_outcome.outcome_type
-                            == ExpectedOutcomeType.ERROR
+                        include_assertions=_should_include_input_formula_assertions(
+                            test_case, variation
                         ),
                     )
                 if test_case.suite_id == "formula" and taxonomy_struct is not None:
                     findings = findings + tuple(FormulaStaticValidator(taxonomy_struct).validate())
+                    findings = findings + tuple(
+                        validate_assertion_severity_linkbases(variation.input_files)
+                    )
+                    findings = findings + tuple(
+                        validate_generic_message_linkbases(variation.input_files)
+                    )
+                    findings = findings + tuple(
+                        validate_custom_function_linkbases(variation.input_files)
+                    )
+                    findings = findings + tuple(
+                        validate_typed_dimension_equality_linkbases(variation.input_files)
+                    )
                 if taxonomy_struct is not None and test_case.suite_id == "xbrl21":
                     findings = findings + tuple(
                         CalculationConsistencyValidator().validate_taxonomy(taxonomy_struct)
                     )
                     findings = findings + tuple(
                         RelationshipSetValidator().validate_taxonomy(taxonomy_struct)
+                    )
+                    findings = findings + tuple(
+                        EssenceAliasValidator().validate_taxonomy(taxonomy_struct)
                     )
                 if test_case.test_case_id == _LAX_VALIDATION_TEST_ID:
                     findings = findings + validate_lax_known_declarations(variation.input_files)

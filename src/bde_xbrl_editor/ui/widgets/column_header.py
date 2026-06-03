@@ -53,6 +53,10 @@ class MultiLevelColumnHeader(QHeaderView):
         self.updateGeometry()
         self.viewport().update()
 
+    def scrollContentsBy(self, dx: int, dy: int) -> None:  # type: ignore[override]
+        super().scrollContentsBy(dx, dy)
+        self.viewport().update()
+
     def _find_cell_at_level(self, level_idx: int, logical_index: int) -> Any | None:
         if self._grid is None or level_idx < 0 or level_idx >= len(self._grid.levels):
             return None
@@ -159,7 +163,6 @@ class MultiLevelColumnHeader(QHeaderView):
             return
 
         painter.save()
-        painter.setClipping(False)
 
         heights, font_pts_per_level = self._compute_layout()
         depth = self._grid.depth
@@ -177,8 +180,6 @@ class MultiLevelColumnHeader(QHeaderView):
             for cell in cells:
                 span = 1 if cell.is_leaf else cell.span
                 if leaf_cursor <= logical_index < leaf_cursor + span:
-                    if logical_index != leaf_cursor:
-                        break
                     x_start = self.sectionViewportPosition(leaf_cursor)
                     full_width = sum(
                         self.sectionSize(leaf_cursor + k)
@@ -191,6 +192,11 @@ class MultiLevelColumnHeader(QHeaderView):
                     if cell.is_leaf:
                         cell_height = sum(heights[level_idx:])
                     cell_rect = QRect(x_start, y, full_width, cell_height)
+                    clip_rect = rect.intersected(cell_rect).intersected(self.viewport().rect())
+                    if clip_rect.isEmpty():
+                        break
+                    painter.save()
+                    painter.setClipRect(clip_rect)
                     self._paint_cell(
                         painter,
                         cell_rect,
@@ -202,6 +208,7 @@ class MultiLevelColumnHeader(QHeaderView):
                         start_index=leaf_cursor,
                         span=span,
                     )
+                    painter.restore()
                     painted_leaf = cell.is_leaf
                     break
                 leaf_cursor += span

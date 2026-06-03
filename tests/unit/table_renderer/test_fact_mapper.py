@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 from bde_xbrl_editor.table_renderer.fact_mapper import FactMapper
 from bde_xbrl_editor.table_renderer.models import CellCoordinate
-from bde_xbrl_editor.taxonomy.models import QName
+from bde_xbrl_editor.taxonomy.models import HypercubeModel, QName
 
 _NS = "http://example.com"
 
@@ -108,6 +108,47 @@ class TestFactMapper:
         result = mapper.match(coord, instance)
         assert not result.matched
 
+    def test_subset_coordinate_matches_finrep_style_context(self):
+        """Table cell axes are a subset of instance context dimensions (e.g. FINREP)."""
+        concept = _qn("Assets")
+        d1 = _qn("Dim1")
+        d2 = _qn("Dim2")
+        d3 = _qn("Dim3")
+        m1 = _qn("Mem1")
+        m2 = _qn("Mem2")
+        m3 = _qn("Mem3")
+        fact = _make_fact(concept, value="42", context_ref="ctx1")
+        ctx = _make_context({d1: m1, d2: m2, d3: m3})
+        instance = _make_instance([fact], {"ctx1": ctx})
+        taxonomy = MagicMock()
+        mapper = FactMapper(taxonomy)
+        coord = CellCoordinate(concept=concept, explicit_dimensions={d1: m1, d2: m2})
+        result = mapper.match(coord, instance)
+        assert result.matched
+        assert result.fact_value == "42"
+        assert result.duplicate_count == 1
+
+    def test_ambiguous_same_axis_prefers_fact_with_exact_dimension_keyset(self):
+        """FINREP totals often use only the column axis while lines add further dimensions."""
+        concept = _qn("Metric")
+        d_axis = _qn("AxisDim")
+        m_axis = _qn("AxisMember")
+        d_break = _qn("BreakDim")
+        m_break = _qn("BreakMember")
+        fact_wide = _make_fact(concept, value="wrong", context_ref="wide")
+        fact_narrow = _make_fact(concept, value="right", context_ref="narrow")
+        ctx_wide = _make_context({d_axis: m_axis, d_break: m_break})
+        ctx_narrow = _make_context({d_axis: m_axis})
+        instance = _make_instance([fact_wide, fact_narrow], {"wide": ctx_wide, "narrow": ctx_narrow})
+
+        taxonomy = MagicMock(dimensions={})
+        mapper = FactMapper(taxonomy)
+        coord = CellCoordinate(concept=concept, explicit_dimensions={d_axis: m_axis})
+        result = mapper.match(coord, instance)
+        assert result.matched
+        assert result.fact_value == "right"
+        assert result.duplicate_count == 1
+
     def test_empty_instance(self):
         concept = _qn("Assets")
         instance = _make_instance([])
@@ -202,3 +243,71 @@ class TestFactMapper:
 
         assert result_a.matched and result_a.fact_value == "100"
         assert result_b.matched and result_b.fact_value == "200"
+
+    def test_closed_hypercube_rejects_superset_context(self) -> None:
+        """Under closed ``all`` for this table ELR, facts with extra dimensions do not match."""
+        concept = _qn("Assets")
+        d1 = _qn("Dim1")
+        d2 = _qn("Dim2")
+        m1 = _qn("Mem1")
+        m2_other = _qn("Mem2")
+        fact_wide = _make_fact(concept, value="wide", context_ref="w")
+        fact_narrow = _make_fact(concept, value="narrow", context_ref="n")
+        ctx_wide = _make_context({d1: m1, d2: m2_other})
+        ctx_narrow = _make_context({d1: m1})
+        instance = _make_instance([fact_wide, fact_narrow], {"w": ctx_wide, "n": ctx_narrow})
+
+        table_elr = "http://example.com/role/table1"
+        taxonomy = MagicMock(dimensions={})
+        taxonomy.hypercubes = (
+            HypercubeModel(
+                qname=_qn("Cube1"),
+                arcrole="all",
+                closed=True,
+                context_element="scenario",
+                primary_items=(concept,),
+                dimensions=(d1, d2),
+                extended_link_role=f"{table_elr}/hc",
+            ),
+        )
+        mapper = FactMapper(taxonomy)
+        coord = CellCoordinate(concept=concept, explicit_dimensions={d1: m1})
+        result = mapper.match(coord, instance, table_elr=table_elr)
+        assert result.matched
+        assert result.fact_value == "narrow"
+
+        only_wide = _make_instance([fact_wide], {"w": ctx_wide})
+        no_match = mapper.match(coord, only_wide, table_elr=table_elr)
+        assert not no_match.matched
+
+    def test_closed_hypercube_not_applied_without_matching_elr(self) -> None:
+        """Subset + disambiguation when no closed hypercube is scoped to ``table_elr``."""
+        concept = _qn("Metric")
+        d_axis = _qn("AxisDim")
+        m_axis = _qn("AxisMember")
+        d_break = _qn("BreakDim")
+        m_break = _qn("BreakMember")
+        fact_wide = _make_fact(concept, value="wrong", context_ref="wide")
+        fact_narrow = _make_fact(concept, value="right", context_ref="narrow")
+        ctx_wide = _make_context({d_axis: m_axis, d_break: m_break})
+        ctx_narrow = _make_context({d_axis: m_axis})
+        instance = _make_instance([fact_wide, fact_narrow], {"wide": ctx_wide, "narrow": ctx_narrow})
+
+        table_elr = "http://example.com/role/otherTable"
+        taxonomy = MagicMock(dimensions={})
+        taxonomy.hypercubes = (
+            HypercubeModel(
+                qname=_qn("Cube1"),
+                arcrole="all",
+                closed=True,
+                context_element="scenario",
+                primary_items=(concept,),
+                dimensions=(d_axis, d_break),
+                extended_link_role="http://example.com/role/thisTable/hc",
+            ),
+        )
+        mapper = FactMapper(taxonomy)
+        coord = CellCoordinate(concept=concept, explicit_dimensions={d_axis: m_axis})
+        result = mapper.match(coord, instance, table_elr=table_elr)
+        assert result.matched
+        assert result.fact_value == "right"

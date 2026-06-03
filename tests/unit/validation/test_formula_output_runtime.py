@@ -107,6 +107,25 @@ def test_output_runtime_evaluator_reports_xpath_runtime_error_code() -> None:
     assert findings[0].rule_id == "err:FOAR0001"
 
 
+def test_output_runtime_preserves_custom_error_prefix_from_formula_namespaces() -> None:
+    class CustomAspectError(Exception):
+        code = "aspect-issues"
+
+    formula = FormulaOutputDefinition(
+        formula_id="f1",
+        label=None,
+        value_xpath="eg:sum($facts)",
+        source=None,
+        aspect_model=None,
+        implicit_filtering=True,
+        namespaces={"eg": "http://abc.com/test1"},
+    )
+
+    finding = OutputFormulaRuntimeEvaluator._error_finding(formula, CustomAspectError())
+
+    assert finding.rule_id == "eg:aspect-issues"
+
+
 def test_output_runtime_v07_xfi_period_then_divide_by_zero_foar() -> None:
     """22010 V-07: xfi:period on fact variable + minutes-from-dateTime + div by zero."""
     value_xpath = """

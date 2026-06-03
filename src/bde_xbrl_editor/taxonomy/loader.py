@@ -36,12 +36,20 @@ from bde_xbrl_editor.taxonomy.constants import (
     NS_XBRLI,
     NS_XSD,
 )
-from bde_xbrl_editor.taxonomy.discovery import _should_skip_linkbase, discover_dts
+from bde_xbrl_editor.taxonomy.discovery import (
+    _resolve_href_from_cache_mirror,
+    _should_skip_linkbase,
+    discover_dts,
+    find_taxonomy_cache_root,
+)
 from bde_xbrl_editor.taxonomy.label_resolver import LabelResolver
 from bde_xbrl_editor.taxonomy.linkbases.assertion_resources import (
     parse_assertion_resource_linkbase,
 )
-from bde_xbrl_editor.taxonomy.linkbases.calculation import parse_calculation_linkbase
+from bde_xbrl_editor.taxonomy.linkbases.calculation import (
+    parse_calculation_linkbase,
+    parse_calculation_linkbase_from_root,
+)
 from bde_xbrl_editor.taxonomy.linkbases.custom_functions import (
     parse_custom_function_linkbase,
 )
@@ -58,9 +66,10 @@ from bde_xbrl_editor.taxonomy.linkbases.presentation import (
     PresentationLinkbaseParseResult,
     parse_presentation_linkbase,
 )
-from bde_xbrl_editor.taxonomy.linkbases.table_pwd import parse_table_linkbase
+from bde_xbrl_editor.taxonomy.linkbases.table import parse_table_linkbase
 from bde_xbrl_editor.taxonomy.models import (
     AssertionTextResource,
+    CalculationArc,
     Concept,
     CustomFunctionDefinition,
     DefinitionArc,
@@ -68,6 +77,7 @@ from bde_xbrl_editor.taxonomy.models import (
     DomainMember,
     HypercubeModel,
     QName,
+    SchemaElementDefaults,
     TaxonomyMetadata,
     TaxonomyParseError,
     TaxonomyStructure,
@@ -76,6 +86,7 @@ from bde_xbrl_editor.taxonomy.models import (
 from bde_xbrl_editor.taxonomy.schema import (
     XBRL_SG_ROOTS,
     build_global_named_type_registry,
+    collect_schema_element_defaults,
     extract_concept_enumerations_for_schema,
     extract_monetary_value_type_qnames,
     parse_schema_raw,
@@ -84,9 +95,11 @@ from bde_xbrl_editor.taxonomy.settings import LoaderSettings
 from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
 
 ProgressCallback = Callable[[str, int, int], None]
+FormulaChunkCallback = Callable[[Any], None]
+FormulaCancelCallback = Callable[[], bool]
 
-# Total loading steps for progress reporting (at least 6)
-_TOTAL_STEPS = 7
+# Total loading steps for progress reporting.
+_TOTAL_STEPS = 10
 
 _NS_XLINK = "http://www.w3.org/1999/xlink"
 _XLINK_HREF = f"{{{_NS_XLINK}}}href"
@@ -123,6 +136,31 @@ def _schema_text_references_xbrl_linkbase_namespace(path: Path) -> bool:
     except OSError:
         return False
     return NS_LINK in snippet
+
+
+_XSD_APPINFO = f"{{{NS_XSD}}}appinfo"
+_EMBEDDED_LINKBASE = f"{{{NS_LINK}}}linkbase"
+
+
+def _parse_embedded_calculation_linkbases(
+    schema_paths: list[Path],
+    concept_id_map: dict[str, QName],
+) -> dict[str, list[CalculationArc]]:
+    """Parse calculation links embedded in XSD annotation/appinfo."""
+    merged: dict[str, list[CalculationArc]] = {}
+    for schema_path in schema_paths:
+        try:
+            tree = parse_xml_file(schema_path)
+        except etree.XMLSyntaxError:
+            continue
+        for appinfo in tree.getroot().iter(_XSD_APPINFO):
+            for child in appinfo:
+                if child.tag != _EMBEDDED_LINKBASE:
+                    continue
+                parsed = parse_calculation_linkbase_from_root(child, concept_id_map)
+                for elr, arc_list in parsed.items():
+                    merged.setdefault(elr, []).extend(arc_list)
+    return merged
 
 
 def _schema_embeds_linkbase_or_role_declarations(path: Path) -> bool:
@@ -345,27 +383,27 @@ def _normalize_seed_paths(seed_paths: list[Path] | tuple[Path, ...] | None) -> t
 
 
 def _infer_local_catalog_from_cache(entry_point: Path) -> dict[str, Path]:
-    """Infer URL-prefix mappings from a mirrored on-disk taxonomy cache.
+    """Infer a URL-prefix mapping for the cache host that contains *entry_point*.
 
-    When users open an entry point directly from ``cache/<host>/...``, downstream
-    schemas often jump back to remote HTTP URLs for sibling hosts such as
-    ``www.eba.europa.eu`` or ``www.eurofiling.info``. Treat every host directory
-    under the shared ``cache`` root as a local mirror so those remote imports can
-    still resolve without requiring manual loader settings.
+    Other mirrored hosts (e.g. ``www.eba.europa.eu``) are resolved on demand during
+    DTS discovery via :func:`bde_xbrl_editor.taxonomy.discovery.find_taxonomy_cache_root`
+    so we do not pre-register every directory under ``cache/``.
     """
     cache_root = _find_cache_root(entry_point)
     if cache_root is None or not cache_root.is_dir():
         return {}
 
+    try:
+        host = entry_point.resolve().relative_to(cache_root).parts[0]
+    except ValueError:
+        return {}
+    host_dir = cache_root / host
+    if not host_dir.is_dir():
+        return {}
+
     catalog: dict[str, Path] = {}
-    for host_dir in sorted(cache_root.iterdir()):
-        if not host_dir.is_dir():
-            continue
-        host = host_dir.name.strip()
-        if not host:
-            continue
-        for scheme in ("http", "https", "ftp"):
-            catalog[f"{scheme}://{host}/"] = host_dir
+    for scheme in ("http", "https", "ftp"):
+        catalog[f"{scheme}://{host}/"] = host_dir
     return catalog
 
 
@@ -458,28 +496,6 @@ def _best_assertion_resources(
     return tuple(sorted(matched, key=lambda item: item.priority, reverse=True))
 
 
-def _merge_formula_relationships(resource, relationship_resource):
-    """Overlay DTS-wide relationship fields while preserving per-file resource metadata."""
-    if relationship_resource is None:
-        return resource
-    relationship_fields = (
-        "variables",
-        "general_variables",
-        "parameters",
-        "preconditions",
-        "variable_arcs",
-        "parameter_arcs",
-        "precondition_arcs",
-        "variable_set_filters",
-    )
-    updates = {
-        field_name: getattr(relationship_resource, field_name)
-        for field_name in relationship_fields
-        if not getattr(resource, field_name) and getattr(relationship_resource, field_name)
-    }
-    return replace(resource, **updates) if updates else resource
-
-
 def _collect_schema_fragment_index(
     schema_paths: list[Path],
 ) -> tuple[dict[tuple[str, str], tuple[QName, bool]], dict[tuple[str, str], str]]:
@@ -528,6 +544,8 @@ def _resolve_typed_domain_ref_path(
     source_schema_path: str | None,
     typed_domain_ref: str,
     local_catalog: dict[str, Path] | None = None,
+    *,
+    cache_root: Path | None = None,
 ) -> Path | None:
     if not source_schema_path or "#" not in typed_domain_ref:
         return None
@@ -539,6 +557,10 @@ def _resolve_typed_domain_ref_path(
             if ref_path.startswith(prefix):
                 rel = ref_path[len(prefix) :].lstrip("/")
                 return (local_root / rel).resolve()
+        if cache_root is not None:
+            mirrored = _resolve_href_from_cache_mirror(ref_path, cache_root)
+            if mirrored is not None:
+                return mirrored
         return None
     return (Path(source_schema_path).parent / ref_path).resolve()
 
@@ -548,6 +570,8 @@ def _apply_and_check_typed_domain_refs(
     dimension_qnames: set[QName],
     schema_paths: list[Path],
     local_catalog: dict[str, Path] | None = None,
+    *,
+    cache_root: Path | None = None,
 ) -> dict[QName, Concept]:
     """Validate typedDomainRef syntax rules and attach resolved domain elements."""
     global_elements, fragment_kinds = _collect_schema_fragment_index(schema_paths)
@@ -573,6 +597,7 @@ def _apply_and_check_typed_domain_refs(
             concept.schema_path,
             typed_domain_ref,
             local_catalog,
+            cache_root=cache_root,
         )
         if target_path is None or "#" not in typed_domain_ref:
             raise TaxonomyParseError(
@@ -1352,6 +1377,72 @@ def _linkbase_parse_workers(linkbase_count: int) -> int:
     return max(1, min(linkbase_count, cpu_count, 8))
 
 
+# Large BDE taxonomies (e.g. FINREP) ship thousands of formula/message linkbases.
+# Parallel parsing duplicates full DOM trees in memory and can exceed tens of GB.
+_LARGE_LINKBASE_SEQUENTIAL_THRESHOLD = 64
+_SKIP_ASSERTION_MESSAGES_THRESHOLD = 1000
+_SKIP_FORMULA_ENRICHMENT_THRESHOLD = 256
+_SKIP_EAGER_FORMULA_PARSE_THRESHOLD = 1000
+_FORMULA_CHUNK_ASSERTION_THRESHOLD = 1000
+
+
+def _is_assertion_message_linkbase(path: Path) -> bool:
+    name = path.name.lower()
+    return "-err-" in name or "-lab-" in name
+
+
+def _assertion_message_linkbases(paths: list[Path]) -> list[Path]:
+    """Linkbases that carry formula assertion labels or validation messages."""
+    return [
+        path
+        for path in paths
+        if path.suffix.lower() in (".xml", ".xbrl") and _is_assertion_message_linkbase(path)
+    ]
+
+
+def _discover_formula_linkbases(linkbase_paths: list[Path]) -> list[Path]:
+    """Return linkbase paths that contain formula assertions (structural detection)."""
+    candidates = [
+        path
+        for path in linkbase_paths
+        if path.suffix.lower() in (".xml", ".xbrl")
+        and not _should_skip_linkbase(path)
+        and not _is_assertion_message_linkbase(path)
+    ]
+    if len(candidates) <= _LARGE_LINKBASE_SEQUENTIAL_THRESHOLD:
+        return [
+            path for path in candidates if linkbase_contains_formula_assertions(path)
+        ]
+
+    # FINREP/EBA: thousands of label/presentation files — skip iterparse when the
+    # path cannot be a validation-rule linkbase.
+    likely: list[Path] = []
+    uncertain: list[Path] = []
+    for path in candidates:
+        name = path.name.lower()
+        path_text = str(path).lower()
+        if (
+            name.startswith("vr-")
+            or "/val/" in path_text
+            or "assertion" in name
+            or "formula" in name
+        ):
+            likely.append(path)
+        elif any(
+            token in name
+            for token in ("-pre", "-calc", "-def", "-ref", "-lab", "presentation")
+        ):
+            continue
+        else:
+            uncertain.append(path)
+
+    formula_paths = list(dict.fromkeys(likely))
+    for path in uncertain:
+        if linkbase_contains_formula_assertions(path):
+            formula_paths.append(path)
+    return formula_paths
+
+
 def _run_path_jobs(
     paths: list[Path],
     parse_fn: Callable[[Path], Any],
@@ -1472,6 +1563,121 @@ class TaxonomyLoader:
         self._cache.put(cache_key, structure)
         return structure
 
+    def has_deferred_formula_assertions(self, taxonomy: TaxonomyStructure) -> bool:
+        """Return True when taxonomy open intentionally skipped a large formula set."""
+        if taxonomy.formula_assertion_set.assertions:
+            return False
+        formula_linkbases = _discover_formula_linkbases(list(taxonomy.linkbase_files))
+        return len(formula_linkbases) > _SKIP_EAGER_FORMULA_PARSE_THRESHOLD
+
+    def hydrate_deferred_formula_assertions(
+        self,
+        taxonomy: TaxonomyStructure,
+        progress_callback: ProgressCallback | None = None,
+        chunk_callback: FormulaChunkCallback | None = None,
+        cancel_callback: FormulaCancelCallback | None = None,
+    ) -> TaxonomyStructure:
+        """Load deferred formula assertions for a taxonomy already shown in the UI.
+
+        Large regulatory taxonomies are opened without eagerly materializing every
+        validation rule. This method performs that rule parsing later and emits
+        partial assertion sets so the UI can populate the Validations activity
+        while parsing continues.
+        """
+        from bde_xbrl_editor.taxonomy.models import (  # noqa: PLC0415
+            FormulaAssertion,
+            FormulaAssertionSet,
+            FormulaOutputDefinition,
+        )
+
+        if taxonomy.formula_assertion_set.assertions:
+            return taxonomy
+
+        formula_linkbases = _discover_formula_linkbases(list(taxonomy.linkbase_files))
+        total = len(formula_linkbases)
+        if not formula_linkbases:
+            if progress_callback:
+                progress_callback("No deferred formula assertions to load", 0, 0)
+            return taxonomy
+
+        assertions: list[FormulaAssertion] = []
+        output_formulas: list[FormulaOutputDefinition] = []
+        global_parameters = []
+        seen_assertion_ids: set[str] = set()
+        seen_formula_ids: set[str] = set()
+        seen_global_parameter_names: set[str] = set()
+        abstract_count = 0
+        pending_new_assertions = 0
+
+        def emit_chunk() -> None:
+            if chunk_callback is None:
+                return
+            chunk_callback(
+                FormulaAssertionSet(
+                    assertions=tuple(assertions),
+                    output_formulas=tuple(output_formulas),
+                    global_parameters=tuple(global_parameters),
+                    abstract_count=abstract_count,
+                )
+            )
+
+        if progress_callback:
+            progress_callback(f"Loading validation rules… 0/{total}", 0, total)
+
+        for index, linkbase_path in enumerate(formula_linkbases, start=1):
+            if cancel_callback is not None and cancel_callback():
+                break
+            formula_set = parse_formula_linkbase(linkbase_path)
+            if cancel_callback is not None and cancel_callback():
+                break
+            for assertion in formula_set.assertions:
+                if assertion.assertion_id in seen_assertion_ids:
+                    continue
+                seen_assertion_ids.add(assertion.assertion_id)
+                assertions.append(assertion)
+                pending_new_assertions += 1
+                if assertion.abstract:
+                    abstract_count += 1
+            for formula in formula_set.output_formulas:
+                if formula.formula_id in seen_formula_ids:
+                    continue
+                seen_formula_ids.add(formula.formula_id)
+                output_formulas.append(formula)
+            for parameter in formula_set.global_parameters:
+                if parameter.parameter_name in seen_global_parameter_names:
+                    continue
+                seen_global_parameter_names.add(parameter.parameter_name)
+                global_parameters.append(parameter)
+
+            if pending_new_assertions >= _FORMULA_CHUNK_ASSERTION_THRESHOLD:
+                emit_chunk()
+                pending_new_assertions = 0
+
+            if progress_callback and (index == total or index % 50 == 0):
+                progress_callback(
+                    (
+                        f"Loading validation rules… {index}/{total} files, "
+                        f"{len(assertions)} assertions"
+                    ),
+                    index,
+                    total,
+                )
+
+        formula_assertion_set = FormulaAssertionSet(
+            assertions=tuple(assertions),
+            output_formulas=tuple(output_formulas),
+            global_parameters=tuple(global_parameters),
+            abstract_count=abstract_count,
+        )
+        emit_chunk()
+        if progress_callback:
+            progress_callback(
+                f"Loaded {len(assertions)} validation assertion(s)",
+                total,
+                total,
+            )
+        return replace(taxonomy, formula_assertion_set=formula_assertion_set)
+
     # ------------------------------------------------------------------
     # Internal loading pipeline
     # ------------------------------------------------------------------
@@ -1526,15 +1732,7 @@ class TaxonomyLoader:
         calculation_linkbases = classified_linkbases["calc"]
         definition_linkbases = classified_linkbases["def"]
         table_linkbases = classified_linkbases["table"]
-        formula_linkbases = list(
-            dict.fromkeys(
-                p
-                for p in all_linkbase_paths
-                if p.suffix.lower() in (".xml", ".xbrl")
-                and not _should_skip_linkbase(p)
-                and linkbase_contains_formula_assertions(p)
-            )
-        )
+        formula_linkbases = _discover_formula_linkbases(all_linkbase_paths)
         linkbase_workers = _linkbase_parse_workers(len(all_linkbase_paths))
 
         # Step 2: Parse schemas → concepts (with cross-schema transitive SG resolution)
@@ -1608,6 +1806,21 @@ class TaxonomyLoader:
                     reason="No XBRL concepts found — file may not be a valid XBRL taxonomy entry point",
                 )
         progress(f"Schemas parsed — {len(concepts)} concepts ready", 2)
+
+        element_defaults: dict[QName, SchemaElementDefaults] = {}
+        for schema_path in schema_paths:
+            element_defaults.update(
+                collect_schema_element_defaults(
+                    schema_path,
+                    include_ns_map.get(schema_path),
+                )
+            )
+        for concept in concepts.values():
+            if concept.schema_default_value and concept.qname not in element_defaults:
+                element_defaults[concept.qname] = SchemaElementDefaults(
+                    value=concept.schema_default_value,
+                    attributes=(),
+                )
 
         monetary_workers = _schema_parse_workers(len(schema_paths))
         parsed_monetary_types = _run_path_jobs(
@@ -1752,6 +1965,12 @@ class TaxonomyLoader:
             for elr, arc_list in arcs.items():
                 calculation.setdefault(elr, []).extend(arc_list)
 
+        for elr, arc_list in _parse_embedded_calculation_linkbases(
+            list(schema_paths),
+            concept_id_map,
+        ).items():
+            calculation.setdefault(elr, []).extend(arc_list)
+
         parsed_definition_linkbases = _run_path_jobs(
             definition_linkbases,
             lambda lb_path: parse_definition_linkbase(
@@ -1773,6 +1992,7 @@ class TaxonomyLoader:
             dimension_qnames,
             schema_paths,
             effective_settings.local_catalog,
+            cache_root=find_taxonomy_cache_root(entry_point),
         )
         concepts = _apply_extensible_enumeration_values(concepts, definition_arcs)
         hypercubes = _rebuild_hypercubes(definition_arcs)
@@ -1819,8 +2039,8 @@ class TaxonomyLoader:
             tables.sort(key=lambda t: group_table_order.get(t.table_id, float("inf")))
         progress(f"Tables prepared — {len(tables)} available", 5)
 
-        # Step 6: Parse formula linkbase (if present)
-        progress("Assembling taxonomy structure…", 6)
+        # Steps 6–9: Formula linkbases (FINREP can expose thousands of DTS files;
+        # only parse formula/message subsets — not every presentation/calc linkbase).
         from bde_xbrl_editor.taxonomy.models import (  # noqa: PLC0415
             FormulaAssertion,
             FormulaAssertionSet,
@@ -1828,40 +2048,29 @@ class TaxonomyLoader:
         )
 
         formula_assertion_set: FormulaAssertionSet
-        if formula_linkbases:
-            all_assertions: list[FormulaAssertion] = []
-            all_output_formulas: list[FormulaOutputDefinition] = []
-            all_global_parameters = []
-            parsed_formula_linkbases = _run_path_jobs(
-                formula_linkbases,
-                parse_formula_linkbase,
-                workers=linkbase_workers,
+        if formula_linkbases and len(formula_linkbases) > _SKIP_EAGER_FORMULA_PARSE_THRESHOLD:
+            formula_assertion_set = FormulaAssertionSet()
+            progress(
+                (
+                    "Skipping eager formula assertion parse "
+                    f"({len(formula_linkbases)} files; large taxonomy)"
+                ),
+                6,
             )
-            bundled_formula_set = parse_formula_linkbase_bundle(all_linkbase_paths)
-            bundled_assertions = {
-                assertion.assertion_id: assertion
-                for assertion in bundled_formula_set.assertions
-            }
-            bundled_output_formulas = {
-                formula.formula_id: formula
-                for formula in bundled_formula_set.output_formulas
-            }
-            for _flp, fas in parsed_formula_linkbases:
-                all_assertions.extend(
-                    _merge_formula_relationships(
-                        assertion,
-                        bundled_assertions.get(assertion.assertion_id),
-                    )
-                    for assertion in fas.assertions
-                )
-                all_output_formulas.extend(
-                    _merge_formula_relationships(
-                        formula,
-                        bundled_output_formulas.get(formula.formula_id),
-                    )
-                    for formula in fas.output_formulas
-                )
-                all_global_parameters.extend(fas.global_parameters)
+        elif formula_linkbases:
+            formula_workers = (
+                1
+                if len(formula_linkbases) > _LARGE_LINKBASE_SEQUENTIAL_THRESHOLD
+                else linkbase_workers
+            )
+            progress(
+                f"Parsing formula linkbases ({len(formula_linkbases)} files)…",
+                6,
+            )
+            bundled_formula_set = parse_formula_linkbase_bundle(formula_linkbases)
+            all_assertions = list(bundled_formula_set.assertions)
+            all_output_formulas = list(bundled_formula_set.output_formulas)
+            all_global_parameters = list(bundled_formula_set.global_parameters)
 
             # Aggregator linkbases and their locator-discovered targets can expose
             # the same formula resources more than once. Keep one effective copy so
@@ -1893,25 +2102,45 @@ class TaxonomyLoader:
                 _deduped_global_parameters.append(parameter)
             all_global_parameters = _deduped_global_parameters
 
-            parsed_assertion_resource_linkbases = _run_path_jobs(
-                all_linkbase_paths,
-                parse_assertion_resource_linkbase,
-                workers=linkbase_workers,
-            )
+            message_linkbases = _assertion_message_linkbases(all_linkbase_paths)
             assertion_resources: dict[str, list[AssertionTextResource]] = {}
-            for _resource_path, resource_map in parsed_assertion_resource_linkbases:
-                for assertion_id, resources in resource_map.items():
-                    assertion_resources.setdefault(assertion_id, []).extend(resources)
-
-            parsed_assertion_table_linkbases = _run_path_jobs(
-                all_linkbase_paths,
-                parse_assertion_table_mappings,
-                workers=linkbase_workers,
-            )
             assertion_table_ids: dict[str, str] = {}
-            for _mapping_path, table_map in parsed_assertion_table_linkbases:
-                for assertion_id, table_id in table_map.items():
-                    assertion_table_ids.setdefault(assertion_id, table_id)
+            if len(message_linkbases) <= _SKIP_ASSERTION_MESSAGES_THRESHOLD:
+                message_workers = (
+                    1
+                    if len(message_linkbases) > _LARGE_LINKBASE_SEQUENTIAL_THRESHOLD
+                    else linkbase_workers
+                )
+                progress(
+                    f"Loading assertion labels and messages ({len(message_linkbases)} files)…",
+                    7,
+                )
+                parsed_assertion_resource_linkbases = _run_path_jobs(
+                    message_linkbases,
+                    parse_assertion_resource_linkbase,
+                    workers=message_workers,
+                )
+                for _resource_path, resource_map in parsed_assertion_resource_linkbases:
+                    for assertion_id, resources in resource_map.items():
+                        assertion_resources.setdefault(assertion_id, []).extend(resources)
+            else:
+                progress(
+                    "Skipping assertion labels/messages (large taxonomy — validation still runs)",
+                    7,
+                )
+
+            if len(formula_linkbases) <= _SKIP_FORMULA_ENRICHMENT_THRESHOLD:
+                progress("Mapping assertions to tables…", 8)
+                parsed_assertion_table_linkbases = _run_path_jobs(
+                    formula_linkbases,
+                    parse_assertion_table_mappings,
+                    workers=formula_workers,
+                )
+                for _mapping_path, table_map in parsed_assertion_table_linkbases:
+                    for assertion_id, table_id in table_map.items():
+                        assertion_table_ids.setdefault(assertion_id, table_id)
+            else:
+                progress("Skipping assertion-to-table mapping (large taxonomy)", 8)
 
             table_labels = {
                 table.table_id: (table.display_code or table.table_id) for table in tables
@@ -1953,26 +2182,36 @@ class TaxonomyLoader:
             )
         else:
             formula_assertion_set = FormulaAssertionSet()
+            progress("No formula linkbases in DTS", 6)
 
-        parsed_custom_function_linkbases = _run_path_jobs(
-            all_linkbase_paths,
-            parse_custom_function_linkbase,
-            workers=linkbase_workers,
-        )
         custom_functions: list[CustomFunctionDefinition] = []
-        seen_custom_functions: set[tuple[str, tuple[str, ...]]] = set()
-        for _custom_linkbase_path, definitions in parsed_custom_function_linkbases:
-            for definition in definitions:
-                key = (definition.name, definition.input_types)
-                if key in seen_custom_functions:
-                    continue
-                seen_custom_functions.add(key)
-                custom_functions.append(definition)
+        if formula_linkbases and len(formula_linkbases) <= _SKIP_FORMULA_ENRICHMENT_THRESHOLD:
+            custom_function_workers = (
+                1
+                if len(formula_linkbases) > _LARGE_LINKBASE_SEQUENTIAL_THRESHOLD
+                else linkbase_workers
+            )
+            progress("Parsing custom formula functions…", 9)
+            parsed_custom_function_linkbases = _run_path_jobs(
+                formula_linkbases,
+                parse_custom_function_linkbase,
+                workers=custom_function_workers,
+            )
+            seen_custom_functions: set[tuple[str, tuple[str, ...]]] = set()
+            for _custom_linkbase_path, definitions in parsed_custom_function_linkbases:
+                for definition in definitions:
+                    key = (definition.name, definition.input_types)
+                    if key in seen_custom_functions:
+                        continue
+                    seen_custom_functions.add(key)
+                    custom_functions.append(definition)
+        elif formula_linkbases:
+            progress("Skipping custom formula function scan (large taxonomy)", 9)
 
         metadata = _extract_metadata(entry_point, declared_languages)
-        progress(f"Assembled {metadata.name} v{metadata.version}", 6)
+        progress(f"Assembled {metadata.name} v{metadata.version}", 9)
 
-        # Step 7: Assemble TaxonomyStructure
+        # Step 10: Assemble TaxonomyStructure
         structure = TaxonomyStructure(
             metadata=metadata,
             concepts=concepts,
@@ -1989,6 +2228,7 @@ class TaxonomyLoader:
             schema_files=tuple(sorted(schema_paths)),
             linkbase_files=tuple(sorted(all_linkbase_paths)),
             schema_substitution_groups=schema_substitution_groups,
+            element_defaults=element_defaults,
         )
 
         progress("Taxonomy loaded successfully", _TOTAL_STEPS)

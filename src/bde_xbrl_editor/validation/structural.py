@@ -375,7 +375,8 @@ class StructuralConformanceValidator:
 
             if canonical_context_refs is not None and ctx is not None:
                 ctx_bind = canonical_context_refs.get(fact.context_ref, fact.context_ref)
-                key = (fact.concept, ctx_bind, fact.unit_ref)
+                pos = fact.position_path if fact.position_path else fact.tuple_path
+                key = (fact.concept, ctx_bind, fact.unit_ref, pos)
                 duplicate_key_values[key].append(fact.value)
 
         duplicate_facts.extend(self._duplicate_findings_from_key_values(duplicate_key_values))
@@ -603,7 +604,8 @@ class StructuralConformanceValidator:
             if fact.context_ref not in instance.contexts:
                 continue
             ctx_bind = canon_ctx.get(fact.context_ref, fact.context_ref)
-            key = (fact.concept, ctx_bind, fact.unit_ref)
+            pos = fact.position_path if fact.position_path else fact.tuple_path
+            key = (fact.concept, ctx_bind, fact.unit_ref, pos)
             key_values[key].append(fact.value)
 
         return self._duplicate_findings_from_key_values(key_values)
@@ -616,7 +618,10 @@ class StructuralConformanceValidator:
         for key, vals in key_values.items():
             if len(set(vals)) <= 1:
                 continue
-            concept, ctx_bind, unit_ref = key
+            concept, ctx_bind, unit_ref, position_path = key
+            position_suffix = (
+                f" at position {position_path!r}" if position_path else ""
+            )
             findings.append(
                 ValidationFinding(
                     rule_id="structural:duplicate-fact",
@@ -625,6 +630,7 @@ class StructuralConformanceValidator:
                         f"Inconsistent duplicate facts for concept '{concept}' "
                         f"in context '{ctx_bind}'"
                         + (f" with unit '{unit_ref}'" if unit_ref is not None else "")
+                        + position_suffix
                         + f": values {sorted(set(vals))!r}."
                     ),
                     source="structural",

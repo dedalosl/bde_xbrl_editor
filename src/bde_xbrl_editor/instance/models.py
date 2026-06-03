@@ -314,6 +314,10 @@ class Fact:
     decimals: str | None = None
     precision: str | None = None
     is_nil: bool = False
+    # Indices of tuple ancestors from the xbrl root (empty = direct child of xbrl).
+    tuple_path: tuple[int, ...] = ()
+    # Document position path (root child index, then tuple child indices) for duplicate detection.
+    position_path: tuple[int, ...] = ()
 
 
 @dataclass

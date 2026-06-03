@@ -17,6 +17,7 @@ from bde_xbrl_editor.instance.models import XbrlInstance
 from bde_xbrl_editor.performance import StageTiming
 from bde_xbrl_editor.taxonomy.models import TaxonomyStructure
 from bde_xbrl_editor.validation.calculation import CalculationConsistencyValidator
+from bde_xbrl_editor.validation.essence_alias import EssenceAliasValidator
 from bde_xbrl_editor.validation.dimensional import DimensionalConstraintValidator
 from bde_xbrl_editor.validation.formula.evaluator import FormulaEvaluator
 from bde_xbrl_editor.validation.formula.static import FormulaStaticValidator
@@ -150,6 +151,27 @@ class InstanceValidator:
                 findings.extend(stage_findings)
                 self._publish_findings(stage_findings)
             stage_timings.append(StageTiming("calculation", time.perf_counter() - stage_started_at))
+
+        # --- 2b. Essence-alias closure ----------------------------------------
+        if not (self._cancel_event and self._cancel_event.is_set()):
+            stage_started_at = time.perf_counter()
+            try:
+                ea = EssenceAliasValidator()
+                stage_findings = tuple(ea.validate(instance, self._taxonomy))
+                findings.extend(stage_findings)
+                self._publish_findings(stage_findings)
+            except Exception as exc:  # noqa: BLE001
+                stage_findings = (
+                    ValidationFinding(
+                        rule_id="internal:essence-alias-error",
+                        severity=ValidationSeverity.ERROR,
+                        message=f"Essence-alias validator failed unexpectedly: {exc}",
+                        source="essence-alias",
+                    ),
+                )
+                findings.extend(stage_findings)
+                self._publish_findings(stage_findings)
+            stage_timings.append(StageTiming("essence-alias", time.perf_counter() - stage_started_at))
 
         # --- 3. Dimensional checks -------------------------------------------
         if self._include_dimensional and not (self._cancel_event and self._cancel_event.is_set()):

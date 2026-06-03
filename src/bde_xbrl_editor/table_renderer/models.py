@@ -108,3 +108,4 @@ class ComputedTableLayout:
     active_z_index: int
     body: list[list[BodyCell]]  # body[row][col]
     active_z_constraints: dict[QName, QName] = field(default_factory=dict)
+    table_extended_link_role: str = ""

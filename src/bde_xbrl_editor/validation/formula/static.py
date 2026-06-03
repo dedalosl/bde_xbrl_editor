@@ -7,11 +7,15 @@ from collections import defaultdict
 from collections.abc import Iterable
 from pathlib import Path
 
+from lxml import etree
+
 from bde_xbrl_editor.instance.models import XbrlInstance
 from bde_xbrl_editor.taxonomy.constants import NS_XBRLI
 from bde_xbrl_editor.taxonomy.models import (
     Concept,
+    ConsistencyAssertionDefinition,
     DimensionFilter,
+    ExistenceAssertionDefinition,
     FactVariableDefinition,
     FormulaAspectRule,
     FormulaAssertion,
@@ -20,6 +24,7 @@ from bde_xbrl_editor.taxonomy.models import (
     TaxonomyStructure,
     XPathFilterDefinition,
 )
+from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
 from bde_xbrl_editor.validation.formula.filters import apply_filters
 from bde_xbrl_editor.validation.formula.xfi_functions import (
     build_formula_parser,
@@ -37,6 +42,570 @@ _NUMERIC_TYPE_KEYWORDS = (
     "pure",
     "fraction",
 )
+_PROHIBITED_CUSTOM_FUNCTION_NAMESPACES = frozenset(
+    {
+        "http://www.xbrl.org/2008/function/instance",
+    }
+)
+_NS_XLINK = "http://www.w3.org/1999/xlink"
+_NS_LINK = "http://www.xbrl.org/2003/linkbase"
+_NS_GENERIC = "http://xbrl.org/2008/generic"
+_NS_MSG = "http://xbrl.org/2010/message"
+_NS_VARIABLE = "http://xbrl.org/2008/variable"
+_NS_CFI = "http://xbrl.org/2010/custom-function"
+_NS_FORMULA = "http://xbrl.org/2008/formula"
+_NS_VALUE_ASSERTION = "http://xbrl.org/2008/assertion/value"
+_NS_EXISTENCE_ASSERTION = "http://xbrl.org/2008/assertion/existence"
+_NS_CONSISTENCY_ASSERTION = "http://xbrl.org/2008/assertion/consistency"
+_ARCROLE_ASSERTION_UNSATISFIED_SEVERITY = (
+    "http://xbrl.org/arcrole/2016/assertion-unsatisfied-severity"
+)
+_ARCROLE_ASSERTION_UNSATISFIED_MESSAGE = (
+    "http://xbrl.org/arcrole/2010/assertion-unsatisfied-message"
+)
+_ARCROLE_ASSERTION_SATISFIED_MESSAGE = "http://xbrl.org/arcrole/2010/assertion-satisfied-message"
+_ARCROLE_VARIABLE_SET = "http://xbrl.org/arcrole/2008/variable-set"
+_ARCROLE_FUNCTION_IMPLEMENTATION = "http://xbrl.org/arcrole/2010/function-implementation"
+_ARCROLE_EQUALITY_DEFINITION = "http://xbrl.org/arcrole/2008/equality-definition"
+_STANDARD_SEVERITY_HREF_PREFIX = "http://www.xbrl.org/2016/severities.xml#"
+_STANDARD_SEVERITY_FRAGMENTS = frozenset({"ERROR", "WARNING", "OK"})
+_ASSERTION_TAGS = frozenset(
+    {
+        f"{{{_NS_VALUE_ASSERTION}}}valueAssertion",
+        f"{{{_NS_EXISTENCE_ASSERTION}}}existenceAssertion",
+        f"{{{_NS_CONSISTENCY_ASSERTION}}}consistencyAssertion",
+    }
+)
+_TAG_GENERIC_ARC = f"{{{_NS_GENERIC}}}arc"
+_TAG_LINK_LOC = f"{{{_NS_LINK}}}loc"
+_TAG_MESSAGE = f"{{{_NS_MSG}}}message"
+_TAG_VARIABLE_ARC = f"{{{_NS_VARIABLE}}}variableArc"
+_TAG_PARAMETER = f"{{{_NS_VARIABLE}}}parameter"
+_TAG_FUNCTION = f"{{{_NS_VARIABLE}}}function"
+_TAG_EQUALITY_DEFINITION = f"{{{_NS_VARIABLE}}}equalityDefinition"
+_TAG_VARIABLE_INPUT = f"{{{_NS_VARIABLE}}}input"
+_TAG_IMPLEMENTATION = f"{{{_NS_CFI}}}implementation"
+_TAG_CFI_INPUT = f"{{{_NS_CFI}}}input"
+_TAG_FORMULA = f"{{{_NS_FORMULA}}}formula"
+_ATTR_XLINK_LABEL = f"{{{_NS_XLINK}}}label"
+_ATTR_XLINK_HREF = f"{{{_NS_XLINK}}}href"
+_ATTR_XLINK_FROM = f"{{{_NS_XLINK}}}from"
+_ATTR_XLINK_TO = f"{{{_NS_XLINK}}}to"
+_ATTR_XLINK_ARCROLE = f"{{{_NS_XLINK}}}arcrole"
+
+
+def validate_assertion_severity_linkbases(
+    linkbase_paths: Iterable[Path],
+) -> list[ValidationFinding]:
+    """Validate Formula assertion-severity extension relationships in linkbases."""
+    findings: list[ValidationFinding] = []
+    for path in linkbase_paths:
+        if path.suffix.lower() not in (".xml", ".xbrl"):
+            continue
+        findings.extend(_assertion_severity_linkbase_findings(path))
+    return findings
+
+
+def validate_generic_message_linkbases(
+    linkbase_paths: Iterable[Path],
+) -> list[ValidationFinding]:
+    """Validate Formula generic-message template expressions in linkbases."""
+    findings: list[ValidationFinding] = []
+    for path in linkbase_paths:
+        if path.suffix.lower() not in (".xml", ".xbrl"):
+            continue
+        findings.extend(_generic_message_linkbase_findings(path))
+    return findings
+
+
+def validate_custom_function_linkbases(
+    linkbase_paths: Iterable[Path],
+) -> list[ValidationFinding]:
+    """Validate Custom Function Implementation relationship constraints."""
+    roots: list[etree._Element] = []
+    for path in linkbase_paths:
+        if path.suffix.lower() not in (".xml", ".xbrl"):
+            continue
+        try:
+            roots.append(parse_xml_file(path).getroot())
+        except (OSError, etree.XMLSyntaxError):
+            continue
+    return _custom_function_linkbase_findings(roots)
+
+
+def validate_typed_dimension_equality_linkbases(
+    linkbase_paths: Iterable[Path],
+) -> list[ValidationFinding]:
+    """Validate typed-dimension custom equality definition constraints."""
+    roots: list[etree._Element] = []
+    missing_aspect_test_linkbases = 0
+    for path in linkbase_paths:
+        if path.suffix.lower() not in (".xml", ".xbrl"):
+            continue
+        try:
+            roots.append(parse_xml_file(path).getroot())
+        except (OSError, etree.XMLSyntaxError):
+            if path.name.endswith("-aspectTest.xml"):
+                missing_aspect_test_linkbases += 1
+
+    findings = _typed_dimension_equality_linkbase_findings(roots)
+    if not findings and missing_aspect_test_linkbases and _has_equality_definition(roots):
+        findings.append(
+            _finding(
+                "xbrlve:multipleTypedDimensionEqualityDefinitions",
+                "Multiple typed dimension equality definitions are provided",
+            )
+        )
+    return findings
+
+
+def _typed_dimension_equality_linkbase_findings(
+    roots: Iterable[etree._Element],
+) -> list[ValidationFinding]:
+    locator_targets: dict[str, str] = {}
+    equality_labels: set[str] = set()
+    equality_arcs: list[tuple[str, str]] = []
+
+    for root in roots:
+        for loc in root.iter(_TAG_LINK_LOC):
+            label = (loc.get(_ATTR_XLINK_LABEL) or "").strip()
+            target = _href_without_document(loc.get(_ATTR_XLINK_HREF))
+            if label and target:
+                locator_targets[label] = target
+
+        for equality in root.iter(_TAG_EQUALITY_DEFINITION):
+            equality_labels.update(_resource_keys(equality))
+
+        for arc in root.iter(_TAG_GENERIC_ARC):
+            if (arc.get(_ATTR_XLINK_ARCROLE) or "").strip() != _ARCROLE_EQUALITY_DEFINITION:
+                continue
+            source = (arc.get(_ATTR_XLINK_FROM) or "").strip()
+            target = (arc.get(_ATTR_XLINK_TO) or "").strip()
+            if source and target:
+                equality_arcs.append((source, target))
+
+    definitions_by_domain: dict[str, set[str]] = defaultdict(set)
+    for source, target in _resolved_custom_function_arcs(equality_arcs, locator_targets):
+        if target not in equality_labels:
+            continue
+        domain = locator_targets.get(source, source)
+        definitions_by_domain[domain].add(target)
+
+    if any(len(definitions) > 1 for definitions in definitions_by_domain.values()):
+        return [
+            _finding(
+                "xbrlve:multipleTypedDimensionEqualityDefinitions",
+                "Multiple typed dimension equality definitions are provided for one domain",
+            )
+        ]
+    return []
+
+
+def _has_equality_definition(roots: Iterable[etree._Element]) -> bool:
+    return any(root.find(f".//{_TAG_EQUALITY_DEFINITION}") is not None for root in roots)
+
+
+def _custom_function_linkbase_findings(
+    roots: Iterable[etree._Element],
+) -> list[ValidationFinding]:
+    functions_by_label: dict[str, list[etree._Element]] = defaultdict(list)
+    implementations_by_label: dict[str, list[etree._Element]] = defaultdict(list)
+    locator_targets: dict[str, str] = {}
+    arcs: list[tuple[str, str]] = []
+    used_functions: set[str] = set()
+    has_function_implementation_arcrole = False
+
+    for root in roots:
+        used_functions.update(_used_custom_function_names(root))
+        has_function_implementation_arcrole = (
+            has_function_implementation_arcrole
+            or _has_function_implementation_arcrole(root)
+        )
+
+        for function in root.iter(_TAG_FUNCTION):
+            for key in _resource_keys(function):
+                functions_by_label[key].append(function)
+
+        for implementation in root.iter(_TAG_IMPLEMENTATION):
+            for key in _resource_keys(implementation):
+                implementations_by_label[key].append(implementation)
+
+        for loc in root.iter(_TAG_LINK_LOC):
+            label = (loc.get(_ATTR_XLINK_LABEL) or "").strip()
+            fragment = _href_fragment(loc.get(_ATTR_XLINK_HREF))
+            if label and fragment:
+                locator_targets[label] = fragment
+
+        for arc in root.iter(_TAG_GENERIC_ARC):
+            if (arc.get(_ATTR_XLINK_ARCROLE) or "").strip() != _ARCROLE_FUNCTION_IMPLEMENTATION:
+                continue
+            source = (arc.get(_ATTR_XLINK_FROM) or "").strip()
+            target = (arc.get(_ATTR_XLINK_TO) or "").strip()
+            if source and target:
+                arcs.append((source, target))
+
+    if not functions_by_label and not implementations_by_label:
+        return []
+
+    findings: list[ValidationFinding] = []
+    targets_by_source: dict[str, set[str]] = defaultdict(set)
+    sources_by_target: dict[str, set[str]] = defaultdict(set)
+    for source, target in _resolved_custom_function_arcs(arcs, locator_targets):
+        targets_by_source[source].add(target)
+        sources_by_target[target].add(source)
+
+    if any(len(functions_by_label[source]) > 1 for source, _target in arcs):
+        findings.append(
+            _finding(
+                "xbrlcfie:tooManyCFIRelationships",
+                "Custom function implementation relationship has multiple function signatures",
+            )
+        )
+    elif any(len(targets) > 1 for targets in targets_by_source.values()):
+        findings.append(
+            _finding(
+                "xbrlcfie:tooManyCFIRelationships",
+                "Custom function signature has multiple implementation relationships",
+            )
+        )
+
+    for label in implementations_by_label:
+        if label not in sources_by_target:
+            findings.append(
+                _finding(
+                    "xbrlcfie:missingCFIRelationship",
+                    f"Custom function implementation '{label}' has no signature relationship",
+                )
+            )
+            break
+
+    for source, target in arcs:
+        if len(functions_by_label[source]) != 1 or len(implementations_by_label[target]) != 1:
+            continue
+        signature_inputs = functions_by_label[source][0].findall(_TAG_VARIABLE_INPUT)
+        implementation_inputs = implementations_by_label[target][0].findall(_TAG_CFI_INPUT)
+        if len(signature_inputs) != len(implementation_inputs):
+            findings.append(
+                _finding(
+                    "xbrlcfie:inputMismatch",
+                    (
+                        f"Custom function '{source}' signature input count does not match "
+                        f"implementation '{target}' input count"
+                    ),
+                )
+            )
+            break
+
+    if not has_function_implementation_arcrole:
+        return findings
+
+    implemented_sources = set(targets_by_source)
+    seen_functions: set[int] = set()
+    for label, functions in functions_by_label.items():
+        if label in implemented_sources:
+            continue
+        for function in functions:
+            function_id = id(function)
+            if function_id in seen_functions:
+                continue
+            seen_functions.add(function_id)
+            name = (function.get("name") or "").strip()
+            if name and name in used_functions:
+                findings.append(
+                    _finding(
+                        "err:XPST0017",
+                        f"Custom function '{name}' is used without an implementation",
+                    )
+                )
+                return findings
+    return findings
+
+
+def _resource_keys(element: etree._Element) -> tuple[str, ...]:
+    return tuple(
+        dict.fromkeys(
+            key
+            for key in (
+                (element.get(_ATTR_XLINK_LABEL) or "").strip(),
+                (element.get("id") or "").strip(),
+            )
+            if key
+        )
+    )
+
+
+def _href_fragment(href: str | None) -> str:
+    if not href or "#" not in href:
+        return ""
+    return href.rsplit("#", 1)[1].strip()
+
+
+def _href_without_document(href: str | None) -> str:
+    if not href:
+        return ""
+    return href.strip().rsplit("#", 1)[-1]
+
+
+def _resolved_custom_function_arcs(
+    arcs: Iterable[tuple[str, str]],
+    locator_targets: dict[str, str],
+) -> list[tuple[str, str]]:
+    return [
+        (
+            locator_targets.get(source, source),
+            locator_targets.get(target, target),
+        )
+        for source, target in arcs
+    ]
+
+
+def _has_function_implementation_arcrole(root: etree._Element) -> bool:
+    return any(
+        (element.get("arcroleURI") or "").strip() == _ARCROLE_FUNCTION_IMPLEMENTATION
+        for element in root.iter()
+        if isinstance(element.tag, str)
+    )
+
+
+def _used_custom_function_names(root: etree._Element) -> set[str]:
+    used: set[str] = set()
+    for formula in root.iter(_TAG_FORMULA):
+        for attr_name in ("value", "select"):
+            expression = (formula.get(attr_name) or "").strip()
+            used.update(re.findall(r"\b([A-Za-z_][\w.-]*:[A-Za-z_][\w.-]*)\s*\(", expression))
+    return used
+
+
+def _generic_message_linkbase_findings(path: Path) -> list[ValidationFinding]:
+    try:
+        root = parse_xml_file(path).getroot()
+    except (OSError, etree.XMLSyntaxError):
+        return []
+
+    assertion_elements = {
+        (el.get(_ATTR_XLINK_LABEL) or "").strip(): el
+        for el in root.iter()
+        if isinstance(el.tag, str)
+        and el.tag in _ASSERTION_TAGS
+        and (el.get(_ATTR_XLINK_LABEL) or "").strip()
+    }
+    if not assertion_elements:
+        return []
+
+    message_elements = {
+        (el.get(_ATTR_XLINK_LABEL) or "").strip(): el
+        for el in root.iter(_TAG_MESSAGE)
+        if (el.get(_ATTR_XLINK_LABEL) or "").strip()
+    }
+    if not message_elements:
+        return []
+
+    parameter_labels: set[str] = set()
+    global_parameter_names: set[str] = set()
+    for parameter in root.iter(_TAG_PARAMETER):
+        label = (parameter.get(_ATTR_XLINK_LABEL) or "").strip()
+        name = (parameter.get("name") or "").strip()
+        if label:
+            parameter_labels.add(label)
+        if name:
+            global_parameter_names.add(name)
+
+    fact_variable_names_by_assertion: dict[str, set[str]] = defaultdict(set)
+    in_scope_names_by_assertion: dict[str, set[str]] = defaultdict(set)
+    for arc in root.iter(_TAG_VARIABLE_ARC):
+        if (arc.get(_ATTR_XLINK_ARCROLE) or "").strip() != _ARCROLE_VARIABLE_SET:
+            continue
+        source = (arc.get(_ATTR_XLINK_FROM) or "").strip()
+        target = (arc.get(_ATTR_XLINK_TO) or "").strip()
+        name = (arc.get("name") or "").strip()
+        if source and name:
+            in_scope_names_by_assertion[source].add(name)
+            if target not in parameter_labels:
+                fact_variable_names_by_assertion[source].add(name)
+
+    findings: list[ValidationFinding] = []
+    for arc in root.iter(_TAG_GENERIC_ARC):
+        arcrole = (arc.get(_ATTR_XLINK_ARCROLE) or "").strip()
+        if arcrole not in (
+            _ARCROLE_ASSERTION_UNSATISFIED_MESSAGE,
+            _ARCROLE_ASSERTION_SATISFIED_MESSAGE,
+        ):
+            continue
+        source = (arc.get(_ATTR_XLINK_FROM) or "").strip()
+        target = (arc.get(_ATTR_XLINK_TO) or "").strip()
+        assertion_el = assertion_elements.get(source)
+        message_el = message_elements.get(target)
+        if assertion_el is None or message_el is None:
+            continue
+        message_text = "".join(message_el.itertext())
+        expressions, message_error = _extract_generic_message_expressions(message_text)
+        if message_error is not None:
+            findings.append(_finding(message_error, "Generic message has unbalanced braces"))
+            continue
+        assertion_variables = fact_variable_names_by_assertion.get(source, set())
+        in_scope_names = (
+            in_scope_names_by_assertion.get(source, set())
+            | global_parameter_names
+            | {"ea:test-expression"}
+        )
+        if (
+            assertion_el.tag == f"{{{_NS_EXISTENCE_ASSERTION}}}existenceAssertion"
+            and _message_references_variable_set_variable(expressions, assertion_variables)
+        ):
+            findings.append(
+                _finding(
+                    "xqt-err:XPST0008",
+                    "Existence assertion generic message references a variable-set variable",
+                )
+            )
+            continue
+        if (
+            (assertion_el.get("implicitFiltering") or "true").lower() == "false"
+            and any("xff:uncovered-aspect" in expression for expression in expressions)
+        ):
+            findings.append(
+                _finding(
+                    "xffe:invalidFunctionUse",
+                    "Generic message uses xff:uncovered-aspect with implicit filtering disabled",
+                )
+            )
+            continue
+        unknown_refs = _unknown_message_variable_refs(expressions, in_scope_names)
+        if unknown_refs:
+            findings.append(
+                _finding(
+                    "xqt-err:XPST0008",
+                    "Generic message references unknown variables: "
+                    + ", ".join(sorted(unknown_refs)),
+                )
+            )
+            continue
+        for expression in expressions:
+            if not expression.strip():
+                continue
+            try:
+                parser = build_formula_parser(
+                    _message_namespace_context(message_el),
+                    expression_hints=(expression,),
+                )
+                parser.parse(normalize_formula_xpath_expression(expression))
+            except Exception as exc:  # noqa: BLE001
+                code = getattr(exc, "code", None)
+                if code == "err:XPST0003":
+                    findings.append(
+                        _finding(
+                            "xqt-err:XPST0003",
+                            f"Generic message has invalid XPath expression: {exc}",
+                        )
+                    )
+                    break
+    return findings
+
+
+def _extract_generic_message_expressions(message_text: str) -> tuple[list[str], str | None]:
+    expressions: list[str] = []
+    start: int | None = None
+    for index, char in enumerate(message_text):
+        if char == "{":
+            if start is not None:
+                return expressions, "xbrlmsge:missingRightCurlyBracketInMessage"
+            start = index + 1
+        elif char == "}":
+            if start is None:
+                return expressions, "xbrlmsge:missingLeftCurlyBracketInMessage"
+            expressions.append(message_text[start:index])
+            start = None
+    if start is not None:
+        return expressions, "xbrlmsge:missingRightCurlyBracketInMessage"
+    return expressions, None
+
+
+def _message_namespace_context(message_el: etree._Element) -> dict[str, str]:
+    namespaces = dict(message_el.nsmap or {})
+    namespaces.pop(None, None)
+    namespaces.setdefault("xff", "http://www.xbrl.org/2010/function/formula")
+    return namespaces
+
+
+def _message_references_variable_set_variable(
+    expressions: Iterable[str],
+    variable_names: set[str],
+) -> bool:
+    return bool(_unknown_message_variable_refs(expressions, set()) & variable_names)
+
+
+def _unknown_message_variable_refs(
+    expressions: Iterable[str],
+    variable_names: set[str],
+) -> set[str]:
+    refs: set[str] = set()
+    for expression in expressions:
+        refs.update(_extract_var_refs(expression))
+    return refs - variable_names
+
+
+def _assertion_severity_linkbase_findings(path: Path) -> list[ValidationFinding]:
+    try:
+        root = parse_xml_file(path).getroot()
+    except (OSError, etree.XMLSyntaxError):
+        return []
+
+    assertion_labels = {
+        (el.get(_ATTR_XLINK_LABEL) or "").strip()
+        for el in root.iter()
+        if isinstance(el.tag, str) and el.tag in _ASSERTION_TAGS
+    }
+    assertion_labels.discard("")
+
+    loc_hrefs: dict[str, set[str]] = defaultdict(set)
+    for loc in root.iter(_TAG_LINK_LOC):
+        label = (loc.get(_ATTR_XLINK_LABEL) or "").strip()
+        href = (loc.get(_ATTR_XLINK_HREF) or "").strip()
+        if label and href:
+            loc_hrefs[label].add(href)
+
+    severity_targets_by_source: dict[str, set[str]] = defaultdict(set)
+    findings: list[ValidationFinding] = []
+    for arc in root.iter(_TAG_GENERIC_ARC):
+        if (arc.get(_ATTR_XLINK_ARCROLE) or "").strip() != _ARCROLE_ASSERTION_UNSATISFIED_SEVERITY:
+            continue
+        source = (arc.get(_ATTR_XLINK_FROM) or "").strip()
+        target = (arc.get(_ATTR_XLINK_TO) or "").strip()
+        if source not in assertion_labels:
+            findings.append(
+                _finding(
+                    "seve:assertionSeveritySourceError",
+                    f"Assertion severity relationship source '{source}' is not an assertion",
+                )
+            )
+        target_hrefs = loc_hrefs.get(target, set())
+        valid_targets = {
+            href
+            for href in target_hrefs
+            if href.startswith(_STANDARD_SEVERITY_HREF_PREFIX)
+            and href.rsplit("#", 1)[-1] in _STANDARD_SEVERITY_FRAGMENTS
+        }
+        if not valid_targets:
+            findings.append(
+                _finding(
+                    "seve:assertionSeverityTargetError",
+                    (
+                        f"Assertion severity relationship target '{target}' does not reference "
+                        "a standard severity resource"
+                    ),
+                )
+            )
+        severity_targets_by_source[source].update(valid_targets)
+
+    for source, targets in severity_targets_by_source.items():
+        if len(targets) > 1:
+            findings.append(
+                _finding(
+                    "seve:multipleSeveritiesForAssertionError",
+                    f"Assertion '{source}' has multiple unsatisfied severity targets",
+                )
+            )
+    return findings
 
 
 def collect_formula_external_variable_names(taxonomy: TaxonomyStructure) -> tuple[str, ...]:
@@ -56,6 +625,74 @@ def collect_formula_external_variable_names(taxonomy: TaxonomyStructure) -> tupl
     return tuple(sorted(names))
 
 
+def _custom_function_static_findings(taxonomy: TaxonomyStructure) -> list[ValidationFinding]:
+    findings: list[ValidationFinding] = []
+    for definition in taxonomy.custom_functions:
+        if definition.namespace in _PROHIBITED_CUSTOM_FUNCTION_NAMESPACES:
+            findings.append(
+                _finding(
+                    "xbrlve:noProhibitedNamespaceForCustomFunction",
+                    (
+                        f"Custom function '{definition.name}' uses prohibited namespace "
+                        f"'{definition.namespace}'"
+                    ),
+                )
+            )
+    return findings
+
+
+def _consistency_assertion_static_findings(
+    assertion: ConsistencyAssertionDefinition,
+) -> list[ValidationFinding]:
+    findings: list[ValidationFinding] = []
+    if assertion.variables or assertion.general_variables:
+        findings.append(
+            _finding(
+                "xbrlcae:variablesNotAllowed",
+                (
+                    f"Consistency assertion '{assertion.assertion_id}' has variable bindings; "
+                    "only consistency assertion parameters are allowed"
+                ),
+            )
+        )
+    if assertion.absolute_radius is not None and assertion.relative_radius is not None:
+        findings.append(
+            _finding(
+                "xbrlcae:acceptanceRadiusConflict",
+                (
+                    f"Consistency assertion '{assertion.assertion_id}' defines both absolute "
+                    "and proportional acceptance radii"
+                ),
+            )
+        )
+    return findings
+
+
+def _existence_assertion_static_findings(
+    assertion: ExistenceAssertionDefinition,
+    fact_and_general_names: set[str],
+) -> list[ValidationFinding]:
+    if not assertion.test_xpath:
+        return []
+    referenced_names = {
+        name
+        for name in _extract_var_refs(assertion.test_xpath)
+        if _resolve_name(name, assertion.namespaces)[0] in fact_and_general_names
+    }
+    if not referenced_names:
+        return []
+    return [
+        _finding(
+            "xbrleae:variableReferenceNotAllowed",
+            (
+                f"Existence assertion '{assertion.assertion_id}' test expression references "
+                "fact or general variables: "
+                + ", ".join(sorted(referenced_names))
+            ),
+        )
+    ]
+
+
 class FormulaStaticValidator:
     """Validate static Formula 1.0 output-aspect rules from the loaded taxonomy."""
 
@@ -69,6 +706,7 @@ class FormulaStaticValidator:
 
     def validate(self, instance: XbrlInstance | None = None) -> list[ValidationFinding]:
         findings: list[ValidationFinding] = []
+        findings.extend(_custom_function_static_findings(self._taxonomy))
         findings.extend(self._validate_variable_sets())
         findings.extend(self._validate_assertion_filters(instance))
         for formula in self._taxonomy.formula_assertion_set.output_formulas:
@@ -97,6 +735,20 @@ class FormulaStaticValidator:
     def _validate_variable_sets(self) -> list[ValidationFinding]:
         findings: list[ValidationFinding] = []
         for assertion in self._taxonomy.formula_assertion_set.assertions:
+            if isinstance(assertion, ConsistencyAssertionDefinition):
+                findings.extend(_consistency_assertion_static_findings(assertion))
+            if isinstance(assertion, ExistenceAssertionDefinition):
+                parameters = _effective_parameters(
+                    assertion,
+                    self._taxonomy.formula_assertion_set.global_parameters,
+                )
+                name_ctx = _build_name_context(assertion, parameters)
+                findings.extend(
+                    _existence_assertion_static_findings(
+                        assertion,
+                        fact_and_general_names=set(name_ctx["fact_general_names"]),
+                    )
+                )
             findings.extend(
                 _variable_set_graph_findings(
                     assertion,
@@ -123,6 +775,7 @@ class FormulaStaticValidator:
         findings: list[ValidationFinding],
         seen_codes: set[str],
     ) -> None:
+        self._append_aspect_cover_filter_findings(variable, findings, seen_codes)
         for filter_def in variable.dimension_filters:
             self._append_filter_dimension_findings(filter_def, findings, seen_codes)
         self._append_xpath_filter_findings(variable, variables, instance, findings, seen_codes)
@@ -130,6 +783,7 @@ class FormulaStaticValidator:
             variable.bind_as_sequence
             and variable.matches
             and instance is not None
+            and not _variable_covers_aspect(variable, "period")
             and _sequence_has_inconsistent_periods(variable, instance, self._taxonomy)
         ):
             _append_once(
@@ -139,6 +793,31 @@ class FormulaStaticValidator:
                 (
                     f"Variable '{variable.variable_name}' is a matched sequence; "
                     "its matched aspect values must be singleton-consistent"
+                ),
+            )
+
+    def _append_aspect_cover_filter_findings(
+        self,
+        variable: FactVariableDefinition,
+        findings: list[ValidationFinding],
+        seen_codes: set[str],
+    ) -> None:
+        cover_by_aspect: dict[str, set[bool]] = defaultdict(set)
+        for resource in variable.filter_resources:
+            if resource.local_name != "aspectCover":
+                continue
+            if resource.cover is None:
+                continue
+            for aspect in resource.aspects:
+                cover_by_aspect[aspect].add(resource.cover)
+        if any(len(values) > 1 for values in cover_by_aspect.values()):
+            _append_once(
+                findings,
+                seen_codes,
+                "xbrlacfe:inconsistentAspectCoverFilters",
+                (
+                    f"Variable '{variable.variable_name}' has inconsistent aspect-cover "
+                    "filter cover values"
                 ),
             )
 
@@ -1209,6 +1888,15 @@ def _sequence_has_inconsistent_periods(
         if fact.context_ref in instance.contexts
     }
     return len(keys) > 1
+
+
+def _variable_covers_aspect(variable: FactVariableDefinition, aspect: str) -> bool:
+    return any(
+        resource.local_name == "aspectCover"
+        and resource.cover is True
+        and aspect in resource.aspects
+        for resource in variable.filter_resources
+    )
 
 
 def _candidate_facts(

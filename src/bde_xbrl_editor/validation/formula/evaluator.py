@@ -989,8 +989,42 @@ class FormulaEvaluator:
             binding = resolved_binding.fact_binding
             if first_binding is None:
                 first_binding = binding
+            if resolved_binding.error is not None:
+                finding = self._finding_for_assertion(
+                    assertion,
+                    status=ValidationStatus.FAIL,
+                    default_message=f"XPath evaluation failed: {resolved_binding.error}",
+                    rule_id=_xpath_error_code(resolved_binding.error),
+                    binding=binding,
+                    instance=instance,
+                )
+                self._publish_findings((finding,))
+                return [finding]
             for facts in binding.values():
                 if facts:
+                    if assertion.test_xpath:
+                        try:
+                            result = self._eval_xpath(
+                                assertion.test_xpath,
+                                binding,
+                                instance,
+                                assertion.namespaces,
+                                assertion=assertion,
+                                general_values=resolved_binding.general_values,
+                            )
+                            if not _to_bool(result):
+                                continue
+                        except Exception as exc:  # noqa: BLE001
+                            finding = self._finding_for_assertion(
+                                assertion,
+                                status=ValidationStatus.FAIL,
+                                default_message=f"XPath evaluation failed: {exc}",
+                                rule_id=_xpath_error_code(exc),
+                                binding=binding,
+                                instance=instance,
+                            )
+                            self._publish_findings((finding,))
+                            return [finding]
                     finding = self._finding_for_assertion(
                         assertion,
                         status=ValidationStatus.PASS,

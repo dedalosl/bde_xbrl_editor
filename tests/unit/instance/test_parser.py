@@ -460,7 +460,11 @@ def test_local_catalog_resolves_bde_fr_schema_ref_to_cache_path(tmp_path: Path) 
     parser = InstanceParser(taxonomy_loader=loader)
     instance, _ = parser.load(p)
 
-    loader.load.assert_called_once_with(resolved_path.resolve(), progress_callback=ANY)
+    loader.load.assert_called_once_with(
+        resolved_path.resolve(),
+        progress_callback=ANY,
+        instance_linkbase_seeds=None,
+    )
     assert instance is not None
 
 

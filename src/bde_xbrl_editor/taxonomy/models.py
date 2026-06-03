@@ -111,6 +111,14 @@ class TaxonomyParseError(TaxonomyLoadError):
 
 
 @dataclass(frozen=True)
+class SchemaElementDefaults:
+    """XSD default values for an element declaration (instance S-equal / infer-calc)."""
+
+    value: str | None = None
+    attributes: tuple[tuple[str, str], ...] = ()
+
+
+@dataclass(frozen=True)
 class Concept:
     """An XBRL element declaration (concept)."""
 
@@ -137,6 +145,7 @@ class Concept:
     enumeration_head_usable: bool = False
     default_decimals: str | None = None
     default_precision: str | None = None
+    schema_default_value: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -242,6 +251,7 @@ class CalculationArc:
     weight: float  # +1.0 (add) or −1.0 (subtract)
     extended_link_role: str
     use: str = "optional"
+    priority: int = 0
     equivalence_key: tuple = field(default_factory=tuple)
 
 
@@ -423,6 +433,7 @@ class FormulaFilterResource:
     test_xpath: str | None = None
     variable: str | None = None
     match_any: bool | None = None
+    cover: bool | None = None
     aspects: tuple[str, ...] = field(default_factory=tuple)
     qnames: tuple[QName, ...] = field(default_factory=tuple)
     qname_expressions: tuple[str, ...] = field(default_factory=tuple)
@@ -625,6 +636,7 @@ class TaxonomyStructure:
     # Raw schema substitution-group declarations collected during taxonomy load.
     # Validation can reuse this instead of reparsing schema XML.
     schema_substitution_groups: Mapping[QName, QName] = field(default_factory=dict)
+    element_defaults: Mapping[QName, SchemaElementDefaults] = field(default_factory=dict)
 
     def get_table(self, table_id: str) -> TableDefinitionPWD | None:
         """Return the table with the given ID, or None if not found."""

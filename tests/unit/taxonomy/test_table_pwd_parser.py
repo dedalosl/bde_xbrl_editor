@@ -284,6 +284,28 @@ TABLE_WITH_MALFORMED_ASPECT_NODE_FILTER = TABLE_WITH_ASPECT_NODE_FILTER.replace(
 
 
 class TestMinimalTableParsing:
+    def test_version_dispatch_detects_pwd_namespace(self, tmp_path):
+        from bde_xbrl_editor.taxonomy.linkbases.table import (
+            TableLinkbaseVersion,
+            detect_table_linkbase_version,
+        )
+
+        lb = tmp_path / "table.xml"
+        lb.write_text(TABLE_WITH_BREAKDOWN, encoding="utf-8")
+
+        assert detect_table_linkbase_version(lb) == TableLinkbaseVersion.PWD_2013
+
+    def test_version_dispatch_detects_2014_namespace(self, tmp_path):
+        from bde_xbrl_editor.taxonomy.linkbases.table import (
+            TableLinkbaseVersion,
+            detect_table_linkbase_version,
+        )
+
+        lb = tmp_path / "table-2014.xml"
+        lb.write_text(TABLE_WITH_BREAKDOWN_2014, encoding="utf-8")
+
+        assert detect_table_linkbase_version(lb) == TableLinkbaseVersion.REC_2014
+
     def test_parse_minimal_returns_empty_tables_or_one(self, tmp_path):
         lb = tmp_path / "table.xml"
         lb.write_text(MINIMAL_TABLE_LB, encoding="utf-8")
@@ -391,6 +413,51 @@ class TestMinimalTableParsing:
 
         tables = parse_table_linkbase(rend, language_preference=("en", "es"))
         assert tables[0].label == "English table"
+
+    def test_bde_pay_table_fin_code_is_loaded_for_eba_render_file(self, tmp_path):
+        eba_dir = (
+            tmp_path
+            / "cache"
+            / "www.eba.europa.eu"
+            / "eu"
+            / "fr"
+            / "xbrl"
+            / "crr"
+            / "fws"
+            / "pay"
+            / "4.2"
+            / "tab"
+            / "s_04.00"
+        )
+        bde_dir = (
+            tmp_path
+            / "cache"
+            / "www.bde.es"
+            / "es"
+            / "fr"
+            / "xbrl"
+            / "fws"
+            / "ebacrr_pay"
+            / "4.2"
+            / "tab"
+            / "s_04.00"
+        )
+        eba_dir.mkdir(parents=True)
+        bde_dir.mkdir(parents=True)
+
+        rend = eba_dir / "s_04.00-rend.xml"
+        rend.write_text(MINIMAL_TABLE_LB.replace('id="t1"', 'id="eba_tS_04.00"'), encoding="utf-8")
+        codes = bde_dir / "s_04.00-lab-codes.xml"
+        codes.write_text(
+            TABLE_LABEL_CODES.replace('t1"', 'eba_tS_04.00"').replace(">0010<", ">7816<"),
+            encoding="utf-8",
+        )
+
+        tables = parse_table_linkbase(rend)
+
+        assert len(tables) == 1
+        assert tables[0].table_id == "eba_tS_04.00"
+        assert tables[0].table_code == "7816"
 
 
 class TestBreakdownNodeTypes:
