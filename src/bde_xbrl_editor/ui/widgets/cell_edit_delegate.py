@@ -171,46 +171,19 @@ def _get_type_category(taxonomy: TaxonomyStructure, concept: QName) -> str:
 def _find_fact_index(
     instance: XbrlInstance,
     coordinate: CellCoordinate,
+    taxonomy: TaxonomyStructure | None = None,
+    table_elr: str = "",
 ) -> int | None:
-    """Find the index in instance.facts that matches coordinate, or None."""
-    if coordinate.concept is None:
+    """Find the resolved fact index for ``coordinate`` (subset + FINREP disambiguation)."""
+    from types import SimpleNamespace
+
+    from bde_xbrl_editor.table_renderer.fact_mapper import FactMapper
+
+    mapper = FactMapper(taxonomy if taxonomy is not None else SimpleNamespace(dimensions={}))
+    facts = mapper.resolve_matching_facts(coordinate, instance, table_elr=table_elr)
+    if not facts:
         return None
-    coord_dims = coordinate.explicit_dimensions or {}
-    coord_typed_dims = {
-        dim_qname: value.strip()
-        for dim_qname, value in (coordinate.typed_dimensions or {}).items()
-        if value.strip()
-    }
-    for i, fact in enumerate(instance.facts):
-        if fact.concept != coordinate.concept:
-            continue
-        context = instance.contexts.get(fact.context_ref)
-        if context is None:
-            continue
-        typed_dim_keys = set((getattr(context, "typed_dimensions", {}) or {}).keys())
-        fact_dims = {
-            dim_qname: member_qname
-            for dim_qname, member_qname in context.dimensions.items()
-            if dim_qname not in typed_dim_keys
-        }
-        fact_dims.pop(_AGRUPACION_DIM, None)
-        fact_typed_dims = {
-            dim_qname: value.strip()
-            for dim_qname, value in (getattr(context, "typed_dimensions", {}) or {}).items()
-            if value.strip()
-        }
-        # All coordinate dims must match
-        if any(fact_dims.get(d) != m for d, m in coord_dims.items()):
-            continue
-        if any(fact_typed_dims.get(d) != v for d, v in coord_typed_dims.items()):
-            continue
-        # Fact must not have extra dims the coordinate doesn't specify
-        if any(d not in coord_dims for d in fact_dims):
-            continue
-        if any(d not in coord_typed_dims for d in fact_typed_dims):
-            continue
-        return i
-    return None
+    return instance.facts.index(facts[0])
 
 
 def _report_level_bde_dimensions(
@@ -548,7 +521,12 @@ class CellEditDelegate(QStyledItemDelegate):
             submitted = ""
 
         instance = self._editor.instance
-        fact_index = _find_fact_index(instance, coordinate)
+        table_elr = (
+            getattr(self._table_layout, "table_extended_link_role", "") or ""
+            if self._table_layout is not None
+            else ""
+        )
+        fact_index = _find_fact_index(instance, coordinate, self._taxonomy, table_elr=table_elr)
 
         # Empty submission → remove existing fact
         if not submitted.strip():
@@ -583,7 +561,12 @@ class CellEditDelegate(QStyledItemDelegate):
                 )
         except DuplicateFactError:
             # Race condition — re-read index and try update
-            fact_index = _find_fact_index(instance, coordinate)
+            table_elr = (
+                getattr(self._table_layout, "table_extended_link_role", "") or ""
+                if self._table_layout is not None
+                else ""
+            )
+            fact_index = _find_fact_index(instance, coordinate, self._taxonomy, table_elr=table_elr)
             if fact_index is not None:
                 self._editor.update_fact(fact_index, normalised)
 

@@ -45,5 +45,5 @@ conformance/
 cache/
 
 #Excluding files:
-!conformance/*.py
+!src/bde_xbrl_editor/conformance/*.py
 !tests/unit/conformance/*.py

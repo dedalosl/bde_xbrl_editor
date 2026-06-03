@@ -4,6 +4,10 @@ from __future__ import annotations
 from datetime import date, datetime
 from pathlib import Path
 
+from lxml import etree
+
+from bde_xbrl_editor.taxonomy.linkbases.calculation import _relationship_equivalence_key
+
 from bde_xbrl_editor.instance.models import (
     Fact,
     ReportingEntity,
@@ -377,3 +381,107 @@ def test_summation_binds_across_s_equal_context_ids_302_11_style() -> None:
     findings = CalculationConsistencyValidator().validate(inst, tax)
     assert len(findings) == 1
     assert findings[0].rule_id == "calculation:summation-inconsistent"
+
+
+def test_summation_optional_arc_wins_over_lower_priority_prohibition() -> None:
+    """Arc overrides per XBRL 2.1: optional arcs win over prohibition at lower priority."""
+    qa, qb = _q("A"), _q("B")
+    arc_optional = etree.fromstring(
+        """
+        <calculationArc xmlns="http://www.xbrl.org/2003/linkbase"
+           xmlns:xlink="http://www.w3.org/1999/xlink"
+           xlink:type="arc"
+           xlink:arcrole="http://www.xbrl.org/2003/arcrole/summation-item"
+           xlink:from="p" xlink:to="c"
+           order="2" weight="1" use="optional" priority="2"/>
+        """.strip()
+    )
+    arc_prohibit = etree.fromstring(
+        """
+        <calculationArc xmlns="http://www.xbrl.org/2003/linkbase"
+           xmlns:xlink="http://www.w3.org/1999/xlink"
+           xlink:type="arc"
+           xlink:arcrole="http://www.xbrl.org/2003/arcrole/summation-item"
+           xlink:from="p" xlink:to="c"
+           order="2" weight="1" use="prohibited" priority="1"/>
+        """.strip()
+    )
+    ek = _relationship_equivalence_key(arc_optional, qa, qb)
+
+    arcs = [
+        CalculationArc(
+            parent=qa,
+            child=qb,
+            order=2.0,
+            weight=1.0,
+            extended_link_role=_ELR,
+            use="optional",
+            priority=2,
+            equivalence_key=ek,
+        ),
+        CalculationArc(
+            parent=qa,
+            child=qb,
+            order=2.0,
+            weight=1.0,
+            extended_link_role=_ELR,
+            use="prohibited",
+            priority=1,
+            equivalence_key=_relationship_equivalence_key(arc_prohibit, qa, qb),
+        ),
+    ]
+
+    assert arcs[1].equivalence_key == ek
+
+    effective = CalculationConsistencyValidator._effective_summation_arcs(arcs)
+
+    assert len(effective) == 1 and effective[0].use == "optional"
+
+
+def test_summation_equivalent_optional_suppressed_when_tied_priority_prohibition() -> None:
+    qa, qb = _q("A"), _q("B")
+    arc_optional = etree.fromstring(
+        """
+        <calculationArc xmlns="http://www.xbrl.org/2003/linkbase"
+           xmlns:xlink="http://www.w3.org/1999/xlink"
+           xlink:type="arc"
+           xlink:arcrole="http://www.xbrl.org/2003/arcrole/summation-item"
+           xlink:from="p" xlink:to="c"
+           order="2" weight="1" use="optional" priority="0"/>
+        """.strip()
+    )
+    arc_prohibit = etree.fromstring(
+        """
+        <calculationArc xmlns="http://www.xbrl.org/2003/linkbase"
+           xmlns:xlink="http://www.w3.org/1999/xlink"
+           xlink:type="arc"
+           xlink:arcrole="http://www.xbrl.org/2003/arcrole/summation-item"
+           xlink:from="p" xlink:to="c"
+           order="2" weight="1" use="prohibited" priority="0"/>
+        """.strip()
+    )
+
+    arcs = [
+        CalculationArc(
+            parent=qa,
+            child=qb,
+            order=2.0,
+            weight=1.0,
+            extended_link_role=_ELR,
+            use="optional",
+            equivalence_key=_relationship_equivalence_key(arc_optional, qa, qb),
+        ),
+        CalculationArc(
+            parent=qa,
+            child=qb,
+            order=2.0,
+            weight=1.0,
+            extended_link_role=_ELR,
+            use="prohibited",
+            equivalence_key=_relationship_equivalence_key(arc_prohibit, qa, qb),
+        ),
+    ]
+
+    assert arcs[0].equivalence_key == arcs[1].equivalence_key
+
+    assert CalculationConsistencyValidator._effective_summation_arcs(arcs) == []

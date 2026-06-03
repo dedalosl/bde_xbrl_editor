@@ -18,11 +18,13 @@ from bde_xbrl_editor.taxonomy.linkbases.custom_functions import (
 )
 from bde_xbrl_editor.taxonomy.models import (
     AssertionTextResource,
+    Concept,
     ConsistencyAssertionDefinition,
     CustomFunctionDefinition,
     ExistenceAssertionDefinition,
     FactVariableDefinition,
     FormulaAssertionSet,
+    GeneralVariableDefinition,
     QName,
     TaxonomyMetadata,
     TaxonomyStructure,
@@ -36,10 +38,20 @@ from bde_xbrl_editor.validation.models import ValidationSeverity, ValidationStat
 # ---------------------------------------------------------------------------
 
 _TAX_NS = "http://example.com/tax"
+_XBRLI_NS = "http://www.xbrl.org/2003/instance"
 
 
 def _qn(local: str) -> QName:
     return QName(namespace=_TAX_NS, local_name=local)
+
+
+def _concept(local: str, type_local: str) -> Concept:
+    qname = _qn(local)
+    return Concept(
+        qname=qname,
+        data_type=QName(namespace=_XBRLI_NS, local_name=type_local, prefix="xbrli"),
+        period_type="instant",
+    )
 
 
 def _entity() -> ReportingEntity:
@@ -93,6 +105,7 @@ class _FakeLabels:
 def _taxonomy(
     assertion_set: FormulaAssertionSet,
     custom_functions: tuple[CustomFunctionDefinition, ...] = (),
+    concepts: dict[QName, Concept] | None = None,
 ) -> TaxonomyStructure:
     meta = TaxonomyMetadata(
         name="Test",
@@ -104,7 +117,7 @@ def _taxonomy(
     )
     return TaxonomyStructure(
         metadata=meta,
-        concepts={},
+        concepts=concepts or {},
         labels=_FakeLabels(),
         presentation={},
         calculation={},
@@ -201,6 +214,18 @@ class TestValueAssertion:
         assert findings[0].rule_id == "VA_FAIL"
         assert findings[0].source == "formula"
 
+    def test_qname_effective_boolean_value_reports_forg0006(self) -> None:
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(assertion_id="VA_QNAME_EBV"),
+            test_xpath="QName('http://example.com/tax', 'eg:Amount')",
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
+        inst = _instance([_fact()])
+
+        findings = FormulaEvaluator(taxonomy).evaluate(inst)
+
+        assert [finding.rule_id for finding in findings] == ["err:FORG0006"]
+
     def test_false_assertion_severity_from_definition(self) -> None:
         """The finding severity matches the assertion's declared severity."""
         assertion = ValueAssertionDefinition(
@@ -222,6 +247,85 @@ class TestValueAssertion:
         inst = _instance([_fact()])
         findings = FormulaEvaluator(taxonomy).evaluate(inst)
         assert findings == []
+
+    def test_simple_fact_comparison_reports_xpath_type_error_for_mismatched_item_type(self) -> None:
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(
+                assertion_id="VA_TYPE_MISMATCH",
+                variables=(FactVariableDefinition(variable_name="fact"),),
+            ),
+            test_xpath="$fact != true()",
+        )
+        concept = _concept("Amount", "decimalItemType")
+        taxonomy = _taxonomy(
+            FormulaAssertionSet(assertions=(assertion,)),
+            concepts={concept.qname: concept},
+        )
+        findings = FormulaEvaluator(taxonomy).evaluate(_instance([_fact(value="1")]))
+        assert [finding.rule_id for finding in findings] == ["err:XPTY0004"]
+
+    def test_simple_fact_comparison_keeps_matching_item_type_result(self) -> None:
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(
+                assertion_id="VA_TYPE_MATCH",
+                variables=(FactVariableDefinition(variable_name="fact"),),
+            ),
+            test_xpath="$fact != true()",
+        )
+        concept = _concept("Amount", "booleanItemType")
+        taxonomy = _taxonomy(
+            FormulaAssertionSet(assertions=(assertion,)),
+            concepts={concept.qname: concept},
+        )
+        findings = FormulaEvaluator(taxonomy).evaluate(_instance([_fact(value="true")]))
+        assert len(findings) == 1
+        assert findings[0].rule_id == "VA_TYPE_MATCH"
+
+    def test_uses_provided_general_variable_value(self) -> None:
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(assertion_id="VA_GENERAL"),
+            general_variables=(GeneralVariableDefinition(variable_name="threshold"),),
+            test_xpath="$threshold = 10",
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
+        inst = _instance([])
+
+        findings = FormulaEvaluator(
+            taxonomy,
+            general_variable_values={"threshold": "10"},
+        ).evaluate(inst)
+
+        assert findings[0].status == ValidationStatus.PASS
+
+    def test_uses_general_variable_fallback_when_value_not_provided(self) -> None:
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(assertion_id="VA_GENERAL_FALLBACK"),
+            general_variables=(
+                GeneralVariableDefinition(variable_name="threshold", fallback_value="10"),
+            ),
+            test_xpath="$threshold = 10",
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
+        inst = _instance([])
+
+        findings = FormulaEvaluator(taxonomy).evaluate(inst)
+
+        assert findings[0].status == ValidationStatus.PASS
+
+    def test_uses_provided_external_variable_value(self) -> None:
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(assertion_id="VA_EXTERNAL"),
+            test_xpath="$SucComunitaria = 'S'",
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
+        inst = _instance([])
+
+        findings = FormulaEvaluator(
+            taxonomy,
+            general_variable_values={"SucComunitaria": "S"},
+        ).evaluate(inst)
+
+        assert findings[0].status == ValidationStatus.PASS
 
     def test_value_assertion_with_variable_binding(self) -> None:
         """A value assertion with a bound variable produces a finding when test fails."""
@@ -284,6 +388,51 @@ class TestValueAssertion:
         assert findings[0].status == ValidationStatus.NOT_EVALUATED
         assert findings[0].severity is None
 
+    def test_value_assertion_evaluates_present_operand_with_missing_fallback_operand(self) -> None:
+        var_a = FactVariableDefinition(
+            variable_name="a",
+            concept_filter=_qn("Amount"),
+        )
+        var_b = FactVariableDefinition(
+            variable_name="b",
+            concept_filter=_qn("MissingB"),
+            fallback_value="0",
+        )
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(
+                assertion_id="VA_PARTIAL_FALLBACK",
+                variables=(var_a, var_b),
+            ),
+            test_xpath="$a + $b = 42",
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
+        inst = _instance([_fact("Amount", value="42")])
+
+        findings = FormulaEvaluator(taxonomy).evaluate(inst)
+
+        assert len(findings) == 1
+        assert findings[0].status == ValidationStatus.PASS
+        assert findings[0].severity is None
+
+    def test_value_assertion_xpath_error_uses_xpath_error_code(self) -> None:
+        var_def = FactVariableDefinition(
+            variable_name="fact",
+            concept_filter=_qn("Amount"),
+        )
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(assertion_id="VA_XPATH_ERROR", variables=(var_def,)),
+            test_xpath="$fact != true()",
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
+        inst = _instance([_fact("Amount", value="0")])
+
+        findings = FormulaEvaluator(taxonomy).evaluate(inst)
+
+        assert len(findings) == 1
+        assert findings[0].rule_id == "err:XPTY0004"
+        assert findings[0].status == ValidationStatus.FAIL
+        assert findings[0].severity == ValidationSeverity.ERROR
+
     def test_value_assertion_with_missing_operand_without_fallback_is_not_evaluated(self) -> None:
         var_a = FactVariableDefinition(
             variable_name="a",
@@ -333,6 +482,130 @@ class TestValueAssertion:
                 value="dom:good",
             )
         ])
+
+        findings = FormulaEvaluator(taxonomy).evaluate(inst)
+
+        assert len(findings) == 1
+        assert findings[0].status == ValidationStatus.PASS
+
+    def test_bind_as_sequence_uses_full_fact_sequence(self) -> None:
+        var_def = FactVariableDefinition(
+            variable_name="a",
+            concept_filter=_qn("Amount"),
+            bind_as_sequence=True,
+        )
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(assertion_id="VA_SEQ_FACTS", variables=(var_def,)),
+            test_xpath="count($a) = 2 and sum($a) = 3",
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
+        inst = _instance(
+            [_fact("Amount", "ctx1", "1"), _fact("Amount", "ctx2", "2")],
+            contexts={"ctx1": _ctx("ctx1"), "ctx2": _ctx("ctx2")},
+        )
+
+        findings = FormulaEvaluator(taxonomy).evaluate(inst)
+
+        assert len(findings) == 1
+        assert findings[0].status == ValidationStatus.PASS
+
+    def test_general_variable_select_uses_bound_fact_variable(self) -> None:
+        fact_var = FactVariableDefinition(
+            variable_name="a",
+            concept_filter=_qn("Amount"),
+        )
+        general_var = GeneralVariableDefinition(
+            variable_name="threshold",
+            select_xpath="$a + 1",
+        )
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(
+                assertion_id="VA_GENERAL_SELECT",
+                variables=(fact_var,),
+            ),
+            general_variables=(general_var,),
+            test_xpath="$threshold = 43",
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
+        inst = _instance([_fact("Amount", value="42")])
+
+        findings = FormulaEvaluator(taxonomy).evaluate(inst)
+
+        assert len(findings) == 1
+        assert findings[0].status == ValidationStatus.PASS
+
+    def test_general_variable_non_sequence_expands_bindings(self) -> None:
+        fact_var = FactVariableDefinition(
+            variable_name="a",
+            concept_filter=_qn("Amount"),
+        )
+        general_var = GeneralVariableDefinition(
+            variable_name="g",
+            select_xpath="(10, 20)",
+            bind_as_sequence=False,
+        )
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(
+                assertion_id="VA_GENERAL_EXPAND",
+                variables=(fact_var,),
+            ),
+            general_variables=(general_var,),
+            test_xpath="$a + $g > 0",
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
+        inst = _instance([_fact("Amount", value="1")])
+
+        findings = FormulaEvaluator(taxonomy).evaluate(inst)
+
+        assert len(findings) == 2
+        assert all(finding.status == ValidationStatus.PASS for finding in findings)
+
+    def test_general_variable_bind_as_sequence_keeps_single_binding(self) -> None:
+        fact_var = FactVariableDefinition(
+            variable_name="a",
+            concept_filter=_qn("Amount"),
+        )
+        general_var = GeneralVariableDefinition(
+            variable_name="g",
+            select_xpath="(10, 20)",
+            bind_as_sequence=True,
+        )
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(
+                assertion_id="VA_GENERAL_SEQ",
+                variables=(fact_var,),
+            ),
+            general_variables=(general_var,),
+            test_xpath="count($g) = 2",
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
+        inst = _instance([_fact("Amount", value="1")])
+
+        findings = FormulaEvaluator(taxonomy).evaluate(inst)
+
+        assert len(findings) == 1
+        assert findings[0].status == ValidationStatus.PASS
+
+    def test_general_variable_duplicate_expansion_values_are_deduplicated(self) -> None:
+        fact_var = FactVariableDefinition(
+            variable_name="a",
+            concept_filter=_qn("Amount"),
+        )
+        general_var = GeneralVariableDefinition(
+            variable_name="g",
+            select_xpath="(10, 10)",
+            bind_as_sequence=False,
+        )
+        assertion = ValueAssertionDefinition(
+            **_base_assertion_kwargs(
+                assertion_id="VA_GENERAL_DEDUP",
+                variables=(fact_var,),
+            ),
+            general_variables=(general_var,),
+            test_xpath="$a + $g > 0",
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
+        inst = _instance([_fact("Amount", value="1")])
 
         findings = FormulaEvaluator(taxonomy).evaluate(inst)
 
@@ -580,6 +853,19 @@ class TestExistenceAssertion:
         findings = FormulaEvaluator(taxonomy).evaluate(inst)
         assert len(findings) == 1
         assert findings[0].rule_id == "EA_FAIL"
+
+    def test_qname_test_effective_boolean_value_reports_forg0006(self) -> None:
+        var_def = FactVariableDefinition(variable_name="v", concept_filter=_qn("Amount"))
+        assertion = ExistenceAssertionDefinition(
+            **_base_assertion_kwargs(assertion_id="EA_QNAME_EBV", variables=(var_def,)),
+            test_xpath="QName('http://example.com/tax', 'eg:Amount')",
+        )
+        taxonomy = _taxonomy(FormulaAssertionSet(assertions=(assertion,)))
+        inst = _instance([_fact("Amount", value="10")])
+
+        findings = FormulaEvaluator(taxonomy).evaluate(inst)
+
+        assert [finding.rule_id for finding in findings] == ["err:FORG0006"]
 
     def test_existence_assertion_finding_source_is_formula(self) -> None:
         """Existence assertion findings have source='formula'."""

@@ -91,18 +91,47 @@ def _write_xbrl(tmp_path: Path, xml_body: str, schema_href: str = "entry.xsd") -
     """Write a minimal XBRL instance to a temp file."""
     content = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
-        '<xbrli:xbrl'
+        "<xbrli:xbrl"
         f' xmlns:xbrli="http://www.xbrl.org/2003/instance"'
         f' xmlns:link="http://www.xbrl.org/2003/linkbase"'
         f' xmlns:xlink="http://www.w3.org/1999/xlink"'
         f' xmlns:test="{_TEST_NS}"'
         f' xmlns:ef-find="http://www.eurofiling.info/xbrl/ext/filing-indicators">\n'
         f'  <link:schemaRef xlink:type="simple" xlink:href="{schema_href}"/>\n'
-        f'{xml_body}\n'
-        '</xbrli:xbrl>\n'
+        f"{xml_body}\n"
+        "</xbrli:xbrl>\n"
     )
     # create a dummy schema file so relative path resolution works
     (tmp_path / schema_href).write_text("<xs:schema xmlns:xs='http://www.w3.org/2001/XMLSchema'/>")
+    p = tmp_path / "instance.xbrl"
+    p.write_text(content, encoding="utf-8")
+    return p
+
+
+def _write_xbrl_with_schema_refs(
+    tmp_path: Path, schema_hrefs: list[str], xml_body: str = ""
+) -> Path:
+    """Write a minimal XBRL instance with multiple schemaRef elements."""
+    schema_refs = "\n".join(
+        f'  <link:schemaRef xlink:type="simple" xlink:href="{schema_href}"/>'
+        for schema_href in schema_hrefs
+    )
+    content = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        "<xbrli:xbrl"
+        f' xmlns:xbrli="http://www.xbrl.org/2003/instance"'
+        f' xmlns:link="http://www.xbrl.org/2003/linkbase"'
+        f' xmlns:xlink="http://www.w3.org/1999/xlink"'
+        f' xmlns:test="{_TEST_NS}">\n'
+        f"{schema_refs}\n"
+        f"{xml_body}\n"
+        "</xbrli:xbrl>\n"
+    )
+    first_schema_href = schema_hrefs[0]
+    if not first_schema_href.startswith(("http://", "https://")):
+        (tmp_path / first_schema_href).write_text(
+            "<xs:schema xmlns:xs='http://www.w3.org/2001/XMLSchema'/>"
+        )
     p = tmp_path / "instance.xbrl"
     p.write_text(content, encoding="utf-8")
     return p
@@ -112,7 +141,7 @@ def _write_bde_xbrl(tmp_path: Path, xml_body: str, schema_href: str = "entry.xsd
     """Write a BDE IE_2008_02 XBRL instance with the BDE-specific namespaces declared."""
     content = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
-        '<xbrli:xbrl'
+        "<xbrli:xbrl"
         f' xmlns:xbrli="http://www.xbrl.org/2003/instance"'
         f' xmlns:link="http://www.xbrl.org/2003/linkbase"'
         f' xmlns:xlink="http://www.w3.org/1999/xlink"'
@@ -122,8 +151,8 @@ def _write_bde_xbrl(tmp_path: Path, xml_body: str, schema_href: str = "entry.xsd
         f' xmlns:es-be-cm-pblo="{_BDE_PBLO_NS}"'
         f' xmlns:es-be-cm-dim="{_BDE_DIM_NS}">\n'
         f'  <link:schemaRef xlink:type="simple" xlink:href="{schema_href}"/>\n'
-        f'{xml_body}\n'
-        '</xbrli:xbrl>\n'
+        f"{xml_body}\n"
+        "</xbrli:xbrl>\n"
     )
     (tmp_path / schema_href).write_text("<xs:schema xmlns:xs='http://www.w3.org/2001/XMLSchema'/>")
     p = tmp_path / "bde_instance.xbrl"
@@ -285,6 +314,62 @@ def test_manual_resolver_called_as_fallback(tmp_path: Path) -> None:
     assert instance is not None
 
 
+def test_official_secondary_schema_ref_uses_default_xbrl_org_cache(
+    monkeypatch, tmp_path: Path
+) -> None:
+    cache_root = tmp_path / "cache" / "www.xbrl.org"
+    cached_schema = cache_root / "2006" / "xbrldi-2006.xsd"
+    cached_schema.parent.mkdir(parents=True)
+    cached_schema.write_text("<xs:schema xmlns:xs='http://www.w3.org/2001/XMLSchema'/>")
+    monkeypatch.setattr(parser_module, "_DEFAULT_XBRL_ORG_CACHE_ROOT", cache_root)
+    p = _write_xbrl_with_schema_refs(
+        tmp_path,
+        [
+            "entry.xsd",
+            "http://www.xbrl.org/2006/xbrldi-2006.xsd",
+        ],
+    )
+    parser, loader = _make_parser()
+
+    instance, _ = parser.load(p)
+
+    assert instance is not None
+    assert loader.load.call_args_list[1].args == (cached_schema.resolve(),)
+
+
+def test_unresolved_official_secondary_schema_ref_is_allowed_when_cache_missing(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(parser_module, "_DEFAULT_XBRL_ORG_CACHE_ROOT", tmp_path / "missing-cache")
+    p = _write_xbrl_with_schema_refs(
+        tmp_path,
+        [
+            "entry.xsd",
+            "http://www.xbrl.org/2006/xbrldi-2006.xsd",
+        ],
+    )
+    parser, loader = _make_parser()
+
+    instance, _ = parser.load(p)
+
+    assert instance is not None
+    assert loader.load.call_count == 1
+
+
+def test_unresolved_non_official_secondary_schema_ref_raises(tmp_path: Path) -> None:
+    p = _write_xbrl_with_schema_refs(
+        tmp_path,
+        [
+            "entry.xsd",
+            "https://example.com/not-an-xbrl-standard.xsd",
+        ],
+    )
+    parser, _ = _make_parser()
+
+    with pytest.raises(TaxonomyResolutionError):
+        parser.load(p)
+
+
 def test_parser_preserves_typed_dimension_value_and_element(tmp_path: Path) -> None:
     parser, _ = _make_parser()
     xbrl = _write_xbrl(
@@ -305,7 +390,9 @@ def test_parser_preserves_typed_dimension_value_and_element(tmp_path: Path) -> N
     dim_qname = QName(namespace="http://example.com/dim", local_name="qLIN", prefix="dim")
     assert ctx.dimensions[dim_qname] == dim_qname
     assert ctx.typed_dimensions[dim_qname] == "Entidad A"
-    assert ctx.typed_dimension_elements[dim_qname] == QName(namespace="http://example.com/dom", local_name="qLE")
+    assert ctx.typed_dimension_elements[dim_qname] == QName(
+        namespace="http://example.com/dom", local_name="qLE"
+    )
 
 
 def test_malformed_explicit_dimension_qname_raises_parse_error(tmp_path: Path) -> None:
@@ -373,7 +460,11 @@ def test_local_catalog_resolves_bde_fr_schema_ref_to_cache_path(tmp_path: Path) 
     parser = InstanceParser(taxonomy_loader=loader)
     instance, _ = parser.load(p)
 
-    loader.load.assert_called_once_with(resolved_path.resolve(), progress_callback=ANY)
+    loader.load.assert_called_once_with(
+        resolved_path.resolve(),
+        progress_callback=ANY,
+        instance_linkbase_seeds=None,
+    )
     assert instance is not None
 
 
@@ -463,6 +554,29 @@ def test_parses_duration_context(tmp_path: Path) -> None:
     assert ctx.period.period_type == "duration"
     assert ctx.period.start_date == date(2023, 1, 1)
     assert ctx.period.end_date == date(2023, 12, 31)
+
+
+def test_parses_forever_context(tmp_path: Path) -> None:
+    body = textwrap.dedent("""\
+        <xbrli:context id="F1">
+          <xbrli:entity>
+            <xbrli:identifier scheme="http://bde.es">ES9999</xbrli:identifier>
+          </xbrli:entity>
+          <xbrli:period>
+            <xbrli:forever/>
+          </xbrli:period>
+        </xbrli:context>
+    """)
+    p = _write_xbrl(tmp_path, body)
+    parser, _ = _make_parser()
+
+    instance, _ = parser.load(p)
+
+    ctx = instance.contexts["F1"]
+    assert ctx.period.period_type == "forever"
+    assert ctx.period.instant_date is None
+    assert ctx.period.start_date is None
+    assert ctx.period.end_date is None
 
 
 # ---------------------------------------------------------------------------
@@ -782,14 +896,18 @@ def test_fact_loading_reports_incremental_progress(tmp_path: Path) -> None:
         </xbrli:context>
     """)
     facts = "\n".join(
-        f'<test:Assets contextRef="C1">{100 + index}</test:Assets>'
-        for index in range(60)
+        f'<test:Assets contextRef="C1">{100 + index}</test:Assets>' for index in range(60)
     )
     p = _write_xbrl(tmp_path, f"{context}\n{facts}")
     parser, _ = _make_parser()
 
     progress_events: list[tuple[str, int, int]] = []
-    parser.load(p, progress_callback=lambda message, current, total: progress_events.append((message, current, total)))
+    parser.load(
+        p,
+        progress_callback=lambda message, current, total: progress_events.append(
+            (message, current, total)
+        ),
+    )
 
     fact_updates = [event for event in progress_events if event[0].startswith("Reading facts…")]
     metadata_updates = [

@@ -13,12 +13,14 @@ from bde_xbrl_editor.instance.s_equal import canonical_context_refs_by_s_equal
 from bde_xbrl_editor.taxonomy.constants import NS_XBRLI
 from bde_xbrl_editor.taxonomy.models import Concept, QName, TaxonomyStructure
 from bde_xbrl_editor.taxonomy.schema import parse_schema_raw
+from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
 from bde_xbrl_editor.validation.models import ValidationFinding, ValidationSeverity
 
 _NUMERIC_TYPE_KEYWORDS = ("monetary", "decimal", "integer", "float", "double")
 _XBRLI_ITEM = QName(NS_XBRLI, "item")
 _XBRLI_TUPLE = QName(NS_XBRLI, "tuple")
 _ARCROLE_ESSENCE_ALIAS = "http://www.xbrl.org/2003/arcrole/essence-alias"
+_ARCROLE_REQUIRES_ELEMENT = "http://www.xbrl.org/2003/arcrole/requires-element"
 
 
 @dataclass
@@ -30,6 +32,12 @@ class _FactAnalysis:
     decimals_precision: list[ValidationFinding]
     period_type_mismatches: list[ValidationFinding]
     duplicate_facts: list[ValidationFinding]
+
+
+def _period_type_matches_concept(concept_period_type: str, context_period_type: str) -> bool:
+    if concept_period_type == context_period_type:
+        return True
+    return concept_period_type == "duration" and context_period_type == "forever"
 
 
 def _is_iso4217_currency_code(local_name: str) -> bool:
@@ -232,6 +240,11 @@ class StructuralConformanceValidator:
         except Exception as exc:  # noqa: BLE001
             findings.append(self._internal_error("structural:essence-alias-unit", exc))
 
+        try:
+            findings.extend(self._check_requires_element(instance, taxonomy))
+        except Exception as exc:  # noqa: BLE001
+            findings.append(self._internal_error("structural:requires-element", exc))
+
         # Check 7 (structural:missing-namespace) is skipped — namespace info not
         # available on the in-memory instance model.
         # Check 8 (structural:root-element) is already covered by check 1.
@@ -296,7 +309,7 @@ class StructuralConformanceValidator:
             elif (
                 concept is not None
                 and ctx.period is not None
-                and concept.period_type != ctx.period.period_type
+                and not _period_type_matches_concept(concept.period_type, ctx.period.period_type)
             ):
                 period_type_mismatches.append(
                     ValidationFinding(
@@ -352,13 +365,18 @@ class StructuralConformanceValidator:
                 )
 
             if is_numeric or fact.unit_ref is not None:
-                finding = self._decimals_precision_finding(fact, is_numeric=is_numeric)
+                finding = self._decimals_precision_finding(
+                    fact,
+                    is_numeric=is_numeric,
+                    concept=concept,
+                )
                 if finding is not None:
                     decimals_precision.append(finding)
 
             if canonical_context_refs is not None and ctx is not None:
                 ctx_bind = canonical_context_refs.get(fact.context_ref, fact.context_ref)
-                key = (fact.concept, ctx_bind, fact.unit_ref)
+                pos = fact.position_path if fact.position_path else fact.tuple_path
+                key = (fact.concept, ctx_bind, fact.unit_ref, pos)
                 duplicate_key_values[key].append(fact.value)
 
         duplicate_facts.extend(self._duplicate_findings_from_key_values(duplicate_key_values))
@@ -506,7 +524,11 @@ class StructuralConformanceValidator:
             is_numeric = _is_numeric_concept(concept) if concept is not None else False
             if not is_numeric and fact.unit_ref is None:
                 continue
-            finding = self._decimals_precision_finding(fact, is_numeric=is_numeric)
+            finding = self._decimals_precision_finding(
+                fact,
+                is_numeric=is_numeric,
+                concept=concept,
+            )
             if finding is not None:
                 findings.append(finding)
         return findings
@@ -551,7 +573,7 @@ class StructuralConformanceValidator:
             ctx = instance.contexts.get(fact.context_ref)
             if ctx is None or ctx.period is None:
                 continue
-            if concept.period_type != ctx.period.period_type:
+            if not _period_type_matches_concept(concept.period_type, ctx.period.period_type):
                 findings.append(
                     ValidationFinding(
                         rule_id="structural:period-type-mismatch",
@@ -582,7 +604,8 @@ class StructuralConformanceValidator:
             if fact.context_ref not in instance.contexts:
                 continue
             ctx_bind = canon_ctx.get(fact.context_ref, fact.context_ref)
-            key = (fact.concept, ctx_bind, fact.unit_ref)
+            pos = fact.position_path if fact.position_path else fact.tuple_path
+            key = (fact.concept, ctx_bind, fact.unit_ref, pos)
             key_values[key].append(fact.value)
 
         return self._duplicate_findings_from_key_values(key_values)
@@ -595,7 +618,10 @@ class StructuralConformanceValidator:
         for key, vals in key_values.items():
             if len(set(vals)) <= 1:
                 continue
-            concept, ctx_bind, unit_ref = key
+            concept, ctx_bind, unit_ref, position_path = key
+            position_suffix = (
+                f" at position {position_path!r}" if position_path else ""
+            )
             findings.append(
                 ValidationFinding(
                     rule_id="structural:duplicate-fact",
@@ -604,6 +630,7 @@ class StructuralConformanceValidator:
                         f"Inconsistent duplicate facts for concept '{concept}' "
                         f"in context '{ctx_bind}'"
                         + (f" with unit '{unit_ref}'" if unit_ref is not None else "")
+                        + position_suffix
                         + f": values {sorted(set(vals))!r}."
                     ),
                     source="structural",
@@ -722,13 +749,13 @@ class StructuralConformanceValidator:
     @staticmethod
     def _shares_unit_finding(fact: Fact, unit: XbrlUnit) -> ValidationFinding | None:
         expected = QName(namespace=NS_XBRLI, local_name="shares")
-        measure_count = (
-            0 if unit.unit_form != "simple" else _effective_simple_measure_count(unit)
-        )
+        measure_count = 0 if unit.unit_form != "simple" else _effective_simple_measure_count(unit)
         measures = (
             unit.simple_measure_qnames
             if unit.simple_measure_qnames
-            else ((_resolved_unit_measure_qname(unit),) if _resolved_unit_measure_qname(unit) else ())
+            else (
+                (_resolved_unit_measure_qname(unit),) if _resolved_unit_measure_qname(unit) else ()
+            )
         )
         if unit.unit_form != "simple" or measure_count != 1 or tuple(measures) != (expected,):
             got = ", ".join(str(m) for m in measures) or unit.measure_uri or unit.unit_form
@@ -772,9 +799,17 @@ class StructuralConformanceValidator:
         fact: Fact,
         *,
         is_numeric: bool,
+        concept: Concept | None = None,
     ) -> ValidationFinding | None:
-        has_decimals = fact.decimals is not None
-        has_precision = fact.precision is not None
+        effective_decimals = fact.decimals
+        effective_precision = fact.precision
+        if concept is not None:
+            if effective_decimals is None:
+                effective_decimals = concept.default_decimals
+            if effective_precision is None:
+                effective_precision = concept.default_precision
+        has_decimals = effective_decimals is not None
+        has_precision = effective_precision is not None
         is_nil = getattr(fact, "is_nil", False)
 
         if is_nil:
@@ -790,10 +825,7 @@ class StructuralConformanceValidator:
                 return ValidationFinding(
                     rule_id="structural:decimals-precision",
                     severity=ValidationSeverity.ERROR,
-                    message=(
-                        f"Nil fact for concept '{fact.concept}' must not specify "
-                        f"{present}."
-                    ),
+                    message=(f"Nil fact for concept '{fact.concept}' must not specify {present}."),
                     source="structural",
                     concept_qname=fact.concept,
                     context_ref=fact.context_ref,
@@ -1000,6 +1032,51 @@ class StructuralConformanceValidator:
                             context_ref=source_ctx,
                         )
                     )
+        return findings
+
+    def _check_requires_element(
+        self,
+        instance: XbrlInstance,
+        taxonomy: TaxonomyStructure | None,
+    ) -> list[ValidationFinding]:
+        if taxonomy is None or instance.source_path is None:
+            return []
+
+        requires_arcs = [
+            arc
+            for arcs in taxonomy.definition.values()
+            for arc in arcs
+            if arc.arcrole == _ARCROLE_REQUIRES_ELEMENT
+        ]
+        if not requires_arcs:
+            return []
+
+        present = {fact.concept for fact in instance.facts}
+        try:
+            root = parse_xml_file(instance.source_path).getroot()
+            for child in root:
+                if isinstance(child.tag, str) and child.tag.startswith("{"):
+                    qname = QName.from_clark(child.tag)
+                    if qname in taxonomy.concepts:
+                        present.add(qname)
+        except Exception:
+            pass
+
+        findings: list[ValidationFinding] = []
+        for arc in requires_arcs:
+            if arc.source in present and arc.target not in present:
+                findings.append(
+                    ValidationFinding(
+                        rule_id="structural:requires-element",
+                        severity=ValidationSeverity.ERROR,
+                        message=(
+                            f"Concept '{arc.source}' is present, so required concept "
+                            f"'{arc.target}' must also be present."
+                        ),
+                        source="structural",
+                        concept_qname=arc.source,
+                    )
+                )
         return findings
 
     @classmethod

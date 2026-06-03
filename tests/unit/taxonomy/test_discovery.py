@@ -121,6 +121,29 @@ class TestDiscoveryBasic:
         lb_names = {p.name for p in linkbases}
         assert "labels.xml" in lb_names
 
+    def test_seed_linkbase_discovers_locator_referenced_linkbase(self, tmp_path):
+        seed = tmp_path / "seed.xml"
+        seed.write_text(
+            """<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+               xmlns:xlink="http://www.w3.org/1999/xlink">
+  <link:loc xlink:type="locator" xlink:label="arcLb" xlink:href="arcs.xml#arc1"/>
+</link:linkbase>
+""",
+            encoding="utf-8",
+        )
+        (tmp_path / "arcs.xml").write_text(LABEL_XML, encoding="utf-8")
+        entry = write_xsd(tmp_path, "entry.xsd", MINIMAL_XSD)
+
+        _, linkbases, _, _, _ = discover_dts(
+            entry,
+            LoaderSettings(),
+            seed_linkbases=[seed],
+        )
+
+        lb_names = {path.name for path in linkbases}
+        assert {"seed.xml", "arcs.xml"} <= lb_names
+
     def test_discovers_linkbase_when_base_uri_is_percent_encoded(self, tmp_path):
         base_dir = tmp_path / "10000 Formula"
         base_dir.mkdir()

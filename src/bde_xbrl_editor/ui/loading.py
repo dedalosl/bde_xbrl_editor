@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import multiprocessing
 import queue
+import threading
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Signal, Slot
 
 from bde_xbrl_editor.taxonomy import (
     LoaderSettings,
@@ -48,9 +49,20 @@ def _instance_load_process_entry(
             preloaded_taxonomy=preloaded_taxonomy,
         )
         taxonomy = resolved_taxonomy or preloaded_taxonomy
+        if resolved_taxonomy is not None and instance.instance_linkbase_refs:
+            on_progress("Preparing editor…", 96, 100)
+            taxonomy = loader.load(
+                instance.taxonomy_entry_point,
+                progress_callback=on_progress,
+                instance_linkbase_seeds=instance.instance_linkbase_refs,
+            )
         if taxonomy is None:
             on_progress("Preparing editor…", 96, 100)
-            taxonomy = loader.load(instance.taxonomy_entry_point, progress_callback=on_progress)
+            taxonomy = loader.load(
+                instance.taxonomy_entry_point,
+                progress_callback=on_progress,
+                instance_linkbase_seeds=instance.instance_linkbase_refs,
+            )
         result_queue.put(("finished", instance, taxonomy, len(orphaned_facts)))
     except TaxonomyResolutionError as exc:
         result_queue.put(("error", str(exc)))
@@ -157,6 +169,53 @@ class TaxonomyLoadWorker(QObject):
             self.error.emit(str(exc))
         except Exception as exc:  # noqa: BLE001
             self.error.emit(f"Unexpected error: {exc}")
+
+
+class FormulaHydrationWorker(QObject):
+    """Loads deferred formula assertions after the taxonomy workspace is visible."""
+
+    progress = Signal(str, int, int)
+    partial = Signal(object)
+    finished = Signal(object)
+    error = Signal(str)
+
+    def __init__(self, loader: TaxonomyLoader, taxonomy: object) -> None:
+        super().__init__()
+        self._loader = loader
+        self._taxonomy = taxonomy
+        self._cancel_event = threading.Event()
+
+    @Slot()
+    def run(self) -> None:
+        def on_progress(message: str, current: int, total: int) -> None:
+            if not self._cancel_event.is_set():
+                self.progress.emit(message, current, total)
+
+        def on_chunk(assertion_set: object) -> None:
+            if self._cancel_event.is_set():
+                return
+            from dataclasses import replace  # noqa: PLC0415
+
+            self.partial.emit(replace(self._taxonomy, formula_assertion_set=assertion_set))
+
+        try:
+            updated = self._loader.hydrate_deferred_formula_assertions(
+                self._taxonomy,
+                progress_callback=on_progress,
+                chunk_callback=on_chunk,
+                cancel_callback=self._cancel_event.is_set,
+            )
+        except Exception as exc:  # noqa: BLE001
+            if not self._cancel_event.is_set():
+                self.error.emit(str(exc))
+            return
+
+        if not self._cancel_event.is_set():
+            self.finished.emit(updated)
+
+    @Slot()
+    def cancel(self) -> None:
+        self._cancel_event.set()
 
 
 class InstanceLoadWorker(QObject):

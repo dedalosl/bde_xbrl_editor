@@ -36,6 +36,12 @@ _RELATIONSHIP_EQUIVALENCE_EXCLUDED_ATTRS = frozenset(
     }
 )
 
+# Arc attributes omitted from XML use the same defaults as summation-item parsing (XBRL 2.1).
+_EQUIVALENCE_ATTR_DEFAULTS: dict[str, str] = {
+    "order": "1",
+    "weight": "1",
+}
+
 
 def _normalise_equivalence_value(raw: str) -> tuple[str, str]:
     s = raw.strip()
@@ -60,15 +66,89 @@ def _relationship_equivalence_key(
     parent: QName,
     child: QName,
 ) -> tuple:
+    prop_attrs: dict[str, tuple[str, str]] = {}
+    for name in arc.attrib:
+        if name in _RELATIONSHIP_EQUIVALENCE_EXCLUDED_ATTRS:
+            continue
+        prop_attrs[name] = _normalise_equivalence_value(arc.attrib[name])
+    for name, default in _EQUIVALENCE_ATTR_DEFAULTS.items():
+        prop_attrs.setdefault(name, _normalise_equivalence_value(default))
+
     attrs = [
         ("parent", ("qname", str(parent))),
         ("child", ("qname", str(child))),
     ]
-    for name in sorted(arc.attrib):
-        if name in _RELATIONSHIP_EQUIVALENCE_EXCLUDED_ATTRS:
-            continue
-        attrs.append((name, _normalise_equivalence_value(arc.attrib[name])))
+    attrs.extend(sorted(prop_attrs.items()))
     return tuple(attrs)
+
+
+def parse_calculation_linkbase_from_root(
+    root: etree._Element,
+    concept_map: dict[str, QName],
+) -> dict[str, list[CalculationArc]]:
+    """Parse calculation links from a linkbase root element."""
+    result: dict[str, list[CalculationArc]] = {}
+
+    for link_el in root.iter(_CALC_LINK):
+        elr = link_el.get(_XLINK_ROLE, "http://www.xbrl.org/2003/role/link")
+
+        loc_map: dict[str, list[QName]] = {}
+        for loc in link_el.iter(_LOC):
+            href = loc.get(_XLINK_HREF, "")
+            xlink_label = loc.get(_XLINK_LABEL, "")
+            if "#" in href:
+                fragment = unquote(href.rsplit("#", 1)[1])
+                qname = concept_map.get(fragment)
+                if qname:
+                    loc_map.setdefault(xlink_label, []).append(qname)
+
+        for arc in link_el.iter(_CALC_ARC):
+            arcrole = arc.get(_XLINK_ARCROLE, "")
+            if arcrole not in {ARCROLE_CALCULATION, _ARCROLE_CALCULATION_11}:
+                continue
+            frm = arc.get(_XLINK_FROM, "")
+            to = arc.get(_XLINK_TO, "")
+            if arcrole == _ARCROLE_CALCULATION_11:
+                sources = loc_map.get(to, [])
+                targets = loc_map.get(frm, [])
+            else:
+                sources = loc_map.get(frm, [])
+                targets = loc_map.get(to, [])
+            if not sources or not targets:
+                continue
+            try:
+                order = float(arc.get("order", "1"))
+            except ValueError:
+                order = 1.0
+            try:
+                weight = float(arc.get("weight", "1"))
+            except ValueError:
+                weight = 1.0
+            use = arc.get("use", "optional")
+            try:
+                arc_priority = int(arc.get("priority", "0"))
+            except ValueError:
+                arc_priority = 0
+            for parent in sources:
+                for child in targets:
+                    if parent == child:
+                        continue
+                    result.setdefault(elr, []).append(
+                        CalculationArc(
+                            parent=parent,
+                            child=child,
+                            order=order,
+                            weight=weight,
+                            extended_link_role=elr,
+                            use=use,
+                            priority=arc_priority,
+                            equivalence_key=_relationship_equivalence_key(
+                                arc, parent, child
+                            ),
+                        )
+                    )
+
+    return result
 
 
 def parse_calculation_linkbase(
@@ -90,55 +170,4 @@ def parse_calculation_linkbase(
             column=exc.offset,
         ) from exc
 
-    root = tree.getroot()
-    result: dict[str, list[CalculationArc]] = {}
-
-    for link_el in root.iter(_CALC_LINK):
-        elr = link_el.get(_XLINK_ROLE, "http://www.xbrl.org/2003/role/link")
-
-        loc_map: dict[str, QName] = {}
-        for loc in link_el.iter(_LOC):
-            href = loc.get(_XLINK_HREF, "")
-            xlink_label = loc.get(_XLINK_LABEL, "")
-            if "#" in href:
-                fragment = unquote(href.rsplit("#", 1)[1])
-                qname = concept_map.get(fragment)
-                if qname:
-                    loc_map[xlink_label] = qname
-
-        for arc in link_el.iter(_CALC_ARC):
-            arcrole = arc.get(_XLINK_ARCROLE, "")
-            if arcrole not in {ARCROLE_CALCULATION, _ARCROLE_CALCULATION_11}:
-                continue
-            frm = arc.get(_XLINK_FROM, "")
-            to = arc.get(_XLINK_TO, "")
-            if arcrole == _ARCROLE_CALCULATION_11:
-                parent = loc_map.get(to)
-                child = loc_map.get(frm)
-            else:
-                parent = loc_map.get(frm)
-                child = loc_map.get(to)
-            if not parent or not child:
-                continue
-            try:
-                order = float(arc.get("order", "1"))
-            except ValueError:
-                order = 1.0
-            try:
-                weight = float(arc.get("weight", "1"))
-            except ValueError:
-                weight = 1.0
-            use = arc.get("use", "optional")
-            result.setdefault(elr, []).append(
-                CalculationArc(
-                    parent=parent,
-                    child=child,
-                    order=order,
-                    weight=weight,
-                    extended_link_role=elr,
-                    use=use,
-                    equivalence_key=_relationship_equivalence_key(arc, parent, child),
-                )
-            )
-
-    return result
+    return parse_calculation_linkbase_from_root(tree.getroot(), concept_map)

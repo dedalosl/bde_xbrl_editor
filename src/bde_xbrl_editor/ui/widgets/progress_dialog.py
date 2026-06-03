@@ -48,8 +48,8 @@ class TaxonomyProgressDialog(QDialog):
         )
 
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(18, 18, 18, 18)
-        outer.setSpacing(12)
+        outer.setContentsMargins(16, 16, 16, 16)
+        outer.setSpacing(10)
 
         shell = QFrame(self)
         shell.setObjectName("ProgressShell")
@@ -57,13 +57,13 @@ class TaxonomyProgressDialog(QDialog):
             f"""
             QFrame#ProgressShell {{
                 background: {theme.SURFACE_BG};
-                border: 1px solid {theme.ACCENT_SOFT};
-                border-radius: 18px;
+                border: 1px solid {theme.BORDER};
+                border-radius: 10px;
             }}
             """
         )
         shell_layout = QVBoxLayout(shell)
-        shell_layout.setContentsMargins(18, 18, 18, 18)
+        shell_layout.setContentsMargins(16, 16, 16, 16)
         shell_layout.setSpacing(12)
         outer.addWidget(shell)
 
@@ -72,18 +72,14 @@ class TaxonomyProgressDialog(QDialog):
         hero.setStyleSheet(
             f"""
             QFrame#ProgressHero {{
-                background: qlineargradient(
-                    x1:0, y1:0, x2:1, y2:1,
-                    stop:0 {theme.NAV_BG_DEEP},
-                    stop:1 {theme.NAV_BG_DARK}
-                );
-                border: none;
-                border-radius: 14px;
+                background: {theme.SURFACE_ALT_BG};
+                border: 1px solid {theme.BORDER};
+                border-radius: 8px;
             }}
             """
         )
         hero_layout = QVBoxLayout(hero)
-        hero_layout.setContentsMargins(16, 16, 16, 16)
+        hero_layout.setContentsMargins(14, 14, 14, 14)
         hero_layout.setSpacing(8)
 
         top_row = QHBoxLayout()
@@ -96,19 +92,19 @@ class TaxonomyProgressDialog(QDialog):
 
         self._eyebrow = QLabel("Load session", hero)
         self._eyebrow.setStyleSheet(
-            f"color: {theme.ACCENT_SOFT}; font-size: 11px; font-weight: 700; background: transparent;"
+            f"color: {theme.TEXT_SUBTLE}; font-size: 11px; font-weight: 700; background: transparent;"
         )
         title_wrap.addWidget(self._eyebrow)
 
         self._title_label = QLabel("Loading", hero)
         self._title_label.setStyleSheet(
-            f"color: {theme.TEXT_INVERSE}; font-size: 22px; font-weight: 700; background: transparent;"
+            f"color: {theme.TEXT_MAIN}; font-size: 20px; font-weight: 750; background: transparent;"
         )
         title_wrap.addWidget(self._title_label)
 
         self._context_label = QLabel("Waiting for file selection", hero)
         self._context_label.setStyleSheet(
-            f"color: {theme.ACCENT_SOFT}; font-size: 11px; background: transparent;"
+            f"color: {theme.TEXT_MUTED}; font-size: 11px; background: transparent;"
         )
         self._context_label.setWordWrap(True)
         title_wrap.addWidget(self._context_label)
@@ -122,9 +118,9 @@ class TaxonomyProgressDialog(QDialog):
         self._status_chip.setStyleSheet(
             f"""
             QLabel {{
-                color: {theme.TEXT_INVERSE};
-                background: rgba(255, 253, 248, 0.14);
-                border: none;
+                color: {theme.ACCENT};
+                background: {theme.SURFACE_BG};
+                border: 1px solid {theme.ACCENT_SOFT};
                 border-radius: 14px;
                 font-size: 10px;
                 font-weight: 700;
@@ -138,7 +134,7 @@ class TaxonomyProgressDialog(QDialog):
         self._message_label = QLabel(self._message, hero)
         self._message_label.setWordWrap(True)
         self._message_label.setStyleSheet(
-            f"color: {theme.TEXT_INVERSE}; font-size: 13px; background: transparent;"
+            f"color: {theme.TEXT_MAIN}; font-size: 13px; background: transparent;"
         )
         hero_layout.addWidget(self._message_label)
 
@@ -153,12 +149,12 @@ class TaxonomyProgressDialog(QDialog):
         self._progress_bar.setStyleSheet(
             f"""
             QProgressBar {{
-                background: rgba(255, 253, 248, 0.16);
+                background: {theme.SURFACE_BG};
                 border: none;
                 border-radius: 5px;
             }}
             QProgressBar::chunk {{
-                background: {theme.HEADER_BG};
+                background: {theme.ACCENT};
                 border-radius: 5px;
             }}
             """
@@ -167,7 +163,7 @@ class TaxonomyProgressDialog(QDialog):
 
         self._percent_label = QLabel("0%", hero)
         self._percent_label.setStyleSheet(
-            f"color: {theme.TEXT_INVERSE}; font-size: 11px; font-weight: 700; background: transparent;"
+            f"color: {theme.TEXT_MAIN}; font-size: 11px; font-weight: 700; background: transparent;"
         )
         progress_row.addWidget(self._percent_label, alignment=Qt.AlignmentFlag.AlignVCenter)
         hero_layout.addLayout(progress_row)
@@ -209,7 +205,7 @@ class TaxonomyProgressDialog(QDialog):
             QListWidget::item {{
                 border: none;
                 background: transparent;
-                padding: 6px 2px;
+                padding: 5px 2px;
                 margin: 0;
             }}
             """

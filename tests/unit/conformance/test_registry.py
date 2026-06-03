@@ -43,10 +43,10 @@ def test_table_linkbase_has_informational_note() -> None:
 
 
 def test_index_filenames() -> None:
-    assert SUITE_REGISTRY["xbrl21"].index_filename == "xbrl.xml"
-    assert SUITE_REGISTRY["dimensions"].index_filename == "xdt.xml"
-    assert SUITE_REGISTRY["table-linkbase"].index_filename == "testcases-index.xml"
-    assert SUITE_REGISTRY["formula"].index_filename == "index.xml"
+    assert SUITE_REGISTRY["xbrl21"].index_filename == "xbrl.org-index.xml"
+    assert SUITE_REGISTRY["dimensions"].index_filename == "xdt.index.xml"
+    assert SUITE_REGISTRY["table-linkbase"].index_filename == "tableLinkbase.index.xml"
+    assert SUITE_REGISTRY["formula"].index_filename == "formula.index.xml"
 
 
 def test_subdirectories() -> None:

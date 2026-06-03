@@ -34,13 +34,22 @@ from bde_xbrl_editor.taxonomy.constants import (
     NS_TABLE_NAMESPACES,
     NS_XBRLDT,
     NS_XBRLI,
+    NS_XSD,
 )
-from bde_xbrl_editor.taxonomy.discovery import _should_skip_linkbase, discover_dts
+from bde_xbrl_editor.taxonomy.discovery import (
+    _resolve_href_from_cache_mirror,
+    _should_skip_linkbase,
+    discover_dts,
+    find_taxonomy_cache_root,
+)
 from bde_xbrl_editor.taxonomy.label_resolver import LabelResolver
 from bde_xbrl_editor.taxonomy.linkbases.assertion_resources import (
     parse_assertion_resource_linkbase,
 )
-from bde_xbrl_editor.taxonomy.linkbases.calculation import parse_calculation_linkbase
+from bde_xbrl_editor.taxonomy.linkbases.calculation import (
+    parse_calculation_linkbase,
+    parse_calculation_linkbase_from_root,
+)
 from bde_xbrl_editor.taxonomy.linkbases.custom_functions import (
     parse_custom_function_linkbase,
 )
@@ -49,6 +58,7 @@ from bde_xbrl_editor.taxonomy.linkbases.formula import (
     linkbase_contains_formula_assertions,
     parse_assertion_table_mappings,
     parse_formula_linkbase,
+    parse_formula_linkbase_bundle,
 )
 from bde_xbrl_editor.taxonomy.linkbases.generic_label import parse_generic_label_linkbase
 from bde_xbrl_editor.taxonomy.linkbases.label import parse_label_linkbase
@@ -56,14 +66,18 @@ from bde_xbrl_editor.taxonomy.linkbases.presentation import (
     PresentationLinkbaseParseResult,
     parse_presentation_linkbase,
 )
-from bde_xbrl_editor.taxonomy.linkbases.table_pwd import parse_table_linkbase
+from bde_xbrl_editor.taxonomy.linkbases.table import parse_table_linkbase
 from bde_xbrl_editor.taxonomy.models import (
     AssertionTextResource,
+    CalculationArc,
     Concept,
     CustomFunctionDefinition,
+    DefinitionArc,
     DimensionModel,
     DomainMember,
+    HypercubeModel,
     QName,
+    SchemaElementDefaults,
     TaxonomyMetadata,
     TaxonomyParseError,
     TaxonomyStructure,
@@ -72,6 +86,7 @@ from bde_xbrl_editor.taxonomy.models import (
 from bde_xbrl_editor.taxonomy.schema import (
     XBRL_SG_ROOTS,
     build_global_named_type_registry,
+    collect_schema_element_defaults,
     extract_concept_enumerations_for_schema,
     extract_monetary_value_type_qnames,
     parse_schema_raw,
@@ -80,18 +95,27 @@ from bde_xbrl_editor.taxonomy.settings import LoaderSettings
 from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
 
 ProgressCallback = Callable[[str, int, int], None]
+FormulaChunkCallback = Callable[[Any], None]
+FormulaCancelCallback = Callable[[], bool]
 
-# Total loading steps for progress reporting (at least 6)
-_TOTAL_STEPS = 7
+# Total loading steps for progress reporting.
+_TOTAL_STEPS = 10
 
 _NS_XLINK = "http://www.w3.org/1999/xlink"
 _XLINK_HREF = f"{{{_NS_XLINK}}}href"
+_XSD_ELEMENT = f"{{{NS_XSD}}}element"
+_XSD_COMPLEX_TYPE = f"{{{NS_XSD}}}complexType"
+_XSD_SIMPLE_TYPE = f"{{{NS_XSD}}}simpleType"
 
 _XBRLI_PREFIX_COLON_RE = re.compile(r"\bxbrli\s*:")
 _XBRLI_INSTANCE_IMPORT_NS_RE = re.compile(
     r"""namespace\s*=\s*["']http://www\.xbrl\.org/2003/instance["']""",
     re.IGNORECASE,
 )
+
+
+def _is_true(raw: str | None) -> bool:
+    return str(raw or "").strip().lower() in {"true", "1"}
 
 
 def _schema_declares_xsd_model_tags(path: Path) -> bool:
@@ -112,6 +136,31 @@ def _schema_text_references_xbrl_linkbase_namespace(path: Path) -> bool:
     except OSError:
         return False
     return NS_LINK in snippet
+
+
+_XSD_APPINFO = f"{{{NS_XSD}}}appinfo"
+_EMBEDDED_LINKBASE = f"{{{NS_LINK}}}linkbase"
+
+
+def _parse_embedded_calculation_linkbases(
+    schema_paths: list[Path],
+    concept_id_map: dict[str, QName],
+) -> dict[str, list[CalculationArc]]:
+    """Parse calculation links embedded in XSD annotation/appinfo."""
+    merged: dict[str, list[CalculationArc]] = {}
+    for schema_path in schema_paths:
+        try:
+            tree = parse_xml_file(schema_path)
+        except etree.XMLSyntaxError:
+            continue
+        for appinfo in tree.getroot().iter(_XSD_APPINFO):
+            for child in appinfo:
+                if child.tag != _EMBEDDED_LINKBASE:
+                    continue
+                parsed = parse_calculation_linkbase_from_root(child, concept_id_map)
+                for elr, arc_list in parsed.items():
+                    merged.setdefault(elr, []).extend(arc_list)
+    return merged
 
 
 def _schema_embeds_linkbase_or_role_declarations(path: Path) -> bool:
@@ -143,6 +192,14 @@ def _schema_text_references_xbrl_instance_model(path: Path) -> bool:
     except OSError:
         return False
     return bool(_XBRLI_PREFIX_COLON_RE.search(snippet))
+
+
+def _schema_defines_xbrli_item_type(path: Path) -> bool:
+    try:
+        snippet = path.read_text(encoding="utf-8", errors="ignore")[:524_288]
+    except OSError:
+        return False
+    return bool(re.search(r"""base\s*=\s*["']xbrli:[A-Za-z0-9]+ItemType["']""", snippet))
 
 
 def _sniff_linkbase_type(path: Path) -> str:
@@ -313,28 +370,40 @@ def _find_cache_root(entry_point: Path) -> Path | None:
     return None
 
 
-def _infer_local_catalog_from_cache(entry_point: Path) -> dict[str, Path]:
-    """Infer URL-prefix mappings from a mirrored on-disk taxonomy cache.
+def _loader_cache_key(entry_point: Path, seed_paths: tuple[Path, ...]) -> str:
+    cache_key = str(entry_point)
+    if seed_paths:
+        seed_key = ";".join(str(path) for path in seed_paths)
+        cache_key = f"{cache_key}|linkbase-seeds={seed_key}"
+    return cache_key
 
-    When users open an entry point directly from ``cache/<host>/...``, downstream
-    schemas often jump back to remote HTTP URLs for sibling hosts such as
-    ``www.eba.europa.eu`` or ``www.eurofiling.info``. Treat every host directory
-    under the shared ``cache`` root as a local mirror so those remote imports can
-    still resolve without requiring manual loader settings.
+
+def _normalize_seed_paths(seed_paths: list[Path] | tuple[Path, ...] | None) -> tuple[Path, ...]:
+    return tuple(sorted({Path(path).resolve() for path in (seed_paths or ())}))
+
+
+def _infer_local_catalog_from_cache(entry_point: Path) -> dict[str, Path]:
+    """Infer a URL-prefix mapping for the cache host that contains *entry_point*.
+
+    Other mirrored hosts (e.g. ``www.eba.europa.eu``) are resolved on demand during
+    DTS discovery via :func:`bde_xbrl_editor.taxonomy.discovery.find_taxonomy_cache_root`
+    so we do not pre-register every directory under ``cache/``.
     """
     cache_root = _find_cache_root(entry_point)
     if cache_root is None or not cache_root.is_dir():
         return {}
 
+    try:
+        host = entry_point.resolve().relative_to(cache_root).parts[0]
+    except ValueError:
+        return {}
+    host_dir = cache_root / host
+    if not host_dir.is_dir():
+        return {}
+
     catalog: dict[str, Path] = {}
-    for host_dir in sorted(cache_root.iterdir()):
-        if not host_dir.is_dir():
-            continue
-        host = host_dir.name.strip()
-        if not host:
-            continue
-        for scheme in ("http", "https", "ftp"):
-            catalog[f"{scheme}://{host}/"] = host_dir
+    for scheme in ("http", "https", "ftp"):
+        catalog[f"{scheme}://{host}/"] = host_dir
     return catalog
 
 
@@ -427,6 +496,155 @@ def _best_assertion_resources(
     return tuple(sorted(matched, key=lambda item: item.priority, reverse=True))
 
 
+def _collect_schema_fragment_index(
+    schema_paths: list[Path],
+) -> tuple[dict[tuple[str, str], tuple[QName, bool]], dict[tuple[str, str], str]]:
+    """Index schema fragments needed for xbrldt:typedDomainRef checks."""
+    global_elements: dict[tuple[str, str], tuple[QName, bool]] = {}
+    fragment_kinds: dict[tuple[str, str], str] = {}
+
+    for schema_path in schema_paths:
+        try:
+            root = parse_xml_file(schema_path).getroot()
+        except etree.XMLSyntaxError:
+            continue
+        schema_key = str(schema_path.resolve())
+        target_ns = root.get("targetNamespace", "")
+
+        for child in root:
+            if not isinstance(child.tag, str):
+                continue
+            fragment = child.get("id")
+            if child.tag == _XSD_ELEMENT:
+                name = child.get("name")
+                if name:
+                    fragment = fragment or name
+                    if fragment:
+                        qname = QName(namespace=target_ns, local_name=name)
+                        global_elements[(schema_key, fragment)] = (
+                            qname,
+                            _is_true(child.get("abstract")),
+                        )
+                        fragment_kinds[(schema_key, fragment)] = "global-element"
+                continue
+            if child.tag in {_XSD_COMPLEX_TYPE, _XSD_SIMPLE_TYPE} and fragment:
+                fragment_kinds[(schema_key, fragment)] = "type"
+
+        for el in root.iter(_XSD_ELEMENT):
+            if el.getparent() is root:
+                continue
+            fragment = el.get("id")
+            if fragment:
+                fragment_kinds.setdefault((schema_key, fragment), "local-element")
+
+    return global_elements, fragment_kinds
+
+
+def _resolve_typed_domain_ref_path(
+    source_schema_path: str | None,
+    typed_domain_ref: str,
+    local_catalog: dict[str, Path] | None = None,
+    *,
+    cache_root: Path | None = None,
+) -> Path | None:
+    if not source_schema_path or "#" not in typed_domain_ref:
+        return None
+    ref_path, _fragment = typed_domain_ref.rsplit("#", 1)
+    if not ref_path:
+        return Path(source_schema_path).resolve()
+    if ref_path.startswith(("http://", "https://")):
+        for prefix, local_root in (local_catalog or {}).items():
+            if ref_path.startswith(prefix):
+                rel = ref_path[len(prefix) :].lstrip("/")
+                return (local_root / rel).resolve()
+        if cache_root is not None:
+            mirrored = _resolve_href_from_cache_mirror(ref_path, cache_root)
+            if mirrored is not None:
+                return mirrored
+        return None
+    return (Path(source_schema_path).parent / ref_path).resolve()
+
+
+def _apply_and_check_typed_domain_refs(
+    concepts: dict[QName, Concept],
+    dimension_qnames: set[QName],
+    schema_paths: list[Path],
+    local_catalog: dict[str, Path] | None = None,
+    *,
+    cache_root: Path | None = None,
+) -> dict[QName, Concept]:
+    """Validate typedDomainRef syntax rules and attach resolved domain elements."""
+    global_elements, fragment_kinds = _collect_schema_fragment_index(schema_paths)
+    dts_schema_paths = {str(path.resolve()) for path in schema_paths}
+    updated: dict[QName, Concept] = {}
+
+    for qname, concept in concepts.items():
+        typed_domain_ref = concept.typed_domain_ref
+        if not typed_domain_ref:
+            updated[qname] = concept
+            continue
+
+        if qname not in dimension_qnames:
+            raise TaxonomyParseError(
+                file_path=concept.schema_path or "",
+                message=(
+                    "xbrldte:TypedDomainRefError: "
+                    f"typedDomainRef appears on non-dimension declaration {qname}"
+                ),
+            )
+
+        target_path = _resolve_typed_domain_ref_path(
+            concept.schema_path,
+            typed_domain_ref,
+            local_catalog,
+            cache_root=cache_root,
+        )
+        if target_path is None or "#" not in typed_domain_ref:
+            raise TaxonomyParseError(
+                file_path=concept.schema_path or "",
+                message=(
+                    "xbrldte:TypedDimensionError: "
+                    f"typedDomainRef '{typed_domain_ref}' does not locate a global element"
+                ),
+            )
+        _ref_path, fragment = typed_domain_ref.rsplit("#", 1)
+        target_key = str(target_path)
+        if target_key not in dts_schema_paths:
+            raise TaxonomyParseError(
+                file_path=concept.schema_path or "",
+                message=(
+                    "xbrldte:OutOfDTSSchemaError: "
+                    f"typedDomainRef '{typed_domain_ref}' points outside the DTS"
+                ),
+            )
+
+        element_info = global_elements.get((target_key, fragment))
+        if element_info is None:
+            kind = fragment_kinds.get((target_key, fragment), "missing")
+            raise TaxonomyParseError(
+                file_path=concept.schema_path or "",
+                message=(
+                    "xbrldte:TypedDimensionError: "
+                    f"typedDomainRef '{typed_domain_ref}' locates {kind}, not a "
+                    "non-abstract global element"
+                ),
+            )
+
+        typed_domain_element, is_abstract = element_info
+        if is_abstract:
+            raise TaxonomyParseError(
+                file_path=concept.schema_path or "",
+                message=(
+                    "xbrldte:TypedDimensionError: "
+                    f"typedDomainRef '{typed_domain_ref}' locates an abstract element"
+                ),
+            )
+
+        updated[qname] = replace(concept, typed_domain_element=typed_domain_element)
+
+    return updated
+
+
 _SG_HYPERCUBE = QName(NS_XBRLDT, "hypercubeItem")
 _SG_DIMENSION = QName(NS_XBRLDT, "dimensionItem")
 
@@ -470,27 +688,15 @@ _PREDEFINED_XBRL_ROLES: frozenset[str] = frozenset(
 )
 
 
-def _check_dimensional_constraints(
+def _dimension_and_hypercube_qnames(
     concepts: dict[QName, Concept],
-    definition_arcs: dict[str, list],
-    declared_roles: set[str] | None = None,
-) -> None:
-    """Check XBRL Dimensions 1.0 taxonomy structure constraints (xbrldte:* errors).
-
-    Raises TaxonomyParseError with the appropriate xbrldte: error code in the
-    message when a constraint is violated. The conformance runner's
-    _match_outcome() detects these codes in the exception message.
-    """
-    # Build substitution group chain map for transitive closure computation.
+) -> tuple[set[QName], set[QName]]:
+    """Return transitive dimension and hypercube concept sets."""
     sg_map: dict[QName, QName] = {
         q: c.substitution_group for q, c in concepts.items() if c.substitution_group is not None
     }
-
-    # Compute transitive hypercube and dimension sets — a concept is a hypercube
-    # (dimension) item if its substitution group chain reaches xbrldt:hypercubeItem
-    # (xbrldt:dimensionItem), regardless of how many hops.
-    hypercube_qnames: set[QName] = set()
     dimension_qnames: set[QName] = set()
+    hypercube_qnames: set[QName] = set()
     for q in concepts:
         sg = sg_map.get(q)
         while sg is not None:
@@ -501,6 +707,25 @@ def _check_dimensional_constraints(
                 dimension_qnames.add(q)
                 break
             sg = sg_map.get(sg)
+    return dimension_qnames, hypercube_qnames
+
+
+def _check_dimensional_constraints(
+    concepts: dict[QName, Concept],
+    definition_arcs: dict[str, list],
+    hypercubes: list[HypercubeModel] | None = None,
+    declared_roles: set[str] | None = None,
+) -> None:
+    """Check XBRL Dimensions 1.0 taxonomy structure constraints (xbrldte:* errors).
+
+    Raises TaxonomyParseError with the appropriate xbrldte: error code in the
+    message when a constraint is violated. The conformance runner's
+    _match_outcome() detects these codes in the exception message.
+    """
+    # Compute transitive hypercube and dimension sets — a concept is a hypercube
+    # (dimension) item if its substitution group chain reaches xbrldt:hypercubeItem
+    # (xbrldt:dimensionItem), regardless of how many hops.
+    dimension_qnames, hypercube_qnames = _dimension_and_hypercube_qnames(concepts)
 
     # Check 1: hypercube items (including transitive) must be abstract
     # (xbrldte:HypercubeElementIsNotAbstractError)
@@ -627,12 +852,18 @@ def _check_dimensional_constraints(
             # Check 7: source of dimension-domain arc must be a dimension item
             # (xbrldte:DimensionDomainSourceError)
             if arcrole == ARCROLE_DIMENSION_DOMAIN:
-                if arc.source in concepts and arc.source not in dimension_qnames:
+                if (
+                    arc.source in concepts
+                    and (
+                        arc.source not in dimension_qnames
+                        or concepts[arc.source].typed_domain_ref is not None
+                    )
+                ):
                     raise TaxonomyParseError(
                         file_path="",
                         message=(
                             f"xbrldte:DimensionDomainSourceError: "
-                            f"Source of dimension-domain arc must be a dimension item, "
+                            f"Source of dimension-domain arc must be an explicit dimension item, "
                             f"got {arc.source}"
                         ),
                     )
@@ -732,6 +963,143 @@ def _check_dimensional_constraints(
                         ),
                     )
 
+    _check_drs_directed_cycles(definition_arcs)
+    if hypercubes is not None:
+        _check_primary_item_polymorphism(definition_arcs, hypercubes)
+
+
+def _check_drs_directed_cycles(definition_arcs: dict[str, list[DefinitionArc]]) -> None:
+    drs_elrs = {
+        arc.target_role or elr
+        for elr, arcs in definition_arcs.items()
+        for arc in arcs
+        if arc.arcrole in (ARCROLE_ALL, ARCROLE_NOT_ALL)
+    }
+    if not drs_elrs:
+        return
+
+    graph: dict[QName, set[QName]] = {}
+    for start_elr in drs_elrs:
+        reachable_elrs: set[str] = set()
+        queue: deque[str] = deque([start_elr])
+        while queue:
+            elr = queue.popleft()
+            if elr in reachable_elrs:
+                continue
+            reachable_elrs.add(elr)
+            for arc in definition_arcs.get(elr, []):
+                if arc.arcrole in (
+                    ARCROLE_HYPERCUBE_DIMENSION,
+                    ARCROLE_DIMENSION_DOMAIN,
+                    ARCROLE_DOMAIN_MEMBER,
+                ) and arc.target_role:
+                    queue.append(arc.target_role)
+
+        for elr in reachable_elrs:
+            for arc in definition_arcs.get(elr, []):
+                if arc.arcrole in (ARCROLE_DIMENSION_DOMAIN, ARCROLE_DOMAIN_MEMBER):
+                    graph.setdefault(arc.source, set()).add(arc.target)
+
+    visiting: set[QName] = set()
+    visited: set[QName] = set()
+
+    def visit(node: QName) -> bool:
+        if node in visiting:
+            return True
+        if node in visited:
+            return False
+        visiting.add(node)
+        for child in graph.get(node, ()):
+            if visit(child):
+                return True
+        visiting.remove(node)
+        visited.add(node)
+        return False
+
+    if any(visit(node) for node in graph):
+        raise TaxonomyParseError(
+            file_path="",
+            message="xbrldte:DRSDirectedCycleError: directed cycle in dimensional DRS",
+        )
+
+
+def _collect_drs_members(
+    definition_arcs: dict[str, list[DefinitionArc]],
+    root: QName,
+    start_elr: str,
+    *,
+    start_usable: bool = True,
+) -> set[QName]:
+    members: set[QName] = set()
+    queue: deque[tuple[QName, str, bool]] = deque([(root, start_elr, start_usable)])
+    seen: set[tuple[QName, str, bool]] = {(root, start_elr, start_usable)}
+    while queue:
+        current, elr, inherited_usable = queue.popleft()
+        if inherited_usable:
+            members.add(current)
+        for arc in definition_arcs.get(elr, []):
+            if arc.arcrole != ARCROLE_DOMAIN_MEMBER or arc.source != current:
+                continue
+            effective_usable = inherited_usable and (arc.usable is not False)
+            next_elr = arc.target_role or elr
+            state = (arc.target, next_elr, effective_usable)
+            if state not in seen:
+                seen.add(state)
+                queue.append(state)
+    return members
+
+
+def _check_primary_item_polymorphism(
+    definition_arcs: dict[str, list[DefinitionArc]],
+    hypercubes: list[HypercubeModel],
+) -> None:
+    for hc in hypercubes:
+        if hc.arcrole not in {"all", "notAll"}:
+            continue
+        primary_items = set(hc.primary_items)
+        if not primary_items:
+            continue
+        dimension_elr = hc.dimension_link_role or hc.extended_link_role
+        dimension_members: set[QName] = set()
+        for dim_qname in hc.dimensions:
+            hc_dim_arcs = [
+                arc
+                for arc in definition_arcs.get(dimension_elr, [])
+                if arc.arcrole == ARCROLE_HYPERCUBE_DIMENSION
+                and arc.source == hc.qname
+                and arc.target == dim_qname
+            ]
+            if not hc_dim_arcs:
+                hc_dim_arcs = [
+                    arc
+                    for arc in definition_arcs.get(hc.extended_link_role, [])
+                    if arc.arcrole == ARCROLE_HYPERCUBE_DIMENSION
+                    and arc.source == hc.qname
+                    and arc.target == dim_qname
+                ]
+            for hc_dim_arc in hc_dim_arcs:
+                dim_elr = hc_dim_arc.target_role or hc_dim_arc.extended_link_role
+                for arc in definition_arcs.get(dim_elr, []):
+                    if arc.arcrole != ARCROLE_DIMENSION_DOMAIN or arc.source != dim_qname:
+                        continue
+                    domain_usable = arc.usable is not False
+                    dimension_members.update(
+                        _collect_drs_members(
+                            definition_arcs,
+                            arc.target,
+                            arc.target_role or dim_elr,
+                            start_usable=domain_usable,
+                        )
+                    )
+        if primary_items & dimension_members:
+            raise TaxonomyParseError(
+                file_path="",
+                message=(
+                    "xbrldte:PrimaryItemPolymorphismError: primary item is also "
+                    "a member of a declared dimension domain"
+                ),
+            )
+
 
 def _rebuild_dimensions(
     definition_arcs: dict[str, list],
@@ -812,6 +1180,117 @@ def _rebuild_dimensions(
         )
 
     return dimensions
+
+
+def _collect_primary_descendant_states(
+    source: QName,
+    start_elr: str,
+    definition_arcs: dict[str, list[DefinitionArc]],
+) -> list[tuple[QName, str]]:
+    descendants: list[tuple[QName, str]] = []
+    queue: deque[tuple[QName, str]] = deque([(source, start_elr)])
+    seen_states: set[tuple[QName, str]] = {(source, start_elr)}
+    seen_targets: set[tuple[QName, str]] = set()
+
+    while queue:
+        current, current_elr = queue.popleft()
+        for arc in definition_arcs.get(current_elr, []):
+            if arc.arcrole != ARCROLE_DOMAIN_MEMBER or arc.source != current:
+                continue
+
+            next_elr = arc.target_role or current_elr
+            target = (arc.target, next_elr)
+            if target not in seen_targets:
+                seen_targets.add(target)
+                descendants.append(target)
+
+            state = (arc.target, next_elr)
+            if state not in seen_states:
+                seen_states.add(state)
+                queue.append(state)
+
+    return descendants
+
+
+def _rebuild_hypercubes(definition_arcs: dict[str, list]) -> list[HypercubeModel]:
+    """Build hypercubes from the complete merged definition arc set."""
+    hc_primary: dict[str, list[tuple[QName, QName, str, bool, str, str | None, str]]] = {}
+    hc_dims: dict[str, list[tuple[QName, QName]]] = {}
+
+    for elr, arcs in definition_arcs.items():
+        for arc in arcs:
+            if arc.arcrole in (ARCROLE_ALL, ARCROLE_NOT_ALL):
+                hc_primary.setdefault(elr, []).append(
+                    (
+                        arc.source,
+                        arc.target,
+                        arc.arcrole,
+                        bool(arc.closed),
+                        arc.context_element or "segment",
+                        arc.target_role,
+                        elr,
+                    )
+                )
+            elif arc.arcrole == ARCROLE_HYPERCUBE_DIMENSION:
+                hc_dims.setdefault(elr, []).append((arc.source, arc.target))
+
+    hypercubes: list[HypercubeModel] = []
+    for elr, prim_list in hc_primary.items():
+        direct_primary_by_hc: dict[QName, list[QName]] = {}
+        for primary, hc, *_rest in prim_list:
+            direct_primary_by_hc.setdefault(hc, []).append(primary)
+
+        expanded_relationships: set[tuple[QName, QName, str, bool, str, str | None, str]] = set(
+            prim_list
+        )
+        bfs_queue: list[tuple[QName, QName, str, bool, str, str | None, str]] = list(prim_list)
+        for primary, hc, arcrole, closed, ctx, tgt_role, inheritance_elr in bfs_queue:
+            start_elrs = [inheritance_elr]
+            if inheritance_elr == elr and tgt_role and tgt_role != elr:
+                start_elrs.append(tgt_role)
+            for start_elr in start_elrs:
+                for child, child_elr in _collect_primary_descendant_states(
+                    primary,
+                    start_elr,
+                    definition_arcs,
+                ):
+                    new_entry = (child, hc, arcrole, closed, ctx, tgt_role, child_elr)
+                    if new_entry not in expanded_relationships:
+                        expanded_relationships.add(new_entry)
+                        prim_list.append(new_entry)
+                        bfs_queue.append(new_entry)
+
+        hc_map: dict[QName, tuple[str, bool, str, str | None]] = {}
+        primary_by_hc: dict[QName, list[QName]] = {}
+        for primary, hc, arcrole, closed, ctx, tgt_role, _inheritance_elr in prim_list:
+            hc_map[hc] = (arcrole, closed, ctx, tgt_role)
+            primary_by_hc.setdefault(hc, []).append(primary)
+
+        dims_by_hc: dict[QName, list[QName]] = {}
+        dim_elr_by_hc: dict[QName, str] = {}
+        for hc, (_arcrole, _closed, _ctx, tgt_role) in hc_map.items():
+            lookup_elr = tgt_role if tgt_role else elr
+            for hc_q, dim_q in hc_dims.get(lookup_elr, []):
+                if hc_q == hc:
+                    dims_by_hc.setdefault(hc, []).append(dim_q)
+                    dim_elr_by_hc[hc] = lookup_elr
+
+        for hc, (arcrole, closed, ctx, _tgt_role) in hc_map.items():
+            hypercubes.append(
+                HypercubeModel(
+                    qname=hc,
+                    arcrole="all" if arcrole == ARCROLE_ALL else "notAll",
+                    closed=closed,
+                    context_element="segment" if ctx == "segment" else "scenario",
+                    primary_items=tuple(primary_by_hc.get(hc, [])),
+                    dimensions=tuple(dims_by_hc.get(hc, [])),
+                    extended_link_role=elr,
+                    dimension_link_role=dim_elr_by_hc.get(hc, elr),
+                    direct_primary_items=tuple(direct_primary_by_hc.get(hc, ())),
+                )
+            )
+
+    return hypercubes
 
 
 def _member_qname_to_expanded_name_uri(member: QName) -> str:
@@ -898,6 +1377,72 @@ def _linkbase_parse_workers(linkbase_count: int) -> int:
     return max(1, min(linkbase_count, cpu_count, 8))
 
 
+# Large BDE taxonomies (e.g. FINREP) ship thousands of formula/message linkbases.
+# Parallel parsing duplicates full DOM trees in memory and can exceed tens of GB.
+_LARGE_LINKBASE_SEQUENTIAL_THRESHOLD = 64
+_SKIP_ASSERTION_MESSAGES_THRESHOLD = 1000
+_SKIP_FORMULA_ENRICHMENT_THRESHOLD = 256
+_SKIP_EAGER_FORMULA_PARSE_THRESHOLD = 1000
+_FORMULA_CHUNK_ASSERTION_THRESHOLD = 1000
+
+
+def _is_assertion_message_linkbase(path: Path) -> bool:
+    name = path.name.lower()
+    return "-err-" in name or "-lab-" in name
+
+
+def _assertion_message_linkbases(paths: list[Path]) -> list[Path]:
+    """Linkbases that carry formula assertion labels or validation messages."""
+    return [
+        path
+        for path in paths
+        if path.suffix.lower() in (".xml", ".xbrl") and _is_assertion_message_linkbase(path)
+    ]
+
+
+def _discover_formula_linkbases(linkbase_paths: list[Path]) -> list[Path]:
+    """Return linkbase paths that contain formula assertions (structural detection)."""
+    candidates = [
+        path
+        for path in linkbase_paths
+        if path.suffix.lower() in (".xml", ".xbrl")
+        and not _should_skip_linkbase(path)
+        and not _is_assertion_message_linkbase(path)
+    ]
+    if len(candidates) <= _LARGE_LINKBASE_SEQUENTIAL_THRESHOLD:
+        return [
+            path for path in candidates if linkbase_contains_formula_assertions(path)
+        ]
+
+    # FINREP/EBA: thousands of label/presentation files — skip iterparse when the
+    # path cannot be a validation-rule linkbase.
+    likely: list[Path] = []
+    uncertain: list[Path] = []
+    for path in candidates:
+        name = path.name.lower()
+        path_text = str(path).lower()
+        if (
+            name.startswith("vr-")
+            or "/val/" in path_text
+            or "assertion" in name
+            or "formula" in name
+        ):
+            likely.append(path)
+        elif any(
+            token in name
+            for token in ("-pre", "-calc", "-def", "-ref", "-lab", "presentation")
+        ):
+            continue
+        else:
+            uncertain.append(path)
+
+    formula_paths = list(dict.fromkeys(likely))
+    for path in uncertain:
+        if linkbase_contains_formula_assertions(path):
+            formula_paths.append(path)
+    return formula_paths
+
+
 def _run_path_jobs(
     paths: list[Path],
     parse_fn: Callable[[Path], Any],
@@ -971,6 +1516,7 @@ class TaxonomyLoader:
         self,
         entry_point: str | Path,
         progress_callback: ProgressCallback | None = None,
+        instance_linkbase_seeds: list[Path] | tuple[Path, ...] | None = None,
     ) -> TaxonomyStructure:
         """Load the taxonomy at entry_point.
 
@@ -982,7 +1528,8 @@ class TaxonomyLoader:
             TaxonomyParseError — structural parse error.
         """
         entry_point = Path(entry_point).resolve()
-        cache_key = str(entry_point)
+        seed_paths = _normalize_seed_paths(instance_linkbase_seeds)
+        cache_key = _loader_cache_key(entry_point, seed_paths)
 
         cached = self._cache.get(cache_key)
         if cached is not None:
@@ -997,7 +1544,7 @@ class TaxonomyLoader:
                 )
             return cached
 
-        structure = self._do_load(entry_point, progress_callback)
+        structure = self._do_load(entry_point, progress_callback, seed_linkbases=seed_paths)
         self._cache.put(cache_key, structure)
         return structure
 
@@ -1005,20 +1552,143 @@ class TaxonomyLoader:
         self,
         entry_point: str | Path,
         progress_callback: ProgressCallback | None = None,
+        instance_linkbase_seeds: list[Path] | tuple[Path, ...] | None = None,
     ) -> TaxonomyStructure:
         """Force-reload the taxonomy, bypassing and replacing the cache entry."""
         entry_point = Path(entry_point).resolve()
-        cache_key = str(entry_point)
+        seed_paths = _normalize_seed_paths(instance_linkbase_seeds)
+        cache_key = _loader_cache_key(entry_point, seed_paths)
         self._cache.invalidate(cache_key)
-        structure = self._do_load(entry_point, progress_callback)
+        structure = self._do_load(entry_point, progress_callback, seed_linkbases=seed_paths)
         self._cache.put(cache_key, structure)
         return structure
+
+    def has_deferred_formula_assertions(self, taxonomy: TaxonomyStructure) -> bool:
+        """Return True when taxonomy open intentionally skipped a large formula set."""
+        if taxonomy.formula_assertion_set.assertions:
+            return False
+        formula_linkbases = _discover_formula_linkbases(list(taxonomy.linkbase_files))
+        return len(formula_linkbases) > _SKIP_EAGER_FORMULA_PARSE_THRESHOLD
+
+    def hydrate_deferred_formula_assertions(
+        self,
+        taxonomy: TaxonomyStructure,
+        progress_callback: ProgressCallback | None = None,
+        chunk_callback: FormulaChunkCallback | None = None,
+        cancel_callback: FormulaCancelCallback | None = None,
+    ) -> TaxonomyStructure:
+        """Load deferred formula assertions for a taxonomy already shown in the UI.
+
+        Large regulatory taxonomies are opened without eagerly materializing every
+        validation rule. This method performs that rule parsing later and emits
+        partial assertion sets so the UI can populate the Validations activity
+        while parsing continues.
+        """
+        from bde_xbrl_editor.taxonomy.models import (  # noqa: PLC0415
+            FormulaAssertion,
+            FormulaAssertionSet,
+            FormulaOutputDefinition,
+        )
+
+        if taxonomy.formula_assertion_set.assertions:
+            return taxonomy
+
+        formula_linkbases = _discover_formula_linkbases(list(taxonomy.linkbase_files))
+        total = len(formula_linkbases)
+        if not formula_linkbases:
+            if progress_callback:
+                progress_callback("No deferred formula assertions to load", 0, 0)
+            return taxonomy
+
+        assertions: list[FormulaAssertion] = []
+        output_formulas: list[FormulaOutputDefinition] = []
+        global_parameters = []
+        seen_assertion_ids: set[str] = set()
+        seen_formula_ids: set[str] = set()
+        seen_global_parameter_names: set[str] = set()
+        abstract_count = 0
+        pending_new_assertions = 0
+
+        def emit_chunk() -> None:
+            if chunk_callback is None:
+                return
+            chunk_callback(
+                FormulaAssertionSet(
+                    assertions=tuple(assertions),
+                    output_formulas=tuple(output_formulas),
+                    global_parameters=tuple(global_parameters),
+                    abstract_count=abstract_count,
+                )
+            )
+
+        if progress_callback:
+            progress_callback(f"Loading validation rules… 0/{total}", 0, total)
+
+        for index, linkbase_path in enumerate(formula_linkbases, start=1):
+            if cancel_callback is not None and cancel_callback():
+                break
+            formula_set = parse_formula_linkbase(linkbase_path)
+            if cancel_callback is not None and cancel_callback():
+                break
+            for assertion in formula_set.assertions:
+                if assertion.assertion_id in seen_assertion_ids:
+                    continue
+                seen_assertion_ids.add(assertion.assertion_id)
+                assertions.append(assertion)
+                pending_new_assertions += 1
+                if assertion.abstract:
+                    abstract_count += 1
+            for formula in formula_set.output_formulas:
+                if formula.formula_id in seen_formula_ids:
+                    continue
+                seen_formula_ids.add(formula.formula_id)
+                output_formulas.append(formula)
+            for parameter in formula_set.global_parameters:
+                if parameter.parameter_name in seen_global_parameter_names:
+                    continue
+                seen_global_parameter_names.add(parameter.parameter_name)
+                global_parameters.append(parameter)
+
+            if pending_new_assertions >= _FORMULA_CHUNK_ASSERTION_THRESHOLD:
+                emit_chunk()
+                pending_new_assertions = 0
+
+            if progress_callback and (index == total or index % 50 == 0):
+                progress_callback(
+                    (
+                        f"Loading validation rules… {index}/{total} files, "
+                        f"{len(assertions)} assertions"
+                    ),
+                    index,
+                    total,
+                )
+
+        formula_assertion_set = FormulaAssertionSet(
+            assertions=tuple(assertions),
+            output_formulas=tuple(output_formulas),
+            global_parameters=tuple(global_parameters),
+            abstract_count=abstract_count,
+        )
+        emit_chunk()
+        if progress_callback:
+            progress_callback(
+                f"Loaded {len(assertions)} validation assertion(s)",
+                total,
+                total,
+            )
+        return replace(taxonomy, formula_assertion_set=formula_assertion_set)
 
     # ------------------------------------------------------------------
     # Internal loading pipeline
     # ------------------------------------------------------------------
 
-    def _do_load(self, entry_point: Path, cb: ProgressCallback | None) -> TaxonomyStructure:
+    def _do_load(
+        self,
+        entry_point: Path,
+        cb: ProgressCallback | None,
+        *,
+        seed_linkbases: tuple[Path, ...] = (),
+    ) -> TaxonomyStructure:
         def progress(msg: str, step: int) -> None:
             if cb:
                 cb(msg, step, _TOTAL_STEPS)
@@ -1042,6 +1712,7 @@ class TaxonomyLoader:
             entry_point,
             effective_settings,
             progress_callback=(lambda message, _current, _total: progress(message, 1)),
+            seed_linkbases=list(seed_linkbases),
         )
         companion_tab_linkbases = _find_companion_tab_presentation_linkbases(
             entry_point,
@@ -1061,15 +1732,7 @@ class TaxonomyLoader:
         calculation_linkbases = classified_linkbases["calc"]
         definition_linkbases = classified_linkbases["def"]
         table_linkbases = classified_linkbases["table"]
-        formula_linkbases = list(
-            dict.fromkeys(
-                p
-                for p in all_linkbase_paths
-                if p.suffix.lower() in (".xml", ".xbrl")
-                and not _should_skip_linkbase(p)
-                and linkbase_contains_formula_assertions(p)
-            )
-        )
+        formula_linkbases = _discover_formula_linkbases(all_linkbase_paths)
         linkbase_workers = _linkbase_parse_workers(len(all_linkbase_paths))
 
         # Step 2: Parse schemas → concepts (with cross-schema transitive SG resolution)
@@ -1120,6 +1783,12 @@ class TaxonomyLoader:
             # points (no linkbases, no xbrli QName/import wiring) — conformance
             # 302.01.  Schemas that reference linkbases or the XBRL instance model
             # must still surface as unsupported when nothing resolved to a concept.
+            metadata_only_taxonomy = bool(schema_paths) and any(
+                _schema_embeds_linkbase_or_role_declarations(p) for p in schema_paths
+            )
+            type_only_taxonomy = bool(schema_paths) and any(
+                _schema_defines_xbrli_item_type(p) for p in schema_paths
+            )
             segment_style_taxonomy = (
                 bool(schema_paths)
                 and not linkbase_paths
@@ -1131,12 +1800,27 @@ class TaxonomyLoader:
                     for p in schema_paths
                 )
             )
-            if not segment_style_taxonomy:
+            if not segment_style_taxonomy and not metadata_only_taxonomy and not type_only_taxonomy:
                 raise UnsupportedTaxonomyFormatError(
                     entry_point=str(entry_point),
                     reason="No XBRL concepts found — file may not be a valid XBRL taxonomy entry point",
                 )
         progress(f"Schemas parsed — {len(concepts)} concepts ready", 2)
+
+        element_defaults: dict[QName, SchemaElementDefaults] = {}
+        for schema_path in schema_paths:
+            element_defaults.update(
+                collect_schema_element_defaults(
+                    schema_path,
+                    include_ns_map.get(schema_path),
+                )
+            )
+        for concept in concepts.values():
+            if concept.schema_default_value and concept.qname not in element_defaults:
+                element_defaults[concept.qname] = SchemaElementDefaults(
+                    value=concept.schema_default_value,
+                    attributes=(),
+                )
 
         monetary_workers = _schema_parse_workers(len(schema_paths))
         parsed_monetary_types = _run_path_jobs(
@@ -1281,6 +1965,12 @@ class TaxonomyLoader:
             for elr, arc_list in arcs.items():
                 calculation.setdefault(elr, []).extend(arc_list)
 
+        for elr, arc_list in _parse_embedded_calculation_linkbases(
+            list(schema_paths),
+            concept_id_map,
+        ).items():
+            calculation.setdefault(elr, []).extend(arc_list)
+
         parsed_definition_linkbases = _run_path_jobs(
             definition_linkbases,
             lambda lb_path: parse_definition_linkbase(
@@ -1296,7 +1986,16 @@ class TaxonomyLoader:
                 definition_arcs.setdefault(elr, []).extend(arc_list)
             hypercubes.extend(hcs)
 
+        dimension_qnames, _hypercube_qnames = _dimension_and_hypercube_qnames(concepts)
+        concepts = _apply_and_check_typed_domain_refs(
+            concepts,
+            dimension_qnames,
+            schema_paths,
+            effective_settings.local_catalog,
+            cache_root=find_taxonomy_cache_root(entry_point),
+        )
         concepts = _apply_extensible_enumeration_values(concepts, definition_arcs)
+        hypercubes = _rebuild_hypercubes(definition_arcs)
 
         # Build dimensions once from the complete merged arc set so that
         # domain-member arcs in extension linkbases are correctly associated
@@ -1306,7 +2005,12 @@ class TaxonomyLoader:
         # Step 4b: XBRL Dimensions 1.0 taxonomy constraint checks (xbrldte:* errors)
         declared_roles = set(_PREDEFINED_XBRL_ROLES)
         declared_roles.update(discovered_roles)
-        _check_dimensional_constraints(concepts, definition_arcs, declared_roles=declared_roles)
+        _check_dimensional_constraints(
+            concepts,
+            definition_arcs,
+            hypercubes=hypercubes,
+            declared_roles=declared_roles,
+        )
         progress(
             f"Structure mapped — {len(dimensions)} dimensions, {len(hypercubes)} hypercubes",
             4,
@@ -1335,43 +2039,108 @@ class TaxonomyLoader:
             tables.sort(key=lambda t: group_table_order.get(t.table_id, float("inf")))
         progress(f"Tables prepared — {len(tables)} available", 5)
 
-        # Step 6: Parse formula linkbase (if present)
-        progress("Assembling taxonomy structure…", 6)
+        # Steps 6–9: Formula linkbases (FINREP can expose thousands of DTS files;
+        # only parse formula/message subsets — not every presentation/calc linkbase).
         from bde_xbrl_editor.taxonomy.models import (  # noqa: PLC0415
             FormulaAssertion,
             FormulaAssertionSet,
+            FormulaOutputDefinition,
         )
 
         formula_assertion_set: FormulaAssertionSet
-        if formula_linkbases:
-            all_assertions: list[FormulaAssertion] = []
-            parsed_formula_linkbases = _run_path_jobs(
-                formula_linkbases,
-                parse_formula_linkbase,
-                workers=linkbase_workers,
+        if formula_linkbases and len(formula_linkbases) > _SKIP_EAGER_FORMULA_PARSE_THRESHOLD:
+            formula_assertion_set = FormulaAssertionSet()
+            progress(
+                (
+                    "Skipping eager formula assertion parse "
+                    f"({len(formula_linkbases)} files; large taxonomy)"
+                ),
+                6,
             )
-            for _flp, fas in parsed_formula_linkbases:
-                all_assertions.extend(fas.assertions)
+        elif formula_linkbases:
+            formula_workers = (
+                1
+                if len(formula_linkbases) > _LARGE_LINKBASE_SEQUENTIAL_THRESHOLD
+                else linkbase_workers
+            )
+            progress(
+                f"Parsing formula linkbases ({len(formula_linkbases)} files)…",
+                6,
+            )
+            bundled_formula_set = parse_formula_linkbase_bundle(formula_linkbases)
+            all_assertions = list(bundled_formula_set.assertions)
+            all_output_formulas = list(bundled_formula_set.output_formulas)
+            all_global_parameters = list(bundled_formula_set.global_parameters)
 
-            parsed_assertion_resource_linkbases = _run_path_jobs(
-                all_linkbase_paths,
-                parse_assertion_resource_linkbase,
-                workers=linkbase_workers,
-            )
+            # Aggregator linkbases and their locator-discovered targets can expose
+            # the same formula resources more than once. Keep one effective copy so
+            # downstream static checks do not see duplicated variable/parameter sets.
+            _seen_assertion_ids: set[str] = set()
+            _deduped_assertions: list[FormulaAssertion] = []
+            for assertion in all_assertions:
+                if assertion.assertion_id in _seen_assertion_ids:
+                    continue
+                _seen_assertion_ids.add(assertion.assertion_id)
+                _deduped_assertions.append(assertion)
+            all_assertions = _deduped_assertions
+
+            _seen_formula_ids: set[str] = set()
+            _deduped_output_formulas: list[FormulaOutputDefinition] = []
+            for formula in all_output_formulas:
+                if formula.formula_id in _seen_formula_ids:
+                    continue
+                _seen_formula_ids.add(formula.formula_id)
+                _deduped_output_formulas.append(formula)
+            all_output_formulas = _deduped_output_formulas
+
+            _seen_global_parameter_names: set[str] = set()
+            _deduped_global_parameters = []
+            for parameter in all_global_parameters:
+                if parameter.parameter_name in _seen_global_parameter_names:
+                    continue
+                _seen_global_parameter_names.add(parameter.parameter_name)
+                _deduped_global_parameters.append(parameter)
+            all_global_parameters = _deduped_global_parameters
+
+            message_linkbases = _assertion_message_linkbases(all_linkbase_paths)
             assertion_resources: dict[str, list[AssertionTextResource]] = {}
-            for _resource_path, resource_map in parsed_assertion_resource_linkbases:
-                for assertion_id, resources in resource_map.items():
-                    assertion_resources.setdefault(assertion_id, []).extend(resources)
-
-            parsed_assertion_table_linkbases = _run_path_jobs(
-                all_linkbase_paths,
-                parse_assertion_table_mappings,
-                workers=linkbase_workers,
-            )
             assertion_table_ids: dict[str, str] = {}
-            for _mapping_path, table_map in parsed_assertion_table_linkbases:
-                for assertion_id, table_id in table_map.items():
-                    assertion_table_ids.setdefault(assertion_id, table_id)
+            if len(message_linkbases) <= _SKIP_ASSERTION_MESSAGES_THRESHOLD:
+                message_workers = (
+                    1
+                    if len(message_linkbases) > _LARGE_LINKBASE_SEQUENTIAL_THRESHOLD
+                    else linkbase_workers
+                )
+                progress(
+                    f"Loading assertion labels and messages ({len(message_linkbases)} files)…",
+                    7,
+                )
+                parsed_assertion_resource_linkbases = _run_path_jobs(
+                    message_linkbases,
+                    parse_assertion_resource_linkbase,
+                    workers=message_workers,
+                )
+                for _resource_path, resource_map in parsed_assertion_resource_linkbases:
+                    for assertion_id, resources in resource_map.items():
+                        assertion_resources.setdefault(assertion_id, []).extend(resources)
+            else:
+                progress(
+                    "Skipping assertion labels/messages (large taxonomy — validation still runs)",
+                    7,
+                )
+
+            if len(formula_linkbases) <= _SKIP_FORMULA_ENRICHMENT_THRESHOLD:
+                progress("Mapping assertions to tables…", 8)
+                parsed_assertion_table_linkbases = _run_path_jobs(
+                    formula_linkbases,
+                    parse_assertion_table_mappings,
+                    workers=formula_workers,
+                )
+                for _mapping_path, table_map in parsed_assertion_table_linkbases:
+                    for assertion_id, table_id in table_map.items():
+                        assertion_table_ids.setdefault(assertion_id, table_id)
+            else:
+                progress("Skipping assertion-to-table mapping (large taxonomy)", 8)
 
             table_labels = {
                 table.table_id: (table.display_code or table.table_id) for table in tables
@@ -1406,29 +2175,43 @@ class TaxonomyLoader:
                         ),
                     )
                 )
-            formula_assertion_set = FormulaAssertionSet(assertions=tuple(enriched_assertions))
+            formula_assertion_set = FormulaAssertionSet(
+                assertions=tuple(enriched_assertions),
+                output_formulas=tuple(all_output_formulas),
+                global_parameters=tuple(all_global_parameters),
+            )
         else:
             formula_assertion_set = FormulaAssertionSet()
+            progress("No formula linkbases in DTS", 6)
 
-        parsed_custom_function_linkbases = _run_path_jobs(
-            all_linkbase_paths,
-            parse_custom_function_linkbase,
-            workers=linkbase_workers,
-        )
         custom_functions: list[CustomFunctionDefinition] = []
-        seen_custom_functions: set[tuple[str, tuple[str, ...]]] = set()
-        for _custom_linkbase_path, definitions in parsed_custom_function_linkbases:
-            for definition in definitions:
-                key = (definition.name, definition.input_types)
-                if key in seen_custom_functions:
-                    continue
-                seen_custom_functions.add(key)
-                custom_functions.append(definition)
+        if formula_linkbases and len(formula_linkbases) <= _SKIP_FORMULA_ENRICHMENT_THRESHOLD:
+            custom_function_workers = (
+                1
+                if len(formula_linkbases) > _LARGE_LINKBASE_SEQUENTIAL_THRESHOLD
+                else linkbase_workers
+            )
+            progress("Parsing custom formula functions…", 9)
+            parsed_custom_function_linkbases = _run_path_jobs(
+                formula_linkbases,
+                parse_custom_function_linkbase,
+                workers=custom_function_workers,
+            )
+            seen_custom_functions: set[tuple[str, tuple[str, ...]]] = set()
+            for _custom_linkbase_path, definitions in parsed_custom_function_linkbases:
+                for definition in definitions:
+                    key = (definition.name, definition.input_types)
+                    if key in seen_custom_functions:
+                        continue
+                    seen_custom_functions.add(key)
+                    custom_functions.append(definition)
+        elif formula_linkbases:
+            progress("Skipping custom formula function scan (large taxonomy)", 9)
 
         metadata = _extract_metadata(entry_point, declared_languages)
-        progress(f"Assembled {metadata.name} v{metadata.version}", 6)
+        progress(f"Assembled {metadata.name} v{metadata.version}", 9)
 
-        # Step 7: Assemble TaxonomyStructure
+        # Step 10: Assemble TaxonomyStructure
         structure = TaxonomyStructure(
             metadata=metadata,
             concepts=concepts,
@@ -1445,6 +2228,7 @@ class TaxonomyLoader:
             schema_files=tuple(sorted(schema_paths)),
             linkbase_files=tuple(sorted(all_linkbase_paths)),
             schema_substitution_groups=schema_substitution_groups,
+            element_defaults=element_defaults,
         )
 
         progress("Taxonomy loaded successfully", _TOTAL_STEPS)

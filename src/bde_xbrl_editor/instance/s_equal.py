@@ -8,6 +8,7 @@ S-equal per XBRL 2.1 (conformance 302.11 / 302.12).
 from __future__ import annotations
 
 from collections import defaultdict
+from copy import deepcopy
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING
 
@@ -15,10 +16,13 @@ from lxml import etree
 
 from bde_xbrl_editor.instance.constants import XBRLDI_NS
 from bde_xbrl_editor.instance.models import ReportingEntity, ReportingPeriod, XbrlContext
-from bde_xbrl_editor.taxonomy.models import QName
+from bde_xbrl_editor.taxonomy.models import QName, SchemaElementDefaults
 
 if TYPE_CHECKING:
-    from bde_xbrl_editor.instance.models import XbrlInstance
+    from bde_xbrl_editor.instance.models import XbrlInstance, XbrlUnit
+    from bde_xbrl_editor.taxonomy.models import TaxonomyStructure
+else:
+    from bde_xbrl_editor.instance.models import XbrlUnit
 
 _XBRLDI_EXPLICIT = f"{{{XBRLDI_NS}}}explicitMember"
 _XBRLDI_TYPED = f"{{{XBRLDI_NS}}}typedMember"
@@ -35,6 +39,8 @@ def _period_key(period: ReportingPeriod) -> tuple:
     if period.period_type == "instant":
         assert period.instant_date is not None
         return ("instant", period.instant_date.isoformat())
+    if period.period_type == "forever":
+        return ("forever",)
     assert period.start_date is not None and period.end_date is not None
     return ("duration", period.start_date.isoformat(), period.end_date.isoformat())
 
@@ -87,9 +93,7 @@ def _element_s_equal_key(el: etree._Element) -> tuple:
         )
     text_raw = el.text if el.text is not None else ""
     text_tok = _normalize_lexical(el, text_raw) if text_raw.strip() else None
-    children = tuple(
-        _element_s_equal_key(c) for c in el if isinstance(c.tag, str)
-    )
+    children = tuple(_element_s_equal_key(c) for c in el if isinstance(c.tag, str))
     return (tag, tuple(attrs), text_tok, children)
 
 
@@ -168,17 +172,98 @@ def build_s_equal_key_from_model(ctx: XbrlContext) -> tuple:
     return ("ctxseq1", sch, ident, pk, tuple(scenario_members), tuple(segment_members))
 
 
-def effective_s_equal_key(ctx: XbrlContext) -> tuple:
+def _qname_from_element_tag(tag: str) -> QName:
+    if tag.startswith("{"):
+        end = tag.index("}")
+        return QName(namespace=tag[1:end], local_name=tag[end + 1 :])
+    return QName(namespace="", local_name=tag)
+
+
+def _apply_schema_defaults_to_container(
+    container: etree._Element,
+    element_defaults: dict[QName, SchemaElementDefaults],
+) -> etree._Element:
+    root = deepcopy(container)
+    for child in root.iter():
+        if not isinstance(child.tag, str):
+            continue
+        defaults = element_defaults.get(_qname_from_element_tag(child.tag))
+        if defaults is None:
+            continue
+        if defaults.value and not (child.text and child.text.strip()):
+            child.text = defaults.value
+        for attr_name, attr_val in defaults.attributes:
+            if attr_name not in child.attrib:
+                child.attrib[attr_name] = attr_val
+    return root
+
+
+def context_s_equal_key(
+    ctx: XbrlContext,
+    element_defaults: dict[QName, SchemaElementDefaults] | None = None,
+) -> tuple:
+    if element_defaults:
+        scenario_el: etree._Element | None = None
+        segment_el: etree._Element | None = None
+        if ctx.scenario_xml:
+            scenario_el = _apply_schema_defaults_to_container(
+                etree.fromstring(ctx.scenario_xml),
+                element_defaults,
+            )
+        if ctx.segment_xml:
+            segment_el = _apply_schema_defaults_to_container(
+                etree.fromstring(ctx.segment_xml),
+                element_defaults,
+            )
+        if scenario_el is not None or segment_el is not None:
+            return build_s_equal_key_from_xml_fragments(
+                ctx.entity,
+                ctx.period,
+                scenario_el,
+                segment_el,
+                period_key=_period_key(ctx.period),
+            )
     if ctx.s_equal_key is not None:
         return ctx.s_equal_key
     return build_s_equal_key_from_model(ctx)
 
 
-def canonical_context_refs_by_s_equal(instance: XbrlInstance) -> dict[str, str]:
+def effective_s_equal_key(ctx: XbrlContext) -> tuple:
+    return context_s_equal_key(ctx)
+
+
+def _unit_structure_key(unit: XbrlUnit) -> tuple:
+    if unit.unit_form == "divide":
+        return (
+            "divide",
+            unit.numerator_measure_qnames,
+            unit.denominator_measure_qnames,
+        )
+    return ("simple", unit.simple_measure_qnames)
+
+
+def canonical_unit_refs_by_structure(instance: XbrlInstance) -> dict[str, str]:
+    """Map each unit id to a canonical id (lexicographic min within each u-equal class)."""
+    groups: dict[tuple, list[str]] = defaultdict(list)
+    for uid, unit in instance.units.items():
+        groups[_unit_structure_key(unit)].append(uid)
+    out: dict[str, str] = {}
+    for ids in groups.values():
+        rep = min(ids)
+        for uid in ids:
+            out[uid] = rep
+    return out
+
+
+def canonical_context_refs_by_s_equal(
+    instance: XbrlInstance,
+    taxonomy: TaxonomyStructure | None = None,
+) -> dict[str, str]:
     """Map each context ``id`` to a canonical id (lexicographic min within each S-equal class)."""
+    element_defaults = dict(taxonomy.element_defaults) if taxonomy else None
     groups: dict[tuple, list[str]] = defaultdict(list)
     for cid, ctx in instance.contexts.items():
-        groups[effective_s_equal_key(ctx)].append(cid)
+        groups[context_s_equal_key(ctx, element_defaults)].append(cid)
     out: dict[str, str] = {}
     for ids in groups.values():
         rep = min(ids)

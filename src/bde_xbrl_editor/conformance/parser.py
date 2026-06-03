@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from urllib.parse import unquote
 
 from lxml import etree
 
@@ -66,6 +67,19 @@ def _parse_expected_outcome(result_el: etree._Element | None) -> ExpectedOutcome
     return ExpectedOutcome(outcome_type=ExpectedOutcomeType.VALID)
 
 
+def _resolve_suite_file(base_dir: Path, filename: str) -> Path:
+    filename = unquote(filename)
+    resolved = (base_dir / filename).resolve()
+    if resolved.exists() or "_" not in filename:
+        return resolved
+
+    # Some historical XBRL conformance manifests use underscores where the
+    # distributed file uses hyphens. Normalize only when the exact path is
+    # missing and the normalized file exists beside it.
+    hyphen_candidate = (base_dir / filename.replace("_", "-")).resolve()
+    return hyphen_candidate if hyphen_candidate.exists() else resolved
+
+
 class ConformanceSuiteParser:
     """Parses a conformance suite index and all referenced test case files."""
 
@@ -81,6 +95,21 @@ class ConformanceSuiteParser:
         suite_dir = self._suite_data_dir / suite_def.subdirectory
         index_path = suite_dir / suite_def.index_filename
 
+        if not index_path.exists():
+            fallback_names = {
+                "xbrl21": ("xbrl.xml",),
+                "dimensions": ("xdt.xml",),
+                "table-linkbase": ("testcases-index.xml",),
+                "formula": ("index.xml",),
+            }
+            index_path = next(
+                (
+                    suite_dir / fallback_name
+                    for fallback_name in fallback_names.get(suite_def.suite_id, ())
+                    if (suite_dir / fallback_name).exists()
+                ),
+                index_path,
+            )
         if not index_path.exists():
             raise SuiteDataMissingError(suite_def.suite_id, index_path)
 
@@ -106,9 +135,7 @@ class ConformanceSuiteParser:
 
         return test_cases
 
-    def _parse_index(
-        self, index_path: Path, suite_def: SuiteDefinition
-    ) -> list[Path]:
+    def _parse_index(self, index_path: Path, suite_def: SuiteDefinition) -> list[Path]:
         """Parse the index XML and return absolute paths to all test case files."""
         try:
             tree = parse_xml_file(index_path)
@@ -190,9 +217,7 @@ class ConformanceSuiteParser:
                 variations.append(variation)
             except Exception as exc:  # noqa: BLE001
                 var_id = var_el.get("id", "?")
-                log.warning(
-                    "Skipping variation '%s' in '%s': %s", var_id, tc_path, exc
-                )
+                log.warning("Skipping variation '%s' in '%s': %s", var_id, tc_path, exc)
 
         return TestCase(
             test_case_id=test_case_id,
@@ -241,7 +266,7 @@ class ConformanceSuiteParser:
                     if local_name in _DATA_FILE_TAGS:
                         filename = (file_el.text or "").strip()
                         if filename:
-                            resolved = (tc_path.parent / filename).resolve()
+                            resolved = _resolve_suite_file(tc_path.parent, filename)
                             input_files.append(resolved)
                             if local_name == "instance" and instance_file is None:
                                 instance_file = resolved

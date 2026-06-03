@@ -13,7 +13,14 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 pytest.importorskip("PySide6", reason="PySide6 not available - UI flow tests skipped")
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QScrollArea, QSplitter
+from PySide6.QtWidgets import (
+    QDockWidget,
+    QPushButton,
+    QScrollArea,
+    QSplitter,
+    QVBoxLayout,
+    QWidget,
+)
 
 from bde_xbrl_editor.instance.models import ReportingEntity, ReportingPeriod, XbrlInstance
 from bde_xbrl_editor.performance import LoadTiming, StageTiming
@@ -84,12 +91,14 @@ def _taxonomy_with_assertion() -> TaxonomyStructure:
 
 
 def _instance() -> XbrlInstance:
-    return XbrlInstance(
+    instance = XbrlInstance(
         taxonomy_entry_point=Path("tax.xsd"),
         schema_ref_href="tax.xsd",
         entity=ReportingEntity(identifier="ENTITY", scheme="http://example.com"),
         period=ReportingPeriod(period_type="instant", instant_date=date(2024, 12, 31)),
     )
+    instance._dirty = False
+    return instance
 
 
 def test_loader_instance_handoff_survives_recent_file_write_error(qtbot, qapp, monkeypatch) -> None:
@@ -275,6 +284,35 @@ def test_instance_open_uses_instance_sidebar_only(qtbot, qapp) -> None:
     assert window._sidebar is not None
     assert [btn.text() for btn in window._sidebar._buttons if not btn.isHidden()] == ["INS"]
 
+    context_actions = [btn.text() for btn in window._context_bar.findChildren(QPushButton)]
+    assert "Back" not in context_actions
+    assert "Close Instance" in context_actions
+
+    dock = window.findChild(QDockWidget, "ValidationDock")
+    assert dock is not None
+    assert not dock.isHidden()
+    assert dock.maximumHeight() == 44
+    assert window._validation_stack.currentIndex() == 0
+
+
+def test_validation_panel_collapse_button_returns_to_compact_bar(qtbot, qapp) -> None:
+    window = MainWindow()
+    qtbot.addWidget(window)
+
+    window._current_taxonomy = _taxonomy()
+    window._load_instance(_instance())
+    window._show_validation_panel()
+
+    dock = window.findChild(QDockWidget, "ValidationDock")
+    assert dock is not None
+    assert window._validation_panel is not None
+    assert window._validation_stack.currentIndex() == 1
+
+    qtbot.mouseClick(window._validation_panel._collapse_btn, Qt.MouseButton.LeftButton)
+
+    assert window._validation_stack.currentIndex() == 0
+    assert dock.maximumHeight() == 44
+
 
 def test_new_instance_load_enables_editing_mode_immediately(qtbot, qapp) -> None:
     window = MainWindow()
@@ -425,6 +463,38 @@ def test_collapsing_active_sidebar_button_reallocates_splitter_space(qtbot, qapp
     assert after[0] < before[0]
     assert after[1] > before[1]
     assert window._sidebar.width() == 44
+
+
+def test_sidebar_width_sync_recovers_table_pane_after_bad_initial_split(qtbot, qapp) -> None:
+    """A width sync during early layout must not leave the table pane collapsed."""
+    container = QWidget()
+    qtbot.addWidget(container)
+    layout = QVBoxLayout(container)
+    splitter = QSplitter(container)
+    sidebar = QWidget(splitter)
+    sidebar.setFixedWidth(304)
+    table_area = QWidget(splitter)
+    splitter.addWidget(sidebar)
+    splitter.addWidget(table_area)
+    layout.addWidget(splitter)
+    container.resize(1200, 700)
+
+    class _WindowStub:
+        def __init__(self, browser_splitter: QSplitter) -> None:
+            self._browser_splitter = browser_splitter
+
+        @staticmethod
+        def width() -> int:
+            return 1200
+
+    container.show()
+    qtbot.waitUntil(lambda: splitter.width() > 0, timeout=1000)
+    sidebar_width = sidebar.width()
+    splitter.setSizes([sidebar_width, 0])
+    MainWindow._on_sidebar_width_changed(_WindowStub(splitter), sidebar_width)
+
+    assert splitter.sizes()[0] <= sidebar_width + 2
+    assert splitter.sizes()[1] > 0
 
 
 def test_validation_details_are_wrapped_in_scroll_area(qtbot, qapp) -> None:

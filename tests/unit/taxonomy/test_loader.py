@@ -7,10 +7,12 @@ from pathlib import Path
 import pytest
 
 from bde_xbrl_editor.taxonomy import LoaderSettings, TaxonomyCache
+from bde_xbrl_editor.taxonomy import loader as loader_module
 from bde_xbrl_editor.taxonomy.linkbases.formula import (
     linkbase_contains_formula_assertions,
     parse_assertion_table_mappings,
     parse_formula_linkbase,
+    parse_formula_linkbase_bundle,
 )
 from bde_xbrl_editor.taxonomy.linkbases.presentation import PresentationLinkbaseParseResult
 from bde_xbrl_editor.taxonomy.loader import (
@@ -24,7 +26,7 @@ from bde_xbrl_editor.taxonomy.loader import (
     _schema_parse_workers,
     _sniff_linkbase_type,
 )
-from bde_xbrl_editor.taxonomy.models import TaxonomyParseError
+from bde_xbrl_editor.taxonomy.models import QName, TaxonomyParseError
 
 
 def test_sniff_linkbase_calculation_stem_does_not_use_formula_bucket() -> None:
@@ -102,6 +104,130 @@ def test_linkbase_contains_formula_assertions_finds_assertion_after_many_nodes(
     assert linkbase_contains_formula_assertions(lb) is True
 
 
+def test_loader_skips_eager_formula_parse_for_large_formula_sets(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entry = tmp_path / "entry.xsd"
+    formula_a = tmp_path / "formula-a.xml"
+    formula_b = tmp_path / "formula-b.xml"
+    entry.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:xbrli="http://www.xbrl.org/2003/instance"
+           xmlns:link="http://www.xbrl.org/2003/linkbase"
+           xmlns:xlink="http://www.w3.org/1999/xlink"
+           targetNamespace="http://example.com/taxonomy"
+           elementFormDefault="qualified">
+  <xs:annotation>
+    <xs:appinfo>
+      <link:linkbaseRef xlink:type="simple" xlink:href="formula-a.xml"/>
+      <link:linkbaseRef xlink:type="simple" xlink:href="formula-b.xml"/>
+    </xs:appinfo>
+  </xs:annotation>
+  <xs:element name="Amount" id="ex_Amount" substitutionGroup="xbrli:item"
+              type="xbrli:stringItemType" xbrli:periodType="duration"/>
+</xs:schema>
+""",
+        encoding="utf-8",
+    )
+    for path, assertion_id in ((formula_a, "a1"), (formula_b, "a2")):
+        path.write_text(
+            f"""<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:gen="http://xbrl.org/2008/generic"
+  xmlns:va="http://xbrl.org/2008/assertion/value"
+  xmlns:xlink="http://www.w3.org/1999/xlink">
+  <gen:link xlink:type="extended" xlink:role="http://www.xbrl.org/2008/role/link">
+    <va:valueAssertion xlink:type="resource" xlink:label="{assertion_id}"
+                       id="{assertion_id}" test="true()"/>
+  </gen:link>
+</link:linkbase>
+""",
+            encoding="utf-8",
+        )
+
+    def fail_parse_bundle(_paths):
+        raise AssertionError("large formula sets must not be eagerly parsed")
+
+    monkeypatch.setattr(loader_module, "_SKIP_EAGER_FORMULA_PARSE_THRESHOLD", 1)
+    monkeypatch.setattr(loader_module, "parse_formula_linkbase_bundle", fail_parse_bundle)
+
+    progress_messages: list[str] = []
+    taxonomy = TaxonomyLoader(
+        cache=TaxonomyCache(),
+        settings=LoaderSettings(allow_network=False),
+    ).load(
+        entry,
+        progress_callback=lambda msg, _current, _total: progress_messages.append(msg),
+    )
+
+    assert len(taxonomy.concepts) == 1
+    assert taxonomy.formula_assertion_set.assertions == ()
+    assert any("Skipping eager formula assertion parse" in msg for msg in progress_messages)
+
+
+def test_loader_hydrates_deferred_formula_assertions_in_chunks(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entry = tmp_path / "entry.xsd"
+    formula_a = tmp_path / "formula-a.xml"
+    formula_b = tmp_path / "formula-b.xml"
+    entry.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:xbrli="http://www.xbrl.org/2003/instance"
+           xmlns:link="http://www.xbrl.org/2003/linkbase"
+           xmlns:xlink="http://www.w3.org/1999/xlink"
+           targetNamespace="http://example.com/taxonomy"
+           elementFormDefault="qualified">
+  <xs:annotation>
+    <xs:appinfo>
+      <link:linkbaseRef xlink:type="simple" xlink:href="formula-a.xml"/>
+      <link:linkbaseRef xlink:type="simple" xlink:href="formula-b.xml"/>
+    </xs:appinfo>
+  </xs:annotation>
+  <xs:element name="Amount" id="ex_Amount" substitutionGroup="xbrli:item"
+              type="xbrli:stringItemType" xbrli:periodType="duration"/>
+</xs:schema>
+""",
+        encoding="utf-8",
+    )
+    for path, assertion_id in ((formula_a, "a1"), (formula_b, "a2")):
+        path.write_text(
+            f"""<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:gen="http://xbrl.org/2008/generic"
+  xmlns:va="http://xbrl.org/2008/assertion/value"
+  xmlns:xlink="http://www.w3.org/1999/xlink">
+  <gen:link xlink:type="extended" xlink:role="http://www.xbrl.org/2008/role/link">
+    <va:valueAssertion xlink:type="resource" xlink:label="{assertion_id}"
+                       id="{assertion_id}" test="true()"/>
+  </gen:link>
+</link:linkbase>
+""",
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(loader_module, "_SKIP_EAGER_FORMULA_PARSE_THRESHOLD", 1)
+    loader = TaxonomyLoader(cache=TaxonomyCache(), settings=LoaderSettings(allow_network=False))
+    taxonomy = loader.load(entry)
+
+    progress_messages: list[str] = []
+    chunks: list[int] = []
+    hydrated = loader.hydrate_deferred_formula_assertions(
+        taxonomy,
+        progress_callback=lambda msg, _current, _total: progress_messages.append(msg),
+        chunk_callback=lambda assertion_set: chunks.append(len(assertion_set.assertions)),
+    )
+
+    assert taxonomy.formula_assertion_set.assertions == ()
+    assert [a.assertion_id for a in hydrated.formula_assertion_set.assertions] == ["a1", "a2"]
+    assert chunks[-1] == 2
+    assert any("Loaded 2 validation assertion" in msg for msg in progress_messages)
+
+
 def test_parse_value_assertion_uses_xlink_label_when_id_absent(tmp_path: Path) -> None:
     lb = tmp_path / "label-only-assertion.xml"
     lb.write_text(
@@ -173,6 +299,320 @@ def test_parse_value_assertion_keeps_variable_set_concept_and_typed_dimension_fi
     assert variable.concept_filter.local_name == "qBVQ"
     assert len(variable.typed_dimension_filters) == 1
     assert variable.typed_dimension_filters[0].dimension_qname.local_name == "qLIN"
+
+
+def test_parse_variable_set_resources_includes_general_variable_parameter_and_precondition(
+    tmp_path: Path,
+) -> None:
+    lb = tmp_path / "variable-set-resources.xml"
+    lb.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:gen="http://xbrl.org/2008/generic"
+  xmlns:va="http://xbrl.org/2008/assertion/value"
+  xmlns:variable="http://xbrl.org/2008/variable"
+  xmlns:xlink="http://www.w3.org/1999/xlink">
+  <gen:link xlink:type="extended" xlink:role="http://www.xbrl.org/2003/role/link">
+    <va:valueAssertion xlink:type="resource" xlink:label="a1" id="a1" test="$g gt $threshold"/>
+    <variable:generalVariable xlink:type="resource" xlink:label="gvar" select="$threshold + 1" fallbackValue="0"/>
+    <variable:parameter xlink:type="resource" xlink:label="thresholdParam" name="threshold" select="10" as="xs:decimal"/>
+    <variable:precondition xlink:type="resource" xlink:label="pre1" test="$threshold gt 0"/>
+    <variable:variableArc xlink:type="arc" xlink:from="a1" xlink:to="gvar" name="g" order="2" priority="3"/>
+    <variable:parameterArc xlink:type="arc" xlink:from="a1" xlink:to="thresholdParam" name="threshold"/>
+    <variable:preconditionArc xlink:type="arc"
+      xlink:arcrole="http://xbrl.org/arcrole/2008/variable-set-precondition"
+      xlink:from="a1" xlink:to="pre1"/>
+  </gen:link>
+</link:linkbase>
+""",
+        encoding="utf-8",
+    )
+
+    fas = parse_formula_linkbase(lb)
+    assert len(fas.assertions) == 1
+    assertion = fas.assertions[0]
+    assert len(assertion.general_variables) == 1
+    assert assertion.general_variables[0].variable_name == "g"
+    assert assertion.general_variables[0].select_xpath == "$threshold + 1"
+    assert "threshold" in assertion.general_variables[0].referenced_names
+    assert len(assertion.parameters) == 1
+    assert assertion.parameters[0].parameter_name == "threshold"
+    assert assertion.parameters[0].scope == "local"
+    assert len(assertion.preconditions) == 1
+    assert assertion.precondition_xpath == "$threshold gt 0"
+    assert assertion.preconditions[0].test_xpath == "$threshold gt 0"
+    assert assertion.referenced_names == ("g", "threshold")
+    assert len(assertion.variable_arcs) == 1
+    assert assertion.variable_arcs[0].order == 2.0
+    assert assertion.variable_arcs[0].priority == 3
+    assert len(assertion.parameter_arcs) == 1
+    assert len(assertion.precondition_arcs) == 1
+
+
+def test_parse_variable_set_graph_preserves_extended_filter_resources(tmp_path: Path) -> None:
+    lb = tmp_path / "extended-filter-resources.xml"
+    lb.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:gen="http://xbrl.org/2008/generic"
+  xmlns:va="http://xbrl.org/2008/assertion/value"
+  xmlns:variable="http://xbrl.org/2008/variable"
+  xmlns:uf="http://xbrl.org/2008/filter/unit"
+  xmlns:mf="http://xbrl.org/2008/filter/match"
+  xmlns:tf="http://xbrl.org/2008/filter/tuple"
+  xmlns:acf="http://xbrl.org/2010/filter/aspect-cover"
+  xmlns:crf="http://xbrl.org/2010/filter/concept-relation"
+  xmlns:xlink="http://www.w3.org/1999/xlink"
+  xmlns:eg="http://example.com/eg"
+  xmlns:v="http://example.com/vars">
+  <gen:link xlink:type="extended" xlink:role="http://www.xbrl.org/2003/role/link">
+    <va:valueAssertion xlink:type="resource" xlink:label="a1" id="a1" test="$a gt 0"/>
+    <variable:factVariable xlink:type="resource" xlink:label="fv1"/>
+    <uf:generalMeasures xlink:type="resource" xlink:label="unitFilter" test="$a/unitRef"/>
+    <mf:matchUnit xlink:type="resource" xlink:label="matchUnit" variable="v:other" matchAny="true"/>
+    <tf:parentFilter xlink:type="resource" xlink:label="parentFilter" variable="v:parent"/>
+    <acf:aspectCover xlink:type="resource" xlink:label="coverFilter">
+      <acf:aspect>unit</acf:aspect>
+      <acf:dimension><acf:qname>eg:Dimension</acf:qname></acf:dimension>
+    </acf:aspectCover>
+    <crf:conceptRelation xlink:type="resource" xlink:label="relationFilter"
+      variable="v:source" axis="child">
+      <crf:qnameExpression>$conceptName</crf:qnameExpression>
+    </crf:conceptRelation>
+    <variable:variableFilterArc xlink:type="arc" xlink:from="fv1" xlink:to="unitFilter"/>
+    <variable:variableFilterArc xlink:type="arc" xlink:from="fv1" xlink:to="matchUnit"/>
+    <variable:variableFilterArc xlink:type="arc" xlink:from="fv1" xlink:to="parentFilter"/>
+    <variable:variableSetFilterArc xlink:type="arc" xlink:from="a1" xlink:to="coverFilter"/>
+    <variable:variableSetFilterArc xlink:type="arc" xlink:from="a1" xlink:to="relationFilter"/>
+    <variable:variableArc xlink:type="arc" xlink:from="a1" xlink:to="fv1" name="a"/>
+  </gen:link>
+</link:linkbase>
+""",
+        encoding="utf-8",
+    )
+
+    fas = parse_formula_linkbase(lb)
+    assertion = fas.assertions[0]
+    variable = assertion.variables[0]
+
+    assert {resource.local_name for resource in variable.filter_resources} == {
+        "generalMeasures",
+        "matchUnit",
+        "parentFilter",
+    }
+    match_filter = next(
+        resource for resource in variable.filter_resources if resource.local_name == "matchUnit"
+    )
+    assert match_filter.variable == "v:other"
+    assert match_filter.match_any is True
+    unit_filter = next(
+        resource
+        for resource in variable.filter_resources
+        if resource.local_name == "generalMeasures"
+    )
+    assert "a" in unit_filter.referenced_names
+    assert {resource.local_name for resource in assertion.variable_set_filters} == {
+        "aspectCover",
+        "conceptRelation",
+    }
+    cover_filter = next(
+        resource
+        for resource in assertion.variable_set_filters
+        if resource.local_name == "aspectCover"
+    )
+    assert cover_filter.aspects == ("unit",)
+    assert cover_filter.qnames[0].local_name == "Dimension"
+    relation_filter = next(
+        resource
+        for resource in assertion.variable_set_filters
+        if resource.local_name == "conceptRelation"
+    )
+    assert "conceptName" in relation_filter.referenced_names
+
+
+def test_parse_variable_set_graph_resolves_locator_labels_to_resource_ids(
+    tmp_path: Path,
+) -> None:
+    lb = tmp_path / "locator-backed-formula.xml"
+    lb.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:gen="http://xbrl.org/2008/generic"
+  xmlns:formula="http://xbrl.org/2008/formula"
+  xmlns:variable="http://xbrl.org/2008/variable"
+  xmlns:cf="http://xbrl.org/2008/filter/concept"
+  xmlns:xlink="http://www.w3.org/1999/xlink"
+  xmlns:eg="http://example.com/eg">
+  <gen:link xlink:type="extended" xlink:role="http://www.xbrl.org/2003/role/link">
+    <formula:formula xlink:type="resource" xlink:label="dummyFormula"
+      id="formulaInnerPlanetId" value="concat('hello ', $c1i)"/>
+    <variable:factVariable xlink:type="resource" xlink:label="dummyFact" id="factvarId"/>
+    <cf:conceptName xlink:type="resource" xlink:label="dummyFilter" id="namefilterId">
+      <cf:concept><cf:qname>eg:c1</cf:qname></cf:concept>
+    </cf:conceptName>
+    <variable:precondition xlink:type="resource" xlink:label="dummyPrecondition"
+      id="preconditionIdI" test="$c1i eq 'venus'"/>
+
+    <link:loc xlink:type="locator" xlink:href="locator-backed-formula.xml#formulaInnerPlanetId"
+      xlink:label="formulaInnerPlanet"/>
+    <link:loc xlink:type="locator" xlink:href="locator-backed-formula.xml#factvarId"
+      xlink:label="factvar1"/>
+    <link:loc xlink:type="locator" xlink:href="locator-backed-formula.xml#namefilterId"
+      xlink:label="namefilter1"/>
+    <link:loc xlink:type="locator" xlink:href="locator-backed-formula.xml#preconditionIdI"
+      xlink:label="preconditionI"/>
+
+    <variable:variableArc xlink:type="arc" xlink:from="formulaInnerPlanet"
+      xlink:to="factvar1" name="c1i"/>
+    <variable:variableFilterArc xlink:type="arc" xlink:from="factvar1"
+      xlink:to="namefilter1"/>
+    <variable:preconditionArc xlink:type="arc" xlink:from="formulaInnerPlanet"
+      xlink:to="preconditionI"/>
+  </gen:link>
+</link:linkbase>
+""",
+        encoding="utf-8",
+    )
+
+    fas = parse_formula_linkbase(lb)
+    formula = fas.output_formulas[0]
+
+    assert formula.formula_id == "formulaInnerPlanetId"
+    assert [variable.variable_name for variable in formula.variables] == ["c1i"]
+    assert formula.variables[0].concept_filter is not None
+    assert formula.variables[0].concept_filter.local_name == "c1"
+    assert [precondition.test_xpath for precondition in formula.preconditions] == [
+        "$c1i eq 'venus'"
+    ]
+    assert "c1i" in formula.referenced_names
+
+
+def test_parse_formula_linkbase_bundle_resolves_relationships_across_files(
+    tmp_path: Path,
+) -> None:
+    resources = tmp_path / "resources.xml"
+    resources.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:gen="http://xbrl.org/2008/generic"
+  xmlns:formula="http://xbrl.org/2008/formula"
+  xmlns:variable="http://xbrl.org/2008/variable"
+  xmlns:cf="http://xbrl.org/2008/filter/concept"
+  xmlns:xlink="http://www.w3.org/1999/xlink"
+  xmlns:eg="http://example.com/eg">
+  <gen:link xlink:type="extended">
+    <formula:formula xlink:type="resource" xlink:label="dummyFormula"
+      id="formulaId" value="$c1"/>
+    <variable:factVariable xlink:type="resource" xlink:label="dummyFact" id="factvarId"/>
+    <cf:conceptName xlink:type="resource" xlink:label="dummyFilter" id="filterId">
+      <cf:concept><cf:qname>eg:c1</cf:qname></cf:concept>
+    </cf:conceptName>
+  </gen:link>
+</link:linkbase>
+""",
+        encoding="utf-8",
+    )
+    arcs = tmp_path / "arcs.xml"
+    arcs.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:gen="http://xbrl.org/2008/generic"
+  xmlns:variable="http://xbrl.org/2008/variable"
+  xmlns:xlink="http://www.w3.org/1999/xlink">
+  <gen:link xlink:type="extended">
+    <variable:variableArc xlink:type="arc" xlink:from="formulaLoc"
+      xlink:to="factLoc" name="c1"/>
+    <variable:variableFilterArc xlink:type="arc" xlink:from="factLoc"
+      xlink:to="filterLoc"/>
+    <link:loc xlink:type="locator" xlink:href="resources.xml#formulaId"
+      xlink:label="formulaLoc"/>
+    <link:loc xlink:type="locator" xlink:href="resources.xml#factvarId"
+      xlink:label="factLoc"/>
+    <link:loc xlink:type="locator" xlink:href="resources.xml#filterId"
+      xlink:label="filterLoc"/>
+  </gen:link>
+</link:linkbase>
+""",
+        encoding="utf-8",
+    )
+
+    fas = parse_formula_linkbase_bundle((resources, arcs))
+    formula = fas.output_formulas[0]
+
+    assert [variable.variable_name for variable in formula.variables] == ["c1"]
+    assert formula.variables[0].concept_filter is not None
+    assert formula.variables[0].concept_filter.local_name == "c1"
+
+
+def test_parse_formula_linkbase_bundle_preserves_root_xpath_namespaces(
+    tmp_path: Path,
+) -> None:
+    resources = tmp_path / "resources.xml"
+    resources.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:gen="http://xbrl.org/2008/generic"
+  xmlns:va="http://xbrl.org/2008/assertion/value"
+  xmlns:variable="http://xbrl.org/2008/variable"
+  xmlns:xbrli="http://www.xbrl.org/2003/instance"
+  xmlns:xlink="http://www.w3.org/1999/xlink">
+  <gen:link xlink:type="extended">
+    <va:valueAssertion xlink:type="resource" xlink:label="assertion" id="a1" test="$p"/>
+    <variable:parameter xlink:type="resource" xlink:label="p1"
+      name="p" select="//xbrli:period/link:schemaRef"/>
+  </gen:link>
+</link:linkbase>
+""",
+        encoding="utf-8",
+    )
+    arcs = tmp_path / "arcs.xml"
+    arcs.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:gen="http://xbrl.org/2008/generic"
+  xmlns:variable="http://xbrl.org/2008/variable"
+  xmlns:xlink="http://www.w3.org/1999/xlink">
+  <gen:link xlink:type="extended">
+    <variable:parameterArc xlink:type="arc" xlink:from="assertion"
+      xlink:to="p1" name="p"/>
+  </gen:link>
+</link:linkbase>
+""",
+        encoding="utf-8",
+    )
+
+    fas = parse_formula_linkbase_bundle((resources, arcs))
+
+    parameter = fas.assertions[0].parameters[0]
+    assert parameter.namespaces["link"] == "http://www.xbrl.org/2003/linkbase"
+    assert parameter.namespaces["xbrli"] == "http://www.xbrl.org/2003/instance"
+
+
+def test_parse_global_parameters_when_not_bound_locally(tmp_path: Path) -> None:
+    lb = tmp_path / "global-parameter.xml"
+    lb.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:gen="http://xbrl.org/2008/generic"
+  xmlns:va="http://xbrl.org/2008/assertion/value"
+  xmlns:variable="http://xbrl.org/2008/variable"
+  xmlns:xlink="http://www.w3.org/1999/xlink">
+  <gen:link xlink:type="extended" xlink:role="http://www.xbrl.org/2003/role/link">
+    <va:valueAssertion xlink:type="resource" xlink:label="a1" id="a1" test="true()"/>
+    <variable:parameter xlink:type="resource" xlink:label="p_global" name="globalP" select="42"/>
+  </gen:link>
+</link:linkbase>
+""",
+        encoding="utf-8",
+    )
+
+    fas = parse_formula_linkbase(lb)
+    assert len(fas.global_parameters) == 1
+    assert fas.global_parameters[0].parameter_name == "globalP"
+    assert fas.global_parameters[0].scope == "global"
+    assert len(fas.assertions[0].parameters) == 1
+    assert fas.assertions[0].parameters[0].parameter_name == "globalP"
+    assert fas.assertions[0].parameters[0].scope == "global"
 
 
 def test_parse_assertion_table_mappings_resolves_applies_to_table(tmp_path: Path) -> None:
@@ -383,6 +823,67 @@ def test_loader_uses_inferred_cache_catalog_for_remote_imports(tmp_path: Path) -
 
     assert remote_schema.resolve() in taxonomy.schema_files
     assert not any("http://external.example/shared/schema.xsd" in url for url in loader.last_skipped_urls)
+
+
+def test_typed_domain_ref_uses_inferred_cache_catalog_for_absolute_urls(
+    tmp_path: Path,
+) -> None:
+    cache_root = tmp_path / "cache"
+    entry = cache_root / "www.bde.es" / "fr" / "xbrl" / "dict" / "dim.xsd"
+    entry.parent.mkdir(parents=True, exist_ok=True)
+    entry.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:xbrli="http://www.xbrl.org/2003/instance"
+           xmlns:xbrldt="http://xbrl.org/2005/xbrldt"
+           targetNamespace="http://www.bde.es/xbrl/dict/dim"
+           elementFormDefault="qualified">
+  <xs:import namespace="http://www.eba.europa.eu/xbrl/crr/dict/typ"
+             schemaLocation="http://www.eba.europa.eu/eu/fr/xbrl/crr/dict/dom/typ.xsd"/>
+  <xs:element name="DIM"
+              id="bde_DIM"
+              substitutionGroup="xbrldt:dimensionItem"
+              type="xbrli:stringItemType"
+              abstract="true"
+              nillable="true"
+              xbrli:periodType="instant"
+              xbrldt:typedDomainRef="http://www.eba.europa.eu/eu/fr/xbrl/crr/dict/dom/typ.xsd#eba_IS"/>
+</xs:schema>
+""",
+        encoding="utf-8",
+    )
+    typ_schema = (
+        cache_root
+        / "www.eba.europa.eu"
+        / "eu"
+        / "fr"
+        / "xbrl"
+        / "crr"
+        / "dict"
+        / "dom"
+        / "typ.xsd"
+    )
+    typ_schema.parent.mkdir(parents=True, exist_ok=True)
+    typ_schema.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           targetNamespace="http://www.eba.europa.eu/xbrl/crr/dict/typ"
+           elementFormDefault="qualified">
+  <xs:element name="IS" type="xs:string" id="eba_IS"/>
+</xs:schema>
+""",
+        encoding="utf-8",
+    )
+
+    loader = TaxonomyLoader(cache=TaxonomyCache(), settings=LoaderSettings(allow_network=False))
+
+    taxonomy = loader.load(entry)
+
+    dim = QName("http://www.bde.es/xbrl/dict/dim", "DIM")
+    assert taxonomy.concepts[dim].typed_domain_element == QName(
+        "http://www.eba.europa.eu/xbrl/crr/dict/typ",
+        "IS",
+    )
 
 
 def test_run_path_jobs_preserves_input_order_when_parallel() -> None:

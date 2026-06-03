@@ -23,7 +23,7 @@ SUITE_REGISTRY: dict[str, SuiteDefinition] = {
         label="XBRL 2.1 Conformance Suite",
         blocking=True,
         informational_note=None,
-        index_filename="xbrl.xml",
+        index_filename="xbrl.org-index.xml",
         subdirectory="xbrl-2.1",
     ),
     "dimensions": SuiteDefinition(
@@ -31,7 +31,7 @@ SUITE_REGISTRY: dict[str, SuiteDefinition] = {
         label="Dimensions 1.0 Conformance Suite",
         blocking=True,
         informational_note=None,
-        index_filename="xdt.xml",
+        index_filename="xdt.index.xml",
         subdirectory="dimensions-1.0",
     ),
     "table-linkbase": SuiteDefinition(
@@ -43,7 +43,7 @@ SUITE_REGISTRY: dict[str, SuiteDefinition] = {
             "Table Linkbase 1.0 failures are expected and non-blocking. "
             "Full TL 1.0 support is planned for a future version."
         ),
-        index_filename="testcases-index.xml",
+        index_filename="tableLinkbase.index.xml",
         subdirectory="table-linkbase-1.0",
     ),
     "formula": SuiteDefinition(
@@ -51,7 +51,7 @@ SUITE_REGISTRY: dict[str, SuiteDefinition] = {
         label="Formula 1.0 Conformance Suite",
         blocking=True,
         informational_note="v1 scope: value, existence, and consistency assertions only.",
-        index_filename="index.xml",
+        index_filename="formula.index.xml",
         subdirectory="formula-1.0",
     ),
 }

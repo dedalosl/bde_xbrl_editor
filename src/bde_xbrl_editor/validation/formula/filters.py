@@ -272,7 +272,10 @@ def _get_xpath_filter_token(
     custom_functions: tuple[CustomFunctionDefinition, ...],
     xpath_token_cache: dict[tuple[tuple[tuple[str, str], ...], str], Any] | None,
 ) -> Any:
-    from bde_xbrl_editor.validation.formula.xfi_functions import build_formula_parser
+    from bde_xbrl_editor.validation.formula.xfi_functions import (
+        build_formula_parser,
+        normalize_formula_xpath_expression,
+    )
 
     namespace_items = tuple(sorted((xpath_filter.namespaces or {}).items()))
     cache_key = (namespace_items, xpath_filter.xpath_expr)
@@ -286,7 +289,7 @@ def _get_xpath_filter_token(
         custom_functions=custom_functions,
         expression_hints=(xpath_filter.xpath_expr,),
     )
-    token = parser.parse(xpath_filter.xpath_expr)
+    token = parser.parse(normalize_formula_xpath_expression(xpath_filter.xpath_expr))
     if xpath_token_cache is not None:
         xpath_token_cache[cache_key] = token
     return token

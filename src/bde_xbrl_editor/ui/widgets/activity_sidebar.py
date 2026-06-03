@@ -59,7 +59,7 @@ _TIPS = ["Taxonomy", "Tables", "Validations", "Instance"]
 _BAR_STYLE = """
     QWidget#ActivityBar {
         background: """ + theme.NAV_BG_DEEP + """;
-        border-right: 1px solid """ + theme.BORDER_STRONG + """;
+        border-right: 1px solid """ + theme.BORDER + """;
     }
 """
 
@@ -67,11 +67,11 @@ _BTN_STYLE = """
     QToolButton {
         background: transparent;
         border: none;
-        color: """ + theme.ACCENT_SOFT + """;
+        color: """ + theme.HEADER_BG_LIGHT + """;
         font-size: 9px;
         font-weight: 700;
         padding: 4px 2px;
-        border-radius: 8px;
+        border-radius: 6px;
         text-align: center;
     }
     QToolButton:hover {
@@ -80,27 +80,26 @@ _BTN_STYLE = """
     }
     QToolButton:checked {
         color: """ + theme.TEXT_INVERSE + """;
-        background: rgba(255,248,236,0.18);
-        border-left: 2px solid """ + theme.HEADER_BG_LIGHT + """;
+        background: """ + theme.ACCENT + """;
     }
 """
 
 _PANEL_STYLE = """
     QWidget#PanelRoot {
-        background: """ + theme.PANEL_BG + """;
+        background: """ + theme.SURFACE_BG + """;
         border-right: 1px solid """ + theme.BORDER + """;
     }
 """
 
 _SECTION_HDR_STYLE = (
-    f"background: {theme.SURFACE_ALT_BG}; color: {theme.TEXT_MUTED}; font-weight: bold;"
+    f"background: {theme.SURFACE_ALT_BG}; color: {theme.TEXT_MUTED}; font-weight: 700;"
     f" font-size: 10px; padding: 7px 10px;"
 )
 
 _COLLAPSIBLE_HDR_STYLE = (
     f"QPushButton {{ text-align: left; padding: 6px 8px; background: {theme.SURFACE_BG};"
-    f" color: {theme.TEXT_MAIN}; font-size: 11px; font-weight: 600; border: none;"
-    f" border-bottom: 1px solid {theme.ACCENT_SOFT}; }}"
+    f" color: {theme.TEXT_MAIN}; font-size: 11px; font-weight: 650; border: none;"
+    f" border-bottom: 1px solid {theme.BORDER}; }}"
     f"QPushButton:hover {{ background: {theme.SURFACE_ALT_BG}; }}"
 )
 
@@ -141,7 +140,7 @@ _TREE_STYLE = """
     }
 """
 
-_TABLE_HAS_DATA_BG = QColor("#F7EFD8")
+_TABLE_HAS_DATA_BG = QColor("#EAF3FA")
 _TABLE_HAS_DATA_FG = QColor(theme.TEXT_MAIN)
 _TABLE_EMPTY_FG = QColor(theme.TEXT_SUBTLE)
 
@@ -1291,6 +1290,7 @@ class ActivitySidebar(QWidget):
         self._lazy_builders: dict[int, Callable[[], QWidget]] = {}
         self._loaded_indexes: set[int] = set()
         self._active_index: int | None = None
+        self._validations_panel: _ValidationsPanel | None = None
         self._target_width = _BAR_W + _PANEL_W
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Expanding)
         self._width_anim = QVariantAnimation(self)
@@ -1374,7 +1374,7 @@ class ActivitySidebar(QWidget):
         if 3 in self._visible_indexes:
             self._loaded_indexes.add(3)
         if 2 in self._visible_indexes:
-            self._lazy_builders[2] = lambda: _ValidationsPanel(taxonomy)
+            self._lazy_builders[2] = self._build_validations_panel
 
         root_layout.addWidget(self._panel_root)
 
@@ -1471,9 +1471,31 @@ class ActivitySidebar(QWidget):
         old_widget.deleteLater()
         self._loaded_indexes.add(idx)
 
+    def _build_validations_panel(self) -> _ValidationsPanel:
+        self._validations_panel = _ValidationsPanel(self._taxonomy)
+        return self._validations_panel
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def update_taxonomy_validations(self, taxonomy: TaxonomyStructure) -> None:
+        """Refresh the Validations activity after background formula loading."""
+        self._taxonomy = taxonomy
+        if 2 not in self._visible_indexes:
+            return
+        self._lazy_builders[2] = self._build_validations_panel
+        if 2 not in self._loaded_indexes:
+            return
+
+        replacement = self._build_validations_panel()
+        old_widget = self._stack.widget(2)
+        was_active = self._stack.currentIndex() == 2
+        self._stack.removeWidget(old_widget)
+        self._stack.insertWidget(2, replacement)
+        if was_active:
+            self._stack.setCurrentIndex(2)
+        old_widget.deleteLater()
 
     def select_first_table(self) -> None:
         """Activate the Tables panel and select the first table."""

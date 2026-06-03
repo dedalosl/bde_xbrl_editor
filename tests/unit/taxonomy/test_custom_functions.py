@@ -95,7 +95,7 @@ def test_build_formula_parser_executes_linkbase_defined_custom_functions(tmp_pat
 
 def test_cache_custom_functions_include_fmt_namespace() -> None:
     definitions = parse_custom_function_linkbase(
-        Path("cache/www.bde.es/es/xbrl/func/error-formatting.xml")
+        Path("cache/www.bde.es/es/fr/xbrl/func/error-formatting.xml")
     )
 
     names = {definition.name for definition in definitions}
@@ -103,3 +103,33 @@ def test_cache_custom_functions_include_fmt_namespace() -> None:
     assert "fmt:common" in names
     assert "fmt:fact" in names
     assert "fmt:threshold" in names
+
+
+def test_cache_external_attributes_includes_signature_only_host_functions() -> None:
+    definitions = parse_custom_function_linkbase(
+        Path("cache/www.bde.es/es/fr/xbrl/func/external-attributes.xml")
+    )
+
+    signature_only = [
+        definition
+        for definition in definitions
+        if definition.name == "fext:_atributo-str"
+        and definition.input_types == ("xs:string", "xs:string")
+    ]
+
+    assert signature_only
+    assert signature_only[0].steps == ()
+
+
+def test_build_formula_parser_parses_external_attribute_wrapper() -> None:
+    definitions = parse_custom_function_linkbase(
+        Path("cache/www.bde.es/es/fr/xbrl/func/external-attributes.xml")
+    )
+
+    parser = build_formula_parser(
+        {"fext": "http://www.bde.es/xbrl/func/external-functions"},
+        custom_functions=definitions,
+        expression_hints=("fext:atributo('TO_TIP_ENT')",),
+    )
+
+    parser.parse("fext:atributo('TO_TIP_ENT')")

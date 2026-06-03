@@ -82,3 +82,14 @@ ROLE_DEFINITION_LINKBASE_REF = "http://www.xbrl.org/2003/role/definitionLinkbase
 
 # Default ELR for standard link roles
 DEFAULT_LINK_ROLE = "http://www.xbrl.org/2003/role/link"
+
+# XPath prefixes commonly used in Formula / EBA expressions when the linkbase
+# omits matching ``xmlns:*`` on the leaf element. Merged under ancestor
+# declarations and taxonomy-specific overrides in formula linkbase parsing.
+FORMULA_XPATH_DEFAULT_PREFIXES: dict[str, str] = {
+    "fn": "http://www.w3.org/2005/xpath-functions",
+    "xs": NS_XSD,
+    "xbrli": NS_XBRLI,
+    "link": NS_LINK,
+    "xlink": NS_XLINK,
+}

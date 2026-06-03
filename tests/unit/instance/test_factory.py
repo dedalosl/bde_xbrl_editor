@@ -120,6 +120,16 @@ class TestFactoryBasicValidation:
         with pytest.raises(InvalidReportingPeriodError):
             ReportingPeriod(period_type="duration")
 
+    def test_forever_period_accepts_no_dates(self):
+        period = ReportingPeriod(period_type="forever")
+        assert period.instant_date is None
+        assert period.start_date is None
+        assert period.end_date is None
+
+    def test_invalid_forever_period_with_date_raises(self):
+        with pytest.raises(InvalidReportingPeriodError):
+            ReportingPeriod(period_type="forever", instant_date=date(2024, 12, 31))
+
 
 class TestFactorySuccessfulCreate:
     def test_returns_xbrl_instance(self):
@@ -205,7 +215,10 @@ class TestFactorySuccessfulCreate:
         result = InstanceFactory(taxonomy).create(_entity(), _instant(), ["T1"], {})
 
         assert result.bde_preambulo is not None
-        assert [estado.codigo for estado in result.bde_preambulo.estados_reportados] == ["3201", "3202"]
+        assert [estado.codigo for estado in result.bde_preambulo.estados_reportados] == [
+            "3201",
+            "3202",
+        ]
         assert result.bde_preambulo.estados_reportados[0].blanco is False
         assert result.bde_preambulo.estados_reportados[1].blanco is True
         assert [fi.template_id for fi in result.filing_indicators] == ["3201", "3202"]

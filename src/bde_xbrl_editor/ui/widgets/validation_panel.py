@@ -54,10 +54,17 @@ class ValidationWorker(QObject):
     validation_completed = Signal(object)  # ValidationReport
     validation_failed = Signal(str)
 
-    def __init__(self, taxonomy, instance, parent=None) -> None:
+    def __init__(
+        self,
+        taxonomy,
+        instance,
+        general_variable_values: dict[str, str] | None = None,
+        parent=None,
+    ) -> None:
         super().__init__(parent)
         self._taxonomy = taxonomy
         self._instance = instance
+        self._general_variable_values = dict(general_variable_values or {})
         self._cancel_event = threading.Event()
 
     @Slot()
@@ -77,6 +84,7 @@ class ValidationWorker(QObject):
                 progress_callback=_progress,
                 finding_callback=_findings_ready,
                 cancel_event=self._cancel_event,
+                general_variable_values=self._general_variable_values,
             )
             report = validator.validate_sync(self._instance)
             self.validation_completed.emit(report)
@@ -99,10 +107,12 @@ class ValidationPanel(QWidget):
     -------
     navigate_to_cell(context_ref: str, finding: ValidationFinding)
     revalidate_requested()
+    collapse_requested()
     """
 
     navigate_to_cell = Signal(str, object)
     revalidate_requested = Signal()
+    collapse_requested = Signal()
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -124,10 +134,13 @@ class ValidationPanel(QWidget):
         layout.setSpacing(8)
         self.setStyleSheet(
             f"ValidationPanel {{ background: {theme.SURFACE_ALT_BG}; }}"
-            f" QLabel {{ color: {theme.TEXT_MAIN}; }}"
+            f" QLabel {{ color: {theme.TEXT_MAIN}; background: transparent; border: none; }}"
             f" QToolButton {{ color: {theme.TEXT_MAIN}; background: {theme.SURFACE_BG};"
             f" border: 1px solid {theme.ACCENT_SOFT}; border-radius: 6px; padding: 4px 8px; }}"
             f" QToolButton:checked {{ background: {theme.SURFACE_BG}; border-color: {theme.BORDER_STRONG}; }}"
+            f" QToolButton#ValidationCollapseButton {{ background: transparent; border: none;"
+            f" border-radius: 5px; padding: 0; }}"
+            f" QToolButton#ValidationCollapseButton:hover {{ background: {theme.HOVER_BG}; }}"
             f" QProgressBar {{ background: {theme.SURFACE_BG}; border: 1px solid {theme.ACCENT_SOFT};"
             f" border-radius: 4px; text-align: center; }}"
             f" QProgressBar::chunk {{ background: {theme.ACCENT}; }}"
@@ -139,19 +152,35 @@ class ValidationPanel(QWidget):
         toolbar.setSpacing(6)
 
         toolbar_card = QWidget()
+        toolbar_card.setObjectName("ValidationToolbarCard")
         toolbar_card.setStyleSheet(
-            f"background: {theme.SURFACE_BG}; border: 1px solid {theme.ACCENT_SOFT}; border-radius: 8px;"
+            f"QWidget#ValidationToolbarCard {{ background: {theme.SURFACE_BG};"
+            f" border: 1px solid {theme.ACCENT_SOFT}; border-radius: 8px; }}"
         )
         toolbar_card_layout = QHBoxLayout(toolbar_card)
         toolbar_card_layout.setContentsMargins(10, 8, 10, 8)
         toolbar_card_layout.setSpacing(6)
+
+        self._collapse_btn = QToolButton()
+        self._collapse_btn.setObjectName("ValidationCollapseButton")
+        self._collapse_btn.setArrowType(Qt.ArrowType.DownArrow)
+        self._collapse_btn.setToolTip("Collapse validation panel")
+        self._collapse_btn.setFixedSize(24, 24)
+        self._collapse_btn.clicked.connect(self.collapse_requested.emit)
+        toolbar_card_layout.addWidget(self._collapse_btn)
 
         self._validate_btn = QPushButton("Validate")
         self._validate_btn.setToolTip("Run full validation on the current instance")
         self._validate_btn.clicked.connect(self.revalidate_requested)
         toolbar_card_layout.addWidget(self._validate_btn)
 
-        toolbar_card_layout.addWidget(QLabel("Severity:"))
+        filter_label_style = (
+            f"QLabel {{ color: {theme.TEXT_MUTED}; background: transparent; border: none;"
+            " padding: 0; font-weight: bold; }}"
+        )
+        severity_label = QLabel("Severity:")
+        severity_label.setStyleSheet(filter_label_style)
+        toolbar_card_layout.addWidget(severity_label)
         self._sev_combo = QComboBox()
         self._sev_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self._sev_combo.setMinimumContentsLength(7)
@@ -164,7 +193,9 @@ class ValidationPanel(QWidget):
         self._sev_combo.currentIndexChanged.connect(self._on_severity_filter_changed)
         toolbar_card_layout.addWidget(self._sev_combo)
 
-        toolbar_card_layout.addWidget(QLabel("Table:"))
+        table_label = QLabel("Table:")
+        table_label.setStyleSheet(filter_label_style)
+        toolbar_card_layout.addWidget(table_label)
         self._table_combo = QComboBox()
         self._table_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self._table_combo.setMinimumContentsLength(8)
@@ -178,9 +209,14 @@ class ValidationPanel(QWidget):
         toolbar_card_layout.addWidget(self._clear_filters_btn)
 
         self._summary_label = QLabel("No results")
-        toolbar_card_layout.addWidget(self._summary_label)
-
-        toolbar_card_layout.addStretch()
+        self._summary_label.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self._summary_label.setMinimumWidth(140)
+        self._summary_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self._summary_label.setStyleSheet(
+            f"QLabel {{ color: {theme.TEXT_MUTED}; background: transparent; border: none;"
+            " padding-left: 10px; padding-right: 10px; }}"
+        )
+        toolbar_card_layout.addWidget(self._summary_label, stretch=1)
 
         self._export_btn = QPushButton("Export…")
         self._export_btn.setEnabled(False)
