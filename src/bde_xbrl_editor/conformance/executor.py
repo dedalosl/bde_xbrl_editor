@@ -24,6 +24,7 @@ from bde_xbrl_editor.taxonomy.linkbases.custom_functions import parse_custom_fun
 from bde_xbrl_editor.taxonomy.linkbases.formula import (
     linkbase_contains_formula_assertions,
     parse_formula_linkbase,
+    parse_formula_linkbase_bundle,
 )
 from bde_xbrl_editor.taxonomy.loader import TaxonomyLoader
 from bde_xbrl_editor.taxonomy.models import (
@@ -166,10 +167,64 @@ def _with_input_formula_linkbases(
     changed = False
     seen_assertions = {assertion.assertion_id for assertion in assertions}
     seen_formulas = {formula.formula_id for formula in output_formulas}
+    formula_indexes = {
+        formula.formula_id: index for index, formula in enumerate(output_formulas)
+    }
     seen_parameters = {parameter.parameter_name for parameter in global_parameters}
     seen_custom_functions = {
         (definition.name, definition.input_types) for definition in custom_functions
     }
+
+    def merge_formula(formula) -> None:
+        nonlocal changed
+        if formula.formula_id in seen_formulas:
+            existing_index = formula_indexes.get(formula.formula_id)
+            if existing_index is None:
+                return
+            existing = output_formulas[existing_index]
+            has_more_bindings = (
+                len(formula.variables) + len(formula.general_variables)
+                > len(existing.variables) + len(existing.general_variables)
+            )
+            has_source_path = existing.source_path is None and formula.source_path is not None
+            if has_more_bindings or has_source_path:
+                output_formulas[existing_index] = (
+                    replace(formula, source_path=existing.source_path or formula.source_path)
+                    if has_more_bindings
+                    else formula
+                )
+                changed = True
+            return
+        output_formulas.append(formula)
+        formula_indexes[formula.formula_id] = len(output_formulas) - 1
+        seen_formulas.add(formula.formula_id)
+        changed = True
+
+    def merge_assertion(assertion) -> None:
+        nonlocal changed
+        if assertion.assertion_id in seen_assertions:
+            existing_index = next(
+                (
+                    index
+                    for index, existing in enumerate(assertions)
+                    if existing.assertion_id == assertion.assertion_id
+                ),
+                None,
+            )
+            if existing_index is None:
+                return
+            existing = assertions[existing_index]
+            if (
+                len(assertion.variables) + len(assertion.general_variables)
+                > len(existing.variables) + len(existing.general_variables)
+            ):
+                assertions[existing_index] = assertion
+                changed = True
+            return
+        assertions.append(assertion)
+        seen_assertions.add(assertion.assertion_id)
+        changed = True
+
     for path in input_files:
         if path.suffix.lower() not in (".xml", ".xbrl"):
             continue
@@ -184,18 +239,10 @@ def _with_input_formula_linkbases(
             parsed = parse_formula_linkbase(path)
             if include_assertions and parsed.assertions:
                 for assertion in parsed.assertions:
-                    if assertion.assertion_id in seen_assertions:
-                        continue
-                    assertions.append(assertion)
-                    seen_assertions.add(assertion.assertion_id)
-                    changed = True
+                    merge_assertion(assertion)
             if parsed.output_formulas:
                 for formula in parsed.output_formulas:
-                    if formula.formula_id in seen_formulas:
-                        continue
-                    output_formulas.append(formula)
-                    seen_formulas.add(formula.formula_id)
-                    changed = True
+                    merge_formula(formula)
             if include_assertions and parsed.global_parameters:
                 for parameter in parsed.global_parameters:
                     if parameter.parameter_name in seen_parameters:
@@ -203,6 +250,21 @@ def _with_input_formula_linkbases(
                     global_parameters.append(parameter)
                     seen_parameters.add(parameter.parameter_name)
                     changed = True
+    bundled_input_formulas = parse_formula_linkbase_bundle(
+        tuple(path for path in input_files if path.suffix.lower() in (".xml", ".xbrl"))
+    )
+    if include_assertions:
+        for assertion in bundled_input_formulas.assertions:
+            merge_assertion(assertion)
+    for formula in bundled_input_formulas.output_formulas:
+        merge_formula(formula)
+    if include_assertions:
+        for parameter in bundled_input_formulas.global_parameters:
+            if parameter.parameter_name in seen_parameters:
+                continue
+            global_parameters.append(parameter)
+            seen_parameters.add(parameter.parameter_name)
+            changed = True
     if not changed:
         return taxonomy
     return replace(

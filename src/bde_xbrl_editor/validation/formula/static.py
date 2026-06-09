@@ -881,7 +881,7 @@ class FormulaStaticValidator:
             if source in sequence_sources:
                 findings.append(
                     _finding(
-                        _sequence_source_code(formula),
+                        _sequence_source_code(formula, source),
                         f"Formula '{formula.formula_id}' uses sequence-valued source variable '{source}'",
                     )
                 )
@@ -1093,13 +1093,21 @@ def _rules_by_aspect(
 
 def _source_refs(formula: FormulaOutputDefinition) -> list[str]:
     refs: list[str] = []
-    if formula.source:
+    if formula.source and not _is_reserved_formula_source(formula.source):
         refs.append(formula.source)
-    refs.extend(rule.source for rule in formula.aspect_rules if rule.source)
+    refs.extend(
+        rule.source
+        for rule in formula.aspect_rules
+        if rule.source and not _is_reserved_formula_source(rule.source)
+    )
     return refs
 
 
-def _sequence_source_code(formula: FormulaOutputDefinition) -> str:
+def _is_reserved_formula_source(source: str) -> bool:
+    return source in {"formula:uncovered"}
+
+
+def _sequence_source_code(formula: FormulaOutputDefinition, source: str) -> str:
     source_path = (formula.source_path or "").lower()
     if "11204" in source_path and "v02" in source_path:
         return "xbrlfe:sequenceSAVConflicts"
@@ -1107,6 +1115,14 @@ def _sequence_source_code(formula: FormulaOutputDefinition) -> str:
         return "xbrlfe:bindEmptySourceVariable"
     if "11207" in source_path or "11207" in formula.formula_id:
         return "xbrlfe:defaultAspectValueConflicts"
+    if formula.source == source:
+        return "xbrlfe:defaultAspectValueConflicts"
+    source_variable = next(
+        (variable for variable in formula.variables if variable.variable_name == source),
+        None,
+    )
+    if source_variable is not None and source_variable.fallback_value == "()":
+        return "xbrlfe:bindEmptySourceVariable"
     return ""
 
 

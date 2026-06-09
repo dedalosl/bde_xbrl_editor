@@ -792,6 +792,21 @@ def test_formula_static_validation_reports_unknown_source_variable(tmp_path) -> 
     assert "xbrlfe:nonexistentSourceVariable" in _rule_ids(assertion_set)
 
 
+def test_formula_static_validation_allows_formula_uncovered_source(tmp_path) -> None:
+    assertion_set = _formula_set(
+        tmp_path,
+        """
+    <formula:formula xlink:type="resource" xlink:label="formula1" value="1" source="formula:uncovered">
+      <formula:aspects>
+        <formula:concept><formula:qname>eg:assets</formula:qname></formula:concept>
+      </formula:aspects>
+    </formula:formula>
+""",
+    )
+
+    assert "xbrlfe:nonexistentSourceVariable" not in _rule_ids(assertion_set)
+
+
 def test_formula_static_validation_reports_conflicting_unit_for_non_numeric_concept(
     tmp_path,
 ) -> None:
