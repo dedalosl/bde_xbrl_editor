@@ -30,6 +30,19 @@ _ATTR_XLINK_ARCROLE = f"{{{_NS_XLINK}}}arcrole"
 _ARCROLE_FUNCTION_IMPLEMENTATION = "http://xbrl.org/arcrole/2010/function-implementation"
 
 
+def linkbase_contains_custom_functions(path: Path) -> bool:
+    """Return True when *path* contains Formula custom function signatures."""
+    if not path.exists() or path.suffix.lower() not in (".xml", ".xbrl"):
+        return False
+    try:
+        for _evt, el in etree.iterparse(str(path), events=("end",), tag=_TAG_FUNCTION):
+            el.clear()
+            return True
+    except Exception:  # noqa: BLE001
+        return False
+    return False
+
+
 def parse_custom_function_linkbase(linkbase_path: Path) -> tuple[CustomFunctionDefinition, ...]:
     """Return custom functions declared in *linkbase_path*.
 

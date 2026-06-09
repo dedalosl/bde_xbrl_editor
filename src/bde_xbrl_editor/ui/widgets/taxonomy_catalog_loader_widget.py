@@ -351,6 +351,7 @@ class TaxonomyCatalogLoaderWidget(QWidget):
 
     taxonomy_loaded = Signal(object)
     instance_loaded = Signal(object, object)
+    settings_changed = Signal()
 
     def __init__(
         self,
@@ -390,8 +391,14 @@ class TaxonomyCatalogLoaderWidget(QWidget):
         outer.setSpacing(0)
 
         header = QFrame()
+        header.setObjectName("CatalogLoaderHeader")
         header.setStyleSheet(
-            f"QFrame {{ background: {theme.SURFACE_BG}; border-bottom: 1px solid {theme.BORDER}; }}"
+            f"""
+            QFrame#CatalogLoaderHeader {{
+                background: {theme.SURFACE_BG};
+                border-bottom: 1px solid {theme.BORDER};
+            }}
+            """
         )
         header_layout = QVBoxLayout(header)
         header_layout.setContentsMargins(28, 18, 28, 14)
@@ -479,9 +486,19 @@ class TaxonomyCatalogLoaderWidget(QWidget):
 
     def _build_instance_panel(self) -> QFrame:
         card = QFrame()
+        card.setObjectName("InstanceOpenPanel")
         card.setStyleSheet(
-            f"QFrame {{ background: {theme.SURFACE_BG}; border: 1px solid {theme.BORDER};"
-            f" border-radius: 10px; }}"
+            f"""
+            QFrame#InstanceOpenPanel {{
+                background: {theme.SURFACE_BG};
+                border: 1px solid {theme.BORDER};
+                border-radius: 10px;
+            }}
+            QFrame#InstanceOpenPanel QLabel {{
+                border: none;
+                background: transparent;
+            }}
+            """
         )
         layout = QVBoxLayout(card)
         layout.setContentsMargins(20, 18, 20, 18)
@@ -839,6 +856,7 @@ class TaxonomyCatalogLoaderWidget(QWidget):
             self._settings = dialog.get_settings()
             self._loader = TaxonomyLoader(cache=self._cache, settings=self._settings)
             self._reload_catalog(show_errors=False)
+            self.settings_changed.emit()
 
     def _show_progress_dialog(self, title: str, message: str) -> TaxonomyProgressDialog:
         if self._progress_dialog is None:

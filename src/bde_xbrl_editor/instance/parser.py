@@ -35,6 +35,7 @@ from bde_xbrl_editor.instance.models import (
     XbrlUnit,
 )
 from bde_xbrl_editor.instance.s_equal import build_s_equal_key_from_xml_fragments
+from bde_xbrl_editor.paths import iter_existing_cache_roots
 from bde_xbrl_editor.taxonomy.models import QName
 from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
 
@@ -134,7 +135,23 @@ _XBRL_ORG_REMOTE_PREFIXES = (
     "http://www.xbrl.org/",
     "https://www.xbrl.org/",
 )
-_DEFAULT_XBRL_ORG_CACHE_ROOT = Path(__file__).resolve().parents[3] / "cache" / "www.xbrl.org"
+_SOURCE_DEFAULT_XBRL_ORG_CACHE_ROOT = Path(__file__).resolve().parents[3] / "cache" / "www.xbrl.org"
+_DEFAULT_XBRL_ORG_CACHE_ROOT = _SOURCE_DEFAULT_XBRL_ORG_CACHE_ROOT
+
+
+def _iter_xbrl_org_cache_roots() -> tuple[Path, ...]:
+    roots = [_DEFAULT_XBRL_ORG_CACHE_ROOT]
+    if _DEFAULT_XBRL_ORG_CACHE_ROOT == _SOURCE_DEFAULT_XBRL_ORG_CACHE_ROOT:
+        roots.extend(cache_root / "www.xbrl.org" for cache_root in iter_existing_cache_roots())
+    seen: set[Path] = set()
+    result: list[Path] = []
+    for root in roots:
+        resolved = root.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        result.append(resolved)
+    return tuple(result)
 
 
 def _catalog_path_candidates(local_root: Path, rel: str) -> list[Path]:
@@ -167,9 +184,11 @@ def _resolve_default_xbrl_org_cache_path(href: str) -> Path | None:
     href = href.split("#", 1)[0]
     for prefix in _XBRL_ORG_REMOTE_PREFIXES:
         if href.startswith(prefix):
-            candidate = (_DEFAULT_XBRL_ORG_CACHE_ROOT / href[len(prefix) :].lstrip("/")).resolve()
-            if candidate.exists():
-                return candidate
+            rel = href[len(prefix) :].lstrip("/")
+            for xbrl_org_cache_root in _iter_xbrl_org_cache_roots():
+                candidate = (xbrl_org_cache_root / rel).resolve()
+                if candidate.exists():
+                    return candidate
             return None
     return None
 
@@ -629,31 +648,32 @@ def _collect_facts_under_element(
                 f"QName parse error for element '{tag}': {exc}",
             ) from exc
 
-        if taxonomy is not None and concept_qname in known_concepts:
-            if _concept_substitution_chain_reaches(
-                concept_qname, taxonomy, _XBRLI_TUPLE_QNAME
-            ):
-                _reject_xbrl_defined_attrs_on_tuple_fact(
-                    child,
-                    concept_qname,
-                    taxonomy,
+        if (
+            taxonomy is not None
+            and concept_qname in known_concepts
+            and _concept_substitution_chain_reaches(concept_qname, taxonomy, _XBRLI_TUPLE_QNAME)
+        ):
+            _reject_xbrl_defined_attrs_on_tuple_fact(
+                child,
+                concept_qname,
+                taxonomy,
+                path_str,
+            )
+            if "contextRef" in child.attrib:
+                raise InstanceParseError(
                     path_str,
+                    f"Tuple '{concept_qname}' must not carry contextRef.",
                 )
-                if "contextRef" in child.attrib:
-                    raise InstanceParseError(
-                        path_str,
-                        f"Tuple '{concept_qname}' must not carry contextRef.",
-                    )
-                _collect_facts_under_element(
-                    child,
-                    tuple_path=tuple_path + (idx,),
-                    path_str=path_str,
-                    known_concepts=known_concepts,
-                    taxonomy=taxonomy,
-                    facts=facts,
-                    orphaned=orphaned,
-                )
-                continue
+            _collect_facts_under_element(
+                child,
+                tuple_path=tuple_path + (idx,),
+                path_str=path_str,
+                known_concepts=known_concepts,
+                taxonomy=taxonomy,
+                facts=facts,
+                orphaned=orphaned,
+            )
+            continue
 
         if "contextRef" not in child.attrib:
             continue

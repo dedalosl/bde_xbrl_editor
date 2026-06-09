@@ -388,6 +388,7 @@ class MainWindow(QMainWindow):
             )
         widget.taxonomy_loaded.connect(self._on_taxonomy_loaded)
         widget.instance_loaded.connect(self._on_instance_loaded_from_widget)
+        widget.settings_changed.connect(self._on_loader_settings_changed)
         if path is not None:
             if isinstance(widget, TaxonomyLoaderWidget):
                 widget._path_edit.setText(path)
@@ -408,6 +409,10 @@ class MainWindow(QMainWindow):
     def _show_loader(self) -> None:
         if not self._check_unsaved_changes():
             return
+        self._show_loader_widget()
+
+    def _on_loader_settings_changed(self) -> None:
+        self._settings = load_saved_settings()
         self._show_loader_widget()
 
     def _on_taxonomy_loaded(self, structure: TaxonomyStructure) -> None:

@@ -59,7 +59,10 @@ def _concept(local: str, type_local: str, period_type: str = "instant") -> Conce
     )
 
 
-def _taxonomy(assertion_set: FormulaAssertionSet) -> TaxonomyStructure:
+def _taxonomy(
+    assertion_set: FormulaAssertionSet,
+    custom_functions: tuple[CustomFunctionDefinition, ...] = (),
+) -> TaxonomyStructure:
     return TaxonomyStructure(
         metadata=TaxonomyMetadata(
             name="Test",
@@ -81,6 +84,7 @@ def _taxonomy(assertion_set: FormulaAssertionSet) -> TaxonomyStructure:
         dimensions={},
         tables=[],
         formula_assertion_set=assertion_set,
+        custom_functions=custom_functions,
     )
 
 
@@ -880,6 +884,41 @@ def test_formula_static_validation_reports_missing_custom_function_name() -> Non
 
     assert findings[0].rule_id == "xbrlve:noCustomFunctionSignature"
     assert "fext:EsNoResidenteVigente" in findings[0].message
+
+
+def test_formula_static_validation_accepts_declared_iaf_numeric_subtract() -> None:
+    assertion_set = FormulaAssertionSet(
+        assertions=(
+            ValueAssertionDefinition(
+                assertion_id="a1",
+                label=None,
+                severity=ValidationSeverity.ERROR,
+                abstract=False,
+                variables=(),
+                test_xpath="iaf:numeric-equal($a, iaf:numeric-subtract($b, $c))",
+                namespaces={
+                    "iaf": "http://www.eurofiling.info/xbrl/func/interval-arithmetics",
+                },
+            ),
+        )
+    )
+    custom_functions = (
+        CustomFunctionDefinition(
+            name="iaf:numeric-subtract",
+            namespace="http://www.eurofiling.info/xbrl/func/interval-arithmetics",
+            local_name="numeric-subtract",
+            prefix="iaf",
+            input_names=("paramA", "paramB"),
+            input_types=("item()", "item()"),
+            output_type="item()",
+        ),
+    )
+
+    findings = FormulaStaticValidator(
+        _taxonomy(assertion_set, custom_functions=custom_functions)
+    ).validate()
+
+    assert "xbrlve:noCustomFunctionSignature" not in {finding.rule_id for finding in findings}
 
 
 def test_formula_static_validation_reports_unresolved_and_cycle_dependencies() -> None:

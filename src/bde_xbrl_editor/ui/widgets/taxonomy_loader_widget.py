@@ -177,6 +177,7 @@ class TaxonomyLoaderWidget(QWidget):
 
     taxonomy_loaded = Signal(object)
     instance_loaded = Signal(object, object)  # (XbrlInstance, TaxonomyStructure)
+    settings_changed = Signal()
 
     def __init__(
         self,
@@ -677,3 +678,4 @@ class TaxonomyLoaderWidget(QWidget):
         if dialog.exec():
             self._settings = dialog.get_settings()
             self._loader = TaxonomyLoader(cache=self._cache, settings=self._settings)
+            self.settings_changed.emit()

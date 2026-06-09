@@ -51,6 +51,7 @@ from bde_xbrl_editor.taxonomy.linkbases.calculation import (
     parse_calculation_linkbase_from_root,
 )
 from bde_xbrl_editor.taxonomy.linkbases.custom_functions import (
+    linkbase_contains_custom_functions,
     parse_custom_function_linkbase,
 )
 from bde_xbrl_editor.taxonomy.linkbases.definition import parse_definition_linkbase
@@ -1443,6 +1444,54 @@ def _discover_formula_linkbases(linkbase_paths: list[Path]) -> list[Path]:
     return formula_paths
 
 
+def _discover_custom_function_linkbases(
+    linkbase_paths: list[Path],
+    formula_linkbases: list[Path] | tuple[Path, ...] = (),
+) -> list[Path]:
+    """Return linkbases that may declare Formula custom functions.
+
+    Function-only DTS files such as Eurofiling interval-arithmetics.xml do not
+    contain assertions, so they are not discovered by _discover_formula_linkbases.
+    """
+    candidates = [
+        path
+        for path in linkbase_paths
+        if path.suffix.lower() in (".xml", ".xbrl")
+        and not _should_skip_linkbase(path)
+        and not _is_assertion_message_linkbase(path)
+    ]
+    if len(candidates) <= _LARGE_LINKBASE_SEQUENTIAL_THRESHOLD:
+        function_paths = [
+            path for path in candidates if linkbase_contains_custom_functions(path)
+        ]
+    else:
+        function_paths = []
+        for path in candidates:
+            name = path.name.lower()
+            path_text = str(path).lower()
+            if (
+                "/func/" in path_text
+                or "function" in name
+                or "arith" in name
+            ) and linkbase_contains_custom_functions(path):
+                function_paths.append(path)
+
+    if len(candidates) > _LARGE_LINKBASE_SEQUENTIAL_THRESHOLD:
+        formula_candidates = [
+            path
+            for path in formula_linkbases
+            if path in candidates and path not in function_paths
+        ]
+        if len(formula_candidates) <= _LARGE_LINKBASE_SEQUENTIAL_THRESHOLD:
+            function_paths.extend(
+                path
+                for path in formula_candidates
+                if linkbase_contains_custom_functions(path)
+            )
+
+    return list(dict.fromkeys(function_paths))
+
+
 def _run_path_jobs(
     paths: list[Path],
     parse_fn: Callable[[Path], Any],
@@ -2185,15 +2234,25 @@ class TaxonomyLoader:
             progress("No formula linkbases in DTS", 6)
 
         custom_functions: list[CustomFunctionDefinition] = []
-        if formula_linkbases and len(formula_linkbases) <= _SKIP_FORMULA_ENRICHMENT_THRESHOLD:
+        custom_function_linkbases = _discover_custom_function_linkbases(
+            all_linkbase_paths,
+            formula_linkbases,
+        )
+        if (
+            custom_function_linkbases
+            and len(custom_function_linkbases) <= _SKIP_FORMULA_ENRICHMENT_THRESHOLD
+        ):
             custom_function_workers = (
                 1
-                if len(formula_linkbases) > _LARGE_LINKBASE_SEQUENTIAL_THRESHOLD
+                if len(custom_function_linkbases) > _LARGE_LINKBASE_SEQUENTIAL_THRESHOLD
                 else linkbase_workers
             )
-            progress("Parsing custom formula functions…", 9)
+            progress(
+                f"Parsing custom formula functions ({len(custom_function_linkbases)} files)…",
+                9,
+            )
             parsed_custom_function_linkbases = _run_path_jobs(
-                formula_linkbases,
+                custom_function_linkbases,
                 parse_custom_function_linkbase,
                 workers=custom_function_workers,
             )
@@ -2205,7 +2264,7 @@ class TaxonomyLoader:
                         continue
                     seen_custom_functions.add(key)
                     custom_functions.append(definition)
-        elif formula_linkbases:
+        elif custom_function_linkbases:
             progress("Skipping custom formula function scan (large taxonomy)", 9)
 
         metadata = _extract_metadata(entry_point, declared_languages)

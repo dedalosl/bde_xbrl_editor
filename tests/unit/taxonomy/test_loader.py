@@ -19,6 +19,7 @@ from bde_xbrl_editor.taxonomy.loader import (
     TaxonomyLoader,
     _build_group_table_order,
     _classify_linkbases,
+    _discover_custom_function_linkbases,
     _find_companion_tab_presentation_linkbases,
     _infer_local_catalog_from_cache,
     _preferred_group_table_results,
@@ -102,6 +103,50 @@ def test_linkbase_contains_formula_assertions_finds_assertion_after_many_nodes(
         encoding="utf-8",
     )
     assert linkbase_contains_formula_assertions(lb) is True
+
+
+def test_discover_custom_function_linkbases_includes_function_only_files(
+    tmp_path: Path,
+) -> None:
+    assertion_linkbase = tmp_path / "vr-rule.xml"
+    function_linkbase = tmp_path / "func" / "interval-arithmetics.xml"
+    function_linkbase.parent.mkdir()
+    assertion_linkbase.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:gen="http://xbrl.org/2008/generic"
+  xmlns:va="http://xbrl.org/2008/assertion/value"
+  xmlns:xlink="http://www.w3.org/1999/xlink">
+  <gen:link xlink:type="extended" xlink:role="http://www.xbrl.org/2008/role/link">
+    <va:valueAssertion xlink:type="resource" xlink:label="a1" id="a1" test="true()"/>
+  </gen:link>
+</link:linkbase>
+""",
+        encoding="utf-8",
+    )
+    function_linkbase.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:gen="http://xbrl.org/2008/generic"
+  xmlns:variable="http://xbrl.org/2008/variable"
+  xmlns:iaf="http://www.eurofiling.info/xbrl/func/interval-arithmetics"
+  xmlns:xlink="http://www.w3.org/1999/xlink">
+  <gen:link xlink:type="extended" xlink:role="http://www.xbrl.org/2003/role/link">
+    <variable:function xlink:type="resource" xlink:label="subtract"
+      name="iaf:numeric-subtract" output="item()">
+      <variable:input type="item()"/>
+      <variable:input type="item()"/>
+    </variable:function>
+  </gen:link>
+</link:linkbase>
+""",
+        encoding="utf-8",
+    )
+
+    assert _discover_custom_function_linkbases(
+        [assertion_linkbase, function_linkbase],
+        [assertion_linkbase],
+    ) == [function_linkbase]
 
 
 def test_loader_skips_eager_formula_parse_for_large_formula_sets(

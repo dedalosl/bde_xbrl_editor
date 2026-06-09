@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from urllib.parse import urlparse
 
+from bde_xbrl_editor.paths import iter_existing_cache_roots
 from bde_xbrl_editor.taxonomy.discovery import _catalog_path_candidates
 
 
@@ -16,15 +17,8 @@ def catalog_path_candidates(local_root: Path, rel: str) -> list[Path]:
 def discover_mirror_catalog() -> dict[str, Path]:
     """Build URL-prefix mappings from on-disk taxonomy mirrors under ``cache/``."""
     catalog: dict[str, Path] = {}
-    roots = (
-        Path.cwd() / "cache",
-        Path(__file__).resolve().parents[3] / "cache",
-        Path.home() / "git" / "bde_xbrl_editor" / "cache",
-    )
     seen_hosts: set[str] = set()
-    for cache_root in roots:
-        if not cache_root.is_dir():
-            continue
+    for cache_root in iter_existing_cache_roots():
         for host_dir in sorted(cache_root.iterdir()):
             if not host_dir.is_dir():
                 continue
