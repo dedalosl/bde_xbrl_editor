@@ -122,6 +122,8 @@ def parse_catalog_document(raw: dict) -> TaxonomyCatalogData:
         last_run=str(meta_raw.get("lastRun", "")),
         total_count=int(meta_raw.get("totalCount", 0)),
         reporting_module_count=meta_raw.get("reportingModuleCount"),
+        taxonomies_with_updates=meta_raw.get("taxonomiesWithUpdates"),
+        entry_points_with_updates=meta_raw.get("entryPointsWithUpdates"),
         files_with_updates=meta_raw.get("filesWithUpdates"),
     )
     taxonomies = tuple(_parse_taxonomy(t) for t in raw.get("taxonomies", []))

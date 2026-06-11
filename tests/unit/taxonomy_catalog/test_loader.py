@@ -13,7 +13,13 @@ from bde_xbrl_editor.taxonomy_catalog.models import TaxonomyCatalogData
 
 def test_parse_minimal_catalog() -> None:
     raw = {
-        "metadata": {"lastRun": "2026-01-01T00:00:00.000Z", "totalCount": 1},
+        "metadata": {
+            "lastRun": "2026-01-01T00:00:00.000Z",
+            "totalCount": 1,
+            "taxonomiesWithUpdates": 1,
+            "entryPointsWithUpdates": 1,
+            "filesWithUpdates": 2,
+        },
         "taxonomies": [
             {
                 "id": "t1",
@@ -42,6 +48,9 @@ def test_parse_minimal_catalog() -> None:
     data = parse_catalog_document(raw)
     assert isinstance(data, TaxonomyCatalogData)
     assert data.metadata.total_count == 1
+    assert data.metadata.taxonomies_with_updates == 1
+    assert data.metadata.entry_points_with_updates == 1
+    assert data.metadata.files_with_updates == 2
     assert len(data.taxonomies) == 1
     tax = data.taxonomies[0]
     assert tax.name == "Test Taxonomy"

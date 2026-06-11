@@ -5,10 +5,10 @@ from __future__ import annotations
 import contextlib
 import time
 import webbrowser
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import QObject, Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import (
     QComboBox,
@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 
 from bde_xbrl_editor.performance import LoadTiming, StageTiming, format_duration
 from bde_xbrl_editor.taxonomy import LoaderSettings, TaxonomyCache, TaxonomyLoader
-from bde_xbrl_editor.taxonomy_catalog.changes import build_file_snapshot, detect_catalog_changes
+from bde_xbrl_editor.taxonomy_catalog.changes import build_file_snapshot, detect_catalog_delta
 from bde_xbrl_editor.taxonomy_catalog.filter_sort import (
     filter_taxonomies,
     sort_taxonomies,
@@ -37,17 +37,25 @@ from bde_xbrl_editor.taxonomy_catalog.loader import (
     load_catalog,
     resolve_catalog_path,
 )
-from bde_xbrl_editor.taxonomy_catalog.models import EntryPoint, Taxonomy, TaxonomyCatalogData
+from bde_xbrl_editor.taxonomy_catalog.models import (
+    CatalogChangeReport,
+    EntryPoint,
+    Taxonomy,
+    TaxonomyCatalogData,
+)
 from bde_xbrl_editor.taxonomy_catalog.resolve import resolve_entry_point_path
+from bde_xbrl_editor.taxonomy_catalog.scraper import run_catalog_scrape
 from bde_xbrl_editor.ui import theme
 from bde_xbrl_editor.ui.loading import InstanceLoadWorker, TaxonomyLoadWorker
 from bde_xbrl_editor.ui.widgets.catalog_updates_dialog import CatalogUpdatesDialog
 from bde_xbrl_editor.ui.widgets.loader_settings_dialog import (
     add_recent_file,
     add_recent_instance,
-    load_catalog_last_seen,
+    load_catalog_web_check,
     load_taxonomy_catalog_path,
     save_catalog_last_seen,
+    save_catalog_web_check,
+    save_taxonomy_catalog_path,
 )
 from bde_xbrl_editor.ui.widgets.progress_dialog import TaxonomyProgressDialog
 from bde_xbrl_editor.ui.widgets.taxonomy_loader_widget import _RecentFileRow
@@ -57,6 +65,13 @@ _CATALOG_ACCENT_HOVER = "#163A57"
 _CATALOG_SURFACE = "#F4F6F8"
 _UPDATE_BORDER = "#F59E0B"
 _UPDATE_BG = "#FFFBEB"
+_NEW_BORDER = "#10B981"
+_NEW_BG = "#ECFDF5"
+
+_CARD_STATE_NONE = ""
+_CARD_STATE_DOCUMENTS = "documents"
+_CARD_STATE_TAXONOMY = "taxonomy"
+_CARD_STATE_NEW = "new"
 
 
 class _CardHeader(QFrame):
@@ -104,17 +119,28 @@ class _TaxonomyCard(QFrame):
 
     load_entry_point = Signal(str, str)  # url, alternate_url (entry point name)
 
-    def __init__(self, taxonomy: Taxonomy, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        taxonomy: Taxonomy,
+        *,
+        change_state: str = _CARD_STATE_NONE,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
         self._taxonomy = taxonomy
+        self._change_state = change_state
         self._expanded = False
         self.setObjectName("TaxonomyCatalogCard")
         self._apply_card_style()
         self._build_ui()
 
     def _apply_card_style(self) -> None:
-        border = _UPDATE_BORDER if self._taxonomy.has_updates else theme.BORDER
-        ring = f"border: 2px solid {_UPDATE_BORDER};" if self._taxonomy.has_updates else ""
+        is_new = self._change_state == _CARD_STATE_NEW
+        has_update = self._change_state in {_CARD_STATE_TAXONOMY, _CARD_STATE_DOCUMENTS}
+        if self._change_state == _CARD_STATE_NONE:
+            has_update = self._taxonomy.has_updates
+        border = _NEW_BORDER if is_new else (_UPDATE_BORDER if has_update else theme.BORDER)
+        ring = f"border: 2px solid {border};" if is_new or has_update else ""
         self.setStyleSheet(
             f"""
             QFrame#TaxonomyCatalogCard {{
@@ -157,9 +183,11 @@ class _TaxonomyCard(QFrame):
 
         badges = QVBoxLayout()
         badges.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignRight)
-        if self._taxonomy.has_entry_point_updates:
-            badges.addWidget(self._badge("Puntos actualizados"))
-        if self._taxonomy.has_reporting_file_updates:
+        if self._change_state == _CARD_STATE_NEW:
+            badges.addWidget(self._badge("Taxonomía nueva", kind="new"))
+        elif self._change_state == _CARD_STATE_TAXONOMY or self._taxonomy.has_entry_point_updates:
+            badges.addWidget(self._badge("Taxonomía actualizada"))
+        if self._change_state == _CARD_STATE_DOCUMENTS or self._taxonomy.has_reporting_file_updates:
             badges.addWidget(self._badge("Documentos actualizados"))
         status_text = "Vigente" if self._taxonomy.status == "vigente" else "No vigente"
         status_color = "#065F46" if self._taxonomy.status == "vigente" else theme.TEXT_MUTED
@@ -260,10 +288,12 @@ class _TaxonomyCard(QFrame):
         self._details.setVisible(False)
         root.addWidget(self._details)
 
-    def _badge(self, text: str) -> QLabel:
+    def _badge(self, text: str, *, kind: str = "update") -> QLabel:
         lbl = QLabel(text)
+        background = _NEW_BG if kind == "new" else _UPDATE_BG
+        color = "#047857" if kind == "new" else "#92400E"
         lbl.setStyleSheet(
-            f"background: {_UPDATE_BG}; color: #92400E; font-size: 10px; font-weight: 650;"
+            f"background: {background}; color: {color}; font-size: 10px; font-weight: 650;"
             f" padding: 3px 8px; border-radius: 10px;"
         )
         return lbl
@@ -282,9 +312,9 @@ class _TaxonomyCard(QFrame):
         layout.setContentsMargins(0, 4, 0, 4)
         layout.setSpacing(8)
 
-        name = ep.name.rsplit("/", 1)[-1] if ep.name else ep.url.rsplit("/", 1)[-1]
-        name_lbl = QLabel(name)
-        name_lbl.setToolTip(ep.url)
+        name_lbl = QLabel(ep.url)
+        name_lbl.setWordWrap(True)
+        name_lbl.setToolTip(ep.name or ep.url)
         name_lbl.setStyleSheet(f"color: {theme.TEXT_MAIN}; font-size: 11px; background: transparent;")
         if ep.is_updated_since_last_check:
             name_lbl.setStyleSheet(
@@ -346,12 +376,41 @@ class _TaxonomyCard(QFrame):
         )
 
 
+class _CatalogCheckWorker(QObject):
+    """Run the external catalog scraper off the UI thread."""
+
+    finished = Signal(object, object, str, str)  # data, report, path, checked_at
+    error = Signal(str, str)  # message, checked_at
+
+    def __init__(self, previous_data: TaxonomyCatalogData | None) -> None:
+        super().__init__()
+        self._previous_data = previous_data
+        self._cancelled = False
+
+    def cancel(self) -> None:
+        self._cancelled = True
+
+    def run(self) -> None:
+        checked_at = datetime.now(UTC).isoformat()
+        try:
+            catalog_path = run_catalog_scrape(should_cancel=lambda: self._cancelled)
+            data = load_catalog(catalog_path)
+            report = detect_catalog_delta(self._previous_data, data)
+        except Exception as exc:  # noqa: BLE001
+            if self._cancelled:
+                return
+            self.error.emit(str(exc), checked_at)
+            return
+        self.finished.emit(data, report, str(catalog_path), checked_at)
+
+
 class TaxonomyCatalogLoaderWidget(QWidget):
     """Welcome screen that browses taxonomies from taxonomies.json."""
 
     taxonomy_loaded = Signal(object)
     instance_loaded = Signal(object, object)
     settings_changed = Signal()
+    status_message_changed = Signal(str)
 
     def __init__(
         self,
@@ -367,10 +426,14 @@ class TaxonomyCatalogLoaderWidget(QWidget):
         self._loader = TaxonomyLoader(cache=self._cache, settings=self._settings)
         self._catalog_path_override = catalog_path
         self._catalog_data: TaxonomyCatalogData | None = None
+        self._active_catalog_path: Path | None = None
         self._thread: QThread | None = None
         self._worker: TaxonomyLoadWorker | None = None
         self._inst_thread: QThread | None = None
         self._inst_worker: InstanceLoadWorker | None = None
+        self._catalog_check_thread: QThread | None = None
+        self._catalog_check_worker: _CatalogCheckWorker | None = None
+        self._catalog_check_timer: QTimer | None = None
         self._progress_dialog: TaxonomyProgressDialog | None = None
         self.last_taxonomy_load_timing: LoadTiming | None = None
         self.last_instance_load_timing: LoadTiming | None = None
@@ -378,10 +441,23 @@ class TaxonomyCatalogLoaderWidget(QWidget):
         self._instance_load_started_at: float | None = None
         self._pending_entry_url: str | None = None
         self._pending_local_path: str | None = None
+        self._pending_catalog_data: TaxonomyCatalogData | None = None
+        self._pending_catalog_report: CatalogChangeReport | None = None
+        self._pending_catalog_path: str | None = None
+        self._catalog_header_update_counts = (0, 0, 0)  # taxonomies, entry points, files
+        self._taxonomy_card_states: dict[str, str] = {}
+        self._catalog_check_running = False
+        self._catalog_check_error: str | None = None
+        self._last_catalog_check_at, _ = load_catalog_web_check()
         self._loading = False
         self._setup_ui()
         self._reload_catalog(show_errors=True)
-        self._maybe_show_update_notification()
+        self._update_catalog_check_ui()
+        self._catalog_check_timer = QTimer(self)
+        self._catalog_check_timer.setSingleShot(True)
+        self._catalog_check_timer.timeout.connect(self._maybe_start_scheduled_catalog_check)
+        self._catalog_check_timer.start(0)
+        self.destroyed.connect(self._cancel_catalog_check)
 
     def _setup_ui(self) -> None:
         self.setStyleSheet(f"TaxonomyCatalogLoaderWidget {{ background: {_CATALOG_SURFACE}; }}")
@@ -410,6 +486,37 @@ class TaxonomyCatalogLoaderWidget(QWidget):
             f"font-size: 22px; font-weight: 750; color: {theme.TEXT_MAIN}; background: transparent;"
         )
         top_row.addWidget(title, stretch=1)
+
+        self._catalog_check_panel = QFrame()
+        self._catalog_check_panel.setObjectName("CatalogCheckPanel")
+        check_layout = QHBoxLayout(self._catalog_check_panel)
+        check_layout.setContentsMargins(10, 6, 10, 6)
+        check_layout.setSpacing(8)
+        self._catalog_check_label = QLabel()
+        self._catalog_check_label.setWordWrap(False)
+        self._catalog_check_label.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: 11px; background: transparent;"
+        )
+        check_layout.addWidget(self._catalog_check_label, stretch=1)
+        self._catalog_check_now_btn = QPushButton("Comprobar")
+        self._catalog_check_now_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._catalog_check_now_btn.clicked.connect(
+            lambda _checked=False: self._start_catalog_update_check(force=True)
+        )
+        self._catalog_check_now_btn.setStyleSheet(self._link_btn_style())
+        check_layout.addWidget(self._catalog_check_now_btn)
+        self._catalog_view_updates_btn = QPushButton("Ver cambios")
+        self._catalog_view_updates_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._catalog_view_updates_btn.clicked.connect(self._show_pending_catalog_updates)
+        self._catalog_view_updates_btn.setStyleSheet(self._link_btn_style())
+        check_layout.addWidget(self._catalog_view_updates_btn)
+        self._catalog_apply_updates_btn = QPushButton("Actualizar")
+        self._catalog_apply_updates_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._catalog_apply_updates_btn.clicked.connect(self._apply_pending_catalog_update)
+        self._catalog_apply_updates_btn.setStyleSheet(self._primary_btn_style())
+        check_layout.addWidget(self._catalog_apply_updates_btn)
+        top_row.addWidget(self._catalog_check_panel, stretch=0)
+
         settings_btn = QPushButton("Settings…")
         settings_btn.clicked.connect(self._on_settings)
         settings_btn.setStyleSheet(self._secondary_btn_style())
@@ -573,36 +680,26 @@ class TaxonomyCatalogLoaderWidget(QWidget):
                     f"Ubicaciones probadas:\n{candidates}",
                 )
             self._catalog_data = None
+            self._active_catalog_path = None
             self._meta_label.setText("Catálogo no disponible")
             self._refresh_cards()
             return
         try:
-            self._catalog_data = load_catalog(path)
+            data = load_catalog(path)
         except TaxonomyCatalogError as exc:
             if show_errors:
                 QMessageBox.critical(self, "Error al cargar catálogo", str(exc))
             self._catalog_data = None
+            self._active_catalog_path = None
             self._meta_label.setText("Error al cargar el catálogo")
             self._refresh_cards()
             return
+        self._active_catalog_path = path
+        self._apply_catalog_data(data)
 
-        meta = self._catalog_data.metadata
-        try:
-            last_run = datetime.fromisoformat(meta.last_run.replace("Z", "+00:00"))
-            last_run_text = last_run.strftime("%d/%m/%Y %H:%M")
-        except ValueError:
-            last_run_text = meta.last_run
-
-        reporting_total = sum(len(t.reporting_files) for t in self._catalog_data.taxonomies)
-        meta_parts = [
-            f"Última actualización: {last_run_text}",
-            f"{meta.total_count} taxonomías",
-        ]
-        if reporting_total:
-            meta_parts.append(f"{reporting_total} documentos de reporting")
-        if meta.files_with_updates:
-            meta_parts.append(f"{meta.files_with_updates} con archivos actualizados")
-        self._meta_label.setText(" • ".join(meta_parts))
+    def _apply_catalog_data(self, data: TaxonomyCatalogData) -> None:
+        self._catalog_data = data
+        self._update_catalog_meta_label()
 
         self._category_combo.blockSignals(True)
         current_cat = self._category_combo.currentData()
@@ -617,24 +714,65 @@ class TaxonomyCatalogLoaderWidget(QWidget):
         self._category_combo.blockSignals(False)
         self._refresh_cards()
 
-    def _maybe_show_update_notification(self) -> None:
+    def _update_catalog_meta_label(self) -> None:
         if self._catalog_data is None:
             return
-        prev_run, prev_snapshot = load_catalog_last_seen()
-        report = detect_catalog_changes(
-            self._catalog_data,
-            previous_last_run=prev_run,
-            previous_snapshot=prev_snapshot,
-        )
-        if not report.has_updates and prev_run is not None:
-            return
-        if not report.updated_files and not report.scrape_is_newer:
-            if prev_run is None:
-                self._acknowledge_catalog_state()
-            return
-        dialog = CatalogUpdatesDialog(report, self)
-        dialog.exec()
-        self._acknowledge_catalog_state()
+        meta = self._catalog_data.metadata
+        try:
+            last_run = datetime.fromisoformat(meta.last_run.replace("Z", "+00:00"))
+            last_run_text = last_run.strftime("%d/%m/%Y %H:%M")
+        except ValueError:
+            last_run_text = meta.last_run
+
+        reporting_total = sum(len(t.reporting_files) for t in self._catalog_data.taxonomies)
+        meta_parts = [
+            f"Última actualización: {last_run_text}",
+            f"{meta.total_count} taxonomías",
+        ]
+        if reporting_total:
+            meta_parts.append(f"{reporting_total} documentos de reporting")
+        update_parts = self._catalog_header_update_parts()
+        if update_parts:
+            meta_parts.extend(update_parts)
+        self._meta_label.setText(" • ".join(meta_parts))
+        self._meta_label.setToolTip(self._catalog_header_update_tooltip())
+
+    def _catalog_header_update_parts(self) -> list[str]:
+        counts = self._catalog_header_update_counts
+        if not any(counts) and self._catalog_data is not None:
+            meta = self._catalog_data.metadata
+            counts = (
+                meta.taxonomies_with_updates or 0,
+                meta.entry_points_with_updates or 0,
+                meta.files_with_updates or 0,
+            )
+
+        taxonomies, entry_points, files = counts
+        parts: list[str] = []
+        if taxonomies:
+            parts.append(
+                f"{taxonomies} taxonomía{'s' if taxonomies != 1 else ''} actualizada"
+                f"{'s' if taxonomies != 1 else ''}"
+            )
+        if entry_points:
+            parts.append(f"{entry_points} punto(s) de entrada actualizado(s)")
+        if files:
+            parts.append(f"{files} archivo(s) actualizado(s)")
+        return parts
+
+    def _catalog_header_update_tooltip(self) -> str:
+        if self._catalog_data is None:
+            return ""
+        updated_taxonomies = [
+            taxonomy.name
+            for taxonomy in self._catalog_data.taxonomies
+            if taxonomy.has_entry_point_updates or taxonomy.has_reporting_file_updates
+        ]
+        if not updated_taxonomies:
+            return ""
+        lines = ["Taxonomías actualizadas:"]
+        lines.extend(f"- {name}" for name in updated_taxonomies)
+        return "\n".join(lines)
 
     def _acknowledge_catalog_state(self) -> None:
         if self._catalog_data is None:
@@ -643,6 +781,242 @@ class TaxonomyCatalogLoaderWidget(QWidget):
             self._catalog_data.metadata.last_run,
             build_file_snapshot(self._catalog_data),
         )
+
+    def _maybe_start_scheduled_catalog_check(self) -> None:
+        if not self.isVisible():
+            self._emit_catalog_status()
+            return
+        if self._checked_within_last_day():
+            self._emit_catalog_status()
+            return
+        self._start_catalog_update_check(force=False)
+
+    def _checked_within_last_day(self) -> bool:
+        checked_at = self._parse_check_timestamp(self._last_catalog_check_at)
+        if checked_at is None:
+            return False
+        return datetime.now(UTC) - checked_at < timedelta(hours=24)
+
+    def _start_catalog_update_check(self, *, force: bool) -> None:
+        if self._catalog_check_running:
+            return
+        if not force and self._checked_within_last_day():
+            self._emit_catalog_status()
+            return
+
+        self._catalog_check_error = None
+        self._catalog_check_running = True
+        self._update_catalog_check_ui()
+
+        baseline_data = self._pending_catalog_data or self._catalog_data
+        self._catalog_check_worker = _CatalogCheckWorker(baseline_data)
+        self._catalog_check_thread = QThread(self)
+        self._catalog_check_worker.moveToThread(self._catalog_check_thread)
+        self._catalog_check_thread.started.connect(self._catalog_check_worker.run)
+        self._catalog_check_worker.finished.connect(
+            self._on_catalog_check_finished,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self._catalog_check_worker.error.connect(
+            self._on_catalog_check_error,
+            Qt.ConnectionType.QueuedConnection,
+        )
+        self._catalog_check_thread.start()
+
+    def _on_catalog_check_finished(
+        self,
+        data: object,
+        report: object,
+        catalog_path: str,
+        checked_at: str,
+    ) -> None:
+        self._cleanup_catalog_check_thread()
+        self._catalog_check_running = False
+        self._last_catalog_check_at = checked_at
+        save_catalog_web_check(checked_at, catalog_path)
+
+        catalog_data = data if isinstance(data, TaxonomyCatalogData) else None
+        change_report = report if isinstance(report, CatalogChangeReport) else None
+        if catalog_data is None or change_report is None:
+            self._catalog_check_error = "El scraper devolvió un resultado no válido"
+            self._update_catalog_check_ui()
+            return
+
+        if self._catalog_data is None:
+            self._active_catalog_path = Path(catalog_path)
+            self._catalog_path_override = catalog_path
+            save_taxonomy_catalog_path(catalog_path)
+            self._catalog_header_update_counts = (0, 0, 0)
+            self._taxonomy_card_states = {}
+            self._apply_catalog_data(catalog_data)
+            self._acknowledge_catalog_state()
+            self._update_catalog_check_ui()
+            return
+
+        available_report = detect_catalog_delta(self._catalog_data, catalog_data)
+        self._catalog_header_update_counts = self._change_report_counts(available_report)
+        next_states = self._taxonomy_change_states(self._catalog_data, catalog_data, available_report)
+        if available_report.updated_files:
+            self._pending_catalog_data = catalog_data
+            self._pending_catalog_report = available_report
+            self._pending_catalog_path = catalog_path
+        else:
+            self._pending_catalog_data = None
+            self._pending_catalog_report = None
+            self._pending_catalog_path = None
+            next_states = {}
+        self._taxonomy_card_states = next_states
+        self._update_catalog_meta_label()
+        self._update_catalog_check_ui()
+
+    def _on_catalog_check_error(self, message: str, checked_at: str) -> None:
+        self._cleanup_catalog_check_thread()
+        self._catalog_check_running = False
+        self._last_catalog_check_at = checked_at
+        self._catalog_check_error = message
+        save_catalog_web_check(checked_at, None)
+        self._update_catalog_check_ui()
+
+    def _cleanup_catalog_check_thread(self) -> None:
+        if self._catalog_check_thread is not None:
+            self._catalog_check_thread.quit()
+            self._catalog_check_thread.wait()
+        self._catalog_check_thread = None
+        self._catalog_check_worker = None
+
+    def _cancel_catalog_check(self, *_args: object) -> None:
+        if self._catalog_check_timer is not None:
+            self._catalog_check_timer.stop()
+            self._catalog_check_timer = None
+        if self._catalog_check_worker is not None:
+            self._catalog_check_worker.cancel()
+        self._cleanup_catalog_check_thread()
+
+    def _show_pending_catalog_updates(self) -> None:
+        if self._pending_catalog_report is None:
+            return
+        CatalogUpdatesDialog(self._pending_catalog_report, self).exec()
+
+    def _apply_pending_catalog_update(self) -> None:
+        if self._pending_catalog_data is None or self._pending_catalog_path is None:
+            return
+        applied_counts = (
+            self._change_report_counts(self._pending_catalog_report)
+            if self._pending_catalog_report is not None
+            else (0, 0, 0)
+        )
+        self._active_catalog_path = Path(self._pending_catalog_path)
+        self._catalog_path_override = self._pending_catalog_path
+        save_taxonomy_catalog_path(self._pending_catalog_path)
+        self._catalog_header_update_counts = applied_counts
+        self._apply_catalog_data(self._pending_catalog_data)
+        self._show_pending_catalog_updates()
+        self._acknowledge_catalog_state()
+        self._pending_catalog_data = None
+        self._pending_catalog_report = None
+        self._pending_catalog_path = None
+        self._update_catalog_check_ui()
+
+    @staticmethod
+    def _taxonomy_change_states(
+        previous: TaxonomyCatalogData,
+        current: TaxonomyCatalogData,
+        report: CatalogChangeReport,
+    ) -> dict[str, str]:
+        previous_ids = {taxonomy.id for taxonomy in previous.taxonomies}
+        taxonomy_ids_by_name = {taxonomy.name: taxonomy.id for taxonomy in current.taxonomies}
+        states: dict[str, str] = {
+            taxonomy.id: _CARD_STATE_NEW
+            for taxonomy in current.taxonomies
+            if taxonomy.id not in previous_ids
+        }
+        for ref in report.updated_files:
+            taxonomy_id = taxonomy_ids_by_name.get(ref.taxonomy_name)
+            if not taxonomy_id or states.get(taxonomy_id) == _CARD_STATE_NEW:
+                continue
+            if ref.resource_kind == "entry_point":
+                states[taxonomy_id] = _CARD_STATE_TAXONOMY
+            elif states.get(taxonomy_id) != _CARD_STATE_TAXONOMY:
+                states[taxonomy_id] = _CARD_STATE_DOCUMENTS
+        return states
+
+    @staticmethod
+    def _change_report_counts(report: CatalogChangeReport) -> tuple[int, int, int]:
+        taxonomy_names: set[str] = set()
+        entry_points = 0
+        files = 0
+        for ref in report.updated_files:
+            if ref.resource_kind == "entry_point":
+                entry_points += 1
+                if ref.taxonomy_name:
+                    taxonomy_names.add(ref.taxonomy_name)
+            else:
+                files += 1
+                if ref.taxonomy_name not in ("Documentos generales", "Enlaces relacionados"):
+                    taxonomy_names.add(ref.taxonomy_name)
+        return len(taxonomy_names), entry_points, files
+
+    def _update_catalog_check_ui(self) -> None:
+        pending_count = (
+            len(self._pending_catalog_report.updated_files)
+            if self._pending_catalog_report is not None
+            else 0
+        )
+        if self._catalog_check_running:
+            label = "Comprobando cambios en BDE..."
+            panel_style = self._catalog_check_panel_style("checking")
+        elif pending_count:
+            label = f"{pending_count} cambio(s) disponibles"
+            panel_style = self._catalog_check_panel_style("updates")
+        elif self._catalog_check_error:
+            label = "No se pudo comprobar BDE"
+            panel_style = self._catalog_check_panel_style("error")
+        else:
+            label = f"Comprobado: {self._format_check_timestamp(self._last_catalog_check_at)}"
+            panel_style = self._catalog_check_panel_style("idle")
+
+        self._catalog_check_panel.setStyleSheet(panel_style)
+        self._catalog_check_label.setText(label)
+        self._catalog_check_label.setToolTip(self._catalog_check_error or "")
+        self._catalog_check_now_btn.setVisible(not pending_count)
+        self._catalog_check_now_btn.setEnabled(not self._catalog_check_running)
+        self._catalog_view_updates_btn.setVisible(bool(pending_count))
+        self._catalog_apply_updates_btn.setVisible(bool(pending_count))
+        self._emit_catalog_status()
+
+    def _emit_catalog_status(self) -> None:
+        if self._catalog_check_running:
+            message = "No taxonomy loaded · comprobando cambios del catálogo BDE en segundo plano"
+        else:
+            message = (
+                "No taxonomy loaded · última comprobación BDE: "
+                f"{self._format_check_timestamp(self._last_catalog_check_at)}"
+            )
+            if self._pending_catalog_report is not None:
+                count = len(self._pending_catalog_report.updated_files)
+                message += f" · {count} cambio(s) disponibles"
+            elif self._catalog_check_error:
+                message += " · error al comprobar cambios"
+        self.status_message_changed.emit(message)
+
+    @staticmethod
+    def _parse_check_timestamp(value: str | None) -> datetime | None:
+        if not value:
+            return None
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=UTC)
+        return parsed.astimezone(UTC)
+
+    @classmethod
+    def _format_check_timestamp(cls, value: str | None) -> str:
+        parsed = cls._parse_check_timestamp(value)
+        if parsed is None:
+            return "nunca"
+        return parsed.astimezone().strftime("%d/%m/%Y %H:%M")
 
     def _filtered_taxonomies(self) -> tuple[Taxonomy, ...]:
         if self._catalog_data is None:
@@ -682,9 +1056,24 @@ class TaxonomyCatalogLoaderWidget(QWidget):
             return
 
         for tax in taxonomies:
-            card = _TaxonomyCard(tax)
+            change_state = self._taxonomy_card_states.get(
+                tax.id,
+                self._taxonomy_flag_state(tax),
+            )
+            card = _TaxonomyCard(
+                tax,
+                change_state=change_state,
+            )
             card.load_entry_point.connect(self._on_entry_point_requested)
             self._cards_layout.insertWidget(self._cards_layout.count() - 1, card)
+
+    @staticmethod
+    def _taxonomy_flag_state(taxonomy: Taxonomy) -> str:
+        if taxonomy.has_entry_point_updates:
+            return _CARD_STATE_TAXONOMY
+        if taxonomy.has_reporting_file_updates:
+            return _CARD_STATE_DOCUMENTS
+        return _CARD_STATE_NONE
 
     def load_entry_point_path(self, path: str) -> None:
         """Load a taxonomy from a local entry-point path (reload from menu)."""
@@ -893,4 +1282,35 @@ class TaxonomyCatalogLoaderWidget(QWidget):
             f"QPushButton {{ background: {theme.SURFACE_BG}; color: {theme.TEXT_MAIN};"
             f" border: 1px solid {theme.BORDER}; border-radius: 6px; padding: 6px 12px; }}"
             f"QPushButton:hover {{ background: {theme.HOVER_BG}; border-color: {_CATALOG_ACCENT}; }}"
+        )
+
+    @staticmethod
+    def _link_btn_style() -> str:
+        return (
+            f"QPushButton {{ color: {_CATALOG_ACCENT}; border: none; background: transparent;"
+            f" font-size: 11px; font-weight: 650; padding: 2px 6px; }}"
+            f"QPushButton:hover {{ color: {_CATALOG_ACCENT_HOVER}; background: {theme.HOVER_BG};"
+            f" border-radius: 4px; }}"
+            f"QPushButton:disabled {{ color: {theme.DISABLED_FG}; background: transparent; }}"
+        )
+
+    @staticmethod
+    def _catalog_check_panel_style(state: str) -> str:
+        if state == "updates":
+            border = _UPDATE_BORDER
+            background = _UPDATE_BG
+        elif state == "error":
+            border = "#FCA5A5"
+            background = "#FEF2F2"
+        elif state == "checking":
+            border = theme.BORDER
+            background = theme.SURFACE_ALT_BG
+        else:
+            border = "transparent"
+            background = "transparent"
+        return (
+            f"QFrame#CatalogCheckPanel {{ background: {background}; border: 1px solid {border};"
+            " border-radius: 8px; }}"
+            "QFrame#CatalogCheckPanel QLabel { border: none; background: transparent; }"
+            "QFrame#CatalogCheckPanel QPushButton { min-height: 24px; }"
         )

@@ -164,6 +164,29 @@ def save_catalog_last_seen(
     _write_raw(data)
 
 
+def load_catalog_web_check() -> tuple[str | None, str | None]:
+    """Return (checked_at, catalog_path) for the last BDE website catalog check."""
+    raw = _read_raw().get("taxonomy_catalog_web_check")
+    if not isinstance(raw, dict):
+        return None, None
+    checked_at = raw.get("checked_at")
+    catalog_path = raw.get("catalog_path")
+    if not isinstance(checked_at, str):
+        checked_at = None
+    if not isinstance(catalog_path, str):
+        catalog_path = None
+    return checked_at, catalog_path
+
+
+def save_catalog_web_check(checked_at: str, catalog_path: str | None = None) -> None:
+    data = _read_raw()
+    data["taxonomy_catalog_web_check"] = {
+        "checked_at": checked_at,
+        "catalog_path": catalog_path,
+    }
+    _write_raw(data)
+
+
 class LoaderSettingsDialog(QDialog):
     """Dialog for viewing and editing LoaderSettings."""
 

@@ -389,6 +389,8 @@ class MainWindow(QMainWindow):
         widget.taxonomy_loaded.connect(self._on_taxonomy_loaded)
         widget.instance_loaded.connect(self._on_instance_loaded_from_widget)
         widget.settings_changed.connect(self._on_loader_settings_changed)
+        if isinstance(widget, TaxonomyCatalogLoaderWidget):
+            widget.status_message_changed.connect(self._on_loader_status_message)
         if path is not None:
             if isinstance(widget, TaxonomyLoaderWidget):
                 widget._path_edit.setText(path)
@@ -401,6 +403,10 @@ class MainWindow(QMainWindow):
         self._status = QStatusBar()
         self.setStatusBar(self._status)
         self._status.showMessage("No taxonomy loaded")
+
+    def _on_loader_status_message(self, message: str) -> None:
+        if hasattr(self, "_status"):
+            self._status.showMessage(message)
 
     # ------------------------------------------------------------------
     # Taxonomy actions

@@ -1,0 +1,20 @@
+{
+  "name": "bde-taxonomies-scraper",
+  "version": "1.0.0",
+  "description": "Scraper for BDE taxonomies using Playwright",
+  "main": "dist/index.js",
+  "scripts": {
+    "scrape": "ts-node src/index.ts",
+    "reprocess": "ts-node src/reprocess.ts",
+    "build": "tsc",
+    "clean": "rm -rf dist data/taxonomies.json"
+  },
+  "dependencies": {
+    "playwright": "^1.42.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.0"
+  }
+}
