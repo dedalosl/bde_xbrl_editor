@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 
 from bde_xbrl_editor.taxonomy import LoaderSettings
 from bde_xbrl_editor.taxonomy_catalog.models import LoaderPageMode
+from bde_xbrl_editor.taxonomy_catalog.scraper import default_generated_catalog_path
 from bde_xbrl_editor.ui import theme
 
 _SETTINGS_FILE = Path.home() / ".bde_xbrl_editor" / "settings.json"
@@ -300,9 +301,7 @@ class LoaderSettingsDialog(QDialog):
 
         catalog_row = QHBoxLayout()
         self._catalog_path_edit = QLineEdit()
-        self._catalog_path_edit.setPlaceholderText(
-            "Default: ~/git/bde_taxonomies_checker/scraper/data/taxonomies.json"
-        )
+        self._catalog_path_edit.setPlaceholderText(f"Default: {default_generated_catalog_path()}")
         saved_catalog = load_taxonomy_catalog_path()
         if saved_catalog:
             self._catalog_path_edit.setText(saved_catalog)

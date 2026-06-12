@@ -3,7 +3,9 @@ import { BDECrawler } from './crawler';
 
 async function main() {
   const crawler = new BDECrawler();
-  const outputPath = path.join(__dirname, '..', 'data', 'taxonomies.json');
+  const outputPath =
+    process.env.BDE_TAXONOMIES_OUTPUT_PATH ||
+    path.join(__dirname, '..', 'data', 'taxonomies.json');
 
   try {
     console.log('Starting BDE Taxonomies Scraper...\n');

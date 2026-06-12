@@ -26,12 +26,23 @@ dev = [
 [project.scripts]
 bde-xbrl-editor = "bde_xbrl_editor.__main__:main"
 bde-xbrl-conformance = "bde_xbrl_editor.conformance.__main__:main"
+bde-xbrl-catalog-scrape = "bde_xbrl_editor.taxonomy_catalog.scraper:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-dir]
 "" = "src"
+
+[tool.setuptools.package-data]
+"bde_xbrl_editor.taxonomy_catalog" = [
+    "bde_taxonomies_scraper/package.json",
+    "bde_taxonomies_scraper/package-lock.json",
+    "bde_taxonomies_scraper/tsconfig.json",
+    "bde_taxonomies_scraper/playwright.config.ts",
+    "bde_taxonomies_scraper/src/*.ts",
+    "bde_taxonomies_scraper/data/*.json",
+]
 
 [tool.ruff]
 line-length = 100

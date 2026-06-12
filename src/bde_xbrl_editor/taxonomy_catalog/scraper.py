@@ -1,50 +1,126 @@
-"""Run the external BDE taxonomy checker scraper."""
+"""Run the bundled BDE taxonomy catalog scraper."""
 
 from __future__ import annotations
 
+import argparse
 import os
+import shutil
 import subprocess
+import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
 
 
 class TaxonomyCatalogScrapeError(Exception):
-    """Raised when the external BDE taxonomy scraper cannot complete."""
+    """Raised when the BDE taxonomy scraper cannot complete."""
+
+
+def bundled_scraper_root() -> Path:
+    """Return the scraper source directory bundled inside this Python package."""
+    return Path(__file__).resolve().parent / "bde_taxonomies_scraper"
+
+
+def bundled_catalog_path() -> Path:
+    """Return the catalog JSON shipped with the installed package."""
+    return scraper_catalog_path(bundled_scraper_root())
+
+
+def default_generated_catalog_path() -> Path:
+    """Return the writable default path for catalogs generated at runtime."""
+    return Path.home() / ".bde_xbrl_editor" / "taxonomies.json"
+
+
+def default_runtime_scraper_root() -> Path:
+    """Return the writable runtime copy used for bundled scraper dependencies."""
+    return Path.home() / ".bde_xbrl_editor" / "bde_taxonomies_scraper"
+
+
+def default_scraper_root() -> Path:
+    """Return the configured scraper project directory."""
+    env_path = os.environ.get("BDE_TAXONOMIES_SCRAPER_ROOT", "").strip()
+    if not env_path:
+        env_path = os.environ.get("BDE_TAXONOMIES_CHECKER_ROOT", "").strip()
+    if env_path:
+        return Path(env_path).expanduser()
+    return bundled_scraper_root()
 
 
 def default_checker_root() -> Path:
-    """Return the configured bde_taxonomies_checker project directory."""
-    env_path = os.environ.get("BDE_TAXONOMIES_CHECKER_ROOT", "").strip()
-    if env_path:
-        return Path(env_path).expanduser()
-    return Path.home() / "git" / "bde_taxonomies_checker"
+    """Return the configured scraper root.
+
+    Kept for compatibility with callers that used the previous external-checker
+    name.
+    """
+    return default_scraper_root()
+
+
+def _scraper_package_root(root: str | Path | None = None) -> Path:
+    candidate = Path(root).expanduser() if root is not None else default_scraper_root()
+    legacy_scraper = candidate / "scraper"
+    if (legacy_scraper / "package.json").is_file():
+        return legacy_scraper
+    if (candidate / "package.json").is_file():
+        return candidate
+    return candidate
 
 
 def scraper_catalog_path(root: str | Path | None = None) -> Path:
-    checker_root = Path(root).expanduser() if root is not None else default_checker_root()
-    return checker_root / "scraper" / "data" / "taxonomies.json"
+    scraper_root = _scraper_package_root(root)
+    return scraper_root / "data" / "taxonomies.json"
 
 
-def run_catalog_scrape(
-    root: str | Path | None = None,
+def prepare_runtime_scraper(source_root: str | Path | None = None) -> Path:
+    """Copy the bundled scraper into a writable runtime directory."""
+    source = _scraper_package_root(source_root or bundled_scraper_root())
+    runtime = default_runtime_scraper_root()
+    runtime.mkdir(parents=True, exist_ok=True)
+
+    for filename in (
+        "package.json",
+        "package-lock.json",
+        "tsconfig.json",
+        "playwright.config.ts",
+    ):
+        source_file = source / filename
+        if source_file.is_file():
+            shutil.copy2(source_file, runtime / filename)
+
+    src_dest = runtime / "src"
+    if src_dest.exists():
+        shutil.rmtree(src_dest)
+    shutil.copytree(source / "src", src_dest)
+
+    data_source = source / "data"
+    if data_source.is_dir():
+        shutil.copytree(data_source, runtime / "data", dirs_exist_ok=True)
+
+    return runtime
+
+
+def _node_dependencies_installed(scraper_root: Path) -> bool:
+    node_modules = scraper_root / "node_modules"
+    bin_dir = node_modules / ".bin"
+    return (node_modules / "playwright").is_dir() and (
+        (bin_dir / "ts-node").exists() or (bin_dir / "ts-node.cmd").exists()
+    )
+
+
+def _run_process(
+    args: list[str],
     *,
-    timeout_seconds: int = 900,
-    should_cancel: Callable[[], bool] | None = None,
-) -> Path:
-    """Run the checker scraper and return the generated taxonomies.json path."""
-    checker_root = Path(root).expanduser() if root is not None else default_checker_root()
-    package_json = checker_root / "package.json"
-    if not package_json.is_file():
-        raise TaxonomyCatalogScrapeError(
-            f"bde_taxonomies_checker project not found at {checker_root}"
-        )
-
+    cwd: Path,
+    env: dict[str, str],
+    timeout_seconds: int,
+    should_cancel: Callable[[], bool] | None,
+    action: str,
+) -> tuple[str, str]:
     try:
         started_at = time.monotonic()
         process = subprocess.Popen(
-            ["npm", "run", "scrape"],
-            cwd=checker_root,
+            args,
+            cwd=cwd,
+            env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -59,7 +135,7 @@ def run_catalog_scrape(
                 except subprocess.TimeoutExpired:
                     process.kill()
                     process.wait()
-                raise TaxonomyCatalogScrapeError("BDE scraper was cancelled")
+                raise TaxonomyCatalogScrapeError(f"{action} was cancelled")
             try:
                 stdout, stderr = process.communicate(timeout=0.25)
                 break
@@ -71,7 +147,7 @@ def run_catalog_scrape(
                     except subprocess.TimeoutExpired:
                         process.kill()
                         process.wait()
-                    raise TaxonomyCatalogScrapeError("BDE scraper timed out") from None
+                    raise TaxonomyCatalogScrapeError(f"{action} timed out") from None
     except FileNotFoundError as exc:
         raise TaxonomyCatalogScrapeError("npm was not found; cannot run BDE scraper") from exc
 
@@ -80,13 +156,132 @@ def run_catalog_scrape(
         if len(details) > 1200:
             details = f"{details[:1200]}..."
         raise TaxonomyCatalogScrapeError(
-            "BDE scraper failed"
+            f"{action} failed"
             + (f":\n{details}" if details else f" with exit code {process.returncode}")
         )
+    return stdout, stderr
 
-    output_path = scraper_catalog_path(checker_root)
-    if not output_path.is_file():
+
+def _ensure_node_dependencies(
+    scraper_root: Path,
+    *,
+    timeout_seconds: int,
+    should_cancel: Callable[[], bool] | None,
+) -> None:
+    if _node_dependencies_installed(scraper_root):
+        return
+
+    command = (
+        ["npm", "ci"] if (scraper_root / "package-lock.json").is_file() else ["npm", "install"]
+    )
+    install_env = os.environ.copy()
+    install_env["NODE_ENV"] = "development"
+    install_env["npm_config_production"] = "false"
+    _run_process(
+        command,
+        cwd=scraper_root,
+        env=install_env,
+        timeout_seconds=timeout_seconds,
+        should_cancel=should_cancel,
+        action="BDE scraper dependency installation",
+    )
+
+
+def _runtime_scraper_root(root: str | Path | None) -> Path:
+    scraper_root = _scraper_package_root(root)
+    try:
+        if scraper_root.resolve() == bundled_scraper_root().resolve():
+            return prepare_runtime_scraper(scraper_root)
+    except OSError:
+        pass
+    return scraper_root
+
+
+def run_catalog_scrape(
+    root: str | Path | None = None,
+    *,
+    output_path: str | Path | None = None,
+    timeout_seconds: int = 900,
+    setup_timeout_seconds: int = 900,
+    should_cancel: Callable[[], bool] | None = None,
+) -> Path:
+    """Run the bundled scraper and return the generated taxonomies.json path."""
+    scraper_root = _runtime_scraper_root(root)
+    package_json = scraper_root / "package.json"
+    if not package_json.is_file():
         raise TaxonomyCatalogScrapeError(
-            f"BDE scraper finished but did not create {output_path}"
+            f"BDE taxonomies scraper project not found at {scraper_root}"
         )
-    return output_path
+    catalog_output_path = (
+        Path(output_path).expanduser()
+        if output_path is not None
+        else default_generated_catalog_path()
+    )
+    catalog_output_path.parent.mkdir(parents=True, exist_ok=True)
+    _ensure_node_dependencies(
+        scraper_root,
+        timeout_seconds=setup_timeout_seconds,
+        should_cancel=should_cancel,
+    )
+
+    env = os.environ.copy()
+    env["BDE_TAXONOMIES_OUTPUT_PATH"] = str(catalog_output_path)
+    _run_process(
+        ["npm", "run", "scrape"],
+        cwd=scraper_root,
+        env=env,
+        timeout_seconds=timeout_seconds,
+        should_cancel=should_cancel,
+        action="BDE scraper",
+    )
+
+    if not catalog_output_path.is_file():
+        raise TaxonomyCatalogScrapeError(
+            f"BDE scraper finished but did not create {catalog_output_path}"
+        )
+    return catalog_output_path
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Run the BDE taxonomy catalog scraper.")
+    parser.add_argument(
+        "--root",
+        type=Path,
+        default=None,
+        help="Scraper package directory. Defaults to the bundled scraper.",
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Path for generated taxonomies.json. Defaults to ~/.bde_xbrl_editor/taxonomies.json.",
+    )
+    parser.add_argument(
+        "--timeout",
+        type=int,
+        default=900,
+        help="Maximum scrape time in seconds.",
+    )
+    parser.add_argument(
+        "--setup-timeout",
+        type=int,
+        default=900,
+        help="Maximum dependency setup time in seconds.",
+    )
+    args = parser.parse_args(argv)
+    try:
+        path = run_catalog_scrape(
+            args.root,
+            output_path=args.output,
+            timeout_seconds=args.timeout,
+            setup_timeout_seconds=args.setup_timeout,
+        )
+    except TaxonomyCatalogScrapeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(path)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

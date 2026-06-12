@@ -19,7 +19,15 @@ import { scrapeReportingModules } from './reportingModules';
 import { scrapeAndEnrichTaxonomyRelatedLinks } from './taxonomyRelatedLinks';
 import { EntryPoint, Taxonomy, TaxonomyData } from './types';
 
-const METADATA_HISTORY_PATH = path.join(__dirname, '..', 'data', 'file-metadata-history.json');
+const METADATA_HISTORY_PATH =
+  process.env.BDE_TAXONOMIES_METADATA_HISTORY_PATH ||
+  path.join(
+    path.dirname(
+      process.env.BDE_TAXONOMIES_OUTPUT_PATH ||
+        path.join(__dirname, '..', 'data', 'taxonomies.json')
+    ),
+    'file-metadata-history.json'
+  );
 
 const BDE_BASE_URL = 'https://www.bde.es';
 const BDE_TAXONOMIES_URL = `${BDE_BASE_URL}/wbe/es/punto-informacion/contenidos/informacion-financiera-a-remitir-entidades-supervisadas/entidades-credito/taxonomias/`;

@@ -17,14 +17,19 @@ import {
 } from './fileMetadata';
 import { TaxonomyData } from './types';
 
-const METADATA_HISTORY_PATH = path.join(__dirname, '..', 'data', 'file-metadata-history.json');
+const defaultDataPath =
+  process.env.BDE_TAXONOMIES_OUTPUT_PATH ||
+  path.join(__dirname, '..', 'data', 'taxonomies.json');
+const METADATA_HISTORY_PATH =
+  process.env.BDE_TAXONOMIES_METADATA_HISTORY_PATH ||
+  path.join(path.dirname(defaultDataPath), 'file-metadata-history.json');
 
 /**
  * Re-runs module matching and general-document extraction on existing scrape output
  * without launching the browser. Run: npm run reprocess
  */
 async function main() {
-  const dataPath = path.join(__dirname, '..', 'data', 'taxonomies.json');
+  const dataPath = defaultDataPath;
   const raw = fs.readFileSync(dataPath, 'utf-8');
   const data = JSON.parse(raw) as TaxonomyData;
 

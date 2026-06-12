@@ -12,6 +12,7 @@ from PySide6.QtCore import QObject, Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import (
     QComboBox,
+    QDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -26,7 +27,11 @@ from PySide6.QtWidgets import (
 
 from bde_xbrl_editor.performance import LoadTiming, StageTiming, format_duration
 from bde_xbrl_editor.taxonomy import LoaderSettings, TaxonomyCache, TaxonomyLoader
-from bde_xbrl_editor.taxonomy_catalog.changes import build_file_snapshot, detect_catalog_delta
+from bde_xbrl_editor.taxonomy_catalog.changes import (
+    build_file_snapshot,
+    collect_flagged_updates,
+    detect_catalog_delta,
+)
 from bde_xbrl_editor.taxonomy_catalog.filter_sort import (
     filter_taxonomies,
     sort_taxonomies,
@@ -39,12 +44,18 @@ from bde_xbrl_editor.taxonomy_catalog.loader import (
 )
 from bde_xbrl_editor.taxonomy_catalog.models import (
     CatalogChangeReport,
+    CatalogFileRef,
     EntryPoint,
+    ModuleFile,
     Taxonomy,
     TaxonomyCatalogData,
 )
 from bde_xbrl_editor.taxonomy_catalog.resolve import resolve_entry_point_path
-from bde_xbrl_editor.taxonomy_catalog.scraper import run_catalog_scrape
+from bde_xbrl_editor.taxonomy_catalog.scraper import (
+    bundled_catalog_path,
+    default_generated_catalog_path,
+    run_catalog_scrape,
+)
 from bde_xbrl_editor.ui import theme
 from bde_xbrl_editor.ui.loading import InstanceLoadWorker, TaxonomyLoadWorker
 from bde_xbrl_editor.ui.widgets.catalog_updates_dialog import CatalogUpdatesDialog
@@ -441,14 +452,19 @@ class TaxonomyCatalogLoaderWidget(QWidget):
         self._instance_load_started_at: float | None = None
         self._pending_entry_url: str | None = None
         self._pending_local_path: str | None = None
+        self._pending_instance_path: str | None = None
         self._pending_catalog_data: TaxonomyCatalogData | None = None
         self._pending_catalog_report: CatalogChangeReport | None = None
         self._pending_catalog_path: str | None = None
+        self._visible_catalog_update_refs: tuple[CatalogFileRef, ...] = ()
         self._catalog_header_update_counts = (0, 0, 0)  # taxonomies, entry points, files
         self._taxonomy_card_states: dict[str, str] = {}
         self._catalog_check_running = False
         self._catalog_check_error: str | None = None
         self._last_catalog_check_at, _ = load_catalog_web_check()
+        self._instance_open_dialog: QDialog | None = None
+        self._inst_path_edit: QLineEdit | None = None
+        self._load_inst_btn: QPushButton | None = None
         self._loading = False
         self._setup_ui()
         self._reload_catalog(show_errors=True)
@@ -587,27 +603,103 @@ class TaxonomyCatalogLoaderWidget(QWidget):
         catalog_wrap.setLayout(catalog_col)
         body.addWidget(catalog_wrap, stretch=3)
 
-        instance_card = self._build_instance_panel()
-        body.addWidget(instance_card, stretch=1)
+        side_wrap = QWidget()
+        side_wrap.setObjectName("CatalogSidePanel")
+        self._side_panel_layout = QVBoxLayout(side_wrap)
+        self._side_panel_layout.setContentsMargins(0, 0, 0, 0)
+        self._side_panel_layout.setSpacing(16)
+        self._open_instance_btn = QPushButton("Abrir instancia…")
+        self._open_instance_btn.setObjectName("OpenInstanceButton")
+        self._open_instance_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._open_instance_btn.clicked.connect(self._show_instance_open_dialog)
+        self._open_instance_btn.setStyleSheet(self._primary_btn_style())
+        self._global_resources_panel = self._build_global_resources_panel()
+        self._side_panel_layout.addWidget(self._open_instance_btn, stretch=0)
+        self._side_panel_layout.addWidget(self._global_resources_panel, stretch=1)
+        body.addWidget(side_wrap, stretch=1)
         outer.addLayout(body, stretch=1)
 
-    def _build_instance_panel(self) -> QFrame:
-        card = QFrame()
-        card.setObjectName("InstanceOpenPanel")
-        card.setStyleSheet(
+    def _build_global_resources_panel(self) -> QFrame:
+        panel = QFrame()
+        panel.setObjectName("CatalogGlobalResourcesPanel")
+        panel.setStyleSheet(
             f"""
-            QFrame#InstanceOpenPanel {{
+            QFrame#CatalogGlobalResourcesPanel {{
                 background: {theme.SURFACE_BG};
                 border: 1px solid {theme.BORDER};
                 border-radius: 10px;
             }}
-            QFrame#InstanceOpenPanel QLabel {{
+            QFrame#CatalogGlobalResourcesPanel QLabel {{
+                background: transparent;
+            }}
+            """
+        )
+        panel.setVisible(False)
+
+        layout = QVBoxLayout(panel)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(8)
+
+        title = QLabel("Global resources")
+        title.setStyleSheet(
+            f"font-size: 14px; font-weight: 750; color: {theme.TEXT_MAIN}; background: transparent;"
+        )
+        layout.addWidget(title)
+
+        subtitle = QLabel("General BDE documents and related taxonomy links.")
+        subtitle.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: 11px; background: transparent;"
+        )
+        layout.addWidget(subtitle)
+
+        scroll = QScrollArea()
+        scroll.setObjectName("GlobalResourcesScroll")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setStyleSheet(
+            f"QScrollArea#GlobalResourcesScroll {{ background: {theme.SURFACE_BG}; border: none; }}"
+        )
+        scroll.viewport().setStyleSheet(f"background: {theme.SURFACE_BG};")
+        self._global_resources_host = QWidget()
+        self._global_resources_host.setObjectName("GlobalResourcesHost")
+        self._global_resources_host.setStyleSheet(f"background: {theme.SURFACE_BG};")
+        self._global_resources_layout = QVBoxLayout(self._global_resources_host)
+        self._global_resources_layout.setContentsMargins(0, 0, 4, 0)
+        self._global_resources_layout.setSpacing(6)
+        scroll.setWidget(self._global_resources_host)
+        layout.addWidget(scroll)
+        return panel
+
+    def _show_instance_open_dialog(self) -> None:
+        dialog = self._build_instance_dialog()
+        self._instance_open_dialog = dialog
+        dialog.finished.connect(lambda _result, current=dialog: self._clear_instance_dialog(current))
+        dialog.exec()
+
+    def _clear_instance_dialog(self, dialog: QDialog) -> None:
+        if self._instance_open_dialog is dialog:
+            self._instance_open_dialog = None
+            self._inst_path_edit = None
+            self._load_inst_btn = None
+
+    def _build_instance_dialog(self) -> QDialog:
+        dialog = QDialog(self)
+        dialog.setObjectName("InstanceOpenDialog")
+        dialog.setWindowTitle("Abrir instancia existente")
+        dialog.setModal(True)
+        dialog.setMinimumSize(620, 520)
+        dialog.setStyleSheet(
+            f"""
+            QDialog#InstanceOpenDialog {{
+                background: {theme.SURFACE_BG};
+            }}
+            QDialog#InstanceOpenDialog QLabel {{
                 border: none;
                 background: transparent;
             }}
             """
         )
-        layout = QVBoxLayout(card)
+        layout = QVBoxLayout(dialog)
         layout.setContentsMargins(20, 18, 20, 18)
         layout.setSpacing(10)
 
@@ -651,36 +743,56 @@ class TaxonomyCatalogLoaderWidget(QWidget):
                 f"color: {theme.TEXT_MAIN}; font-size: 12px; font-weight: 700; background: transparent;"
             )
             layout.addWidget(rec_title)
+            recent_scroll = QScrollArea()
+            recent_scroll.setObjectName("RecentInstancesScroll")
+            recent_scroll.setWidgetResizable(True)
+            recent_scroll.setFrameShape(QFrame.Shape.NoFrame)
+            recent_scroll.setStyleSheet(
+                f"QScrollArea#RecentInstancesScroll {{ background: {theme.SURFACE_BG}; border: none; }}"
+            )
+            recent_scroll.viewport().setStyleSheet(f"background: {theme.SURFACE_BG};")
+            recent_host = QWidget()
+            recent_host.setObjectName("RecentInstancesHost")
+            recent_host.setStyleSheet(f"background: {theme.SURFACE_BG};")
+            recent_layout = QVBoxLayout(recent_host)
+            recent_layout.setContentsMargins(0, 0, 4, 0)
+            recent_layout.setSpacing(8)
             for path in recent:
                 row = _RecentFileRow(path)
                 row.clicked.connect(self._on_recent_instance_clicked)
-                layout.addWidget(row)
+                recent_layout.addWidget(row)
+            recent_layout.addStretch()
+            recent_scroll.setWidget(recent_host)
+            layout.addWidget(recent_scroll, stretch=1)
 
-        layout.addStretch()
-        reload_btn = QPushButton("Recargar catálogo")
-        reload_btn.clicked.connect(lambda: self._reload_catalog(show_errors=True))
-        reload_btn.setStyleSheet(self._secondary_btn_style())
-        layout.addWidget(reload_btn)
-        return card
+        if not recent:
+            layout.addStretch()
+        return dialog
 
     def _reload_catalog(self, *, show_errors: bool) -> None:
         explicit = self._catalog_path_override or load_taxonomy_catalog_path()
         path = resolve_catalog_path(explicit)
         if path is None:
             if show_errors:
-                candidates = "\n".join(f"  • {p}" for p in (
-                    Path.home() / "git/bde_taxonomies_checker/scraper/data/taxonomies.json",
-                ))
+                candidates = "\n".join(
+                    f"  • {p}"
+                    for p in (
+                        default_generated_catalog_path(),
+                        bundled_catalog_path(),
+                    )
+                )
                 QMessageBox.warning(
                     self,
                     "Catálogo no encontrado",
                     "No se encontró taxonomies.json.\n\n"
-                    "Configura la ruta en Settings → Catalog JSON, o ejecuta el scraper en "
-                    "bde_taxonomies_checker.\n\n"
+                    "Configura la ruta en Settings → Catalog JSON, o ejecuta "
+                    "bde-xbrl-catalog-scrape.\n\n"
                     f"Ubicaciones probadas:\n{candidates}",
                 )
             self._catalog_data = None
             self._active_catalog_path = None
+            self._visible_catalog_update_refs = ()
+            self._refresh_global_resources()
             self._meta_label.setText("Catálogo no disponible")
             self._refresh_cards()
             return
@@ -691,6 +803,8 @@ class TaxonomyCatalogLoaderWidget(QWidget):
                 QMessageBox.critical(self, "Error al cargar catálogo", str(exc))
             self._catalog_data = None
             self._active_catalog_path = None
+            self._visible_catalog_update_refs = ()
+            self._refresh_global_resources()
             self._meta_label.setText("Error al cargar el catálogo")
             self._refresh_cards()
             return
@@ -700,6 +814,7 @@ class TaxonomyCatalogLoaderWidget(QWidget):
     def _apply_catalog_data(self, data: TaxonomyCatalogData) -> None:
         self._catalog_data = data
         self._update_catalog_meta_label()
+        self._refresh_global_resources()
 
         self._category_combo.blockSignals(True)
         current_cat = self._category_combo.currentData()
@@ -713,6 +828,92 @@ class TaxonomyCatalogLoaderWidget(QWidget):
                 self._category_combo.setCurrentIndex(idx)
         self._category_combo.blockSignals(False)
         self._refresh_cards()
+
+    def _catalog_update_refs_by_url(self) -> dict[str, CatalogFileRef]:
+        if self._catalog_data is None:
+            return {}
+        refs = {ref.url: ref for ref in collect_flagged_updates(self._catalog_data)}
+        refs.update({ref.url: ref for ref in self._visible_catalog_update_refs})
+        return refs
+
+    def _global_resources(self) -> tuple[tuple[str, ModuleFile, bool], ...]:
+        if self._catalog_data is None:
+            return ()
+        update_refs = self._catalog_update_refs_by_url()
+        rows: list[tuple[str, ModuleFile, bool]] = []
+        for doc in self._catalog_data.general_documents:
+            rows.append((
+                "General document",
+                doc,
+                doc.is_updated_since_last_check or doc.url in update_refs,
+            ))
+        for link in self._catalog_data.taxonomy_related_links:
+            rows.append((
+                "Related link",
+                link,
+                link.is_updated_since_last_check or link.url in update_refs,
+            ))
+        return tuple(rows)
+
+    def _refresh_global_resources(self) -> None:
+        while self._global_resources_layout.count():
+            item = self._global_resources_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+        resources = self._global_resources()
+        self._global_resources_panel.setVisible(bool(resources))
+        if not resources:
+            return
+
+        for kind, resource, updated in resources:
+            row = QFrame()
+            row.setObjectName("GlobalResourceRow")
+            row.setStyleSheet(
+                self._global_resource_row_style(updated=updated)
+            )
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(8, 6, 8, 6)
+            row_layout.setSpacing(8)
+
+            label = QLabel(f"{kind} · {resource.label}")
+            label.setWordWrap(True)
+            label.setToolTip(resource.url)
+            label.setStyleSheet(
+                f"color: {theme.TEXT_MAIN}; font-size: 11px; background: transparent;"
+            )
+            row_layout.addWidget(label, stretch=1)
+
+            if updated:
+                badge = QLabel("Actualizado")
+                badge.setStyleSheet(
+                    f"background: {_UPDATE_BG}; color: #92400E; font-size: 10px;"
+                    f" font-weight: 650; padding: 3px 8px; border-radius: 10px;"
+                )
+                row_layout.addWidget(badge, alignment=Qt.AlignmentFlag.AlignTop)
+
+            open_btn = QPushButton("Abrir")
+            open_btn.setFixedHeight(26)
+            open_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            open_btn.clicked.connect(
+                lambda _checked=False, url=resource.url: webbrowser.open(url)
+            )
+            open_btn.setStyleSheet(self._link_btn_style())
+            row_layout.addWidget(open_btn)
+            self._global_resources_layout.addWidget(row)
+        self._global_resources_layout.addStretch()
+
+    @staticmethod
+    def _global_resource_row_style(*, updated: bool) -> str:
+        if updated:
+            return (
+                f"QFrame#GlobalResourceRow {{ background: {_UPDATE_BG};"
+                f" border: 2px solid {_UPDATE_BORDER}; border-radius: 6px; }}"
+            )
+        return (
+            f"QFrame#GlobalResourceRow {{ background: {theme.SURFACE_BG};"
+            " border: 1px solid transparent; border-radius: 6px; }}"
+        )
 
     def _update_catalog_meta_label(self) -> None:
         if self._catalog_data is None:
@@ -768,10 +969,26 @@ class TaxonomyCatalogLoaderWidget(QWidget):
             for taxonomy in self._catalog_data.taxonomies
             if taxonomy.has_entry_point_updates or taxonomy.has_reporting_file_updates
         ]
-        if not updated_taxonomies:
+        refs = tuple(
+            sorted(
+                self._catalog_update_refs_by_url().values(),
+                key=lambda ref: (ref.taxonomy_name.lower(), ref.label.lower()),
+            )
+        )
+        if not updated_taxonomies and not refs:
             return ""
-        lines = ["Taxonomías actualizadas:"]
-        lines.extend(f"- {name}" for name in updated_taxonomies)
+        lines: list[str] = []
+        if refs:
+            lines.append("Archivos actualizados:")
+            lines.extend(
+                f"- {ref.taxonomy_name}: {ref.label}"
+                if ref.taxonomy_name
+                else f"- {ref.label}"
+                for ref in refs
+            )
+        elif updated_taxonomies:
+            lines.append("Taxonomías actualizadas:")
+            lines.extend(f"- {name}" for name in updated_taxonomies)
         return "\n".join(lines)
 
     def _acknowledge_catalog_state(self) -> None:
@@ -848,6 +1065,7 @@ class TaxonomyCatalogLoaderWidget(QWidget):
             save_taxonomy_catalog_path(catalog_path)
             self._catalog_header_update_counts = (0, 0, 0)
             self._taxonomy_card_states = {}
+            self._visible_catalog_update_refs = ()
             self._apply_catalog_data(catalog_data)
             self._acknowledge_catalog_state()
             self._update_catalog_check_ui()
@@ -860,12 +1078,15 @@ class TaxonomyCatalogLoaderWidget(QWidget):
             self._pending_catalog_data = catalog_data
             self._pending_catalog_report = available_report
             self._pending_catalog_path = catalog_path
+            self._visible_catalog_update_refs = available_report.updated_files
         else:
             self._pending_catalog_data = None
             self._pending_catalog_report = None
             self._pending_catalog_path = None
+            self._visible_catalog_update_refs = ()
             next_states = {}
         self._taxonomy_card_states = next_states
+        self._refresh_global_resources()
         self._update_catalog_meta_label()
         self._update_catalog_check_ui()
 
@@ -909,6 +1130,11 @@ class TaxonomyCatalogLoaderWidget(QWidget):
         self._catalog_path_override = self._pending_catalog_path
         save_taxonomy_catalog_path(self._pending_catalog_path)
         self._catalog_header_update_counts = applied_counts
+        self._visible_catalog_update_refs = (
+            self._pending_catalog_report.updated_files
+            if self._pending_catalog_report is not None
+            else ()
+        )
         self._apply_catalog_data(self._pending_catalog_data)
         self._show_pending_catalog_updates()
         self._acknowledge_catalog_state()
@@ -977,7 +1203,9 @@ class TaxonomyCatalogLoaderWidget(QWidget):
 
         self._catalog_check_panel.setStyleSheet(panel_style)
         self._catalog_check_label.setText(label)
-        self._catalog_check_label.setToolTip(self._catalog_check_error or "")
+        self._catalog_check_label.setToolTip(
+            self._catalog_check_error or self._catalog_header_update_tooltip()
+        )
         self._catalog_check_now_btn.setVisible(not pending_count)
         self._catalog_check_now_btn.setEnabled(not self._catalog_check_running)
         self._catalog_view_updates_btn.setVisible(bool(pending_count))
@@ -1176,6 +1404,8 @@ class TaxonomyCatalogLoaderWidget(QWidget):
     def _on_browse_instance(self) -> None:
         from PySide6.QtWidgets import QFileDialog
 
+        if self._inst_path_edit is None:
+            return
         path, _ = QFileDialog.getOpenFileName(
             self,
             "Open XBRL Instance",
@@ -1186,10 +1416,14 @@ class TaxonomyCatalogLoaderWidget(QWidget):
             self._inst_path_edit.setText(path)
 
     def _on_recent_instance_clicked(self, path: str) -> None:
+        if self._inst_path_edit is None:
+            return
         self._inst_path_edit.setText(path)
         self._on_load_instance()
 
     def _on_load_instance(self) -> None:
+        if self._inst_path_edit is None:
+            return
         path = self._inst_path_edit.text().strip()
         if not path:
             QMessageBox.warning(self, "No File Selected", "Please select an XBRL instance file.")
@@ -1198,7 +1432,9 @@ class TaxonomyCatalogLoaderWidget(QWidget):
             QMessageBox.warning(self, "File Not Found", f"File not found:\n{path}")
             return
 
-        self._load_inst_btn.setEnabled(False)
+        self._pending_instance_path = path
+        if self._load_inst_btn is not None:
+            self._load_inst_btn.setEnabled(False)
         self._instance_load_started_at = time.perf_counter()
         progress = self._show_progress_dialog("Loading Instance…", "Initialising instance load…")
         progress.set_context("Instance", path)
@@ -1215,18 +1451,25 @@ class TaxonomyCatalogLoaderWidget(QWidget):
         )
         self._inst_worker.progress.connect(progress.update_progress)
         self._inst_thread.start()
+        if self._instance_open_dialog is not None:
+            self._instance_open_dialog.accept()
 
     def _on_inst_load_finished(self, instance: object, taxonomy: object) -> None:
         self._cleanup_inst_thread()
-        self._load_inst_btn.setEnabled(True)
+        if self._load_inst_btn is not None:
+            self._load_inst_btn.setEnabled(True)
         with contextlib.suppress(OSError):
-            add_recent_instance(self._inst_path_edit.text().strip())
+            if self._pending_instance_path:
+                add_recent_instance(self._pending_instance_path)
+        self._pending_instance_path = None
         self.instance_loaded.emit(instance, taxonomy)
         self._close_progress_dialog()
 
     def _on_inst_load_error(self, message: str) -> None:
         self._cleanup_inst_thread()
-        self._load_inst_btn.setEnabled(True)
+        if self._load_inst_btn is not None:
+            self._load_inst_btn.setEnabled(True)
+        self._pending_instance_path = None
         self._close_progress_dialog()
         QMessageBox.critical(self, "Instance Load Error", message)
 

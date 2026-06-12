@@ -1,0 +1,6 @@
+include src/bde_xbrl_editor/taxonomy_catalog/bde_taxonomies_scraper/package.json
+include src/bde_xbrl_editor/taxonomy_catalog/bde_taxonomies_scraper/package-lock.json
+include src/bde_xbrl_editor/taxonomy_catalog/bde_taxonomies_scraper/tsconfig.json
+include src/bde_xbrl_editor/taxonomy_catalog/bde_taxonomies_scraper/playwright.config.ts
+recursive-include src/bde_xbrl_editor/taxonomy_catalog/bde_taxonomies_scraper/src *.ts
+recursive-include src/bde_xbrl_editor/taxonomy_catalog/bde_taxonomies_scraper/data *.json
