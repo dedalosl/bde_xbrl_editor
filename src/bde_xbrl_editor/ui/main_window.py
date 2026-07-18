@@ -346,10 +346,24 @@ class MainWindow(QMainWindow):
 
     def _clear_browser_view_refs(self) -> None:
         """Drop references to Qt-owned browser widgets before replacing the central view."""
+        self._cleanup_validation_thread(cancel=True)
         if self._table_view is not None:
+            for signal, callback in (
+                (self._table_view.editing_mode_changed, self._on_table_editing_mode_changed),
+                (self._table_view.layout_ready, self._on_table_layout_ready),
+            ):
+                with contextlib.suppress(RuntimeError, TypeError):
+                    signal.disconnect(callback)
             with contextlib.suppress(RuntimeError, TypeError):
                 self._table_view.set_editor(None)
                 self._table_view.shutdown_background_tasks()
+        if self._sidebar is not None:
+            for signal, callback in (
+                (self._sidebar.table_selected, self._on_table_selected),
+                (self._sidebar.width_changed, self._on_sidebar_width_changed),
+            ):
+                with contextlib.suppress(RuntimeError, TypeError):
+                    signal.disconnect(callback)
         self._table_view = None
         self._sidebar = None
         self._browser_splitter = None
@@ -359,6 +373,8 @@ class MainWindow(QMainWindow):
         self._context_title_label = None
         self._context_meta_label = None
         self._language_combo = None
+        self._pending_initial_table_started_at = None
+        self._pending_validation_navigation = None
 
     def _shutdown_loader_widget(self) -> None:
         widget = self._loader_widget
@@ -391,6 +407,8 @@ class MainWindow(QMainWindow):
         Qt takes ownership of (and deletes) the previous central widget, so we
         must never reuse the old reference — always construct a new instance.
         """
+        self._cleanup_instance_open_thread(wait=False)
+        self._close_loading_dialog()
         self._shutdown_loader_widget()
         if self._editor is not None:
             with contextlib.suppress(RuntimeError, TypeError):
@@ -919,6 +937,22 @@ class MainWindow(QMainWindow):
         self._instance_open_thread = None
         if not wait and worker is not None:
             worker.cancel()
+            callbacks = (
+                ("finished", self._on_open_instance_finished),
+                ("taxonomy_resolved", self._on_open_instance_taxonomy_resolved),
+                ("error", self._on_open_instance_error),
+                ("orphaned", self._on_instance_orphaned),
+            )
+            for signal_name, callback in callbacks:
+                signal = getattr(worker, signal_name, None)
+                if signal is not None:
+                    with contextlib.suppress(RuntimeError, TypeError):
+                        signal.disconnect(callback)
+            if self._loading_dialog is not None:
+                progress = getattr(worker, "progress", None)
+                if progress is not None:
+                    with contextlib.suppress(RuntimeError, TypeError):
+                        progress.disconnect(self._loading_dialog.update_progress)
         if thread is not None:
             if not wait and thread.parent() is self and (app := QCoreApplication.instance()) is not None:
                 thread.setParent(app)
@@ -1136,6 +1170,16 @@ class MainWindow(QMainWindow):
         worker = self._formula_hydration_worker
         if cancel and worker is not None:
             worker.cancel()
+            for signal_name, callback in (
+                ("progress", self._on_formula_hydration_progress),
+                ("partial", self._on_formula_hydration_partial),
+                ("finished", self._on_formula_hydration_finished),
+                ("error", self._on_formula_hydration_error),
+            ):
+                signal = getattr(worker, signal_name, None)
+                if signal is not None:
+                    with contextlib.suppress(RuntimeError, TypeError):
+                        signal.disconnect(callback)
         thread = self._formula_hydration_thread
         if thread is not None:
             thread.quit()
@@ -1650,8 +1694,19 @@ class MainWindow(QMainWindow):
         self._validate_action.setEnabled(
             self._current_instance is not None and self._current_taxonomy is not None
         )
-        if cancel and self._validation_worker is not None:
-            self._validation_worker.cancel()
+        worker = self._validation_worker
+        if cancel and worker is not None:
+            worker.cancel()
+            for signal_name, callback in (
+                ("progress_changed", self._on_validation_progress),
+                ("findings_ready", self._on_validation_findings_ready),
+                ("validation_completed", self._on_validation_done),
+                ("validation_failed", self._on_validation_error),
+            ):
+                signal = getattr(worker, signal_name, None)
+                if signal is not None:
+                    with contextlib.suppress(RuntimeError, TypeError):
+                        signal.disconnect(callback)
         if self._validation_thread:
             self._validation_thread.quit()
             self._validation_thread.wait()

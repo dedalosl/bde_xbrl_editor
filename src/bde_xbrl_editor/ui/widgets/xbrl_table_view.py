@@ -2199,7 +2199,6 @@ class XbrlTableView(QFrame):
         z_constraints: dict[QName, QName] | None,
     ) -> None:
         self._cancel_async_table_load()
-        self._table_load_request_id += 1
         request_id = self._table_load_request_id
         worker = TableLayoutLoadWorker(
             request_id=request_id,
@@ -2222,6 +2221,8 @@ class XbrlTableView(QFrame):
         thread.start()
 
     def _cancel_async_table_load(self) -> None:
+        # Invalidate results already queued by the worker before cancellation.
+        self._table_load_request_id += 1
         worker = self._table_load_worker
         thread = self._table_load_thread
         self._table_load_worker = None

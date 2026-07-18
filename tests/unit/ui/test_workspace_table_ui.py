@@ -63,6 +63,20 @@ class _LabelResolverStub:
         return []
 
 
+def test_table_shutdown_invalidates_queued_worker_result() -> None:
+    view = SimpleNamespace(
+        _table_load_request_id=0,
+        _table_load_worker=None,
+        _table_load_thread=None,
+    )
+    cancelled_request_id = view._table_load_request_id
+
+    XbrlTableView._cancel_async_table_load(view)
+
+    assert view._table_load_request_id > cancelled_request_id
+    assert not XbrlTableView._finish_async_table_load(view, cancelled_request_id)
+
+
 def _leaf(label: str) -> BreakdownNode:
     return BreakdownNode(node_type="rule", label=label, is_abstract=False)
 

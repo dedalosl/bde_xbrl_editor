@@ -301,3 +301,44 @@ def test_update_tooltips_list_global_documents(qtbot, qapp, tmp_path: Path) -> N
         label.text() == "Actualizado"
         for label in widget._global_resources_panel.findChildren(QLabel)
     )
+
+
+def test_shutdown_disconnects_catalog_check_callbacks(
+    qtbot, qapp, tmp_path: Path
+) -> None:
+    catalog_path = tmp_path / "taxonomies.json"
+    _write_empty_catalog(catalog_path)
+    widget = TaxonomyCatalogLoaderWidget(catalog_path=catalog_path)
+    qtbot.addWidget(widget)
+    events: list[str] = []
+
+    class Signal:
+        def disconnect(self, callback) -> None:
+            events.append(f"disconnect:{callback.__name__}")
+
+    class Worker:
+        finished = Signal()
+        error = Signal()
+
+        def cancel(self) -> None:
+            events.append("cancel")
+
+    class Thread:
+        def quit(self) -> None:
+            events.append("quit")
+
+        def wait(self) -> None:
+            events.append("wait")
+
+    widget._catalog_check_worker = Worker()
+    widget._catalog_check_thread = Thread()
+
+    widget.shutdown_background_tasks()
+
+    assert events == [
+        "cancel",
+        "disconnect:_on_catalog_check_finished",
+        "disconnect:_on_catalog_check_error",
+        "quit",
+        "wait",
+    ]

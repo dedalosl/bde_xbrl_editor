@@ -1111,6 +1111,14 @@ class TaxonomyCatalogLoaderWidget(QWidget):
             self._catalog_check_timer = None
         if self._catalog_check_worker is not None:
             self._catalog_check_worker.cancel()
+            for signal_name, callback in (
+                ("finished", self._on_catalog_check_finished),
+                ("error", self._on_catalog_check_error),
+            ):
+                signal = getattr(self._catalog_check_worker, signal_name, None)
+                if signal is not None:
+                    with contextlib.suppress(RuntimeError, TypeError):
+                        signal.disconnect(callback)
         self._cleanup_catalog_check_thread()
 
     def _show_pending_catalog_updates(self) -> None:
@@ -1404,6 +1412,19 @@ class TaxonomyCatalogLoaderWidget(QWidget):
         self._thread = None
         if not wait and worker is not None:
             worker.cancel()
+            for signal_name, callback in (
+                ("finished", self._on_load_finished),
+                ("error", self._on_load_error),
+            ):
+                signal = getattr(worker, signal_name, None)
+                if signal is not None:
+                    with contextlib.suppress(RuntimeError, TypeError):
+                        signal.disconnect(callback)
+            if self._progress_dialog is not None:
+                progress = getattr(worker, "progress", None)
+                if progress is not None:
+                    with contextlib.suppress(RuntimeError, TypeError):
+                        progress.disconnect(self._progress_dialog.update_progress)
         if thread is not None:
             if not wait and thread.parent() is self and (app := QCoreApplication.instance()) is not None:
                 thread.setParent(app)
@@ -1493,6 +1514,19 @@ class TaxonomyCatalogLoaderWidget(QWidget):
         self._inst_thread = None
         if not wait and worker is not None:
             worker.cancel()
+            for signal_name, callback in (
+                ("finished", self._on_inst_load_finished),
+                ("error", self._on_inst_load_error),
+            ):
+                signal = getattr(worker, signal_name, None)
+                if signal is not None:
+                    with contextlib.suppress(RuntimeError, TypeError):
+                        signal.disconnect(callback)
+            if self._progress_dialog is not None:
+                progress = getattr(worker, "progress", None)
+                if progress is not None:
+                    with contextlib.suppress(RuntimeError, TypeError):
+                        progress.disconnect(self._progress_dialog.update_progress)
         if thread is not None:
             if not wait and thread.parent() is self and (app := QCoreApplication.instance()) is not None:
                 thread.setParent(app)

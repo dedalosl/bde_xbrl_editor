@@ -199,7 +199,14 @@ def test_loader_shutdown_cancels_workers_without_waiting_for_them(qtbot, qapp) -
     qtbot.addWidget(widget)
     calls: list[str] = []
 
+    class SignalStub:
+        def disconnect(self, callback) -> None:
+            calls.append(f"disconnect:{callback.__name__}")
+
     class WorkerStub:
+        finished = SignalStub()
+        error = SignalStub()
+
         def cancel(self) -> None:
             calls.append("cancel")
 
@@ -218,7 +225,12 @@ def test_loader_shutdown_cancels_workers_without_waiting_for_them(qtbot, qapp) -
 
     widget.shutdown_background_tasks()
 
-    assert calls == ["cancel", "quit"]
+    assert calls == [
+        "cancel",
+        "disconnect:_on_load_finished",
+        "disconnect:_on_load_error",
+        "quit",
+    ]
 
 
 def test_progress_dialog_keeps_recent_milestones(qtbot, qapp) -> None:
@@ -436,6 +448,119 @@ def test_close_instance_then_back_shuts_down_replaced_table_views(
     assert taxonomy_view in shutdown_views
     assert instance_view in shutdown_views
     assert reopened_taxonomy_view in shutdown_views
+
+
+def test_close_instance_cancels_active_validation(qtbot, qapp) -> None:
+    events: list[str] = []
+
+    class Worker:
+        def cancel(self) -> None:
+            events.append("cancel")
+
+    class Thread:
+        def quit(self) -> None:
+            events.append("quit")
+
+        def wait(self) -> None:
+            events.append("wait")
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window._current_taxonomy = _taxonomy()
+    window._load_instance(_instance())
+    window._validation_worker = Worker()
+    window._validation_thread = Thread()
+
+    window._on_close_instance()
+
+    assert events == ["cancel", "quit", "wait"]
+    assert window._validation_worker is None
+    assert window._validation_thread is None
+
+
+def test_back_cancels_active_instance_open(qtbot, qapp, monkeypatch) -> None:
+    monkeypatch.setattr(
+        "bde_xbrl_editor.ui.main_window.load_loader_page_mode", lambda: "classic"
+    )
+    events: list[str] = []
+
+    class Signal:
+        def disconnect(self, callback) -> None:
+            events.append(f"disconnect:{callback.__name__}")
+
+    class Worker:
+        progress = Signal()
+        finished = Signal()
+        taxonomy_resolved = Signal()
+        error = Signal()
+        orphaned = Signal()
+
+        def cancel(self) -> None:
+            events.append("cancel")
+
+    class Thread:
+        def parent(self):
+            return window
+
+        def setParent(self, parent) -> None:
+            events.append("reparent")
+
+        def quit(self) -> None:
+            events.append("quit")
+
+        def wait(self) -> None:
+            raise AssertionError("Back must not block while instance parsing stops")
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window._on_taxonomy_loaded(_taxonomy())
+    window._instance_open_worker = Worker()
+    window._instance_open_thread = Thread()
+
+    window._on_close_taxonomy()
+
+    assert events[0] == "cancel"
+    assert "disconnect:_on_open_instance_finished" in events
+    assert "disconnect:_on_open_instance_taxonomy_resolved" in events
+    assert events[-2:] == ["reparent", "quit"]
+    assert window._instance_open_worker is None
+    assert window._instance_open_thread is None
+
+
+def test_cancelled_formula_hydration_disconnects_stale_callbacks(qtbot, qapp) -> None:
+    events: list[str] = []
+
+    class Signal:
+        def disconnect(self, callback) -> None:
+            events.append(f"disconnect:{callback.__name__}")
+
+    class Worker:
+        progress = Signal()
+        partial = Signal()
+        finished = Signal()
+        error = Signal()
+
+        def cancel(self) -> None:
+            events.append("cancel")
+
+    class Thread:
+        def quit(self) -> None:
+            events.append("quit")
+
+        def wait(self) -> None:
+            events.append("wait")
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window._formula_hydration_worker = Worker()
+    window._formula_hydration_thread = Thread()
+
+    window._cleanup_formula_hydration_thread(cancel=True)
+
+    assert events[0] == "cancel"
+    assert "disconnect:_on_formula_hydration_finished" in events
+    assert "disconnect:_on_formula_hydration_error" in events
+    assert events[-2:] == ["quit", "wait"]
 
 
 def test_validation_panel_collapse_button_returns_to_compact_bar(qtbot, qapp) -> None:
