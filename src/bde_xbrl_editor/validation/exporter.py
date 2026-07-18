@@ -75,7 +75,12 @@ class ValidationReportExporter:
                     lines.append(f"  Precondition: {finding.formula_precondition}")
                 lines.append("")
         else:
-            lines.append("No findings — instance passes all validation checks.")
+            if report.run_status is ValidationRunStatus.CANCELLED:
+                lines.append(
+                    "No findings — validation was cancelled before all validation checks completed."
+                )
+            else:
+                lines.append("No findings — instance passes all validation checks.")
 
         content = "\n".join(lines)
         try:

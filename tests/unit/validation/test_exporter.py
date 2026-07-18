@@ -109,6 +109,8 @@ class TestExportText:
         content = out.read_text(encoding="utf-8")
         assert "Result    : CANCELLED" in content
         assert "Result    : FAILED" not in content
+        assert "passes all validation checks" not in content
+        assert "cancelled before all validation checks completed" in content
 
     def test_each_finding_appears(self, tmp_path: Path) -> None:
         """Each finding's rule_id and message appear in the exported file."""

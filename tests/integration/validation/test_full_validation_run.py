@@ -139,7 +139,27 @@ def test_validate_sync_progress_uses_one_global_scale(taxonomy):
     validator.validate_sync(instance)
 
     assert calls
+    totals = {total for _current, total, _message in calls}
+    assert len(totals) == 1
+    assert calls[-1][0] == calls[-1][1]
+    assert any("essence-alias" in message for _current, _total, message in calls)
+
+
+def test_validate_sync_progress_excludes_disabled_dimensional_stage(taxonomy):
+    instance = _make_clean_instance(taxonomy)
+    calls = []
+
+    InstanceValidator(
+        taxonomy=taxonomy,
+        include_dimensional=False,
+        progress_callback=lambda current, total, message: calls.append(
+            (current, total, message)
+        ),
+    ).validate_sync(instance)
+
+    assert calls
     assert {total for _current, total, _message in calls} == {4}
+    assert not any("dimensional" in message.lower() for _current, _total, message in calls)
 
 
 def test_validate_sync_skips_relationship_checks_by_default(taxonomy, monkeypatch):
@@ -187,8 +207,19 @@ def test_validate_sync_cancel_event(taxonomy):
     cancel_event = threading.Event()
     cancel_event.set()  # cancel immediately
 
-    validator = InstanceValidator(taxonomy=taxonomy, cancel_event=cancel_event)
+    calls = []
+    validator = InstanceValidator(
+        taxonomy=taxonomy,
+        cancel_event=cancel_event,
+        progress_callback=lambda current, total, message: calls.append(
+            (current, total, message)
+        ),
+    )
     report = validator.validate_sync(instance)
     assert isinstance(report, ValidationReport)
     assert report.run_status is ValidationRunStatus.CANCELLED
+    assert not report.structural_checks_run
     assert not report.passed
+    assert calls[-1][0] == 0
+    assert calls[-1][1] > 0
+    assert "cancelled" in calls[-1][2].lower()

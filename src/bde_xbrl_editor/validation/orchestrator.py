@@ -66,17 +66,24 @@ class InstanceValidator:
         """
         findings: list[ValidationFinding] = []
         stage_timings: list[StageTiming] = []
-        total_steps = 5 if self._include_relationships else 4
-        calculation_step = 2 if self._include_relationships else 1
-        dimensional_step = 3 if self._include_relationships else 2
-        formula_step = 4 if self._include_relationships else 3
+        stage_names = ["structural"]
+        if self._include_relationships:
+            stage_names.append("relationships")
+        stage_names.extend(("calculation", "essence-alias"))
+        if self._include_dimensional:
+            stage_names.append("dimensional")
+        stage_names.append("formula")
+        stage_steps = {name: index for index, name in enumerate(stage_names)}
+        total_steps = len(stage_names)
 
         # --- 1. Structural checks -------------------------------------------
         if not (self._cancel_event and self._cancel_event.is_set()):
             stage_started_at = time.perf_counter()
             if self._progress_callback:
                 with contextlib.suppress(Exception):
-                    self._progress_callback(0, total_steps, "Running structural checks…")
+                    self._progress_callback(
+                        stage_steps["structural"], total_steps, "Running structural checks…"
+                    )
             try:
                 sv = StructuralConformanceValidator()
                 stage_findings = tuple(sv.validate(instance, self._taxonomy))
@@ -103,7 +110,7 @@ class InstanceValidator:
             if self._progress_callback:
                 with contextlib.suppress(Exception):
                     self._progress_callback(
-                        1,
+                        stage_steps["relationships"],
                         total_steps,
                         "Running taxonomy relationship checks…",
                     )
@@ -131,7 +138,7 @@ class InstanceValidator:
             if self._progress_callback:
                 with contextlib.suppress(Exception):
                     self._progress_callback(
-                        calculation_step,
+                        stage_steps["calculation"],
                         total_steps,
                         "Running calculation checks…",
                     )
@@ -156,6 +163,13 @@ class InstanceValidator:
         # --- 2b. Essence-alias closure ----------------------------------------
         if not (self._cancel_event and self._cancel_event.is_set()):
             stage_started_at = time.perf_counter()
+            if self._progress_callback:
+                with contextlib.suppress(Exception):
+                    self._progress_callback(
+                        stage_steps["essence-alias"],
+                        total_steps,
+                        "Running essence-alias checks…",
+                    )
             try:
                 ea = EssenceAliasValidator()
                 stage_findings = tuple(ea.validate(instance, self._taxonomy))
@@ -180,7 +194,7 @@ class InstanceValidator:
             if self._progress_callback:
                 with contextlib.suppress(Exception):
                     self._progress_callback(
-                        dimensional_step,
+                        stage_steps["dimensional"],
                         total_steps,
                         "Running dimensional checks…",
                     )
@@ -209,7 +223,7 @@ class InstanceValidator:
             if self._progress_callback:
                 with contextlib.suppress(Exception):
                     self._progress_callback(
-                        formula_step,
+                        stage_steps["formula"],
                         total_steps,
                         "Evaluating formula assertions…",
                     )
@@ -226,7 +240,7 @@ class InstanceValidator:
                     if self._progress_callback is None:
                         return
                     detail = f"{message} ({current}/{total})" if total > 0 else message
-                    self._progress_callback(formula_step, total_steps, detail)
+                    self._progress_callback(stage_steps["formula"], total_steps, detail)
 
                 fe = FormulaEvaluator(
                     taxonomy=self._taxonomy,
@@ -254,7 +268,7 @@ class InstanceValidator:
             with contextlib.suppress(Exception):
                 elapsed_total = sum(stage.elapsed_seconds for stage in stage_timings)
                 self._progress_callback(
-                    total_steps,
+                    len(stage_timings) if cancelled else total_steps,
                     total_steps,
                     (
                         f"Validation cancelled ({elapsed_total:.2f}s)"
@@ -272,7 +286,7 @@ class InstanceValidator:
             findings=tuple(findings),
             formula_linkbase_available=formula_available
             or (self._taxonomy.formula_linkbase_path is not None),
-            structural_checks_run=True,
+            structural_checks_run=any(stage.name == "structural" for stage in stage_timings),
             stage_timings=tuple(stage_timings),
             run_status=(
                 ValidationRunStatus.CANCELLED
