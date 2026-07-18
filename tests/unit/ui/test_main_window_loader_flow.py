@@ -103,6 +103,7 @@ def _instance() -> XbrlInstance:
 
 def test_loader_instance_handoff_survives_recent_file_write_error(qtbot, qapp, monkeypatch) -> None:
     """Opening an instance must still switch away from the loader if recents persistence fails."""
+    monkeypatch.setattr("bde_xbrl_editor.ui.main_window.load_loader_page_mode", lambda: "classic")
     monkeypatch.setattr(
         "bde_xbrl_editor.ui.widgets.taxonomy_loader_widget.add_recent_instance",
         lambda _path: (_ for _ in ()).throw(PermissionError("settings not writable")),
@@ -123,6 +124,77 @@ def test_loader_instance_handoff_survives_recent_file_write_error(qtbot, qapp, m
     assert window._current_instance is not None
     assert window._sidebar is not None
     assert not isinstance(window.centralWidget(), TaxonomyLoaderWidget)
+
+
+def test_main_window_instance_handoff_loads_workspace(qtbot, qapp) -> None:
+    window = MainWindow()
+    qtbot.addWidget(window)
+    loader = window.centralWidget()
+    window._loader_widget = type(
+        "_LoaderStub",
+        (),
+        {
+            "last_instance_load_timing": LoadTiming(
+                total_seconds=1.0,
+                stages=(StageTiming("instance parse", 1.0),),
+            )
+        },
+    )()
+
+    window._on_instance_loaded_from_widget(_instance(), _taxonomy())
+
+    assert window._current_instance is not None
+    assert window._current_taxonomy is not None
+    assert window._sidebar is not None
+    assert window._table_view is not None
+    assert window.centralWidget() is not loader
+
+
+def test_main_window_instance_handoff_stops_loader_threads_first(qtbot, qapp) -> None:
+    window = MainWindow()
+    qtbot.addWidget(window)
+    calls: list[str] = []
+    window._loader_widget = type(
+        "_LoaderStub",
+        (),
+        {
+            "last_instance_load_timing": None,
+            "shutdown_background_tasks": lambda self: calls.append("shutdown"),
+        },
+    )()
+
+    window._on_instance_loaded_from_widget(_instance(), _taxonomy())
+
+    assert calls == ["shutdown"]
+    assert window._current_instance is not None
+
+
+def test_loader_shutdown_cancels_workers_without_waiting_for_them(qtbot, qapp) -> None:
+    """Closing the window must not block behind a long-running taxonomy load."""
+    widget = TaxonomyLoaderWidget()
+    qtbot.addWidget(widget)
+    calls: list[str] = []
+
+    class WorkerStub:
+        def cancel(self) -> None:
+            calls.append("cancel")
+
+    class ThreadStub:
+        def parent(self):
+            return None
+
+        def quit(self) -> None:
+            calls.append("quit")
+
+        def wait(self) -> None:
+            raise AssertionError("loader shutdown must not wait on the UI thread")
+
+    widget._worker = WorkerStub()  # type: ignore[assignment]
+    widget._thread = ThreadStub()  # type: ignore[assignment]
+
+    widget.shutdown_background_tasks()
+
+    assert calls == ["cancel", "quit"]
 
 
 def test_progress_dialog_keeps_recent_milestones(qtbot, qapp) -> None:
@@ -396,6 +468,7 @@ def test_reload_to_loader_then_reopen_instance_rebuilds_browser_views(
     qtbot, qapp, monkeypatch
 ) -> None:
     """Reloading back to the loader must not reuse Qt widgets deleted with the old workspace."""
+    monkeypatch.setattr("bde_xbrl_editor.ui.main_window.load_loader_page_mode", lambda: "classic")
     monkeypatch.setattr(TaxonomyLoaderWidget, "_on_load", lambda self: None)
 
     window = MainWindow()
@@ -425,8 +498,9 @@ def test_reload_to_loader_then_reopen_instance_rebuilds_browser_views(
     assert window._table_view is not old_table_view
 
 
-def test_deferred_refresh_is_safe_after_returning_to_loader(qtbot, qapp) -> None:
+def test_deferred_refresh_is_safe_after_returning_to_loader(qtbot, qapp, monkeypatch) -> None:
     """A queued table refresh must no-op cleanly if the browser view is replaced first."""
+    monkeypatch.setattr("bde_xbrl_editor.ui.main_window.load_loader_page_mode", lambda: "classic")
     window = MainWindow()
     qtbot.addWidget(window)
 

@@ -13,7 +13,7 @@ El repositorio contiene:
 - Aplicacion de escritorio ejecutable con `bde-xbrl-editor` o `python -m bde_xbrl_editor`.
 - Carga y cache de taxonomias XBRL desde entry points locales.
 - Soporte para linkbases de etiquetas, presentacion, calculo, definicion, tablas y formulas.
-- Catalogo de taxonomias BDE y deteccion de cambios en recursos descargables.
+- Catalogo de taxonomias BDE y deteccion de cambios mediante un scraper TypeScript/Playwright incluido en el paquete.
 - Creacion, apertura, edicion y guardado de documentos instancia XBRL.
 - Renderizado de tablas XBRL basado en Table Linkbase PWD, utilizado por BDE.
 - Validacion estructural, dimensional, de calculo y formulas.
@@ -22,11 +22,12 @@ El repositorio contiene:
 
 ## Stack tecnologico
 
-- Lenguaje: Python 3.11+
+- Lenguaje: Python 3.13+
 - Interfaz grafica: PySide6
 - XML/XSD: lxml y xmlschema
 - XPath 2.0 y formulas XBRL: elementpath
 - Cache en memoria: cachetools
+- Scraper de catalogo BDE: TypeScript, Playwright, ts-node y npm
 - Empaquetado: pyproject.toml con setuptools y estructura `src/`
 - Testing: pytest, pytest-qt y pytest-benchmark
 - Linting y formateo: ruff
@@ -35,9 +36,28 @@ El repositorio contiene:
 
 Requisitos previos:
 
-- Python 3.11 o superior.
+- Python 3.13 o superior.
+- Node.js 20 LTS o superior con npm. Es necesario para instalar y ejecutar el scraper BDE incluido; TypeScript, ts-node y Playwright se instalan como dependencias npm locales.
 - Entorno virtual recomendado.
 - En macOS, Linux o Windows con soporte grafico para ejecutar PySide6.
+
+### Ejecucion local recomendada
+
+Para desarrollo y pruebas locales, usar los scripts del repositorio. Crean el entorno virtual si hace falta, instalan la aplicacion Python en editable, preparan las dependencias npm del scraper BDE y lanzan la aplicacion con `python -m bde_xbrl_editor`.
+
+En macOS o Linux:
+
+```bash
+./run.sh
+```
+
+En Windows, desde `cmd.exe`:
+
+```bat
+run.bat
+```
+
+### Instalacion manual
 
 Crear y activar un entorno virtual:
 
@@ -59,6 +79,12 @@ Instalar el proyecto en modo editable con dependencias de desarrollo:
 pip install -e ".[dev]"
 ```
 
+Preparar las dependencias npm del scraper BDE incluido:
+
+```bash
+python -m bde_xbrl_editor.taxonomy_catalog.scraper --setup-only
+```
+
 ## Ejecucion
 
 Lanzar la aplicacion de escritorio:
@@ -71,6 +97,18 @@ Tambien puede ejecutarse como modulo Python:
 
 ```bash
 python -m bde_xbrl_editor
+```
+
+Actualizar el catalogo BDE con el scraper incluido:
+
+```bash
+bde-xbrl-catalog-scrape
+```
+
+El scraper genera por defecto `~/.bde_xbrl_editor/taxonomies.json`. Tambien puede indicarse una ruta concreta:
+
+```bash
+bde-xbrl-catalog-scrape --output /ruta/a/taxonomies.json
 ```
 
 Flujo principal de uso:
@@ -107,6 +145,35 @@ Formatear el codigo:
 
 ```bash
 ruff format .
+```
+
+## Distribucion y empaquetado
+
+Hay dos formas de distribuir la aplicacion.
+
+La distribucion Python normal (`wheel` o `sdist`) se genera desde `pyproject.toml`. Incluye el scraper BDE en TypeScript y un catalogo JSON inicial, pero no incluye `node_modules` ni los navegadores de Playwright. En este modo, la maquina donde se instale debe tener Python 3.13+ y Node.js/npm.
+
+Despues de instalar la aplicacion, el scraper se prepara con:
+
+```bash
+python -m bde_xbrl_editor.taxonomy_catalog.scraper --setup-only
+```
+
+Este comando crea una copia de trabajo en `~/.bde_xbrl_editor/bde_taxonomies_scraper` e instala alli las dependencias npm. Los scripts `run.sh` y `run.bat` ejecutan este paso automaticamente.
+
+Tambien puede generarse un paquete standalone/offline con PyInstaller:
+
+```bash
+pip install -e ".[dev,build]"
+python scripts/build_offline_package.py
+```
+
+Este build prepara un runtime del scraper con `node_modules`, Chromium de Playwright y una copia de Node.js. El resultado queda en `dist/offline/<plataforma>/` con el ejecutable y `offline-runtime/`, y tambien se genera un `.zip` distribuible en la misma carpeta padre. Ese paquete no necesita Node.js/npm instalado en la maquina destino.
+
+Por defecto no copia el directorio local `cache/`, porque puede ser muy grande. Si se necesita un paquete tambien offline para taxonomias ya cacheadas, usar:
+
+```bash
+python scripts/build_offline_package.py --include-cache
 ```
 
 ## Runner de conformidad XBRL
@@ -181,6 +248,8 @@ python -m pytest tests/integration/conformance/ -v -k "not slow"
 │   ├── integration/
 │   └── unit/
 ├── pyproject.toml
+├── run.bat
+├── run.sh
 └── README.MD
 ```
 
@@ -188,7 +257,7 @@ python -m pytest tests/integration/conformance/ -v -k "not slow"
 
 `taxonomy/`: descubrimiento DTS, resolucion de esquemas, cache, modelos de conceptos, etiquetas, linkbases y dimensiones.
 
-`taxonomy_catalog/`: modelos y utilidades para cargar, filtrar, ordenar y detectar cambios en el catalogo de taxonomias BDE.
+`taxonomy_catalog/`: modelos y utilidades para cargar, filtrar, ordenar y detectar cambios en el catalogo de taxonomias BDE; incluye el wrapper Python y el scraper TypeScript/Playwright.
 
 `instance/`: modelos de instancias XBRL, contextos, unidades, hechos, filing indicators, parser, serializer, factory, editor y validacion de tipos.
 
@@ -214,6 +283,7 @@ python -m pytest tests/integration/conformance/ -v -k "not slow"
 ### Catalogo BDE
 
 - Carga de informacion de taxonomias del Banco de Espana.
+- Scraper TypeScript/Playwright incluido y ejecutable desde `bde-xbrl-catalog-scrape`.
 - Agrupacion por categoria, estado y linea temporal.
 - Filtrado por taxonomias vigentes y no vigentes.
 - Deteccion de recursos actualizados desde la ultima revision.
@@ -287,4 +357,3 @@ URL de slides: PENDIENTE_DE_COMPLETAR
 ## Licencia
 
 Pendiente de definir.
-

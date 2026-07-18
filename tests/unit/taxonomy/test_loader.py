@@ -346,6 +346,50 @@ def test_parse_value_assertion_keeps_variable_set_concept_and_typed_dimension_fi
     assert variable.typed_dimension_filters[0].dimension_qname.local_name == "qLIN"
 
 
+def test_parse_formula_linkbase_resolves_taxonomy_namespace_prefixes(
+    tmp_path: Path,
+) -> None:
+    lb = tmp_path / "formula-prefix-fallback.xml"
+    lb.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:gen="http://xbrl.org/2008/generic"
+  xmlns:va="http://xbrl.org/2008/assertion/value"
+  xmlns:df="http://xbrl.org/2008/filter/dimension"
+  xmlns:variable="http://xbrl.org/2008/variable"
+  xmlns:xlink="http://www.w3.org/1999/xlink">
+  <gen:link xlink:type="extended" xlink:role="http://www.xbrl.org/2003/role/link">
+    <va:valueAssertion xlink:type="resource" xlink:label="a1" id="a1" test="$a"/>
+    <variable:factVariable xlink:type="resource" xlink:label="varA"/>
+    <df:explicitDimension xlink:type="resource" xlink:label="axisFilter">
+      <df:dimension><df:qname>dim:Axis</df:qname></df:dimension>
+      <df:member><df:qname>dom:Member</df:qname></df:member>
+    </df:explicitDimension>
+    <variable:variableFilterArc xlink:type="arc"
+      xlink:arcrole="http://xbrl.org/arcrole/2008/variable-filter"
+      xlink:from="varA" xlink:to="axisFilter"/>
+    <variable:variableArc xlink:type="arc"
+      xlink:arcrole="http://xbrl.org/arcrole/2008/variable-set"
+      xlink:from="a1" xlink:to="varA" name="a"/>
+  </gen:link>
+</link:linkbase>
+""",
+        encoding="utf-8",
+    )
+
+    fas = parse_formula_linkbase(
+        lb,
+        namespace_map={
+            "dim": "http://example.com/dim",
+            "dom": "http://example.com/dom",
+        },
+    )
+
+    dimension_filter = fas.assertions[0].variables[0].dimension_filters[0]
+    assert dimension_filter.dimension_qname == QName("http://example.com/dim", "Axis")
+    assert dimension_filter.member_qnames == (QName("http://example.com/dom", "Member"),)
+
+
 def test_parse_variable_set_resources_includes_general_variable_parameter_and_precondition(
     tmp_path: Path,
 ) -> None:

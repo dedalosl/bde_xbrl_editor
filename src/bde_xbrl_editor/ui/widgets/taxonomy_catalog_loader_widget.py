@@ -8,7 +8,7 @@ import webbrowser
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Qt, QThread, QTimer, Signal
+from PySide6.QtCore import QCoreApplication, QObject, Qt, QThread, QTimer, Signal
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import (
     QComboBox,
@@ -388,7 +388,7 @@ class _TaxonomyCard(QFrame):
 
 
 class _CatalogCheckWorker(QObject):
-    """Run the external catalog scraper off the UI thread."""
+    """Run the catalog scraper off the UI thread."""
 
     finished = Signal(object, object, str, str)  # data, report, path, checked_at
     error = Signal(str, str)  # message, checked_at
@@ -1274,8 +1274,8 @@ class TaxonomyCatalogLoaderWidget(QWidget):
 
         if self._catalog_data is None:
             empty = QLabel(
-                "Configura la ruta al catálogo en Settings o ejecuta el scraper de "
-                "bde_taxonomies_checker."
+                "Configura la ruta al catálogo en Settings o ejecuta "
+                "bde-xbrl-catalog-scrape."
             )
             empty.setWordWrap(True)
             empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -1345,9 +1345,13 @@ class TaxonomyCatalogLoaderWidget(QWidget):
         self._thread = QThread(self)
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
+        self._thread.finished.connect(self._worker.deleteLater)
         self._worker.finished.connect(self._on_load_finished, Qt.ConnectionType.QueuedConnection)
         self._worker.error.connect(self._on_load_error, Qt.ConnectionType.QueuedConnection)
-        self._worker.progress.connect(progress.update_progress)
+        self._worker.progress.connect(
+            progress.update_progress,
+            Qt.ConnectionType.QueuedConnection,
+        )
         self._thread.start()
 
     def _on_load_finished(self, payload: object) -> None:
@@ -1384,8 +1388,8 @@ class TaxonomyCatalogLoaderWidget(QWidget):
                 100,
                 100,
             )
-        self.taxonomy_loaded.emit(structure)
         self._close_progress_dialog()
+        self.taxonomy_loaded.emit(structure)
 
     def _on_load_error(self, message: str) -> None:
         self._cleanup_thread()
@@ -1394,12 +1398,18 @@ class TaxonomyCatalogLoaderWidget(QWidget):
         self._close_progress_dialog()
         QMessageBox.critical(self, "Taxonomy Load Error", message)
 
-    def _cleanup_thread(self) -> None:
-        if self._thread:
-            self._thread.quit()
-            self._thread.wait()
-            self._thread = None
-            self._worker = None
+    def _cleanup_thread(self, *, wait: bool = True) -> None:
+        worker, thread = self._worker, self._thread
+        self._worker = None
+        self._thread = None
+        if not wait and worker is not None:
+            worker.cancel()
+        if thread is not None:
+            if not wait and thread.parent() is self and (app := QCoreApplication.instance()) is not None:
+                thread.setParent(app)
+            thread.quit()
+            if wait:
+                thread.wait()
 
     def _on_browse_instance(self) -> None:
         from PySide6.QtWidgets import QFileDialog
@@ -1443,13 +1453,17 @@ class TaxonomyCatalogLoaderWidget(QWidget):
         self._inst_thread = QThread(self)
         self._inst_worker.moveToThread(self._inst_thread)
         self._inst_thread.started.connect(self._inst_worker.run)
+        self._inst_thread.finished.connect(self._inst_worker.deleteLater)
         self._inst_worker.finished.connect(
             self._on_inst_load_finished, Qt.ConnectionType.QueuedConnection
         )
         self._inst_worker.error.connect(
             self._on_inst_load_error, Qt.ConnectionType.QueuedConnection
         )
-        self._inst_worker.progress.connect(progress.update_progress)
+        self._inst_worker.progress.connect(
+            progress.update_progress,
+            Qt.ConnectionType.QueuedConnection,
+        )
         self._inst_thread.start()
         if self._instance_open_dialog is not None:
             self._instance_open_dialog.accept()
@@ -1462,8 +1476,8 @@ class TaxonomyCatalogLoaderWidget(QWidget):
             if self._pending_instance_path:
                 add_recent_instance(self._pending_instance_path)
         self._pending_instance_path = None
-        self.instance_loaded.emit(instance, taxonomy)
         self._close_progress_dialog()
+        self.instance_loaded.emit(instance, taxonomy)
 
     def _on_inst_load_error(self, message: str) -> None:
         self._cleanup_inst_thread()
@@ -1473,12 +1487,18 @@ class TaxonomyCatalogLoaderWidget(QWidget):
         self._close_progress_dialog()
         QMessageBox.critical(self, "Instance Load Error", message)
 
-    def _cleanup_inst_thread(self) -> None:
-        if self._inst_thread:
-            self._inst_thread.quit()
-            self._inst_thread.wait()
-            self._inst_thread = None
-            self._inst_worker = None
+    def _cleanup_inst_thread(self, *, wait: bool = True) -> None:
+        worker, thread = self._inst_worker, self._inst_thread
+        self._inst_worker = None
+        self._inst_thread = None
+        if not wait and worker is not None:
+            worker.cancel()
+        if thread is not None:
+            if not wait and thread.parent() is self and (app := QCoreApplication.instance()) is not None:
+                thread.setParent(app)
+            thread.quit()
+            if wait:
+                thread.wait()
 
     def _on_settings(self) -> None:
         from bde_xbrl_editor.ui.widgets.loader_settings_dialog import LoaderSettingsDialog
@@ -1502,6 +1522,13 @@ class TaxonomyCatalogLoaderWidget(QWidget):
     def _close_progress_dialog(self) -> None:
         if self._progress_dialog is not None:
             self._progress_dialog.close()
+
+    def shutdown_background_tasks(self) -> None:
+        """Stop worker threads before this widget is destroyed or replaced."""
+        self._cancel_catalog_check()
+        self._cleanup_inst_thread(wait=False)
+        self._cleanup_thread(wait=False)
+        self._close_progress_dialog()
 
     @staticmethod
     def _input_style() -> str:

@@ -1,0 +1,177 @@
+# Guion de presentación y demo: BDE XBRL Editor
+
+Duración objetivo: 12-13 minutos.
+
+Estructura recomendada:
+- Presentación de slides: 8-9 minutos.
+- Demo guiada: 3-4 minutos.
+- Cierre y transición a preguntas: 30-45 segundos.
+
+Ritmo: profesional, claro, sin leer demasiado rápido. La idea es explicar el hilo completo, no demostrar cada detalle interno.
+
+## Slide 1. Portada
+
+Tiempo: 45 segundos.
+
+Buenos días. En esta presentación voy a explicar mi Trabajo Fin de Máster: BDE XBRL Editor.
+
+El proyecto consiste en una aplicación de escritorio para trabajar con documentos XBRL orientados a taxonomías del Banco de España. El objetivo no era únicamente crear una interfaz gráfica, sino construir una herramienta completa para cargar taxonomías, crear o abrir instancias XBRL, visualizar tablas regulatorias, editar hechos y validar el resultado antes de una posible entrega.
+
+El punto importante es que XBRL no es solo XML. Detrás hay esquemas, dimensiones, linkbases, fórmulas, reglas de cálculo y estructuras tabulares complejas. Por eso el proyecto se ha planteado como una combinación de producto, arquitectura software y verificación técnica.
+
+La implementación actual está alineada con el entorno del repositorio: Python 3.13 o superior, PySide6 para la interfaz, lxml y xmlschema para XML y XSD, y elementpath para XPath 2.0 y fórmulas XBRL.
+
+## Slide 2. El problema
+
+Tiempo: 1 minuto.
+
+El problema de partida es que el reporting financiero en XBRL es técnicamente exigente. Una instancia válida depende de que todos los elementos estén alineados: conceptos, contextos, unidades, dimensiones, fechas, importes, etiquetas y validaciones.
+
+Además, las taxonomías del Banco de España tienen particularidades relevantes. Por ejemplo, se distribuyen como ficheros y estructuras locales, no necesariamente como paquetes XBRL estándar, y utilizan Table Linkbase PWD para definir sus tablas. Esto obliga a adaptar el procesador a la realidad del dominio.
+
+Si el usuario trabaja directamente sobre XML, o con herramientas separadas para ver tablas, editar valores y validar reglas, el riesgo de error aumenta. La tesis del proyecto es que una aplicación especializada puede convertir esa complejidad en un flujo visual, verificable y mantenible.
+
+## Slide 3. Objetivo del proyecto
+
+Tiempo: 1 minuto.
+
+El objetivo es cubrir el ciclo de vida principal de una instancia XBRL.
+
+Primero, la aplicación carga una taxonomía y descubre su estructura completa. Después, permite crear una nueva instancia o abrir una existente. A partir de ahí, el usuario puede seleccionar tablas, navegar por sus ejes, introducir o modificar valores, guardar la instancia y ejecutar validaciones.
+
+La propuesta de valor es que todo esto ocurre en una única aplicación local. No se pretende sustituir toda la infraestructura de reporting, pero sí resolver el flujo central de preparación y revisión técnica del informe.
+
+Hay cuatro principios que guiaron el diseño: funcionamiento offline por defecto, núcleo testeable sin Qt, precisión en los valores numéricos y conformidad medible mediante pruebas y suites oficiales.
+
+## Slide 4. Arquitectura
+
+Tiempo: 1 minuto.
+
+La arquitectura está dividida en capas. En la parte inferior está el core XBRL, formado principalmente por los módulos `taxonomy`, `instance`, `validation` y `table_renderer`. Esta parte se ejecuta sobre Python 3.13+, no depende de PySide6 y se puede probar con tests unitarios e integración.
+
+Encima se sitúa la adaptación al dominio BDE: filing indicators de Eurofiling, Table Linkbase PWD, reglas dimensionales y fórmulas. La idea es que las particularidades BDE no contaminen toda la aplicación.
+
+Después están los servicios de aplicación, que orquestan casos de uso como crear una instancia, renderizar una tabla o lanzar validación. Finalmente está la capa de interfaz, implementada con PySide6.
+
+La regla clave es que las dependencias van hacia abajo. La interfaz consume servicios y modelos, pero la lógica de negocio no necesita conocer la interfaz gráfica. Esto hace que el proyecto sea mantenible y verificable.
+
+## Slide 5. Metodología: Spec-Driven Development
+
+Tiempo: 1 minuto.
+
+El desarrollo se organizó mediante spec-driven development. Antes de implementar cada bloque se definió una especificación funcional, un plan técnico, decisiones de investigación, modelo de datos, contratos de API y tareas.
+
+El proyecto se dividió en seis features principales: carga y cache de taxonomías, creación de instancias, renderizado de tablas PWD, edición de instancias, validación y runner de conformidad.
+
+Esta forma de trabajar aporta trazabilidad. Cada funcionalidad tiene una razón, unos escenarios de aceptación, unos criterios de éxito y una implementación asociada. En un dominio como XBRL, esto es especialmente útil porque evita que las decisiones técnicas queden implícitas.
+
+También ayuda a separar qué está en alcance y qué se deja para futuras versiones, por ejemplo iXBRL, envío directo a BDE o reglas externas publicadas fuera de la taxonomía.
+
+## Slide 6. Capacidades principales
+
+Tiempo: 1 minuto.
+
+La aplicación tiene tres grandes áreas funcionales.
+
+La primera es la carga de taxonomías y catálogo BDE. Aquí se resuelven esquemas, imports, includes y linkbases; se extraen conceptos, etiquetas, dimensiones, tablas y fórmulas; y se cachea la estructura para mejorar tiempos de respuesta. Además, el proyecto incorpora un scraper TypeScript y Playwright para mantener información del catálogo de taxonomías del Banco de España.
+
+La segunda es el workspace de instancia. La aplicación puede crear o abrir instancias XBRL, mostrar su metadata, preservar contextos y unidades, editar hechos y guardar el resultado como XML/XBRL.
+
+La tercera es validación, conformidad y distribución. El usuario puede ejecutar validaciones estructurales, dimensionales, de cálculo, essence-alias y fórmulas. Además, existe un runner CLI que permite contrastar el procesador con suites de conformidad XBRL, y el proyecto contempla un paquete offline para distribuir la aplicación con el runtime del scraper preparado.
+
+## Slide 7. Renderizado de tablas PWD
+
+Tiempo: 1 minuto.
+
+Uno de los componentes más importantes es el renderizado de tablas. En BDE, la estructura de una tabla no se debe hardcodear: se deriva de la Table Linkbase PWD de la taxonomía.
+
+El motor calcula los ejes X, Y y Z. El eje X representa columnas, el eje Y representa filas y el eje Z representa filtros o slices de la tabla. A partir de la combinación de estos ejes se obtiene una coordenada XBRL completa.
+
+Esa coordenada identifica una celda mediante concepto, entidad, periodo y dimensiones explícitas. Gracias a esa correspondencia, la aplicación puede mostrar el hecho correcto, editarlo y detectar ambigüedades como duplicados.
+
+Esta parte es fundamental porque transforma una taxonomía técnica en una vista que el usuario puede entender y utilizar.
+
+## Slide 8. Validación
+
+Tiempo: 1 minuto.
+
+La validación se implementa como un pipeline.
+
+Primero se parsea la instancia y se comprueba su estructura básica: referencias, contextos, unidades y hechos. Después se aplican reglas estructurales y validación de tipos. A continuación se comprueba el modelo dimensional: hipercubos, miembros permitidos y contexto de segmento o escenario.
+
+También se evalúan relaciones como calculation y essence-alias. Finalmente se ejecutan fórmulas XBRL mediante XPath 2.0 usando elementpath.
+
+El resultado es un ValidationReport compuesto por findings estructurados. Cada finding tiene severidad, regla, mensaje y, cuando es posible, referencia a concepto, contexto y tabla. Un principio importante es que los validadores no propagan excepciones al usuario; convierten los problemas en resultados accionables.
+
+## Slide 9. Calidad y conformidad
+
+Tiempo: 1 minuto.
+
+La calidad del proyecto se apoya en dos niveles.
+
+El primer nivel son los tests unitarios e integración. Hay pruebas para taxonomía, instancia, renderizado, validación, UI y conformidad. Esto permite comprobar cada capa por separado y también flujos completos.
+
+El segundo nivel es el runner de conformidad. Este runner se ejecuta desde línea de comandos y permite validar el procesador contra suites XBRL.org usando datos locales y sin depender de red. Las suites bloqueantes son XBRL 2.1, Dimensions 1.0 y Formula 1.0. Table Linkbase 1.0 se trata como informativa porque la versión prioritaria del proyecto implementa PWD, que es la usada por BDE.
+
+La idea es que la conformidad no sea una afirmación teórica, sino algo medible, repetible y apto para integrarse en CI.
+
+## Slide 10. Demo
+
+Tiempo: 3-4 minutos.
+
+Ahora paso a una demo breve del flujo completo. La intención no es enseñar cada opción de la aplicación, sino demostrar el hilo que une las seis features principales.
+
+Primero arranco la aplicación con el script local o con `python -m bde_xbrl_editor`. A continuación cargo una taxonomía o selecciono una desde el catálogo BDE. En este punto muestro que la aplicación detecta metadatos, tablas disponibles y estructura de la taxonomía.
+
+Después abro o creo una instancia. Si creo una nueva, enseño los datos de entidad, periodo y selección de tablas. Si uso una existente, enseño cómo se extrae su schemaRef y se vincula con la taxonomía.
+
+A continuación selecciono una tabla. Aquí el objetivo es mostrar el valor visual del proyecto: cabeceras multinivel, códigos de fila o columna, eje Z y celdas donde aparecen hechos de la instancia.
+
+Después edito una celda sencilla. Explico que el valor se almacena como string para evitar pérdida de precisión y que la validación de tipo ocurre en el momento de edición.
+
+Finalmente ejecuto la validación. Muestro el panel de resultados, las severidades, los filtros y, si hay un finding asociado a una celda, la navegación al punto correspondiente.
+
+Si queda tiempo, enseño el runner CLI o las pruebas de integración de conformidad como prueba de que el mismo motor se puede ejecutar sin interfaz gráfica.
+
+## Slide 11. Límites y trabajo futuro
+
+Tiempo: 1 minuto.
+
+El proyecto también tiene límites definidos.
+
+En la versión actual no se cubre iXBRL, ni el envío directo al portal del Banco de España, ni la validación batch o diferencial. Tampoco se implementan reglas BDE publicadas fuera de la taxonomía, por ejemplo en documentos PDF.
+
+Estas decisiones no son carencias accidentales, sino límites de alcance. La prioridad fue construir primero un núcleo robusto para taxonomía, instancia, tabla, edición, validación y conformidad.
+
+Como evolución futura, plantearía tres líneas: mejorar robustez operativa y empaquetado, incorporar reglas externas BDE con trazabilidad documental, y ampliar interoperabilidad mediante iXBRL, exportaciones y automatización de flujos.
+
+## Slide 12. Cierre
+
+Tiempo: 45 segundos.
+
+Para cerrar, destacaría tres conclusiones.
+
+La primera es que el resultado es un producto funcional, no solo una prueba aislada: cubre el flujo principal desde taxonomía hasta validación.
+
+La segunda es que la arquitectura permite evolucionar el proyecto. El núcleo XBRL está separado de la interfaz, las capas tienen responsabilidades claras y el comportamiento puede probarse automáticamente.
+
+La tercera es metodológica: spec-driven development ha sido clave para trabajar con un dominio complejo sin perder trazabilidad entre problema, requisitos, diseño, tareas y verificación.
+
+La idea final es convertir la complejidad técnica de XBRL y BDE en un flujo visual, verificable y mantenible.
+
+Muchas gracias.
+
+## Checklist rápido antes de la demo
+
+- Tener la aplicación abierta o lista para ejecutar.
+- Tener una taxonomía BDE accesible localmente.
+- Tener una instancia de ejemplo preparada para evitar depender de datos improvisados.
+- Probar antes la validación que se va a mostrar.
+- Si el flujo real tarda, usar el tiempo para explicar qué está ocurriendo: DTS discovery, parseo de linkbases, cache y validadores.
+
+## Versión corta por si solo hay 10 minutos
+
+- Reducir slides 2 y 3 a 45 segundos cada una.
+- Explicar arquitectura en 45 segundos.
+- Hacer demo de 2 minutos centrada solo en tabla, edición y validación.
+- Omitir detalles de roadmap y dejarlo como respuesta a preguntas.

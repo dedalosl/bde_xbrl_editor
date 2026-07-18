@@ -1,0 +1,9 @@
+task mode: create
+primary deck-profile: engineering-platform
+secondary gates: academic TFM defense, product/platform narrative
+required proof objects: architecture map, development workflow, product capability proof, validation/conformance evidence, roadmap/limits
+source requirements: README.MD, specs/001-006, docs/xbrl-processor-prd.md, pyproject.toml, repository structure
+asset requirements: one generated technical title background; editable diagrams for the rest
+brand constraints: no Banco de Espana logo recreation; use text naming only
+QA gates: diagrams legible at thumbnail and full size; claims tied to proof objects; no generic feature-card cadence
+known missing inputs: final defense date, university template, required slide count, official logos

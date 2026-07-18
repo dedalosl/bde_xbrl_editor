@@ -446,6 +446,29 @@ def _build_concept_id_map(concepts: dict[QName, Concept]) -> dict[str, QName]:
     return id_map
 
 
+def _build_concept_prefix_map(concepts: dict[QName, Concept]) -> dict[str, str]:
+    """Return preferred QName prefixes declared by parsed taxonomy concepts."""
+    prefix_map: dict[str, str] = {}
+    for qname in concepts:
+        if qname.prefix and qname.namespace:
+            prefix_map.setdefault(qname.prefix, qname.namespace)
+    return prefix_map
+
+
+def _build_schema_prefix_map(schema_paths: list[Path]) -> dict[str, str]:
+    """Return prefix declarations from DTS schema roots."""
+    prefix_map: dict[str, str] = {}
+    for schema_path in schema_paths:
+        try:
+            root = parse_xml_file(schema_path).getroot()
+        except (OSError, etree.XMLSyntaxError):
+            continue
+        for prefix, namespace in (root.nsmap or {}).items():
+            if prefix and namespace:
+                prefix_map.setdefault(prefix, namespace)
+    return prefix_map
+
+
 def _extract_metadata(entry_point: Path, declared_languages: list[str]) -> TaxonomyMetadata:
     """Extract taxonomy name, version, publisher from the entry-point schema annotations."""
     name = entry_point.stem
@@ -1642,6 +1665,14 @@ class TaxonomyLoader:
         if taxonomy.formula_assertion_set.assertions:
             return taxonomy
 
+        formula_namespace_map = _build_schema_prefix_map(list(taxonomy.schema_files))
+        formula_namespace_map.update(
+            {
+                prefix: namespace
+                for prefix, namespace in _build_concept_prefix_map(taxonomy.concepts).items()
+                if prefix not in formula_namespace_map
+            }
+        )
         formula_linkbases = _discover_formula_linkbases(list(taxonomy.linkbase_files))
         total = len(formula_linkbases)
         if not formula_linkbases:
@@ -1676,7 +1707,10 @@ class TaxonomyLoader:
         for index, linkbase_path in enumerate(formula_linkbases, start=1):
             if cancel_callback is not None and cancel_callback():
                 break
-            formula_set = parse_formula_linkbase(linkbase_path)
+            formula_set = parse_formula_linkbase(
+                linkbase_path,
+                namespace_map=formula_namespace_map,
+            )
             if cancel_callback is not None and cancel_callback():
                 break
             for assertion in formula_set.assertions:
@@ -1911,6 +1945,14 @@ class TaxonomyLoader:
         }
 
         concept_id_map = _build_concept_id_map(concepts)
+        formula_namespace_map = _build_schema_prefix_map(schema_paths)
+        formula_namespace_map.update(
+            {
+                prefix: namespace
+                for prefix, namespace in _build_concept_prefix_map(concepts).items()
+                if prefix not in formula_namespace_map
+            }
+        )
 
         # Build namespace-qualified map: "{namespace}#{xml_id}" → QName
         # Used by parse_definition_linkbase to resolve locator hrefs unambiguously
@@ -2116,7 +2158,10 @@ class TaxonomyLoader:
                 f"Parsing formula linkbases ({len(formula_linkbases)} files)…",
                 6,
             )
-            bundled_formula_set = parse_formula_linkbase_bundle(formula_linkbases)
+            bundled_formula_set = parse_formula_linkbase_bundle(
+                formula_linkbases,
+                namespace_map=formula_namespace_map,
+            )
             all_assertions = list(bundled_formula_set.assertions)
             all_output_formulas = list(bundled_formula_set.output_formulas)
             all_global_parameters = list(bundled_formula_set.global_parameters)

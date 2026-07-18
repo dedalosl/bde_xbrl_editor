@@ -1,3 +1,8 @@
+include README.MD
+include run.sh
+include run.bat
+recursive-include installer/pyinstaller *.spec
+recursive-include scripts *.py
 include src/bde_xbrl_editor/taxonomy_catalog/bde_taxonomies_scraper/package.json
 include src/bde_xbrl_editor/taxonomy_catalog/bde_taxonomies_scraper/package-lock.json
 include src/bde_xbrl_editor/taxonomy_catalog/bde_taxonomies_scraper/tsconfig.json

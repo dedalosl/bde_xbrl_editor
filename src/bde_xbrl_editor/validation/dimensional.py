@@ -98,7 +98,10 @@ class DimensionalConstraintValidator:
                     arc.target,
                     arc.target_role or dim_elr,
                     domain_member_index,
-                    start_usable=domain_usable,
+                    # xbrldt:usable on a dimension-domain arc controls whether
+                    # the domain root itself is usable as a member. Descendant
+                    # members keep their own domain-member usability semantics.
+                    start_usable=True,
                 )
                 for member_qname, usable in descendant_usability.items():
                     if usable:

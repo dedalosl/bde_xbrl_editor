@@ -2230,6 +2230,11 @@ class XbrlTableView(QFrame):
             worker.cancel()
         if thread is not None and thread.isRunning():
             thread.quit()
+            thread.wait()
+
+    def shutdown_background_tasks(self) -> None:
+        """Stop background table rendering before this widget is destroyed."""
+        self._cancel_async_table_load()
 
     def _finish_async_table_load(self, request_id: int) -> bool:
         if request_id != self._table_load_request_id:

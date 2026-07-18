@@ -12,6 +12,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 pytest.importorskip("PySide6", reason="PySide6 not available - UI tests skipped")
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QFrame, QLabel, QPushButton, QScrollArea
 
 from bde_xbrl_editor.taxonomy_catalog.models import (
@@ -208,6 +209,65 @@ def test_recent_instances_scroll_inside_instance_dialog(
     assert "background: #FFFFFF" in scroll_areas[0].viewport().styleSheet()
     assert widget._side_panel_layout.stretch(0) == 0
     assert widget._side_panel_layout.stretch(1) == 1
+
+
+@pytest.mark.qt
+def test_instance_progress_updates_are_queued_to_ui_thread(
+    qtbot,
+    qapp,
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    catalog_path = tmp_path / "taxonomies.json"
+    instance_path = tmp_path / "sample.xbrl"
+    _write_empty_catalog(catalog_path)
+    instance_path.write_text("<xbrl/>", encoding="utf-8")
+    widget = TaxonomyCatalogLoaderWidget(catalog_path=catalog_path)
+    qtbot.addWidget(widget)
+    dialog = widget._build_instance_dialog()
+    qtbot.addWidget(dialog)
+    widget._instance_open_dialog = dialog
+    widget._inst_path_edit.setText(str(instance_path))
+
+    class SignalProbe:
+        def __init__(self) -> None:
+            self.connections = []
+
+        def connect(self, slot, connection_type=None) -> None:
+            self.connections.append((slot, connection_type))
+
+    class WorkerProbe:
+        last = None
+
+        def __init__(self, cache, settings, path) -> None:
+            self.finished = SignalProbe()
+            self.error = SignalProbe()
+            self.progress = SignalProbe()
+            WorkerProbe.last = self
+
+        def moveToThread(self, thread) -> None:
+            self.thread = thread
+
+        def run(self) -> None:
+            pass
+
+        def deleteLater(self) -> None:
+            pass
+
+    monkeypatch.setattr(
+        "bde_xbrl_editor.ui.widgets.taxonomy_catalog_loader_widget.InstanceLoadWorker",
+        WorkerProbe,
+    )
+    monkeypatch.setattr(
+        "bde_xbrl_editor.ui.widgets.taxonomy_catalog_loader_widget.QThread.start",
+        lambda self: None,
+    )
+
+    widget._on_load_instance()
+
+    assert WorkerProbe.last is not None
+    assert WorkerProbe.last.progress.connections
+    assert WorkerProbe.last.progress.connections[0][1] == Qt.ConnectionType.QueuedConnection
 
 
 @pytest.mark.qt

@@ -1,0 +1,12 @@
+01 Cover with generated technical background
+02 Problem framing with pain-to-impact proof panel
+03 Objective and scope as end-to-end lifecycle
+04 Architecture map with strict layer boundaries
+05 Spec-driven development workflow and feature chain
+06 Product capabilities as annotated workspace
+07 Table rendering PWD as axis/cell coordinate diagram
+08 Validation engine pipeline
+09 Conformance runner and quality evidence
+10 Demo script as operational sequence
+11 Limitations and roadmap
+12 Closing thesis and defense takeaways

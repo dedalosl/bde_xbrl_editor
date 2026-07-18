@@ -7,7 +7,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread, QTimer
+from PySide6.QtCore import QCoreApplication, Qt, QThread, QTimer
 from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -345,6 +345,9 @@ class MainWindow(QMainWindow):
 
     def _clear_browser_view_refs(self) -> None:
         """Drop references to Qt-owned browser widgets before replacing the central view."""
+        if self._table_view is not None:
+            with contextlib.suppress(RuntimeError, TypeError):
+                self._table_view.shutdown_background_tasks()
         self._table_view = None
         self._sidebar = None
         self._browser_splitter = None
@@ -355,12 +358,38 @@ class MainWindow(QMainWindow):
         self._context_meta_label = None
         self._language_combo = None
 
+    def _shutdown_loader_widget(self) -> None:
+        widget = self._loader_widget
+        if widget is None:
+            return
+        shutdown = getattr(widget, "shutdown_background_tasks", None)
+        if shutdown is None:
+            return
+        with contextlib.suppress(RuntimeError, TypeError):
+            shutdown()
+
+    def _shutdown_background_tasks(self) -> None:
+        self._shutdown_loader_widget()
+        central = self.centralWidget()
+        if central is not None and central is not self._loader_widget:
+            shutdown = getattr(central, "shutdown_background_tasks", None)
+            if shutdown is not None:
+                with contextlib.suppress(RuntimeError, TypeError):
+                    shutdown()
+        if self._table_view is not None:
+            with contextlib.suppress(RuntimeError, TypeError):
+                self._table_view.shutdown_background_tasks()
+        self._cleanup_instance_open_thread(wait=False)
+        self._cleanup_validation_thread()
+        self._cleanup_formula_hydration_thread(cancel=True)
+
     def _show_loader_widget(self, path: str | None = None) -> None:
         """Create a fresh welcome screen and set it as the central widget.
 
         Qt takes ownership of (and deletes) the previous central widget, so we
         must never reuse the old reference — always construct a new instance.
         """
+        self._shutdown_loader_widget()
         if self._editor is not None:
             with contextlib.suppress(RuntimeError, TypeError):
                 self._editor.changes_made.disconnect(self._on_changes_made)
@@ -423,6 +452,7 @@ class MainWindow(QMainWindow):
 
     def _on_taxonomy_loaded(self, structure: TaxonomyStructure) -> None:
         workspace_started_at = time.perf_counter()
+        self._shutdown_loader_widget()
         self._current_instance = None
         self._editor = None
         if self._table_view is not None:
@@ -458,6 +488,7 @@ class MainWindow(QMainWindow):
 
     def _on_instance_loaded_from_widget(self, instance, taxonomy: TaxonomyStructure) -> None:
         """Handle an instance+taxonomy loaded directly from the welcome screen."""
+        self._shutdown_loader_widget()
         self._current_taxonomy = taxonomy
         meta = taxonomy.metadata
         self._reload_action.setEnabled(True)
@@ -856,6 +887,7 @@ class MainWindow(QMainWindow):
         self._instance_open_thread = QThread(self)
         self._instance_open_worker.moveToThread(self._instance_open_thread)
         self._instance_open_thread.started.connect(self._instance_open_worker.run)
+        self._instance_open_thread.finished.connect(self._instance_open_worker.deleteLater)
         self._instance_open_worker.progress.connect(
             dialog.update_progress,
             Qt.ConnectionType.QueuedConnection,
@@ -891,12 +923,18 @@ class MainWindow(QMainWindow):
         if self._loading_dialog is not None:
             self._loading_dialog.close()
 
-    def _cleanup_instance_open_thread(self) -> None:
-        if self._instance_open_thread is not None:
-            self._instance_open_thread.quit()
-            self._instance_open_thread.wait()
-            self._instance_open_thread = None
-            self._instance_open_worker = None
+    def _cleanup_instance_open_thread(self, *, wait: bool = True) -> None:
+        worker, thread = self._instance_open_worker, self._instance_open_thread
+        self._instance_open_worker = None
+        self._instance_open_thread = None
+        if not wait and worker is not None:
+            worker.cancel()
+        if thread is not None:
+            if not wait and thread.parent() is self and (app := QCoreApplication.instance()) is not None:
+                thread.setParent(app)
+            thread.quit()
+            if wait:
+                thread.wait()
         self._open_instance_action.setEnabled(True)
 
     def _on_open_instance_finished(self, instance, taxonomy: TaxonomyStructure) -> None:
@@ -1652,7 +1690,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event) -> None:  # type: ignore[override]
         """Warn if there are unsaved changes before closing (T034)."""
         if self._current_instance is None or not self._current_instance.has_unsaved_changes:
-            self._cleanup_formula_hydration_thread(cancel=True)
+            self._shutdown_background_tasks()
             event.accept()
             return
         reply = QMessageBox.question(
@@ -1665,10 +1703,10 @@ class MainWindow(QMainWindow):
         )
         if reply == QMessageBox.StandardButton.Save:
             self._on_save()
-            self._cleanup_formula_hydration_thread(cancel=True)
+            self._shutdown_background_tasks()
             event.accept()
         elif reply == QMessageBox.StandardButton.Discard:
-            self._cleanup_formula_hydration_thread(cancel=True)
+            self._shutdown_background_tasks()
             event.accept()
         else:
             event.ignore()

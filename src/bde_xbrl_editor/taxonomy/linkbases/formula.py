@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterable, Sequence
+from contextvars import ContextVar
 from copy import deepcopy
 from dataclasses import replace
 from decimal import Decimal, InvalidOperation
@@ -149,6 +150,10 @@ _ARCROLE_APPLIES_TO_TABLE = "http://www.eurofiling.info/xbrl/arcrole/applies-to-
 _TAG_VARIABLE_SET_FILTER_ARC = f"{{{_NS_VARIABLE}}}variableSetFilterArc"
 _TAG_LINK_LOC = f"{{{_NS_LINK}}}loc"
 _VAR_REF_RE = re.compile(r"\$([A-Za-z_][A-Za-z0-9_.:-]*)")
+_EXTRA_NAMESPACE_PREFIXES: ContextVar[dict[str, str] | None] = ContextVar(
+    "formula_extra_namespace_prefixes",
+    default=None,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -203,10 +208,19 @@ def _xpath_ns_context(el: etree._Element) -> dict[str, str]:
     on ``link:linkbase`` rather than on the assertion/filter resource itself.
     """
     merged: dict[str, str] = dict(FORMULA_XPATH_DEFAULT_PREFIXES)
+    merged.update(_EXTRA_NAMESPACE_PREFIXES.get() or {})
     for ancestor in reversed(list(el.iterancestors())):
         merged.update({k: v for k, v in ancestor.nsmap.items() if k is not None and v})
     merged.update({k: v for k, v in el.nsmap.items() if k is not None and v})
     return merged
+
+
+def _clean_namespace_map(namespace_map: dict[str, str] | None) -> dict[str, str]:
+    return {
+        prefix: namespace
+        for prefix, namespace in (namespace_map or {}).items()
+        if prefix and namespace
+    }
 
 
 def _extract_referenced_names(*expressions: str | None) -> tuple[str, ...]:
@@ -1552,7 +1566,10 @@ def _parse_output_formula(
 # ---------------------------------------------------------------------------
 
 
-def parse_formula_linkbase(path: Path) -> FormulaAssertionSet:
+def parse_formula_linkbase(
+    path: Path,
+    namespace_map: dict[str, str] | None = None,
+) -> FormulaAssertionSet:
     """Parse a formula / validation linkbase and return a FormulaAssertionSet.
 
     Assertions may live directly under ``link:linkbase`` or inside generic
@@ -1563,12 +1580,19 @@ def parse_formula_linkbase(path: Path) -> FormulaAssertionSet:
     or contains no assertions. Never raises.
     """
     try:
-        return _parse(path)
+        token = _EXTRA_NAMESPACE_PREFIXES.set(_clean_namespace_map(namespace_map))
+        try:
+            return _parse(path)
+        finally:
+            _EXTRA_NAMESPACE_PREFIXES.reset(token)
     except Exception:  # noqa: BLE001
         return FormulaAssertionSet()
 
 
-def parse_formula_linkbase_bundle(paths: Iterable[Path]) -> FormulaAssertionSet:
+def parse_formula_linkbase_bundle(
+    paths: Iterable[Path],
+    namespace_map: dict[str, str] | None = None,
+) -> FormulaAssertionSet:
     """Parse multiple Formula linkbases as one DTS relationship graph.
 
     Cross-file ``xlink:href`` locators are resolved by indexing all linkbases
@@ -1576,20 +1600,24 @@ def parse_formula_linkbase_bundle(paths: Iterable[Path]) -> FormulaAssertionSet:
     and indexed in turn so only detached resource subtrees are retained.
     """
     try:
-        path_list = [path for path in paths if path.exists()]
-        if not path_list:
-            return FormulaAssertionSet()
-        if len(path_list) <= 32:
-            roots: list[etree._Element] = []
-            for path in path_list:
-                try:
-                    roots.append(parse_xml_file(path).getroot())
-                except etree.XMLSyntaxError:
-                    continue
-            if not roots:
+        token = _EXTRA_NAMESPACE_PREFIXES.set(_clean_namespace_map(namespace_map))
+        try:
+            path_list = [path for path in paths if path.exists()]
+            if not path_list:
                 return FormulaAssertionSet()
-            return _parse_formula_roots(roots)
-        return _parse_formula_linkbase_bundle_incremental(path_list)
+            if len(path_list) <= 32:
+                roots: list[etree._Element] = []
+                for path in path_list:
+                    try:
+                        roots.append(parse_xml_file(path).getroot())
+                    except etree.XMLSyntaxError:
+                        continue
+                if not roots:
+                    return FormulaAssertionSet()
+                return _parse_formula_roots(roots)
+            return _parse_formula_linkbase_bundle_incremental(path_list)
+        finally:
+            _EXTRA_NAMESPACE_PREFIXES.reset(token)
     except Exception:  # noqa: BLE001
         return FormulaAssertionSet()
 
