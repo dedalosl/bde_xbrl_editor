@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from datetime import date, datetime
 from pathlib import Path
 
@@ -851,3 +852,20 @@ class TestConceptNotInHypercube:
         taxonomy = _make_taxonomy(_all_closed_hc(), dims={DIM_QN: _dim_model_with_members()})
         findings = DimensionalConstraintValidator(taxonomy).validate(inst)
         assert findings == []
+
+
+def test_validation_stops_when_cancelled() -> None:
+    cancel_event = threading.Event()
+    cancel_event.set()
+    ctx = _make_context("ctx1", dims={})
+    fact = Fact(concept=CONCEPT_QN, context_ref="ctx1", unit_ref=None, value="1")
+    instance = _make_instance([fact], {"ctx1": ctx})
+    taxonomy = _make_taxonomy(
+        _all_open_hc(), dims={DIM_QN: _dim_model_with_members()}
+    )
+
+    findings = DimensionalConstraintValidator(
+        taxonomy, cancel_event=cancel_event
+    ).validate(instance)
+
+    assert findings == []

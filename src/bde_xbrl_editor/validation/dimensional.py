@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import threading
+
 from lxml import etree
 
 from bde_xbrl_editor.instance.constants import BDE_DIM_NS, XBRLDI_NS
@@ -44,8 +46,16 @@ class DimensionalConstraintValidator:
     Never raises. Exceptions are caught and returned as error findings.
     """
 
-    def __init__(self, taxonomy: TaxonomyStructure) -> None:
+    def __init__(
+        self,
+        taxonomy: TaxonomyStructure,
+        cancel_event: threading.Event | None = None,
+    ) -> None:
         self._taxonomy = taxonomy
+        self._cancel_event = cancel_event
+
+    def _cancelled(self) -> bool:
+        return bool(self._cancel_event and self._cancel_event.is_set())
 
     def _collect_domain_member_descendants(
         self,
@@ -60,6 +70,8 @@ class DimensionalConstraintValidator:
         seen_states: set[tuple[QName, str, bool]] = {(source, start_elr, start_usable)}
 
         while queue:
+            if self._cancelled():
+                break
             current, elr, inherited_usable = queue.pop(0)
             for arc in domain_member_index.get((elr, current), ()):
                 effective_usable = inherited_usable and (arc.usable is not False)
@@ -145,17 +157,23 @@ class DimensionalConstraintValidator:
     def validate(self, instance: XbrlInstance) -> list[ValidationFinding]:
         """Run all dimensional constraint checks and return the findings list."""
         findings: list[ValidationFinding] = []
+        if self._cancelled():
+            return findings
 
         try:
             # Build a lookup: primary_item QName -> list of covering HypercubeModels.
             # We build this once so the per-fact loop is O(1) per concept.
             primary_to_hcs: dict[QName, list[HypercubeModel]] = {}
             for hc in self._taxonomy.hypercubes:
+                if self._cancelled():
+                    return findings
                 for pi in hc.primary_items:
                     primary_to_hcs.setdefault(pi, []).append(hc)
             relevant_dims_by_context: dict[str, set[QName]] = {}
             has_open_empty_hc_by_context: dict[str, bool] = {}
             for fact in instance.facts:
+                if self._cancelled():
+                    return findings
                 relevant_dims = relevant_dims_by_context.setdefault(fact.context_ref, set())
                 for hc in primary_to_hcs.get(fact.concept, ()):
                     relevant_dims.update(hc.dimensions)
@@ -186,6 +204,8 @@ class DimensionalConstraintValidator:
             declared_members_cache: dict[QName, set[QName]] = {}
             members_frozenset_cache: dict[QName, frozenset] = {}
             for dim_qname, dim_model in self._taxonomy.dimensions.items():
+                if self._cancelled():
+                    return findings
                 # Usable members: multiple arcs may use the override pattern
                 # (usable=False on ANY arc overrides usable=True from others).
                 member_usability: dict[QName, bool] = {}
@@ -202,7 +222,11 @@ class DimensionalConstraintValidator:
             dim_domain_index: dict[tuple[str, QName], list[DefinitionArc]] = {}
             domain_member_index: dict[tuple[str, QName], list[DefinitionArc]] = {}
             for elr, arcs in self._taxonomy.definition.items():
+                if self._cancelled():
+                    return findings
                 for arc in arcs:
+                    if self._cancelled():
+                        return findings
                     if arc.arcrole == _ARCROLE_HC_DIM:
                         hc_dim_index.setdefault((elr, arc.source, arc.target), []).append(arc)
                     elif arc.arcrole == _ARCROLE_DIM_DOMAIN:
@@ -217,8 +241,12 @@ class DimensionalConstraintValidator:
 
             # Instance-level checks on each context's explicit member declarations.
             for ctx_ref, ctx in instance.contexts.items():
+                if self._cancelled():
+                    return findings
                 typed_elements = getattr(ctx, "typed_dimension_elements", {}) or {}
                 for dim_qname in getattr(ctx, "typed_dimensions", {}) or {}:
+                    if self._cancelled():
+                        return findings
                     concept_for_dim = self._taxonomy.concepts.get(dim_qname)
                     expected_element = (
                         concept_for_dim.typed_domain_element
@@ -245,6 +273,8 @@ class DimensionalConstraintValidator:
                         )
 
                 for dim_qname, member_qname in ctx.dimensions.items():
+                    if self._cancelled():
+                        return findings
                     # ExplicitMemberNotExplicitDimensionError: the dimension QName used in
                     # xbrldi:explicitMember must actually be an explicit dimension in the DTS.
                     # Only applies to explicit members (typed members store dim_qname as
@@ -366,6 +396,8 @@ class DimensionalConstraintValidator:
                         )
 
             for fact in instance.facts:
+                if self._cancelled():
+                    return findings
                 try:
                     self._validate_fact(
                         fact,
@@ -431,6 +463,9 @@ class DimensionalConstraintValidator:
         satisfies **at least one** positive ("all") hypercube in that ELR.
         Negative ("notAll") hypercubes are each an independent prohibition.
         """
+        if self._cancelled():
+            return
+
         covering_hcs = primary_to_hcs.get(fact.concept)
         if not covering_hcs:
             # Concept is not part of any hypercube — not dimensional, skip.
@@ -438,6 +473,8 @@ class DimensionalConstraintValidator:
 
         covering_dimensions_by_hc_qname: dict[QName, set[QName]] = {}
         for hc in covering_hcs:
+            if self._cancelled():
+                return
             if hc.arcrole == "all":
                 covering_dimensions_by_hc_qname.setdefault(hc.qname, set()).update(hc.dimensions)
 
@@ -479,6 +516,8 @@ class DimensionalConstraintValidator:
             try:
                 per_group: list[list[ValidationFinding]] = []
                 for hcs in grouped_hcs.values():
+                    if self._cancelled():
+                        return
                     group_findings: list[ValidationFinding] = []
                     self._check_drs_group(
                         fact,

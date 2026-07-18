@@ -391,6 +391,53 @@ def test_instance_open_uses_instance_sidebar_only(qtbot, qapp) -> None:
     assert window._validation_stack.currentIndex() == 0
 
 
+def test_close_instance_then_back_shuts_down_replaced_table_views(
+    qtbot, qapp, monkeypatch
+) -> None:
+    """Each workspace transition must stop table workers before Qt deletes the view."""
+    from bde_xbrl_editor.ui.widgets.xbrl_table_view import XbrlTableView
+
+    monkeypatch.setattr(
+        "bde_xbrl_editor.ui.main_window.load_loader_page_mode", lambda: "classic"
+    )
+    shutdown_views: list[XbrlTableView] = []
+    original_shutdown = XbrlTableView.shutdown_background_tasks
+
+    def record_shutdown(view: XbrlTableView) -> None:
+        shutdown_views.append(view)
+        original_shutdown(view)
+
+    monkeypatch.setattr(XbrlTableView, "shutdown_background_tasks", record_shutdown)
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window._on_taxonomy_loaded(_taxonomy())
+    taxonomy_view = window._table_view
+
+    window._load_instance(_instance())
+    instance_view = window._table_view
+
+    close_button = next(
+        button
+        for button in window._context_bar.findChildren(QPushButton)
+        if button.text() == "Close Instance"
+    )
+    qtbot.mouseClick(close_button, Qt.MouseButton.LeftButton)
+    reopened_taxonomy_view = window._table_view
+
+    back_button = next(
+        button
+        for button in window._context_bar.findChildren(QPushButton)
+        if button.text() == "Back"
+    )
+    qtbot.mouseClick(back_button, Qt.MouseButton.LeftButton)
+
+    assert isinstance(window.centralWidget(), TaxonomyLoaderWidget)
+    assert taxonomy_view in shutdown_views
+    assert instance_view in shutdown_views
+    assert reopened_taxonomy_view in shutdown_views
+
+
 def test_validation_panel_collapse_button_returns_to_compact_bar(qtbot, qapp) -> None:
     window = MainWindow()
     qtbot.addWidget(window)

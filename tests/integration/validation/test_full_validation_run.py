@@ -223,3 +223,33 @@ def test_validate_sync_cancel_event(taxonomy):
     assert calls[-1][0] == 0
     assert calls[-1][1] > 0
     assert "cancelled" in calls[-1][2].lower()
+
+
+def test_validate_sync_propagates_cancellation_to_active_stage(taxonomy, monkeypatch):
+    """An active validator can stop the pipeline through the shared event."""
+    import threading
+
+    from bde_xbrl_editor.validation import orchestrator
+
+    instance = _make_clean_instance(taxonomy)
+    cancel_event = threading.Event()
+
+    class CancellingStructuralValidator:
+        def __init__(self, *, cancel_event):
+            assert cancel_event is not None
+            self._cancel_event = cancel_event
+
+        def validate(self, instance, taxonomy):
+            self._cancel_event.set()
+            return []
+
+    monkeypatch.setattr(
+        orchestrator, "StructuralConformanceValidator", CancellingStructuralValidator
+    )
+
+    report = InstanceValidator(
+        taxonomy=taxonomy, cancel_event=cancel_event
+    ).validate_sync(instance)
+
+    assert report.run_status is ValidationRunStatus.CANCELLED
+    assert [stage.name for stage in report.stage_timings] == ["structural"]

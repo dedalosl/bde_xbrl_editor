@@ -85,7 +85,7 @@ class InstanceValidator:
                         stage_steps["structural"], total_steps, "Running structural checks…"
                     )
             try:
-                sv = StructuralConformanceValidator()
+                sv = StructuralConformanceValidator(cancel_event=self._cancel_event)
                 stage_findings = tuple(sv.validate(instance, self._taxonomy))
                 findings.extend(stage_findings)
                 self._publish_findings(stage_findings)
@@ -143,7 +143,7 @@ class InstanceValidator:
                         "Running calculation checks…",
                     )
             try:
-                cv = CalculationConsistencyValidator()
+                cv = CalculationConsistencyValidator(cancel_event=self._cancel_event)
                 stage_findings = tuple(cv.validate(instance, self._taxonomy))
                 findings.extend(stage_findings)
                 self._publish_findings(stage_findings)
@@ -171,7 +171,7 @@ class InstanceValidator:
                         "Running essence-alias checks…",
                     )
             try:
-                ea = EssenceAliasValidator()
+                ea = EssenceAliasValidator(cancel_event=self._cancel_event)
                 stage_findings = tuple(ea.validate(instance, self._taxonomy))
                 findings.extend(stage_findings)
                 self._publish_findings(stage_findings)
@@ -199,7 +199,9 @@ class InstanceValidator:
                         "Running dimensional checks…",
                     )
             try:
-                dv = DimensionalConstraintValidator(self._taxonomy)
+                dv = DimensionalConstraintValidator(
+                    self._taxonomy, cancel_event=self._cancel_event
+                )
                 stage_findings = tuple(dv.validate(instance))
                 findings.extend(stage_findings)
                 self._publish_findings(stage_findings)

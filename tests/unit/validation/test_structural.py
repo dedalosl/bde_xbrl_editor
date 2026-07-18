@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from datetime import date, datetime
 from pathlib import Path
 
@@ -125,6 +126,17 @@ def _minimal_taxonomy(
 # ---------------------------------------------------------------------------
 # Check 1: missing-schemaref
 # ---------------------------------------------------------------------------
+
+
+def test_validation_stops_when_cancelled() -> None:
+    cancel_event = threading.Event()
+    cancel_event.set()
+
+    findings = StructuralConformanceValidator(cancel_event=cancel_event).validate(
+        _minimal_instance(schema_ref="")
+    )
+
+    assert findings == []
 
 
 class TestMissingSchemaref:

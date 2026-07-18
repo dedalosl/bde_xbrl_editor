@@ -348,6 +348,7 @@ class MainWindow(QMainWindow):
         """Drop references to Qt-owned browser widgets before replacing the central view."""
         if self._table_view is not None:
             with contextlib.suppress(RuntimeError, TypeError):
+                self._table_view.set_editor(None)
                 self._table_view.shutdown_background_tasks()
         self._table_view = None
         self._sidebar = None
@@ -396,8 +397,6 @@ class MainWindow(QMainWindow):
                 self._editor.changes_made.disconnect(self._on_changes_made)
                 self._editor.filing_indicators_changed.disconnect(self._on_filing_indicators_changed)
         self._editor = None
-        if self._table_view is not None:
-            self._table_view.set_editor(None)
         self._current_instance = None
         self._clear_browser_view_refs()
         self._pending_load_timing = None
@@ -456,8 +455,7 @@ class MainWindow(QMainWindow):
         self._shutdown_loader_widget()
         self._current_instance = None
         self._editor = None
-        if self._table_view is not None:
-            self._table_view.set_editor(None)
+        self._clear_browser_view_refs()
         self._current_taxonomy = structure
         meta = structure.metadata
         table_count = len(structure.tables)
@@ -526,7 +524,6 @@ class MainWindow(QMainWindow):
         self._table_view.set_language_preference(self._current_language_preference())
         self._table_view.editing_mode_changed.connect(self._on_table_editing_mode_changed)
         self._table_view.layout_ready.connect(self._on_table_layout_ready)
-        self._table_view.cell_info_changed.connect(self._on_cell_info_changed)
         self._table_view.cell_info_changed.connect(self._on_cell_info_changed)
 
         splitter = QSplitter(self)
@@ -758,17 +755,10 @@ class MainWindow(QMainWindow):
                 self._editor.changes_made.disconnect(self._on_changes_made)
                 self._editor.filing_indicators_changed.disconnect(self._on_filing_indicators_changed)
 
+        self._clear_browser_view_refs()
         self._current_taxonomy = None
         self._current_instance = None
         self._editor = None
-        self._table_view = None
-        self._sidebar = None
-        self._browser_splitter = None
-        self._context_bar = None
-        self._table_chip_sep = None
-        self._table_chip_label = None
-        self._context_title_label = None
-        self._context_meta_label = None
 
         self._reload_action.setEnabled(False)
         self._new_instance_action.setEnabled(False)
@@ -812,8 +802,7 @@ class MainWindow(QMainWindow):
         if self._sidebar is not None:
             self._sidebar.clear_instance()
 
-        # Discard existing table view so _setup_browser_layout creates a fresh one
-        self._table_view = None
+        self._clear_browser_view_refs()
 
         meta = self._current_taxonomy.metadata if self._current_taxonomy else None
         title = f"BDE XBRL Editor — {meta.name}[*]" if meta else "BDE XBRL Editor[*]"
@@ -994,12 +983,12 @@ class MainWindow(QMainWindow):
             self._editor.changes_made.disconnect(self._on_changes_made)
             self._editor.filing_indicators_changed.disconnect(self._on_filing_indicators_changed)
 
+        self._clear_browser_view_refs()
+
         self._current_instance = instance
         self._editor = InstanceEditor(instance, parent=self)
         self._editor.changes_made.connect(self._on_changes_made)
         self._editor.filing_indicators_changed.connect(self._on_filing_indicators_changed)
-        if self._table_view is not None:
-            self._table_view.set_editor(self._editor)
 
         self._table_view = XbrlTableView(parent=self)
         self._table_view.editing_mode_changed.connect(self._on_table_editing_mode_changed)

@@ -9,6 +9,7 @@ summation fact. Rounding behaviour matches the widely used Arelle
 from __future__ import annotations
 
 import math
+import threading
 from collections import defaultdict
 from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
@@ -132,13 +133,22 @@ def _fact_has_zero_precision(fact: Fact) -> bool:
 class CalculationConsistencyValidator:
     """Validate summation-item relationships against instance facts."""
 
+    def __init__(self, cancel_event: threading.Event | None = None) -> None:
+        self._cancel_event = cancel_event
+
+    def _cancelled(self) -> bool:
+        return bool(self._cancel_event and self._cancel_event.is_set())
+
     def validate(
         self,
         instance: XbrlInstance,
         taxonomy: TaxonomyStructure,
     ) -> list[ValidationFinding]:
+        if self._cancelled():
+            return []
+
         findings: list[ValidationFinding] = self.validate_taxonomy(taxonomy)
-        if not taxonomy.calculation:
+        if self._cancelled() or not taxonomy.calculation:
             return findings
 
         canon_ctx = canonical_context_refs_by_s_equal(instance, taxonomy)
@@ -146,7 +156,12 @@ class CalculationConsistencyValidator:
 
         fact_index = self._build_fact_index(instance, taxonomy, canon_ctx, canon_unit)
 
+        if self._cancelled():
+            return findings
+
         for elr, arcs in taxonomy.calculation.items():
+            if self._cancelled():
+                break
             findings.extend(
                 self._validate_elr(
                     elr,
@@ -160,12 +175,16 @@ class CalculationConsistencyValidator:
     def validate_taxonomy(self, taxonomy: TaxonomyStructure) -> list[ValidationFinding]:
         findings: list[ValidationFinding] = []
         for elr, arcs in taxonomy.calculation.items():
+            if self._cancelled():
+                break
             findings.extend(self._validate_arc_endpoint_constraints(elr, arcs, taxonomy))
+            if self._cancelled():
+                break
             findings.extend(self._validate_arc_balance_constraints(elr, arcs, taxonomy))
         return findings
 
-    @staticmethod
     def _build_fact_index(
+        self,
         instance: XbrlInstance,
         taxonomy: TaxonomyStructure,
         canon_ctx: dict[str, str],
@@ -186,6 +205,8 @@ class CalculationConsistencyValidator:
         }
 
         for fact in instance.facts:
+            if self._cancelled():
+                break
             if fact.concept not in numeric_concepts:
                 continue
             if fact.context_ref not in instance.contexts:
@@ -255,14 +276,16 @@ class CalculationConsistencyValidator:
             duplicate_fact_ids=duplicate_fact_ids,
         )
 
-    @staticmethod
     def _validate_arc_balance_constraints(
+        self,
         elr: str,
         arcs: list[CalculationArc],
         taxonomy: TaxonomyStructure,
     ) -> list[ValidationFinding]:
         findings: list[ValidationFinding] = []
         for arc in arcs:
+            if self._cancelled():
+                break
             if arc.use == "prohibited":
                 continue
             parent = taxonomy.concepts.get(arc.parent)
@@ -308,14 +331,16 @@ class CalculationConsistencyValidator:
                 )
         return findings
 
-    @staticmethod
     def _validate_arc_endpoint_constraints(
+        self,
         elr: str,
         arcs: list[CalculationArc],
         taxonomy: TaxonomyStructure,
     ) -> list[ValidationFinding]:
         findings: list[ValidationFinding] = []
         for arc in arcs:
+            if self._cancelled():
+                break
             if arc.use == "prohibited":
                 continue
             parent = taxonomy.concepts.get(arc.parent)
@@ -403,11 +428,15 @@ class CalculationConsistencyValidator:
 
         by_parent: dict[QName, list[CalculationArc]] = defaultdict(list)
         for arc in active_arcs:
+            if self._cancelled():
+                return findings
             if arc.parent == arc.child:
                 continue
             by_parent[arc.parent].append(arc)
 
         for sum_concept, rel_arcs in by_parent.items():
+            if self._cancelled():
+                return findings
             if sum_concept not in taxonomy.concepts:
                 continue
             sum_concept_def = taxonomy.concepts[sum_concept]
@@ -424,6 +453,8 @@ class CalculationConsistencyValidator:
                 ) & fact_index.item_bind_keys.get(child, set())
 
             for anc_path, bind_ctx, bind_unit in bound_sum_keys:
+                if self._cancelled():
+                    return findings
                 sum_key: _FactKey = (sum_concept, anc_path, bind_ctx, bind_unit)
                 if (anc_path, bind_ctx, bind_unit) in fact_index.dup_bind_keys:
                     continue
@@ -442,9 +473,13 @@ class CalculationConsistencyValidator:
                 bound_items_have_zero_precision = False
                 contributors_seen = False
                 for arc in rel_arcs:
+                    if self._cancelled():
+                        return findings
                     w = Decimal(str(arc.weight))
                     item_key: _FactKey = (arc.child, anc_path, bind_ctx, bind_unit)
                     for item_fact, rounded_item in fact_index.item_facts.get(item_key, ()):
+                        if self._cancelled():
+                            return findings
                         if id(item_fact) in fact_index.duplicate_fact_ids:
                             continue
                         contributors_seen = True

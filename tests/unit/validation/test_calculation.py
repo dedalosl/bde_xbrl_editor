@@ -1,6 +1,7 @@
 """Unit tests for CalculationConsistencyValidator (validation/calculation.py)."""
 from __future__ import annotations
 
+import threading
 from datetime import date, datetime
 from pathlib import Path
 
@@ -164,6 +165,24 @@ def test_calculation_consistent_infer_precision_like_320_00() -> None:
     )
     findings = CalculationConsistencyValidator().validate(inst, tax)
     assert not findings
+
+
+def test_validation_stops_when_cancelled() -> None:
+    cancel_event = threading.Event()
+    cancel_event.set()
+    taxonomy = _taxonomy_summation_a_equals_b()
+    instance = _instance_with_facts(
+        [
+            Fact(_q("A"), "ctx1", "u1", "2", decimals="0"),
+            Fact(_q("B"), "ctx1", "u1", "1", decimals="0"),
+        ]
+    )
+
+    findings = CalculationConsistencyValidator(cancel_event=cancel_event).validate(
+        instance, taxonomy
+    )
+
+    assert findings == []
 
 
 def test_calculation_inconsistent_like_320_17() -> None:
