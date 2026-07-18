@@ -63,4 +63,5 @@ python_classes = ["Test*"]
 python_functions = ["test_*"]
 markers = [
     "qt: marks tests that exercise Qt/PySide UI behavior",
+    "slow: marks conformance tests that process complete external suites",
 ]

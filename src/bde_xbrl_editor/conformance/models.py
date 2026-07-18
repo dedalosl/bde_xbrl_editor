@@ -22,6 +22,8 @@ class SuiteStatus(str, Enum):
 
 
 class TestResultOutcome(str, Enum):
+    __test__ = False
+
     PASS = "pass"
     FAIL = "fail"
     ERROR = "error"
@@ -51,6 +53,8 @@ class ExpectedOutcome:
 class TestVariation:
     """A single variation within a conformance test case."""
 
+    __test__ = False
+
     variation_id: str
     name: str
     description: str | None
@@ -64,6 +68,8 @@ class TestVariation:
 @dataclass(frozen=True)
 class TestCase:
     """A conformance test case grouping multiple variations."""
+
+    __test__ = False
 
     test_case_id: str
     description: str
@@ -80,6 +86,8 @@ class TestCase:
 @dataclass(frozen=True)
 class TestCaseResult:
     """The result of executing a single test variation."""
+
+    __test__ = False
 
     variation_id: str
     test_case_id: str

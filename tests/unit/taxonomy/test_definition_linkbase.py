@@ -59,6 +59,8 @@ def test_parse_definition_linkbase_expands_primary_items_across_has_hypercube_ta
     xmlns:link="http://www.xbrl.org/2003/linkbase"
     xmlns:xlink="http://www.w3.org/1999/xlink"
     xmlns:xbrldt="http://xbrl.org/2005/xbrldt">
+  <link:roleRef roleURI="http://example.com/elr/target"
+      xlink:type="simple" xlink:href="roles.xsd#target"/>
   <link:definitionLink xlink:role="http://example.com/elr/source">
     <link:loc xlink:type="locator" xlink:href="#root" xlink:label="loc_root"/>
     <link:loc xlink:type="locator" xlink:href="#hyp" xlink:label="loc_hyp"/>
@@ -121,6 +123,8 @@ def test_parse_definition_linkbase_expands_primary_items_in_source_elr_with_targ
     xmlns:link="http://www.xbrl.org/2003/linkbase"
     xmlns:xlink="http://www.w3.org/1999/xlink"
     xmlns:xbrldt="http://xbrl.org/2005/xbrldt">
+  <link:roleRef roleURI="http://example.com/elr/target"
+      xlink:type="simple" xlink:href="roles.xsd#target"/>
   <link:definitionLink xlink:role="http://example.com/elr/source">
     <link:loc xlink:type="locator" xlink:href="#root" xlink:label="loc_root"/>
     <link:loc xlink:type="locator" xlink:href="#leaf" xlink:label="loc_leaf"/>

@@ -10,6 +10,7 @@ from bde_xbrl_editor.taxonomy.cache import TaxonomyCache
 from bde_xbrl_editor.taxonomy.loader import TaxonomyLoader
 from bde_xbrl_editor.taxonomy.settings import LoaderSettings
 from bde_xbrl_editor.validation import InstanceValidator, ValidationReport
+from bde_xbrl_editor.validation.models import ValidationRunStatus
 
 TAXONOMY_PATH = Path("test_data/taxonomies/basicTaxonomy/sampleTaxonomy.xsd")
 
@@ -123,6 +124,24 @@ def test_validate_sync_progress_callback_called(taxonomy):
     assert len(calls) > 0
 
 
+def test_validate_sync_progress_uses_one_global_scale(taxonomy):
+    """Formula-level progress must not replace the pipeline's global denominator."""
+    instance = _make_clean_instance(taxonomy)
+    calls = []
+
+    validator = InstanceValidator(
+        taxonomy=taxonomy,
+        progress_callback=lambda current, total, message: calls.append(
+            (current, total, message)
+        ),
+    )
+
+    validator.validate_sync(instance)
+
+    assert calls
+    assert {total for _current, total, _message in calls} == {4}
+
+
 def test_validate_sync_skips_relationship_checks_by_default(taxonomy, monkeypatch):
     """Default UI-style validation should not run DTS-wide relationship checks."""
     from bde_xbrl_editor.validation import orchestrator
@@ -170,5 +189,6 @@ def test_validate_sync_cancel_event(taxonomy):
 
     validator = InstanceValidator(taxonomy=taxonomy, cancel_event=cancel_event)
     report = validator.validate_sync(instance)
-    # Still returns a report (even if partial/empty)
     assert isinstance(report, ValidationReport)
+    assert report.run_status is ValidationRunStatus.CANCELLED
+    assert not report.passed

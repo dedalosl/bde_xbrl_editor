@@ -126,6 +126,30 @@ def test_loader_instance_handoff_survives_recent_file_write_error(qtbot, qapp, m
     assert not isinstance(window.centralWidget(), TaxonomyLoaderWidget)
 
 
+def test_validation_cleanup_cancels_worker_before_waiting(qtbot, qapp) -> None:
+    events: list[str] = []
+
+    class Worker:
+        def cancel(self) -> None:
+            events.append("cancel")
+
+    class Thread:
+        def quit(self) -> None:
+            events.append("quit")
+
+        def wait(self) -> None:
+            events.append("wait")
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window._validation_worker = Worker()
+    window._validation_thread = Thread()
+
+    window._cleanup_validation_thread(cancel=True)
+
+    assert events == ["cancel", "quit", "wait"]
+
+
 def test_main_window_instance_handoff_loads_workspace(qtbot, qapp) -> None:
     window = MainWindow()
     qtbot.addWidget(window)

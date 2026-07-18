@@ -5,6 +5,7 @@ from bde_xbrl_editor.validation.exporter import ValidationReportExporter
 from bde_xbrl_editor.validation.models import (
     ValidationFinding,
     ValidationReport,
+    ValidationRunStatus,
     ValidationSeverity,
 )
 from bde_xbrl_editor.validation.orchestrator import InstanceValidator
@@ -14,6 +15,7 @@ __all__ = [
     "ValidationReport",
     "ValidationFinding",
     "ValidationSeverity",
+    "ValidationRunStatus",
     "ValidationReportExporter",
     "ValidationEngineError",
     "ExportPermissionError",

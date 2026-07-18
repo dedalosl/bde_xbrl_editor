@@ -6,8 +6,6 @@ from pathlib import Path
 
 from lxml import etree
 
-from bde_xbrl_editor.taxonomy.linkbases.calculation import _relationship_equivalence_key
-
 from bde_xbrl_editor.instance.models import (
     Fact,
     ReportingEntity,
@@ -18,6 +16,7 @@ from bde_xbrl_editor.instance.models import (
 )
 from bde_xbrl_editor.instance.s_equal import build_s_equal_key_from_xml_fragments
 from bde_xbrl_editor.taxonomy.constants import NS_XBRLI
+from bde_xbrl_editor.taxonomy.linkbases.calculation import _relationship_equivalence_key
 from bde_xbrl_editor.taxonomy.models import (
     CalculationArc,
     Concept,

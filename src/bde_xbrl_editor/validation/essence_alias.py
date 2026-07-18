@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from decimal import Decimal, InvalidOperation
+from decimal import InvalidOperation
 
 from bde_xbrl_editor.instance.models import Fact, XbrlInstance, XbrlUnit
 from bde_xbrl_editor.instance.s_equal import canonical_context_refs_by_s_equal
 from bde_xbrl_editor.taxonomy.models import Concept, QName, TaxonomyStructure
-
-_ARCROLE_ESSENCE_ALIAS = "http://www.xbrl.org/2003/arcrole/essence-alias"
 from bde_xbrl_editor.validation.calculation import _fact_is_nil_numeric, _round_fact
 from bde_xbrl_editor.validation.models import ValidationFinding, ValidationSeverity
+
+_ARCROLE_ESSENCE_ALIAS = "http://www.xbrl.org/2003/arcrole/essence-alias"
+
 
 def _unit_signature(unit: XbrlUnit) -> tuple:
     def _counter_key(values: tuple) -> tuple:

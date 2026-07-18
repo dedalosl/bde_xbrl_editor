@@ -612,14 +612,6 @@ def _collect_arcs(
                     target_from_loc=to in locs,
                     target_from_resource=to in resources,
                 )
-                equiv_key = (
-                    arcrole,
-                    link_tag,
-                    arc_use.arc_tag,
-                    elr,
-                    source,
-                    target,
-                )
                 all_arcs.append(arc_use)
     arcs = _effective_relationship_arcs(all_arcs)
     findings.extend(_collect_arc_override_findings(all_arcs))

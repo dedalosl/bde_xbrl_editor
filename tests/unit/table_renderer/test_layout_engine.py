@@ -265,13 +265,15 @@ class TestRollUpNodes:
         assert ch.levels[1][1].span == 3
         assert ch.levels[1][2].source_node.label == "R0050"
 
-        # Level 2: [placeholder, R0020-virtual, R0030, R0040]  (placeholder for R0010-virtual)
-        assert len(ch.levels[2]) == 4
+        # Level 2 is normalised to all five leaf columns. The final placeholder
+        # keeps the deeper level aligned below the shallower R0050 leaf.
+        assert len(ch.levels[2]) == 5
         assert ch.levels[2][0].is_abstract              # placeholder for R0010-virtual
         assert ch.levels[2][0].span == 1
         assert ch.levels[2][1].is_rollup_virtual        # R0020 virtual leaf
         assert ch.levels[2][2].source_node.label == "R0030"
         assert ch.levels[2][3].source_node.label == "R0040"
+        assert ch.levels[2][4].is_abstract              # placeholder below R0050
 
         # ordered_leaves: DFS order [R0010-virtual, R0020-virtual, R0030, R0040, R0050]
         leaves = ch.ordered_leaves

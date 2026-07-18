@@ -859,7 +859,7 @@ def test_schema_parse_workers_is_bounded() -> None:
     assert 1 <= _schema_parse_workers(50) <= 8
 
 
-def test_infer_local_catalog_from_cache_maps_all_host_directories(tmp_path: Path) -> None:
+def test_infer_local_catalog_from_cache_maps_entry_point_host(tmp_path: Path) -> None:
     cache_root = tmp_path / "cache"
     entry = cache_root / "www.bde.es" / "es" / "xbrl" / "fws" / "test" / "entry.xsd"
     entry.parent.mkdir(parents=True, exist_ok=True)
@@ -869,9 +869,12 @@ def test_infer_local_catalog_from_cache_maps_all_host_directories(tmp_path: Path
 
     catalog = _infer_local_catalog_from_cache(entry)
 
-    assert catalog["http://www.bde.es/"] == cache_root / "www.bde.es"
-    assert catalog["https://www.eba.europa.eu/"] == cache_root / "www.eba.europa.eu"
-    assert catalog["ftp://www.eurofiling.info/"] == cache_root / "www.eurofiling.info"
+    host_dir = cache_root / "www.bde.es"
+    assert catalog == {
+        "http://www.bde.es/": host_dir,
+        "https://www.bde.es/": host_dir,
+        "ftp://www.bde.es/": host_dir,
+    }
 
 
 def test_loader_uses_inferred_cache_catalog_for_remote_imports(tmp_path: Path) -> None:

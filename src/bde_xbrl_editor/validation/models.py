@@ -22,6 +22,21 @@ class ValidationStatus(enum.StrEnum):
     NOT_EVALUATED = "not_evaluated"
 
 
+class ValidationRunStatus(enum.StrEnum):
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
+ValidationSource = Literal[
+    "structural",
+    "formula",
+    "dimensional",
+    "calculation",
+    "relationships",
+    "essence-alias",
+]
+
+
 @dataclass(frozen=True)
 class ValidationFinding:
     """A single identified issue from a validation run. Immutable."""
@@ -29,7 +44,7 @@ class ValidationFinding:
     rule_id: str
     severity: ValidationSeverity | None
     message: str
-    source: Literal["structural", "formula", "dimensional", "calculation"]
+    source: ValidationSource
     status: ValidationStatus = ValidationStatus.FAIL
     table_id: str | None = None
     table_label: str | None = None
@@ -61,6 +76,7 @@ class ValidationReport:
     formula_linkbase_available: bool
     structural_checks_run: bool = True
     stage_timings: tuple[StageTiming, ...] = field(default_factory=tuple)
+    run_status: ValidationRunStatus = ValidationRunStatus.COMPLETED
 
     @property
     def error_count(self) -> int:
@@ -72,7 +88,7 @@ class ValidationReport:
 
     @property
     def passed(self) -> bool:
-        return self.error_count == 0
+        return self.run_status is ValidationRunStatus.COMPLETED and self.error_count == 0
 
     @property
     def pass_count(self) -> int:

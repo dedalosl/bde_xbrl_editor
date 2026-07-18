@@ -300,6 +300,8 @@ def _formula_discovery_seed_linkbases(instance_linkbase_refs: tuple[Path, ...]) 
 class TestCaseExecutor:
     """Executes a single conformance test variation and returns a TestCaseResult."""
 
+    __test__ = False
+
     def __init__(
         self,
         taxonomy_cache: TaxonomyCache,

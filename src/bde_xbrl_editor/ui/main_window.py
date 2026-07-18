@@ -49,6 +49,7 @@ from bde_xbrl_editor.ui.widgets.taxonomy_catalog_loader_widget import (
     TaxonomyCatalogLoaderWidget,
 )
 from bde_xbrl_editor.ui.widgets.taxonomy_loader_widget import TaxonomyLoaderWidget
+from bde_xbrl_editor.validation.models import ValidationRunStatus
 
 
 @dataclass(frozen=True)
@@ -380,7 +381,7 @@ class MainWindow(QMainWindow):
             with contextlib.suppress(RuntimeError, TypeError):
                 self._table_view.shutdown_background_tasks()
         self._cleanup_instance_open_thread(wait=False)
-        self._cleanup_validation_thread()
+        self._cleanup_validation_thread(cancel=True)
         self._cleanup_formula_hydration_thread(cancel=True)
 
     def _show_loader_widget(self, path: str | None = None) -> None:
@@ -1630,13 +1631,17 @@ class MainWindow(QMainWindow):
         self._cleanup_validation_thread()
         if self._validation_panel:
             self._validation_panel.show_report(report)
-        label = (
-            "Validation — passed"
-            if report.passed
-            else f"Validation — {report.error_count} error(s)"
-        )
+        if report.run_status is ValidationRunStatus.CANCELLED:
+            label = "Validation — cancelled"
+        elif report.passed:
+            label = "Validation — passed"
+        else:
+            label = f"Validation — {report.error_count} error(s)"
         self._set_validation_panel_expanded(True, label)
-        status = "PASSED" if report.passed else f"FAILED ({report.error_count} error(s))"
+        if report.run_status is ValidationRunStatus.CANCELLED:
+            status = "CANCELLED"
+        else:
+            status = "PASSED" if report.passed else f"FAILED ({report.error_count} error(s))"
         if report.stage_timings:
             self._status.showMessage(
                 f"Validation {status} in {format_duration(report.total_elapsed_seconds)} — "
@@ -1652,10 +1657,12 @@ class MainWindow(QMainWindow):
         self._set_validation_panel_expanded(False, "Validation — failed")
         QMessageBox.critical(self, "Validation Error", error_message)
 
-    def _cleanup_validation_thread(self) -> None:
+    def _cleanup_validation_thread(self, *, cancel: bool = False) -> None:
         self._validate_action.setEnabled(
             self._current_instance is not None and self._current_taxonomy is not None
         )
+        if cancel and self._validation_worker is not None:
+            self._validation_worker.cancel()
         if self._validation_thread:
             self._validation_thread.quit()
             self._validation_thread.wait()

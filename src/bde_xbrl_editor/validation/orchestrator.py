@@ -17,13 +17,14 @@ from bde_xbrl_editor.instance.models import XbrlInstance
 from bde_xbrl_editor.performance import StageTiming
 from bde_xbrl_editor.taxonomy.models import TaxonomyStructure
 from bde_xbrl_editor.validation.calculation import CalculationConsistencyValidator
-from bde_xbrl_editor.validation.essence_alias import EssenceAliasValidator
 from bde_xbrl_editor.validation.dimensional import DimensionalConstraintValidator
+from bde_xbrl_editor.validation.essence_alias import EssenceAliasValidator
 from bde_xbrl_editor.validation.formula.evaluator import FormulaEvaluator
 from bde_xbrl_editor.validation.formula.static import FormulaStaticValidator
 from bde_xbrl_editor.validation.models import (
     ValidationFinding,
     ValidationReport,
+    ValidationRunStatus,
     ValidationSeverity,
 )
 from bde_xbrl_editor.validation.relationships import RelationshipSetValidator
@@ -221,9 +222,15 @@ class InstanceValidator:
                 )
                 findings.extend(static_findings)
                 self._publish_findings(static_findings)
+                def formula_progress(current: int, total: int, message: str) -> None:
+                    if self._progress_callback is None:
+                        return
+                    detail = f"{message} ({current}/{total})" if total > 0 else message
+                    self._progress_callback(formula_step, total_steps, detail)
+
                 fe = FormulaEvaluator(
                     taxonomy=self._taxonomy,
-                    progress_callback=self._progress_callback,
+                    progress_callback=formula_progress,
                     finding_callback=self._publish_findings,
                     cancel_event=self._cancel_event,
                     general_variable_values=self._general_variable_values,
@@ -242,13 +249,18 @@ class InstanceValidator:
                 self._publish_findings(stage_findings)
             stage_timings.append(StageTiming("formula", time.perf_counter() - stage_started_at))
 
+        cancelled = bool(self._cancel_event and self._cancel_event.is_set())
         if self._progress_callback:
             with contextlib.suppress(Exception):
                 elapsed_total = sum(stage.elapsed_seconds for stage in stage_timings)
                 self._progress_callback(
                     total_steps,
                     total_steps,
-                    f"Validation complete ({elapsed_total:.2f}s)",
+                    (
+                        f"Validation cancelled ({elapsed_total:.2f}s)"
+                        if cancelled
+                        else f"Validation complete ({elapsed_total:.2f}s)"
+                    ),
                 )
 
         meta = self._taxonomy.metadata
@@ -262,6 +274,11 @@ class InstanceValidator:
             or (self._taxonomy.formula_linkbase_path is not None),
             structural_checks_run=True,
             stage_timings=tuple(stage_timings),
+            run_status=(
+                ValidationRunStatus.CANCELLED
+                if cancelled
+                else ValidationRunStatus.COMPLETED
+            ),
         )
 
     def _publish_findings(self, findings: tuple[ValidationFinding, ...]) -> None:
