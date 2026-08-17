@@ -1,10 +1,10 @@
 Buenos días. En esta presentación voy a explicar mi Trabajo Fin de Máster: BDE XBRL Editor.
 
-El proyecto consiste en una aplicación de escritorio para trabajar con documentos XBRL orientados a taxonomías del Banco de España. El objetivo no era únicamente crear una interfaz gráfica, sino construir una herramienta completa para cargar taxonomías, crear o abrir instancias XBRL, visualizar tablas regulatorias, editar hechos y validar el resultado antes de una posible entrega.
+El proyecto consiste en una aplicación de escritorio para trabajar con documentos XBRL orientados a taxonomías del Banco de España. El objetivo era crear una herramienta completa para cargar taxonomías, abrir instancias XBRL, visualizar ambas en forma de tablas, editar hechos y validar el resultado antes de una posible entrega.
 
-El punto importante es que XBRL no es solo XML. Detrás hay esquemas, dimensiones, linkbases, fórmulas, reglas de cálculo y estructuras tabulares complejas. Por eso el proyecto se ha planteado como una combinación de producto, arquitectura software y verificación técnica.
+El punto importante es que XBRL no es solo XML. Detrás hay esquemas, dimensiones, linkbases, fórmulas, reglas de cálculo y estructuras tabulares complejas. Por eso el proyecto tiene una complejidad técnica alta y quería ver si usando mis conocimientos de XBRL más lo que he aprendido durante el master de uso de IA para el desarrollo, era capaz de generar un producto completo.
 
-La implementación actual está alineada con el entorno del repositorio: Python 3.13 o superior, PySide6 para la interfaz, lxml y xmlschema para XML y XSD, y elementpath para XPath 2.0 y fórmulas XBRL.
+La implementación actual usa: Python 3.13 o superior, PySide6 para la interfaz, lxml y xmlschema para XML y XSD, y elementpath para XPath 2.0 y fórmulas XBRL.
 
 El problema de partida es que el reporting financiero en XBRL es técnicamente exigente. Una instancia válida depende de que todos los elementos estén alineados: conceptos, contextos, unidades, dimensiones, fechas, importes, etiquetas y validaciones.
 

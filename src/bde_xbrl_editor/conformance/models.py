@@ -4,16 +4,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
-
 
 # ---------------------------------------------------------------------------
 # Enumerations
 # ---------------------------------------------------------------------------
 
 
-class SuiteStatus(str, Enum):
+class SuiteStatus(StrEnum):
     PASSED = "passed"
     FAILED = "failed"
     ERRORED = "errored"
@@ -21,7 +20,7 @@ class SuiteStatus(str, Enum):
     SKIPPED = "skipped"
 
 
-class TestResultOutcome(str, Enum):
+class TestResultOutcome(StrEnum):
     __test__ = False
 
     PASS = "pass"
@@ -30,10 +29,18 @@ class TestResultOutcome(str, Enum):
     SKIPPED = "skipped"
 
 
-class ExpectedOutcomeType(str, Enum):
+class ExpectedOutcomeType(StrEnum):
     VALID = "valid"
     ERROR = "error"
     WARNING = "warning"
+
+
+class ExpectedResultFileType(StrEnum):
+    """Kinds of file-backed results declared by conformance manifests."""
+
+    FILE = "file"
+    INSTANCE = "instance"
+    TABLE = "table"
 
 
 # ---------------------------------------------------------------------------
@@ -42,11 +49,57 @@ class ExpectedOutcomeType(str, Enum):
 
 
 @dataclass(frozen=True)
+class ExpectedAssertionTest:
+    """Expected Formula assertion evaluation counts for one assertion."""
+
+    assertion_id: str
+    count_satisfied: int | None = None
+    count_not_satisfied: int | None = None
+
+
+@dataclass(frozen=True)
+class ExpectedMessage:
+    """One expected satisfied/unsatisfied Formula message."""
+
+    satisfied: bool
+    text: str
+    language: str | None = None
+
+
+@dataclass(frozen=True)
+class ExpectedMessageTest:
+    """Expected messages emitted for one Formula assertion."""
+
+    assertion_id: str
+    messages: tuple[ExpectedMessage, ...] = ()
+
+
+@dataclass(frozen=True)
+class ExpectedResultFile:
+    """A file-backed expected result declared by a conformance variation."""
+
+    file_type: ExpectedResultFileType
+    path: Path
+
+
+@dataclass(frozen=True)
 class ExpectedOutcome:
-    """The expected result of a conformance test variation."""
+    """The complete expected result of a conformance test variation."""
 
     outcome_type: ExpectedOutcomeType
     error_code: str | None = None
+    assertion_tests: tuple[ExpectedAssertionTest, ...] = ()
+    message_tests: tuple[ExpectedMessageTest, ...] = ()
+    result_files: tuple[ExpectedResultFile, ...] = ()
+    unsupported_result_elements: tuple[str, ...] = ()
+
+    @property
+    def requires_output_comparison(self) -> bool:
+        """Whether success requires comparing processor-generated output."""
+        return any(
+            result.file_type in {ExpectedResultFileType.INSTANCE, ExpectedResultFileType.TABLE}
+            for result in self.result_files
+        )
 
 
 @dataclass(frozen=True)
@@ -124,17 +177,13 @@ class SuiteResult:
     @property
     def failed(self) -> int:
         """Mandatory failures."""
-        return sum(
-            1 for r in self.results
-            if r.outcome == TestResultOutcome.FAIL and r.mandatory
-        )
+        return sum(1 for r in self.results if r.outcome == TestResultOutcome.FAIL and r.mandatory)
 
     @property
     def failed_optional(self) -> int:
         """Non-mandatory failures."""
         return sum(
-            1 for r in self.results
-            if r.outcome == TestResultOutcome.FAIL and not r.mandatory
+            1 for r in self.results if r.outcome == TestResultOutcome.FAIL and not r.mandatory
         )
 
     @property

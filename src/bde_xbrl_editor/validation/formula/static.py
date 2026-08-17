@@ -218,8 +218,7 @@ def _custom_function_linkbase_findings(
     for root in roots:
         used_functions.update(_used_custom_function_names(root))
         has_function_implementation_arcrole = (
-            has_function_implementation_arcrole
-            or _has_function_implementation_arcrole(root)
+            has_function_implementation_arcrole or _has_function_implementation_arcrole(root)
         )
 
         for function in root.iter(_TAG_FUNCTION):
@@ -459,9 +458,8 @@ def _generic_message_linkbase_findings(path: Path) -> list[ValidationFinding]:
                 )
             )
             continue
-        if (
-            (assertion_el.get("implicitFiltering") or "true").lower() == "false"
-            and any("xff:uncovered-aspect" in expression for expression in expressions)
+        if (assertion_el.get("implicitFiltering") or "true").lower() == "false" and any(
+            "xff:uncovered-aspect" in expression for expression in expressions
         ):
             findings.append(
                 _finding(
@@ -686,8 +684,7 @@ def _existence_assertion_static_findings(
             "xbrleae:variableReferenceNotAllowed",
             (
                 f"Existence assertion '{assertion.assertion_id}' test expression references "
-                "fact or general variables: "
-                + ", ".join(sorted(referenced_names))
+                "fact or general variables: " + ", ".join(sorted(referenced_names))
             ),
         )
     ]
@@ -1345,11 +1342,7 @@ def _variable_set_xpath_static_findings(
             code = getattr(exc, "code", None)
             if isinstance(code, str) and code == "err:XPST0017":
                 missing_function = _missing_custom_function_name(exc)
-                missing_text = (
-                    f": {missing_function}"
-                    if missing_function is not None
-                    else ""
-                )
+                missing_text = f": {missing_function}" if missing_function is not None else ""
                 findings.append(
                     _finding(
                         "xbrlve:noCustomFunctionSignature",
@@ -1418,7 +1411,7 @@ def _formula_aspect_model_findings(formula: FormulaOutputDefinition) -> list[Val
             )
     if formula.aspect_model == "dimensional":
         has_segment_scenario_filters = any(
-            xpath_filter.filter_type == "segment-scenario"
+            xpath_filter.filter_type in {"segment-scenario", "segment", "scenario"}
             for variable in formula.variables
             for xpath_filter in variable.xpath_filters
         )
@@ -1628,7 +1621,9 @@ def _strip_xpath_comments(expr: str) -> str:
     return _XPATH_COMMENT_RE.sub("", expr)
 
 
-def _variable_set_expressions(variable_set: FormulaAssertion | FormulaOutputDefinition) -> tuple[str, ...]:
+def _variable_set_expressions(
+    variable_set: FormulaAssertion | FormulaOutputDefinition,
+) -> tuple[str, ...]:
     expressions: list[str] = []
     if isinstance(variable_set, FormulaAssertion):
         test_xpath = getattr(variable_set, "test_xpath", None)
@@ -1802,6 +1797,7 @@ def _has_disallowed_fallback_value_reference(
                 return True
     return False
 
+
 def _report_formula_xpath_static_error(code: str, exc: Exception) -> bool:
     if code == "err:XPST0081":
         return True
@@ -1910,7 +1906,7 @@ def _variable_covers_aspect(variable: FactVariableDefinition, aspect: str) -> bo
     return any(
         resource.local_name == "aspectCover"
         and resource.cover is True
-        and aspect in resource.aspects
+        and (aspect in resource.aspects or "all" in resource.aspects)
         for resource in variable.filter_resources
     )
 

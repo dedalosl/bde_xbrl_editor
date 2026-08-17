@@ -3,14 +3,18 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
 from bde_xbrl_editor.conformance.models import (
+    ExpectedAssertionTest,
     ExpectedOutcome,
     ExpectedOutcomeType,
+    ExpectedResultFile,
+    ExpectedResultFileType,
     SuiteResult,
     SuiteRunReport,
     SuiteStatus,
@@ -19,7 +23,6 @@ from bde_xbrl_editor.conformance.models import (
 )
 from bde_xbrl_editor.conformance.reporters.console import ConsoleReporter
 from bde_xbrl_editor.conformance.reporters.json_reporter import JsonReporter
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -64,7 +67,7 @@ def _make_suite_result(
 
 def _make_report(suite_results=None, exit_code: int = 0) -> SuiteRunReport:
     return SuiteRunReport(
-        run_timestamp=datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
+        run_timestamp=datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC),
         runner_version="1.0.0",
         suite_results=tuple(suite_results or [_make_suite_result()]),
         exit_code=exit_code,
@@ -110,6 +113,35 @@ class TestJsonReporter:
         d = reporter.to_dict(report)
         # Should parse without error
         datetime.fromisoformat(d["run_timestamp"])
+
+    def test_to_dict_preserves_rich_expected_results(self) -> None:
+        rich_result = replace(
+            _make_result(),
+            expected_outcome=ExpectedOutcome(
+                outcome_type=ExpectedOutcomeType.VALID,
+                assertion_tests=(ExpectedAssertionTest("assertion", 2, 1),),
+                result_files=(
+                    ExpectedResultFile(
+                        ExpectedResultFileType.INSTANCE,
+                        Path("expected.xml"),
+                    ),
+                ),
+                unsupported_result_elements=("messageTests",),
+            ),
+        )
+        report = _make_report(suite_results=[_make_suite_result(results=(rich_result,))])
+
+        expected = JsonReporter().to_dict(report)["suites"][0]["results"][0]["expected_outcome"]
+
+        assert expected["assertion_tests"] == [
+            {
+                "assertion_id": "assertion",
+                "count_satisfied": 2,
+                "count_not_satisfied": 1,
+            }
+        ]
+        assert expected["result_files"] == [{"type": "instance", "path": "expected.xml"}]
+        assert expected["unsupported_result_elements"] == ["messageTests"]
 
     def test_write_creates_json_file(self, tmp_path: Path) -> None:
         report = _make_report()

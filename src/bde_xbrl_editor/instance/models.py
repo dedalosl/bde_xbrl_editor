@@ -168,6 +168,10 @@ class ReportingPeriod:
     instant_date: date | None = None
     start_date: date | None = None
     end_date: date | None = None
+    # XBRL date-only instant/end lexicals denote the following midnight for
+    # period S-equality and xfi:* boundary functions.
+    instant_date_only: bool = False
+    end_date_only: bool = False
 
     def __post_init__(self) -> None:
         if self.period_type == "instant":
@@ -225,6 +229,7 @@ class XbrlContext:
     dimensions: dict[QName, QName] = field(default_factory=dict)
     typed_dimensions: dict[QName, str] = field(default_factory=dict)
     typed_dimension_elements: dict[QName, QName] = field(default_factory=dict)
+    typed_dimension_xml: dict[QName, bytes] = field(default_factory=dict)
     context_element: Literal["scenario", "segment"] = "scenario"
     # Per-dimension container: "segment" or "scenario" for each dimension QName.
     # Used to validate xbrldt:contextElement constraints on hypercubes.
@@ -314,8 +319,12 @@ class Fact:
     decimals: str | None = None
     precision: str | None = None
     is_nil: bool = False
+    # Tuple facts are kept separately from item facts on XbrlInstance.
+    is_tuple: bool = False
     # Indices of tuple ancestors from the xbrl root (empty = direct child of xbrl).
     tuple_path: tuple[int, ...] = ()
+    # QName chain of tuple ancestors, outermost first, for Formula tuple filters.
+    tuple_ancestor_concepts: tuple[QName, ...] = ()
     # Document position path (root child index, then tuple child indices) for duplicate detection.
     position_path: tuple[int, ...] = ()
 
@@ -364,6 +373,9 @@ class XbrlInstance:
     contexts: dict[ContextId, XbrlContext] = field(default_factory=dict)
     units: dict[UnitId, XbrlUnit] = field(default_factory=dict)
     facts: list[Fact] = field(default_factory=list)
+    # Formula fact variables can bind tuples, while item validators and the
+    # serializer continue to consume only ``facts``.
+    tuple_facts: list[Fact] = field(default_factory=list)
     orphaned_facts: list[OrphanedFact] = field(default_factory=list)
     edit_history: list[EditOperation] = field(default_factory=list)
     # BDE IE_2008_02 preamble (EntidadPresentadora, TipoEnvio, EstadosReportados).

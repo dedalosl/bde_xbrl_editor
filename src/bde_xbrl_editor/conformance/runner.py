@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import importlib.metadata
 import logging
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from bde_xbrl_editor.conformance.errors import SuiteDataMissingError
@@ -31,18 +32,21 @@ def _compute_suite_status(results: list[TestCaseResult]) -> SuiteStatus:
     if not results:
         return SuiteStatus.PASSED
 
-    has_mandatory_fail = any(
-        r.outcome == TestResultOutcome.FAIL and r.mandatory for r in results
-    )
+    has_mandatory_fail = any(r.outcome == TestResultOutcome.FAIL and r.mandatory for r in results)
     has_error = any(r.outcome == TestResultOutcome.ERROR for r in results)
+    has_mandatory_skip = any(
+        r.outcome == TestResultOutcome.SKIPPED and r.mandatory for r in results
+    )
     all_skipped = all(r.outcome == TestResultOutcome.SKIPPED for r in results)
 
-    if all_skipped:
-        return SuiteStatus.SKIPPED
     if has_mandatory_fail:
         return SuiteStatus.FAILED
     if has_error:
         return SuiteStatus.ERRORED
+    if has_mandatory_skip:
+        return SuiteStatus.INCOMPLETE
+    if all_skipped:
+        return SuiteStatus.SKIPPED
     return SuiteStatus.PASSED
 
 
@@ -116,10 +120,8 @@ class ConformanceRunner:
                         current += 1
 
                         if progress_callback is not None:
-                            try:
+                            with contextlib.suppress(Exception):
                                 progress_callback(variation.variation_id, current, total_variations)
-                            except Exception:  # noqa: BLE001
-                                pass
 
                         if (
                             self._stop_on_first_failure
@@ -170,7 +172,7 @@ class ConformanceRunner:
         exit_code = self._compute_exit_code(suite_results)
 
         return SuiteRunReport(
-            run_timestamp=datetime.now(timezone.utc),
+            run_timestamp=datetime.now(UTC),
             runner_version=runner_version,
             suite_results=tuple(suite_results),
             exit_code=exit_code,

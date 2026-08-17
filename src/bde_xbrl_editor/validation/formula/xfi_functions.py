@@ -31,6 +31,8 @@ from decimal import Decimal, InvalidOperation
 from types import SimpleNamespace
 from typing import Any
 
+from lxml import etree
+
 from bde_xbrl_editor.taxonomy.constants import FORMULA_XPATH_DEFAULT_PREFIXES
 from bde_xbrl_editor.taxonomy.models import CustomFunctionDefinition
 from bde_xbrl_editor.validation.formula.xpath_registration import (
@@ -91,6 +93,11 @@ def _custom_functions() -> tuple[CustomFunctionDefinition, ...]:
     return tuple(_eval_context.get("_custom_functions") or ())
 
 
+def _taxonomy() -> Any:
+    """Return the taxonomy associated with the current XPath evaluation."""
+    return _eval_context.get("_taxonomy")
+
+
 def _period_of(context: Any) -> Any:
     """Return the ReportingPeriod from an XbrlContext (or None)."""
     if context is None:
@@ -101,15 +108,24 @@ def _period_of(context: Any) -> Any:
 def _fact_from_arg(arg: Any) -> Any:
     """If *arg* looks like a Fact (has .context_ref), return it; otherwise
     return the current fact from the evaluation context."""
-    if arg is not None and hasattr(arg, "context_ref"):
-        return arg
-    if arg is not None and hasattr(arg, "get"):
-        context_ref = arg.get("contextRef")
+    candidate = arg
+    if candidate is not None and hasattr(candidate, "context_ref"):
+        return candidate
+    if candidate is not None and not hasattr(candidate, "get"):
+        # elementpath passes XML variables to extension functions as XPathNode
+        # wrappers.  Unwrap those before looking for XBRL fact attributes.
+        wrapped_element = getattr(candidate, "elem", None)
+        if wrapped_element is None:
+            wrapped_element = getattr(candidate, "value", None)
+        if wrapped_element is not None:
+            candidate = wrapped_element
+    if candidate is not None and hasattr(candidate, "get"):
+        context_ref = candidate.get("contextRef")
         if context_ref:
             return SimpleNamespace(
                 context_ref=context_ref,
-                unit_ref=arg.get("unitRef"),
-                decimals=arg.get("decimals"),
+                unit_ref=candidate.get("unitRef"),
+                decimals=candidate.get("decimals"),
             )
     return _current_fact()
 
@@ -249,6 +265,10 @@ def xfi_period_instant(period_arg: Any) -> Any:
     if p is None:
         return None
     d = getattr(p, "instant_date", None)
+    if d is not None and getattr(p, "instant_date_only", False):
+        from datetime import timedelta
+
+        d = d + timedelta(days=1)
     return _to_xsd_datetime(d)
 
 
@@ -275,6 +295,10 @@ def xfi_period_end(period_arg: Any) -> Any:
     if p is None:
         return None
     d = getattr(p, "end_date", None)
+    if d is not None and getattr(p, "end_date_only", False):
+        from datetime import timedelta
+
+        d = d + timedelta(days=1)
     return _to_xsd_date(d)
 
 
@@ -491,15 +515,19 @@ def _qname_from_arg(qname_arg: Any) -> Any:
     """Try to interpret qname_arg as a QName (Clark notation or QName object)."""
     if qname_arg is None:
         return None
-    # If it's already a QName-like object with .namespace and .local_name
+    from bde_xbrl_editor.taxonomy.models import QName
+
+    # Normalize elementpath's QName datatype to the domain QName used as the
+    # key in contexts and taxonomy maps.
     if hasattr(qname_arg, "namespace") and hasattr(qname_arg, "local_name"):
-        return qname_arg
+        return QName(
+            namespace=str(qname_arg.namespace),
+            local_name=str(qname_arg.local_name),
+        )
     # If it's a Clark-notation string {ns}local
     s = str(qname_arg)
     if s.startswith("{"):
         try:
-            from bde_xbrl_editor.taxonomy.models import QName
-
             return QName.from_clark(s)
         except ValueError as exc:
             log.debug("Could not parse QName argument %r: %s", qname_arg, exc)
@@ -951,7 +979,15 @@ def xfi_negative_filing_indicator(indicators_arg: Any, template_code_arg: Any) -
 
 
 def xfi_linkbase_link_roles(linkbase_arg: Any = None) -> list[str]:
-    """xfi:linkbase-link-roles($linkbase) → empty (not modelled)."""
+    """Return ELRs containing relationships for the requested standard arcrole."""
+    taxonomy = _taxonomy()
+    if taxonomy is None:
+        return []
+    arcrole = str(linkbase_arg or "")
+    if arcrole.endswith("/summation-item"):
+        return [role for role, arcs in taxonomy.calculation.items() if arcs]
+    if arcrole.endswith("/parent-child"):
+        return [role for role, network in taxonomy.presentation.items() if network.arcs]
     return []
 
 
@@ -976,18 +1012,152 @@ def xfi_fact_footnotes(fact_arg: Any) -> list:
 
 
 def xfi_concept_relationships(concept_arg: Any, *args: Any) -> list:
-    """xfi:concept-relationships($concept, ...) → empty (not modelled)."""
+    """Return effective standard relationships selected by concept, ELR and axis."""
+    taxonomy = _taxonomy()
+    concept = _qname_from_arg(concept_arg)
+    if taxonomy is None or concept is None or len(args) < 3:
+        return []
+
+    link_role = str(args[0] or "")
+    arcrole = str(args[1] or "")
+    axis = str(args[2] or "child")
+    if arcrole.endswith("/summation-item"):
+        relationships = list(taxonomy.calculation.get(link_role, ()))
+    elif arcrole.endswith("/parent-child"):
+        network = taxonomy.presentation.get(link_role)
+        relationships = list(network.arcs) if network is not None else []
+    else:
+        relationships = [
+            relationship
+            for relationship in (_eval_context.get("_formula_relationships") or ())
+            if relationship.link_role == link_role and relationship.arcrole == arcrole
+        ]
+    relationships = _distinct_relationships(relationships)
+
+    is_root = concept.namespace == _XFI_NS and concept.local_name == "root"
+    if is_root:
+        roots = {rel.parent for rel in relationships} - {rel.child for rel in relationships}
+        if axis == "child":
+            selected = [rel for rel in relationships if rel.parent in roots]
+            return [_relationship_element(rel) for rel in selected]
+        if axis in {"descendant", "descendant-or-self"}:
+            selected = _walk_relationships(relationships, roots, forward=True)
+            return [_relationship_element(rel) for rel in selected]
+        return []
+    if axis == "child":
+        selected = [rel for rel in relationships if rel.parent == concept]
+        return [_relationship_element(rel) for rel in selected]
+    if axis == "parent":
+        selected = [rel for rel in relationships if rel.child == concept]
+        return [_relationship_element(rel) for rel in selected]
+    if axis in {"descendant", "descendant-or-self"}:
+        selected = _walk_relationships(relationships, {concept}, forward=True)
+        return [_relationship_element(rel) for rel in selected]
+    if axis in {"ancestor", "ancestor-or-self"}:
+        selected = _walk_relationships(relationships, {concept}, forward=False)
+        return [_relationship_element(rel) for rel in selected]
     return []
 
 
-def xfi_relationship_from_concept(rel_arg: Any) -> str:
-    """xfi:relationship-from-concept($rel) → empty (not modelled)."""
-    return ""
+def _walk_relationships(relationships: list[Any], seeds: set[Any], *, forward: bool) -> list[Any]:
+    """Walk a relationship network in deterministic breadth-first order."""
+    result: list[Any] = []
+    frontier = set(seeds)
+    seen: set[int] = set()
+    while frontier:
+        next_frontier: set[Any] = set()
+        for relationship in relationships:
+            source = relationship.parent if forward else relationship.child
+            target = relationship.child if forward else relationship.parent
+            marker = id(relationship)
+            if source in frontier and marker not in seen:
+                seen.add(marker)
+                result.append(relationship)
+                next_frontier.add(target)
+        frontier = next_frontier
+    return result
 
 
-def xfi_relationship_to_concept(rel_arg: Any) -> str:
-    """xfi:relationship-to-concept($rel) → empty (not modelled)."""
-    return ""
+def _distinct_relationships(relationships: list[Any]) -> list[Any]:
+    """Collapse duplicate discoveries of the same effective relationship."""
+    distinct: list[Any] = []
+    seen: set[tuple[Any, ...]] = set()
+    for relationship in relationships:
+        key = (
+            relationship.parent,
+            relationship.child,
+            getattr(relationship, "extended_link_role", ""),
+            getattr(relationship, "order", None),
+            getattr(relationship, "weight", None),
+            getattr(relationship, "preferred_label", None),
+        )
+        if key not in seen:
+            seen.add(key)
+            distinct.append(relationship)
+    return distinct
+
+
+def _xpath_qname(qname: Any) -> Any:
+    """Convert a domain QName to elementpath's QName datatype."""
+    if qname is None:
+        return ""
+    try:
+        from elementpath.datatypes import QName as XPathQName
+
+        prefix = getattr(qname, "prefix", None) or "xfi_rel"
+        return XPathQName(qname.namespace, f"{prefix}:{qname.local_name}")
+    except (ImportError, TypeError, ValueError):
+        return str(qname)
+
+
+def _relationship_element(relationship: Any) -> etree._Element:
+    """Represent an effective relationship as an XPath-compatible node."""
+    element = etree.Element(f"{{{_XFI_NS}}}relationship")
+    element.set("from", f"{{{relationship.parent.namespace}}}{relationship.parent.local_name}")
+    element.set("to", f"{{{relationship.child.namespace}}}{relationship.child.local_name}")
+    for xml_name, python_name in (
+        ("weight", "weight"),
+        ("order", "order"),
+        ("use", "use"),
+        ("priority", "priority"),
+        ("preferredLabel", "preferred_label"),
+    ):
+        value = getattr(relationship, python_name, None)
+        if value is not None:
+            element.set(xml_name, str(value))
+    for qname, value in (getattr(relationship, "attributes", {}) or {}).items():
+        attribute_name = (
+            f"{{{qname.namespace}}}{qname.local_name}" if qname.namespace else qname.local_name
+        )
+        element.set(attribute_name, value)
+    return element
+
+
+def _relationship_node(rel_arg: Any) -> Any:
+    """Unwrap elementpath node wrappers used for relationship variables."""
+    candidate = rel_arg
+    if not hasattr(candidate, "get"):
+        candidate = getattr(candidate, "elem", None)
+        if candidate is None:
+            candidate = getattr(rel_arg, "value", None)
+    return candidate
+
+
+def _relationship_endpoint(rel_arg: Any, endpoint: str) -> Any:
+    relationship = _relationship_node(rel_arg)
+    if relationship is None or not hasattr(relationship, "get"):
+        return ""
+    return _xpath_qname(_qname_from_arg(relationship.get(endpoint)))
+
+
+def xfi_relationship_from_concept(rel_arg: Any) -> Any:
+    """Return the source concept QName of an effective relationship."""
+    return _relationship_endpoint(rel_arg, "from")
+
+
+def xfi_relationship_to_concept(rel_arg: Any) -> Any:
+    """Return the target concept QName of an effective relationship."""
+    return _relationship_endpoint(rel_arg, "to")
 
 
 def xfi_distinct_nonabstract_parent_concepts(*args: Any) -> list:
@@ -995,9 +1165,36 @@ def xfi_distinct_nonabstract_parent_concepts(*args: Any) -> list:
     return []
 
 
-def xfi_relationship_attribute(rel_arg: Any, attr_arg: Any) -> str:
-    """xfi:relationship-attribute($rel, $attr) → empty (not modelled)."""
-    return ""
+def xfi_relationship_attribute(rel_arg: Any, attr_arg: Any) -> Any:
+    """Return a standard relationship attribute from the effective arc."""
+    attribute = _qname_from_arg(attr_arg)
+    local_name = attribute.local_name if attribute is not None else str(attr_arg or "")
+    relationship = _relationship_node(rel_arg)
+    if relationship is None or not hasattr(relationship, "get"):
+        return ""
+    attribute_name = (
+        f"{{{attribute.namespace}}}{attribute.local_name}"
+        if attribute is not None and attribute.namespace
+        else local_name
+    )
+    value = relationship.get(attribute_name)
+    if value is None:
+        return ""
+    if local_name in {"weight", "order"}:
+        try:
+            return Decimal(value)
+        except InvalidOperation:
+            return value
+    if local_name == "priority":
+        try:
+            return int(value)
+        except ValueError:
+            return value
+    try:
+        return Decimal(value)
+    except InvalidOperation:
+        pass
+    return value
 
 
 def xfi_relationship_link_attribute(rel_arg: Any, attr_arg: Any) -> str:
@@ -1569,6 +1766,7 @@ def build_formula_parser(
     namespaces: dict[str, str] | None = None,
     custom_functions: tuple[CustomFunctionDefinition, ...] = (),
     expression_hints: tuple[str, ...] | list[str] = (),
+    schema: Any = None,
 ) -> Any:
     """Return an XPath2Parser instance with all xfi: functions registered and
     the given formula-file namespaces in scope.
@@ -1582,7 +1780,7 @@ def build_formula_parser(
     ns.setdefault("xfi", _XFI_NS)
     ns.setdefault("efn", _EFN_NS)
     ns.setdefault("iaf", _IAF_NS)
-    parser = cls(namespaces=ns)
+    parser = cls(namespaces=ns, schema=schema)
     if custom_functions:
         selected_functions = (
             _select_custom_functions(

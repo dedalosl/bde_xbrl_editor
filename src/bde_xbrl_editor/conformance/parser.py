@@ -10,8 +10,13 @@ from lxml import etree
 
 from bde_xbrl_editor.conformance.errors import SuiteDataMissingError, TestCaseParseError
 from bde_xbrl_editor.conformance.models import (
+    ExpectedAssertionTest,
+    ExpectedMessage,
+    ExpectedMessageTest,
     ExpectedOutcome,
     ExpectedOutcomeType,
+    ExpectedResultFile,
+    ExpectedResultFileType,
     TestCase,
     TestVariation,
 )
@@ -22,6 +27,7 @@ log = logging.getLogger(__name__)
 
 # Data element local names that describe input files
 _DATA_FILE_TAGS = frozenset(["xsd", "schema", "instance", "linkbase"])
+_RESULT_FILE_TAGS = frozenset(member.value for member in ExpectedResultFileType)
 
 
 def _local(tag: object) -> str:
@@ -36,35 +42,88 @@ def _local(tag: object) -> str:
     return tag
 
 
-def _parse_expected_outcome(result_el: etree._Element | None) -> ExpectedOutcome:
+def _optional_int(value: str | None) -> int | None:
+    if value is None or not value.strip():
+        return None
+    return int(value)
+
+
+def _parse_expected_outcome(
+    result_el: etree._Element | None,
+    base_dir: Path,
+) -> ExpectedOutcome:
     """Convert a <result> element into an ExpectedOutcome."""
     if result_el is None:
         return ExpectedOutcome(outcome_type=ExpectedOutcomeType.VALID)
 
-    # Check @expected attribute
-    expected_attr = result_el.get("expected", "")
-    if expected_attr == "valid":
-        return ExpectedOutcome(outcome_type=ExpectedOutcomeType.VALID)
-    if expected_attr == "invalid":
-        return ExpectedOutcome(outcome_type=ExpectedOutcomeType.ERROR)
+    expected_attr = result_el.get("expected", "").strip().lower()
+    outcome_type = (
+        ExpectedOutcomeType.ERROR if expected_attr == "invalid" else ExpectedOutcomeType.VALID
+    )
+    error_code: str | None = None
+    assertion_tests: list[ExpectedAssertionTest] = []
+    message_tests: list[ExpectedMessageTest] = []
+    result_files: list[ExpectedResultFile] = []
+    unsupported_result_elements: list[str] = []
 
-    # Check child elements for error/warning codes
     for child in result_el:
         local = _local(child.tag)
         code = (child.text or "").strip()
         if local == "error":
-            return ExpectedOutcome(
-                outcome_type=ExpectedOutcomeType.ERROR,
-                error_code=code if code else None,
+            outcome_type = ExpectedOutcomeType.ERROR
+            if error_code is None:
+                error_code = code or None
+        elif local == "warning":
+            outcome_type = ExpectedOutcomeType.WARNING
+            if error_code is None:
+                error_code = code or None
+        elif local == "assertionTests":
+            assertion_tests.append(
+                ExpectedAssertionTest(
+                    assertion_id=child.get("assertionID", "").strip(),
+                    count_satisfied=_optional_int(child.get("countSatisfied")),
+                    count_not_satisfied=_optional_int(child.get("countNotSatisfied")),
+                )
             )
-        if local == "warning":
-            return ExpectedOutcome(
-                outcome_type=ExpectedOutcomeType.WARNING,
-                error_code=code if code else None,
+        elif local == "messageTests":
+            messages: list[ExpectedMessage] = []
+            for message_el in child:
+                message_kind = _local(message_el.tag)
+                if message_kind not in {"satisfied", "notSatisfied"}:
+                    continue
+                messages.append(
+                    ExpectedMessage(
+                        satisfied=message_kind == "satisfied",
+                        text="".join(message_el.itertext()).strip(),
+                        language=message_el.get(
+                            "{http://www.w3.org/XML/1998/namespace}lang"
+                        ),
+                    )
+                )
+            message_tests.append(
+                ExpectedMessageTest(
+                    assertion_id=child.get("assertionID", "").strip(),
+                    messages=tuple(messages),
+                )
             )
+        elif local in _RESULT_FILE_TAGS and code:
+            result_files.append(
+                ExpectedResultFile(
+                    file_type=ExpectedResultFileType(local),
+                    path=_resolve_suite_file(base_dir, code),
+                )
+            )
+        elif local:
+            unsupported_result_elements.append(local)
 
-    # Empty <result/> element with no attributes and no children = valid
-    return ExpectedOutcome(outcome_type=ExpectedOutcomeType.VALID)
+    return ExpectedOutcome(
+        outcome_type=outcome_type,
+        error_code=error_code,
+        assertion_tests=tuple(assertion_tests),
+        message_tests=tuple(message_tests),
+        result_files=tuple(result_files),
+        unsupported_result_elements=tuple(unsupported_result_elements),
+    )
 
 
 def _resolve_suite_file(base_dir: Path, filename: str) -> Path:
@@ -285,7 +344,7 @@ class ConformanceSuiteParser:
                 result_el = child
                 break
 
-        expected_outcome = _parse_expected_outcome(result_el)
+        expected_outcome = _parse_expected_outcome(result_el, tc_path.parent)
 
         return TestVariation(
             variation_id=variation_id,

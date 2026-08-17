@@ -48,6 +48,7 @@ class InstanceValidator:
         cancel_event: threading.Event | None = None,
         include_dimensional: bool = True,
         include_relationships: bool = False,
+        include_formula: bool = True,
         general_variable_values: dict[str, str] | None = None,
     ) -> None:
         self._taxonomy = taxonomy
@@ -56,6 +57,7 @@ class InstanceValidator:
         self._cancel_event = cancel_event
         self._include_dimensional = include_dimensional
         self._include_relationships = include_relationships
+        self._include_formula = include_formula
         self._general_variable_values = dict(general_variable_values or {})
 
     def validate_sync(self, instance: XbrlInstance) -> ValidationReport:
@@ -72,7 +74,8 @@ class InstanceValidator:
         stage_names.extend(("calculation", "essence-alias"))
         if self._include_dimensional:
             stage_names.append("dimensional")
-        stage_names.append("formula")
+        if self._include_formula:
+            stage_names.append("formula")
         stage_steps = {name: index for index, name in enumerate(stage_names)}
         total_steps = len(stage_names)
 
@@ -103,9 +106,7 @@ class InstanceValidator:
             stage_timings.append(StageTiming("structural", time.perf_counter() - stage_started_at))
 
         # --- 1b. Taxonomy relationship-set checks ---------------------------
-        if self._include_relationships and not (
-            self._cancel_event and self._cancel_event.is_set()
-        ):
+        if self._include_relationships and not (self._cancel_event and self._cancel_event.is_set()):
             stage_started_at = time.perf_counter()
             if self._progress_callback:
                 with contextlib.suppress(Exception):
@@ -130,7 +131,9 @@ class InstanceValidator:
                 )
                 findings.extend(stage_findings)
                 self._publish_findings(stage_findings)
-            stage_timings.append(StageTiming("relationships", time.perf_counter() - stage_started_at))
+            stage_timings.append(
+                StageTiming("relationships", time.perf_counter() - stage_started_at)
+            )
 
         # --- 2. Calculation (summation-item) checks -------------------------
         if not (self._cancel_event and self._cancel_event.is_set()):
@@ -186,7 +189,9 @@ class InstanceValidator:
                 )
                 findings.extend(stage_findings)
                 self._publish_findings(stage_findings)
-            stage_timings.append(StageTiming("essence-alias", time.perf_counter() - stage_started_at))
+            stage_timings.append(
+                StageTiming("essence-alias", time.perf_counter() - stage_started_at)
+            )
 
         # --- 3. Dimensional checks -------------------------------------------
         if self._include_dimensional and not (self._cancel_event and self._cancel_event.is_set()):
@@ -199,9 +204,7 @@ class InstanceValidator:
                         "Running dimensional checks…",
                     )
             try:
-                dv = DimensionalConstraintValidator(
-                    self._taxonomy, cancel_event=self._cancel_event
-                )
+                dv = DimensionalConstraintValidator(self._taxonomy, cancel_event=self._cancel_event)
                 stage_findings = tuple(dv.validate(instance))
                 findings.extend(stage_findings)
                 self._publish_findings(stage_findings)
@@ -219,8 +222,11 @@ class InstanceValidator:
             stage_timings.append(StageTiming("dimensional", time.perf_counter() - stage_started_at))
 
         # --- 4. Formula assertions ------------------------------------------
-        formula_available = bool(self._taxonomy.formula_assertion_set.assertions)
-        if not (self._cancel_event and self._cancel_event.is_set()):
+        formula_available = bool(
+            self._taxonomy.formula_assertion_set.assertions
+            or self._taxonomy.formula_assertion_set.output_formulas
+        )
+        if self._include_formula and not (self._cancel_event and self._cancel_event.is_set()):
             stage_started_at = time.perf_counter()
             if self._progress_callback:
                 with contextlib.suppress(Exception):
@@ -238,6 +244,7 @@ class InstanceValidator:
                 )
                 findings.extend(static_findings)
                 self._publish_findings(static_findings)
+
                 def formula_progress(current: int, total: int, message: str) -> None:
                     if self._progress_callback is None:
                         return
@@ -291,9 +298,7 @@ class InstanceValidator:
             structural_checks_run=any(stage.name == "structural" for stage in stage_timings),
             stage_timings=tuple(stage_timings),
             run_status=(
-                ValidationRunStatus.CANCELLED
-                if cancelled
-                else ValidationRunStatus.COMPLETED
+                ValidationRunStatus.CANCELLED if cancelled else ValidationRunStatus.COMPLETED
             ),
         )
 

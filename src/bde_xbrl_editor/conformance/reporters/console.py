@@ -84,7 +84,7 @@ class ConsoleReporter:
         headers = ["Suite", "Total", "Passed", "Failed", "Optional", "Errored", "Status"]
 
         def _row(cols: list[str]) -> str:
-            return "  ".join(c.ljust(w) for c, w in zip(cols, col_widths))
+            return "  ".join(c.ljust(w) for c, w in zip(cols, col_widths, strict=True))
 
         header_line = _row(headers)
         print(header_line)
@@ -106,7 +106,9 @@ class ConsoleReporter:
             ]
             # Print row without status so we can colour it separately
             base_cols = cols[:-1]
-            base_line = "  ".join(c.ljust(w) for c, w in zip(base_cols, col_widths[:-1]))
+            base_line = "  ".join(
+                c.ljust(w) for c, w in zip(base_cols, col_widths[:-1], strict=True)
+            )
             print(f"{base_line}  {coloured_status}")
 
         print()

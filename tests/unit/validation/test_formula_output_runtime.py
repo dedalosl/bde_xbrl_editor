@@ -102,7 +102,9 @@ def test_output_runtime_evaluator_reports_xpath_runtime_error_code() -> None:
         implicit_filtering=True,
         variables=(FactVariableDefinition(variable_name="a", concept_filter=_qn("Amount")),),
     )
-    findings = OutputFormulaRuntimeEvaluator(_taxonomy(formula)).evaluate_runtime_errors(_instance())
+    findings = OutputFormulaRuntimeEvaluator(_taxonomy(formula)).evaluate_runtime_errors(
+        _instance()
+    )
     assert findings
     assert findings[0].rule_id == "err:FOAR0001"
 
@@ -181,7 +183,9 @@ def test_output_runtime_evaluator_ignores_successful_output_formula() -> None:
         implicit_filtering=True,
         variables=(FactVariableDefinition(variable_name="a", concept_filter=_qn("Amount")),),
     )
-    findings = OutputFormulaRuntimeEvaluator(_taxonomy(formula)).evaluate_runtime_errors(_instance())
+    findings = OutputFormulaRuntimeEvaluator(_taxonomy(formula)).evaluate_runtime_errors(
+        _instance()
+    )
     assert findings == ()
 
 
@@ -205,7 +209,9 @@ def test_output_runtime_reports_invalid_filter_effective_boolean_value() -> None
             ),
         ),
     )
-    findings = OutputFormulaRuntimeEvaluator(_taxonomy(formula)).evaluate_runtime_errors(_instance())
+    findings = OutputFormulaRuntimeEvaluator(_taxonomy(formula)).evaluate_runtime_errors(
+        _instance()
+    )
     assert [finding.rule_id for finding in findings] == ["err:FORG0006"]
 
 
@@ -226,7 +232,9 @@ def test_output_runtime_reports_invalid_precondition_effective_boolean_value() -
             ),
         ),
     )
-    findings = OutputFormulaRuntimeEvaluator(_taxonomy(formula)).evaluate_runtime_errors(_instance())
+    findings = OutputFormulaRuntimeEvaluator(_taxonomy(formula)).evaluate_runtime_errors(
+        _instance()
+    )
     assert [finding.rule_id for finding in findings] == ["err:FORG0006"]
 
 
@@ -252,8 +260,46 @@ def test_output_runtime_reports_tuple_atomization_error_for_string_join_sequence
             ),
         ),
     )
-    findings = OutputFormulaRuntimeEvaluator(_taxonomy(formula)).evaluate_runtime_errors(_instance())
+    findings = OutputFormulaRuntimeEvaluator(_taxonomy(formula)).evaluate_runtime_errors(
+        _instance()
+    )
     assert [finding.rule_id for finding in findings] == ["err:FOTY0012"]
+
+
+def test_output_runtime_does_not_evaluate_value_after_false_precondition() -> None:
+    formula = FormulaOutputDefinition(
+        formula_id="formula1",
+        label=None,
+        value_xpath="concat('hello ', string-join( $c1 | (), '') )",
+        source=None,
+        aspect_model=None,
+        implicit_filtering=False,
+        variables=(
+            FactVariableDefinition(
+                variable_name="c1",
+                bind_as_sequence=True,
+                filter_resources=(
+                    FormulaFilterResource(
+                        label="location",
+                        namespace="http://xbrl.org/2008/filter/tuple",
+                        local_name="ancestorFilter",
+                    ),
+                ),
+            ),
+        ),
+        preconditions=(
+            PreconditionDefinition(
+                precondition_id="never",
+                test_xpath="false()",
+            ),
+        ),
+    )
+
+    findings = OutputFormulaRuntimeEvaluator(_taxonomy(formula)).evaluate_runtime_errors(
+        _instance()
+    )
+
+    assert findings == ()
 
 
 def test_output_runtime_reports_xqt_type_error_for_numeric_string_join_sequence() -> None:
@@ -280,7 +326,14 @@ def test_output_runtime_reports_xqt_type_error_for_numeric_string_join_sequence(
             ),
         ),
     )
+    instance = _instance()
+    instance.facts[0] = Fact(
+        concept=number.qname,
+        context_ref="ctx1",
+        unit_ref=None,
+        value="1",
+    )
     findings = OutputFormulaRuntimeEvaluator(
         _taxonomy(formula, concepts={number.qname: number})
-    ).evaluate_runtime_errors(_instance())
+    ).evaluate_runtime_errors(instance)
     assert [finding.rule_id for finding in findings] == ["xqt-err:XPTY0004"]

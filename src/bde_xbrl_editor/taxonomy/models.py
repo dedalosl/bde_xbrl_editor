@@ -387,6 +387,9 @@ class DimensionFilter:
     dimension_qname: QName
     member_qnames: tuple[QName, ...] = field(default_factory=tuple)
     exclude: bool = False
+    member_linkrole: str | None = None
+    member_arcrole: str | None = None
+    member_axis: str | None = None
 
 
 @dataclass(frozen=True)
@@ -434,6 +437,7 @@ class FormulaFilterResource:
     variable: str | None = None
     match_any: bool | None = None
     cover: bool | None = None
+    complement: bool = False
     aspects: tuple[str, ...] = field(default_factory=tuple)
     qnames: tuple[QName, ...] = field(default_factory=tuple)
     qname_expressions: tuple[str, ...] = field(default_factory=tuple)
@@ -448,11 +452,13 @@ class FactVariableDefinition:
     variable_name: str
     bind_as_sequence: bool = False
     matches: bool = False
+    nils: bool = False
     concept_filter: QName | None = None
     period_filter: Literal["instant", "duration"] | None = None
     dimension_filters: tuple[DimensionFilter, ...] = field(default_factory=tuple)
     typed_dimension_filters: tuple[TypedDimensionFilter, ...] = field(default_factory=tuple)
     unit_filter: QName | None = None
+    unit_filter_exclude: bool = False
     fallback_value: str | None = None
     xpath_filters: tuple[XPathFilterDefinition, ...] = field(default_factory=tuple)
     boolean_filters: tuple[BooleanFilterDefinition, ...] = field(default_factory=tuple)
@@ -513,6 +519,17 @@ class FormulaArc:
 
 
 @dataclass(frozen=True)
+class FormulaCustomRelationship:
+    """A non-standard relationship used by Formula relationship functions."""
+
+    from_fragment: str
+    to_fragment: str
+    link_role: str
+    arcrole: str
+    attributes: Mapping[QName, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class FormulaAssertion:
     """Base for all formula assertion types."""
 
@@ -521,6 +538,8 @@ class FormulaAssertion:
     severity: Any  # ValidationSeverity — late-bound to avoid circular import
     abstract: bool
     variables: tuple[FactVariableDefinition, ...]
+    aspect_model: str | None = None
+    implicit_filtering: bool = True
     general_variables: tuple[GeneralVariableDefinition, ...] = field(default_factory=tuple)
     parameters: tuple[ParameterDefinition, ...] = field(default_factory=tuple)
     preconditions: tuple[PreconditionDefinition, ...] = field(default_factory=tuple)
@@ -535,6 +554,8 @@ class FormulaAssertion:
     label_resources: tuple[AssertionTextResource, ...] = field(default_factory=tuple)
     message_resources: tuple[AssertionTextResource, ...] = field(default_factory=tuple)
     namespaces: dict[str, str] = field(default_factory=dict)
+    typed_dimension_equality_tests: tuple[str, ...] = field(default_factory=tuple)
+    custom_relationships: tuple[FormulaCustomRelationship, ...] = field(default_factory=tuple)
 
 
 @dataclass(frozen=True)
@@ -556,8 +577,12 @@ class ConsistencyAssertionDefinition(FormulaAssertion):
     """formula:consistencyAssertion — formula result must match fact value within radius."""
 
     formula_xpath: str = ""
+    formula_ids: tuple[str, ...] = field(default_factory=tuple)
+    strict: bool = False
     absolute_radius: Decimal | None = None
     relative_radius: Decimal | None = None
+    absolute_radius_xpath: str | None = None
+    relative_radius_xpath: str | None = None
 
 
 @dataclass(frozen=True)
@@ -573,6 +598,12 @@ class FormulaAspectRule:
     has_value: bool = False
     period_kind: Literal["instant", "duration", "forever"] | None = None
     inherited_source: str | None = None
+    # Keep the detached rule subtree so the output processor can evaluate
+    # expression-bearing child rules (qnameExpression, instant, multiplyBy,
+    # typed-dimension XPath, OCC fragments, ...).  The summary fields above
+    # remain useful to static validation and indexing.
+    raw_xml: bytes | None = None
+    namespaces: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -597,6 +628,8 @@ class FormulaOutputDefinition:
     referenced_names: tuple[str, ...] = field(default_factory=tuple)
     namespaces: dict[str, str] = field(default_factory=dict)
     source_path: str | None = None
+    decimals_xpath: str | None = None
+    precision_xpath: str | None = None
 
 
 @dataclass(frozen=True)

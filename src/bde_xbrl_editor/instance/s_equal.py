@@ -26,7 +26,7 @@ else:
 
 _XBRLDI_EXPLICIT = f"{{{XBRLDI_NS}}}explicitMember"
 _XBRLDI_TYPED = f"{{{XBRLDI_NS}}}typedMember"
-_DIM_ATTR = f"{{{XBRLDI_NS}}}dimension"
+_DIM_ATTR = "dimension"
 
 
 def _qname_clark_from_model(qn: QName) -> str:
@@ -240,6 +240,11 @@ def _unit_structure_key(unit: XbrlUnit) -> tuple:
             unit.denominator_measure_qnames,
         )
     return ("simple", unit.simple_measure_qnames)
+
+
+def unit_structure_key(unit: XbrlUnit) -> tuple:
+    """Return the namespace-aware U-equality signature of an XBRL unit."""
+    return _unit_structure_key(unit)
 
 
 def canonical_unit_refs_by_structure(instance: XbrlInstance) -> dict[str, str]:

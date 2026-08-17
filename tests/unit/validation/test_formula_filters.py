@@ -1,4 +1,5 @@
 """Unit tests for formula fact-filter predicates (validation/formula/filters.py)."""
+
 from __future__ import annotations
 
 from datetime import date
@@ -16,6 +17,7 @@ from bde_xbrl_editor.taxonomy.models import (
     BooleanFilterDefinition,
     DimensionFilter,
     FactVariableDefinition,
+    FormulaFilterResource,
     QName,
     TypedDimensionFilter,
 )
@@ -61,7 +63,9 @@ def _duration_period() -> ReportingPeriod:
     )
 
 
-def _ctx(ctx_id: str, period: ReportingPeriod | None = None, dims: dict | None = None) -> XbrlContext:
+def _ctx(
+    ctx_id: str, period: ReportingPeriod | None = None, dims: dict | None = None
+) -> XbrlContext:
     return XbrlContext(
         context_id=ctx_id,
         entity=_entity(),
@@ -171,6 +175,58 @@ class TestConceptFilter:
         var = _var_def(concept_filter=CONCEPT_A)
         result = apply_filters(facts, var, inst)
         assert len(result) == 2
+
+    def test_concept_name_resource_unions_qnames_and_qname_expressions(self) -> None:
+        ctx = _ctx("ctx1")
+        concept_c = _qn("ConceptC")
+        facts = [
+            Fact(concept=CONCEPT_A, context_ref="ctx1", unit_ref=None, value="1"),
+            Fact(concept=CONCEPT_B, context_ref="ctx1", unit_ref=None, value="2"),
+            Fact(concept=concept_c, context_ref="ctx1", unit_ref=None, value="3"),
+        ]
+        inst = _instance(facts, {"ctx1": ctx})
+        variable = FactVariableDefinition(
+            variable_name="v",
+            concept_filter=CONCEPT_A,
+            filter_resources=(
+                FormulaFilterResource(
+                    label="concepts",
+                    namespace="http://xbrl.org/2008/filter/concept",
+                    local_name="conceptName",
+                    qnames=(CONCEPT_A,),
+                    qname_expressions=("QName('http://example.com/tax', 'eg:ConceptB')",),
+                    namespaces={"eg": _TAX_NS},
+                ),
+            ),
+        )
+
+        result = apply_filters(facts, variable, inst)
+
+        assert [fact.concept for fact in result] == [CONCEPT_A, CONCEPT_B]
+
+    def test_concept_name_resource_honours_complement_arc(self) -> None:
+        ctx = _ctx("ctx1")
+        facts = [
+            Fact(concept=CONCEPT_A, context_ref="ctx1", unit_ref=None, value="1"),
+            Fact(concept=CONCEPT_B, context_ref="ctx1", unit_ref=None, value="2"),
+        ]
+        inst = _instance(facts, {"ctx1": ctx})
+        variable = FactVariableDefinition(
+            variable_name="v",
+            filter_resources=(
+                FormulaFilterResource(
+                    label="not-a",
+                    namespace="http://xbrl.org/2008/filter/concept",
+                    local_name="conceptName",
+                    qnames=(CONCEPT_A,),
+                    complement=True,
+                ),
+            ),
+        )
+
+        result = apply_filters(facts, variable, inst)
+
+        assert [fact.concept for fact in result] == [CONCEPT_B]
 
 
 # ---------------------------------------------------------------------------
@@ -467,10 +523,10 @@ class TestNestedBooleanFilter:
         DIM_PUR = _qn("PUR", _DIM_NS)
         DIM_TCP = _qn("TCP", _DIM_NS)
         DIM_OSM = _qn("OSM", _DIM_NS)
-        MEM_X50  = _qn("x50",   _MEM_NS)
-        MEM_X1   = _qn("x1",    _MEM_NS)
-        MEM_X17  = _qn("x1017", _MEM_NS)
-        MEM_X0   = _qn("x0",    _MEM_NS)
+        MEM_X50 = _qn("x50", _MEM_NS)
+        MEM_X1 = _qn("x1", _MEM_NS)
+        MEM_X17 = _qn("x1017", _MEM_NS)
+        MEM_X0 = _qn("x0", _MEM_NS)
 
         branch1 = BooleanFilterDefinition(
             filter_type="and",
@@ -491,8 +547,8 @@ class TestNestedBooleanFilter:
     def test_fact_matches_first_and_branch(self) -> None:
         DIM_PUR = _qn("PUR", _DIM_NS)
         DIM_TCP = _qn("TCP", _DIM_NS)
-        MEM_X50 = _qn("x50",  _MEM_NS)
-        MEM_X1  = _qn("x1",   _MEM_NS)
+        MEM_X50 = _qn("x50", _MEM_NS)
+        MEM_X1 = _qn("x1", _MEM_NS)
         ctx = _ctx("c1", dims={DIM_PUR: MEM_X50, DIM_TCP: MEM_X1})
         fact = Fact(concept=CONCEPT_A, context_ref="c1", unit_ref=None, value="100")
         inst = _instance([fact], {"c1": ctx})
@@ -500,9 +556,9 @@ class TestNestedBooleanFilter:
         assert result == [fact]
 
     def test_fact_matches_second_and_branch(self) -> None:
-        DIM_OSM = _qn("OSM",  _DIM_NS)
-        DIM_TCP = _qn("TCP",  _DIM_NS)
-        MEM_X0  = _qn("x0",   _MEM_NS)
+        DIM_OSM = _qn("OSM", _DIM_NS)
+        DIM_TCP = _qn("TCP", _DIM_NS)
+        MEM_X0 = _qn("x0", _MEM_NS)
         MEM_X17 = _qn("x1017", _MEM_NS)
         ctx = _ctx("c1", dims={DIM_OSM: MEM_X0, DIM_TCP: MEM_X17})
         fact = Fact(concept=CONCEPT_A, context_ref="c1", unit_ref=None, value="200")
@@ -513,7 +569,7 @@ class TestNestedBooleanFilter:
     def test_fact_matches_neither_branch_is_excluded(self) -> None:
         DIM_PUR = _qn("PUR", _DIM_NS)
         DIM_TCP = _qn("TCP", _DIM_NS)
-        MEM_X1  = _qn("x1",  _MEM_NS)
+        MEM_X1 = _qn("x1", _MEM_NS)
         MEM_X99 = _qn("x99", _MEM_NS)  # wrong PUR value
         ctx = _ctx("c1", dims={DIM_PUR: MEM_X99, DIM_TCP: MEM_X1})
         fact = Fact(concept=CONCEPT_A, context_ref="c1", unit_ref=None, value="50")
@@ -525,12 +581,12 @@ class TestNestedBooleanFilter:
         DIM_PUR = _qn("PUR", _DIM_NS)
         DIM_TCP = _qn("TCP", _DIM_NS)
         MEM_X50 = _qn("x50", _MEM_NS)
-        MEM_X1  = _qn("x1",  _MEM_NS)
+        MEM_X1 = _qn("x1", _MEM_NS)
         MEM_X99 = _qn("x99", _MEM_NS)
 
-        ctx_match   = _ctx("c_ok",  dims={DIM_PUR: MEM_X50, DIM_TCP: MEM_X1})
+        ctx_match = _ctx("c_ok", dims={DIM_PUR: MEM_X50, DIM_TCP: MEM_X1})
         ctx_nomatch = _ctx("c_bad", dims={DIM_PUR: MEM_X99, DIM_TCP: MEM_X1})
-        fact_ok  = Fact(concept=CONCEPT_A, context_ref="c_ok",  unit_ref=None, value="1")
+        fact_ok = Fact(concept=CONCEPT_A, context_ref="c_ok", unit_ref=None, value="1")
         fact_bad = Fact(concept=CONCEPT_A, context_ref="c_bad", unit_ref=None, value="2")
         inst = _instance(
             [fact_ok, fact_bad],

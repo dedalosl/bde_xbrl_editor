@@ -307,9 +307,11 @@ def _parse_context(el: etree._Element) -> XbrlContext:
         raise InstanceParseError("", f"context '{context_id}' missing xbrli:period")
     instant_el = period_el.find(_XBRLI_INSTANT)
     if instant_el is not None:
+        instant_text = instant_el.text or ""
         period = ReportingPeriod(
             period_type="instant",
-            instant_date=_parse_date(instant_el.text or ""),
+            instant_date=_parse_date(instant_text),
+            instant_date_only="T" not in instant_text,
         )
     elif period_el.find(_XBRLI_FOREVER) is not None:
         period = ReportingPeriod(period_type="forever")
@@ -320,6 +322,7 @@ def _parse_context(el: etree._Element) -> XbrlContext:
             period_type="duration",
             start_date=_parse_date((start_el.text or "") if start_el is not None else ""),
             end_date=_parse_date((end_el.text or "") if end_el is not None else ""),
+            end_date_only=(end_el is not None and "T" not in (end_el.text or "")),
         )
 
     # Parse explicit and typed dimensions from scenario/segment.
@@ -328,6 +331,7 @@ def _parse_context(el: etree._Element) -> XbrlContext:
     dimensions: dict[QName, QName] = {}
     typed_dimensions: dict[QName, str] = {}
     typed_dimension_elements: dict[QName, QName] = {}
+    typed_dimension_xml: dict[QName, bytes] = {}
     dim_containers: dict[QName, str] = {}
     context_element: str = "scenario"
     _segment_container = entity_el.find(_XBRLI_SEGMENT) if entity_el is not None else None
@@ -390,6 +394,11 @@ def _parse_context(el: etree._Element) -> XbrlContext:
                 if child_el is not None:
                     typed_dimensions[dim_qname] = "".join(child_el.itertext()).strip()
                     typed_dimension_elements[dim_qname] = _tag_to_qname(str(child_el.tag))
+                    typed_dimension_xml[dim_qname] = etree.tostring(
+                        child_el,
+                        encoding="utf-8",
+                        with_tail=False,
+                    )
                 else:
                     typed_dimensions[dim_qname] = (member_el.text or "").strip()
                 dim_containers[dim_qname] = _ce
@@ -421,6 +430,7 @@ def _parse_context(el: etree._Element) -> XbrlContext:
         dimensions=dimensions,
         typed_dimensions=typed_dimensions,
         typed_dimension_elements=typed_dimension_elements,
+        typed_dimension_xml=typed_dimension_xml,
         context_element=context_element,  # type: ignore[arg-type]
         dim_containers=dim_containers,  # type: ignore[arg-type]
         s_equal_key=s_equal_key,
@@ -437,7 +447,7 @@ def _parse_measure_qname(measure_el: etree._Element, measure_text: str) -> QName
         return QName.from_clark(measure_text)
     if ":" in measure_text:
         return QName.from_clark(_resolve_prefixed_qname(measure_el, measure_text))
-    return QName(namespace="", local_name=measure_text)
+    return QName(namespace=(measure_el.nsmap or {}).get(None, ""), local_name=measure_text)
 
 
 def _parse_unit(el: etree._Element) -> XbrlUnit:
@@ -598,7 +608,9 @@ def _resolve_instance_linkbase_refs(instance_path: Path, root: etree._Element) -
         xml_base = (lb_ref.get(_XML_BASE) or "").strip()
         if xml_base and not xml_base.startswith(("http://", "https://")):
             base_dir = (base_dir / xml_base).resolve()
-        candidate = (base_dir / href).resolve() if not href.startswith("/") else Path(href).resolve()
+        candidate = (
+            (base_dir / href).resolve() if not href.startswith("/") else Path(href).resolve()
+        )
         if candidate.exists() and candidate not in seen:
             seen.add(candidate)
             refs.append(candidate)
@@ -627,10 +639,12 @@ def _collect_facts_under_element(
     el: etree._Element,
     *,
     tuple_path: tuple[int, ...],
+    tuple_ancestor_concepts: tuple[QName, ...],
     path_str: str,
     known_concepts: dict,
     taxonomy: TaxonomyStructure | None,
     facts: list[Fact],
+    tuple_facts: list[Fact],
     orphaned: list[OrphanedFact],
 ) -> None:
     """Collect item facts nested under tuples (XBRL 2.1 summation-item binding)."""
@@ -664,13 +678,27 @@ def _collect_facts_under_element(
                     path_str,
                     f"Tuple '{concept_qname}' must not carry contextRef.",
                 )
+            tuple_facts.append(
+                Fact(
+                    concept=concept_qname,
+                    context_ref="",
+                    unit_ref=None,
+                    value="",
+                    is_tuple=True,
+                    tuple_path=tuple_path,
+                    tuple_ancestor_concepts=tuple_ancestor_concepts,
+                    position_path=tuple_path + (idx,),
+                )
+            )
             _collect_facts_under_element(
                 child,
                 tuple_path=tuple_path + (idx,),
+                tuple_ancestor_concepts=tuple_ancestor_concepts + (concept_qname,),
                 path_str=path_str,
                 known_concepts=known_concepts,
                 taxonomy=taxonomy,
                 facts=facts,
+                tuple_facts=tuple_facts,
                 orphaned=orphaned,
             )
             continue
@@ -704,6 +732,7 @@ def _collect_facts_under_element(
                     precision=precision,
                     is_nil=is_nil,
                     tuple_path=tuple_path,
+                    tuple_ancestor_concepts=tuple_ancestor_concepts,
                     position_path=tuple_path + (idx,),
                 )
             )
@@ -998,6 +1027,7 @@ class InstanceParser:
         found_preambulo = False
         filing_indicators: list[FilingIndicator] = []
         facts: list[Fact] = []
+        tuple_facts: list[Fact] = []
         orphaned: list[OrphanedFact] = []
         known_concepts = taxonomy.concepts if taxonomy else {}
         facts_seen = 0
@@ -1077,14 +1107,28 @@ class InstanceParser:
                                 path_str,
                                 f"Tuple '{concept_qname}' must not carry contextRef.",
                             )
+                        tuple_facts.append(
+                            Fact(
+                                concept=concept_qname,
+                                context_ref="",
+                                unit_ref=None,
+                                value="",
+                                is_tuple=True,
+                                tuple_path=(),
+                                tuple_ancestor_concepts=(),
+                                position_path=(root_idx,),
+                            )
+                        )
                         facts_seen += 1
                         _collect_facts_under_element(
                             child,
                             tuple_path=(root_idx,),
+                            tuple_ancestor_concepts=(concept_qname,),
                             path_str=path_str,
                             known_concepts=known_concepts,
                             taxonomy=taxonomy,
                             facts=facts,
+                            tuple_facts=tuple_facts,
                             orphaned=orphaned,
                         )
                         continue
@@ -1184,6 +1228,7 @@ class InstanceParser:
             contexts=contexts,
             units=units,
             facts=facts,
+            tuple_facts=tuple_facts,
             orphaned_facts=orphaned,
             bde_preambulo=bde_preambulo,
             source_path=path,

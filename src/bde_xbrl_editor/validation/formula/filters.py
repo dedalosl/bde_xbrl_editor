@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
-import contextlib
+from collections.abc import Mapping
 from decimal import Decimal, InvalidOperation
+from functools import lru_cache
 from typing import Any
 
+from lxml import etree
+
+from bde_xbrl_editor.instance.constants import XBRLI_NS
 from bde_xbrl_editor.instance.models import Fact, XbrlInstance
 from bde_xbrl_editor.taxonomy.models import (
     BooleanFilterDefinition,
@@ -24,13 +28,27 @@ def apply_filters(
     custom_functions: tuple[CustomFunctionDefinition, ...] = (),
     facts_by_concept: dict[object, list[Fact]] | None = None,
     xpath_token_cache: dict[tuple[tuple[tuple[str, str], ...], str], Any] | None = None,
+    xpath_variables: dict[str, Any] | None = None,
+    dimension_defaults: Mapping[Any, Any] | None = None,
 ) -> list[Fact]:
     """Return the subset of facts that satisfy all filters in variable_def.
 
     Returns an empty list when no facts match. Never raises.
     """
-    # Concept filter
-    if variable_def.concept_filter is not None:
+    concept_name_resources = tuple(
+        resource
+        for resource in variable_def.filter_resources
+        if resource.local_name == "conceptName"
+    )
+    if concept_name_resources:
+        result = _apply_concept_name_resources(
+            facts,
+            concept_name_resources,
+            custom_functions=custom_functions,
+            xpath_token_cache=xpath_token_cache,
+            xpath_variables=xpath_variables,
+        )
+    elif variable_def.concept_filter is not None:
         cf = variable_def.concept_filter
         if facts_by_concept is not None:
             result = list(facts_by_concept.get(cf, ()))
@@ -38,6 +56,12 @@ def apply_filters(
             result = [f for f in facts if f.concept == cf]
     else:
         result = list(facts)
+    if not variable_def.nils:
+        result = [fact for fact in result if not fact.is_nil]
+
+    result = _apply_value_filter_resources(result, variable_def.filter_resources)
+
+    result = _apply_tuple_location_resources(result, variable_def.filter_resources)
 
     # Period type filter (simple instant/duration)
     if variable_def.period_filter is not None:
@@ -58,11 +82,29 @@ def apply_filters(
         for fact in result:
             unit = instance.units.get(fact.unit_ref or "")
             if unit is None:
+                if variable_def.unit_filter_exclude:
+                    filtered.append(fact)
                 continue
-            # Match by measure URI containing the local_name
-            if uf.local_name in unit.measure_uri:
+            matches = (
+                unit.unit_form == "simple"
+                and unit.simple_measure_count == 1
+                and (
+                    unit.measure_qname == uf
+                    or (unit.measure_qname is None and uf.local_name in unit.measure_uri)
+                )
+            )
+            if matches != variable_def.unit_filter_exclude:
                 filtered.append(fact)
         result = filtered
+
+    result = _apply_unit_filter_resources(
+        result,
+        variable_def.filter_resources,
+        instance,
+        custom_functions=custom_functions,
+        xpath_token_cache=xpath_token_cache,
+        xpath_variables=xpath_variables,
+    )
 
     # Dimension filters
     for dim_filter in variable_def.dimension_filters:
@@ -72,16 +114,16 @@ def apply_filters(
             if ctx is None:
                 continue
             ctx_dims = ctx.dimensions
+            member = ctx_dims.get(
+                dim_filter.dimension_qname,
+                (dimension_defaults or {}).get(dim_filter.dimension_qname),
+            )
 
             if dim_filter.exclude:
-                if (
-                    dim_filter.member_qnames
-                    and ctx_dims.get(dim_filter.dimension_qname) in dim_filter.member_qnames
-                ):
+                if dim_filter.member_qnames and member in dim_filter.member_qnames:
                     continue
                 filtered.append(fact)
             else:
-                member = ctx_dims.get(dim_filter.dimension_qname)
                 if dim_filter.member_qnames:
                     if member in dim_filter.member_qnames:
                         filtered.append(fact)
@@ -109,28 +151,319 @@ def apply_filters(
                 instance,
                 custom_functions,
                 xpath_token_cache=xpath_token_cache,
+                xpath_variables=xpath_variables,
+                dimension_defaults=dimension_defaults,
             )
         ]
 
     # XPath filters (gf:general test=, pf:period test=)
-    if variable_def.xpath_filters:
+    xpath_filters = tuple(
+        xpath_filter
+        for xpath_filter in variable_def.xpath_filters
+        if not (concept_name_resources and xpath_filter.filter_type == "concept")
+    )
+    if xpath_filters:
         result = _apply_xpath_filters(
             result,
-            variable_def.xpath_filters,
+            xpath_filters,
             instance,
             custom_functions=custom_functions,
             xpath_token_cache=xpath_token_cache,
+            xpath_variables=xpath_variables,
         )
 
     return result
 
 
-def _passes_dim_filter(fact: Fact, dim_filter: DimensionFilter, instance: XbrlInstance) -> bool:
+def _apply_value_filter_resources(
+    facts: list[Fact],
+    resources: tuple[Any, ...],
+) -> list[Fact]:
+    """Apply value filters that operate on attributes already parsed on facts."""
+    filtered = list(facts)
+    for resource in resources:
+        if resource.local_name == "nil":
+            filtered = [fact for fact in filtered if fact.is_nil != bool(resource.complement)]
+        elif resource.local_name == "precision":
+            try:
+                minimum = int(resource.attributes.get("minimum", ""))
+            except (TypeError, ValueError):
+                filtered = [] if not resource.complement else filtered
+                continue
+
+            def matches(fact: Fact, threshold: int = minimum) -> bool:
+                if fact.unit_ref is None or fact.precision is None:
+                    return False
+                if fact.precision.upper() == "INF":
+                    return True
+                try:
+                    return int(fact.precision) >= threshold
+                except ValueError:
+                    return False
+
+            filtered = [fact for fact in filtered if matches(fact) != bool(resource.complement)]
+    return filtered
+
+
+def _apply_unit_filter_resources(
+    facts: list[Fact],
+    resources: tuple[Any, ...],
+    instance: XbrlInstance,
+    *,
+    custom_functions: tuple[CustomFunctionDefinition, ...],
+    xpath_token_cache: dict[tuple[tuple[tuple[str, str], ...], str], Any] | None,
+    xpath_variables: dict[str, Any] | None,
+) -> list[Fact]:
+    """Apply executable unit-filter resources retained by the Formula parser."""
+    import elementpath  # type: ignore[import-untyped]
+
+    filtered = list(facts)
+    for resource in resources:
+        if resource.local_name == "generalMeasures":
+            filtered = _apply_general_measures_resource(
+                filtered,
+                resource,
+                instance,
+                custom_functions=custom_functions,
+                xpath_variables=xpath_variables,
+            )
+            continue
+        if resource.local_name != "singleMeasure":
+            continue
+        qname_values: list[Any] = list(resource.qnames)
+        for expression in resource.qname_expressions:
+            xpath_filter = XPathFilterDefinition(
+                xpath_expr=expression,
+                namespaces=resource.namespaces,
+                filter_type="unit",
+            )
+            try:
+                token = _get_xpath_filter_token(
+                    xpath_filter,
+                    custom_functions=custom_functions,
+                    xpath_token_cache=xpath_token_cache,
+                )
+                context = elementpath.XPathContext(
+                    root=None,
+                    item=True,
+                    variables=xpath_variables or {},
+                )
+                qname_values.extend(token.select(context))
+            except Exception:  # noqa: BLE001
+                continue
+
+        def matches(fact: Fact, values: tuple[Any, ...] = tuple(qname_values)) -> bool:
+            unit = instance.units.get(fact.unit_ref or "")
+            if unit is None or unit.unit_form != "simple" or unit.simple_measure_count != 1:
+                return False
+            return any(_qname_matches(value, unit.measure_qname) for value in values)
+
+        filtered = [fact for fact in filtered if matches(fact) != bool(resource.complement)]
+    return filtered
+
+
+def _apply_general_measures_resource(
+    facts: list[Fact],
+    resource: Any,
+    instance: XbrlInstance,
+    *,
+    custom_functions: tuple[CustomFunctionDefinition, ...],
+    xpath_variables: dict[str, Any] | None,
+) -> list[Fact]:
+    """Evaluate ``uf:generalMeasures/@test`` with the unit as context item."""
+    import elementpath  # type: ignore[import-untyped]
+
+    if not resource.test_xpath:
+        return [] if not resource.complement else list(facts)
+    from bde_xbrl_editor.validation.formula.xfi_functions import build_formula_parser
+
+    try:
+        schema = _unit_schema_proxy()
+        parser = build_formula_parser(
+            resource.namespaces,
+            custom_functions,
+            (resource.test_xpath,),
+            schema=schema,
+        )
+        token = parser.parse(resource.test_xpath)
+    except Exception:  # noqa: BLE001
+        return [] if not resource.complement else list(facts)
+
+    passed: list[Fact] = []
+    for fact in facts:
+        unit = instance.units.get(fact.unit_ref or "")
+        if unit is None:
+            matches = False
+        else:
+            try:
+                unit_element = _unit_xpath_element(unit, resource.namespaces)
+                context = elementpath.XPathContext(
+                    root=unit_element,
+                    item=unit_element,
+                    schema=schema,
+                    variables=xpath_variables or {},
+                )
+                matches = _to_bool(list(token.select(context)))
+            except Exception:  # noqa: BLE001
+                matches = False
+        if matches != bool(resource.complement):
+            passed.append(fact)
+    return passed
+
+
+@lru_cache(maxsize=1)
+def _unit_schema_proxy() -> Any:
+    """Return a minimal schema proxy that preserves xbrli:measure as xs:QName."""
+    import xmlschema  # type: ignore[import-untyped]
+    from xmlschema.xpath import XMLSchemaProxy  # type: ignore[import-untyped]
+
+    schema_text = f"""<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+        xmlns:xbrli="{XBRLI_NS}" targetNamespace="{XBRLI_NS}"
+        elementFormDefault="qualified">
+      <xs:complexType name="measuresType"><xs:sequence>
+        <xs:element name="measure" type="xs:QName" maxOccurs="unbounded"/>
+      </xs:sequence></xs:complexType>
+      <xs:element name="unit"><xs:complexType><xs:choice>
+        <xs:element name="measure" type="xs:QName" maxOccurs="unbounded"/>
+        <xs:element name="divide"><xs:complexType><xs:sequence>
+          <xs:element name="unitNumerator" type="xbrli:measuresType"/>
+          <xs:element name="unitDenominator" type="xbrli:measuresType"/>
+        </xs:sequence></xs:complexType></xs:element>
+      </xs:choice></xs:complexType></xs:element>
+    </xs:schema>"""
+    return XMLSchemaProxy(xmlschema.XMLSchema(schema_text))
+
+
+def _unit_xpath_element(unit: Any, namespaces: dict[str, str]) -> etree._Element:
+    measures = (
+        unit.simple_measure_qnames
+        if unit.unit_form == "simple"
+        else unit.numerator_measure_qnames + unit.denominator_measure_qnames
+    )
+    nsmap = {prefix: namespace for prefix, namespace in namespaces.items() if prefix}
+    nsmap.setdefault("xbrli", XBRLI_NS)
+    prefixes_by_namespace = {namespace: prefix for prefix, namespace in nsmap.items()}
+    for index, measure in enumerate(measures):
+        if measure.namespace and measure.namespace not in prefixes_by_namespace:
+            prefix = f"measure{index}"
+            nsmap[prefix] = measure.namespace
+            prefixes_by_namespace[measure.namespace] = prefix
+
+    root = etree.Element(f"{{{XBRLI_NS}}}unit", nsmap=nsmap)
+
+    def append_measure(parent: etree._Element, measure: Any) -> None:
+        element = etree.SubElement(parent, f"{{{XBRLI_NS}}}measure")
+        prefix = prefixes_by_namespace.get(measure.namespace)
+        element.text = f"{prefix}:{measure.local_name}" if prefix else measure.local_name
+
+    if unit.unit_form == "simple":
+        for measure in unit.simple_measure_qnames:
+            append_measure(root, measure)
+        return root
+
+    divide = etree.SubElement(root, f"{{{XBRLI_NS}}}divide")
+    numerator = etree.SubElement(divide, f"{{{XBRLI_NS}}}unitNumerator")
+    denominator = etree.SubElement(divide, f"{{{XBRLI_NS}}}unitDenominator")
+    for measure in unit.numerator_measure_qnames:
+        append_measure(numerator, measure)
+    for measure in unit.denominator_measure_qnames:
+        append_measure(denominator, measure)
+    return root
+
+
+def _apply_tuple_location_resources(
+    facts: list[Fact],
+    resources: tuple[Any, ...],
+) -> list[Fact]:
+    """Apply tuple ancestor/parent filters using parser-preserved ancestry."""
+    filtered = list(facts)
+    document_root = (XBRLI_NS, "xbrl")
+    for resource in resources:
+        if resource.local_name not in {"ancestorFilter", "parentFilter"}:
+            continue
+        wanted = {(qname.namespace, qname.local_name) for qname in resource.qnames}
+        if not wanted:
+            continue
+
+        def matches(
+            fact: Fact,
+            *,
+            filter_name: str = resource.local_name,
+            wanted_qnames: set[tuple[str, str]] = wanted,
+        ) -> bool:
+            ancestors = fact.tuple_ancestor_concepts
+            if filter_name == "parentFilter":
+                actual = (
+                    (ancestors[-1].namespace, ancestors[-1].local_name)
+                    if ancestors
+                    else document_root
+                )
+                return actual in wanted_qnames
+            return document_root in wanted_qnames or any(
+                (ancestor.namespace, ancestor.local_name) in wanted_qnames for ancestor in ancestors
+            )
+
+        filtered = [fact for fact in filtered if matches(fact) != bool(resource.complement)]
+    return filtered
+
+
+def _apply_concept_name_resources(
+    facts: list[Fact],
+    resources: tuple[Any, ...],
+    *,
+    custom_functions: tuple[CustomFunctionDefinition, ...],
+    xpath_token_cache: dict[tuple[tuple[tuple[str, str], ...], str], Any] | None,
+    xpath_variables: dict[str, Any] | None,
+) -> list[Fact]:
+    """Apply each concept-name filter, unioning its internal alternatives."""
+    import elementpath  # type: ignore[import-untyped]
+
+    filtered = list(facts)
+    for resource in resources:
+        qname_values: list[Any] = list(resource.qnames)
+        for expression in resource.qname_expressions:
+            xpath_filter = XPathFilterDefinition(
+                xpath_expr=expression,
+                namespaces=resource.namespaces,
+                filter_type="concept",
+            )
+            try:
+                token = _get_xpath_filter_token(
+                    xpath_filter,
+                    custom_functions=custom_functions,
+                    xpath_token_cache=xpath_token_cache,
+                )
+                context = elementpath.XPathContext(
+                    root=None,
+                    item=True,
+                    variables=xpath_variables or {},
+                )
+                qname_values.extend(token.select(context))
+            except Exception:  # noqa: BLE001
+                continue
+        filtered = [
+            fact
+            for fact in filtered
+            if any(_qname_matches_fact(value, fact) for value in qname_values)
+            != bool(resource.complement)
+        ]
+    return filtered
+
+
+def _passes_dim_filter(
+    fact: Fact,
+    dim_filter: DimensionFilter,
+    instance: XbrlInstance,
+    dimension_defaults: Mapping[Any, Any] | None = None,
+) -> bool:
     """Return True if *fact* satisfies a single DimensionFilter."""
     ctx = instance.contexts.get(fact.context_ref)
     if ctx is None:
         return False
-    member = ctx.dimensions.get(dim_filter.dimension_qname)
+    member = ctx.dimensions.get(
+        dim_filter.dimension_qname,
+        (dimension_defaults or {}).get(dim_filter.dimension_qname),
+    )
     if dim_filter.exclude:
         if dim_filter.member_qnames:
             return member not in dim_filter.member_qnames
@@ -159,12 +492,14 @@ def _passes_boolean_filter(
     instance: XbrlInstance,
     custom_functions: tuple[CustomFunctionDefinition, ...] = (),
     xpath_token_cache: dict[tuple[tuple[tuple[str, str], ...], str], Any] | None = None,
+    xpath_variables: dict[str, Any] | None = None,
+    dimension_defaults: Mapping[Any, Any] | None = None,
 ) -> bool:
     """Return True if *fact* satisfies the boolean filter tree rooted at *bf*."""
     child_results: list[bool] = []
     for child in bf.children:
         if isinstance(child, DimensionFilter):
-            child_results.append(_passes_dim_filter(fact, child, instance))
+            child_results.append(_passes_dim_filter(fact, child, instance, dimension_defaults))
         elif isinstance(child, TypedDimensionFilter):
             child_results.append(_passes_typed_dimension_filter(fact, child, instance))
         elif isinstance(child, BooleanFilterDefinition):
@@ -175,6 +510,8 @@ def _passes_boolean_filter(
                     instance,
                     custom_functions,
                     xpath_token_cache=xpath_token_cache,
+                    xpath_variables=xpath_variables,
+                    dimension_defaults=dimension_defaults,
                 )
             )
         elif isinstance(child, XPathFilterDefinition):
@@ -184,6 +521,7 @@ def _passes_boolean_filter(
                 instance,
                 custom_functions=custom_functions,
                 xpath_token_cache=xpath_token_cache,
+                xpath_variables=xpath_variables,
             )  # type: ignore[arg-type]
             child_results.append(bool(passed_list))
 
@@ -203,6 +541,7 @@ def _apply_xpath_filters(
     instance: XbrlInstance,
     custom_functions: tuple[CustomFunctionDefinition, ...] = (),
     xpath_token_cache: dict[tuple[tuple[tuple[str, str], ...], str], Any] | None = None,
+    xpath_variables: dict[str, Any] | None = None,
 ) -> list[Fact]:
     """Apply each XPath filter expression to every candidate fact.
 
@@ -246,16 +585,42 @@ def _apply_xpath_filters(
         try:
             fact_passes = True
             for xf in xpath_filters:
-                with contextlib.suppress(Exception):
+                try:
                     token = _get_xpath_filter_token(
                         xf,
                         custom_functions=custom_functions,
                         xpath_token_cache=xpath_token_cache,
                     )
-                    xp_ctx = elementpath.XPathContext(root=None, item=item_value)
+                    filter_item = item_value
+                    filter_root = None
+                    if xf.filter_type in {"segment", "scenario"}:
+                        context_xml = (
+                            ctx_obj.segment_xml
+                            if ctx_obj is not None and xf.filter_type == "segment"
+                            else ctx_obj.scenario_xml
+                            if ctx_obj is not None
+                            else None
+                        )
+                        if context_xml is None:
+                            fact_passes = False
+                            break
+                        filter_item = etree.fromstring(context_xml)
+                        filter_root = filter_item
+                    xp_ctx = elementpath.XPathContext(
+                        root=filter_root,
+                        item=filter_item,
+                        variables=xpath_variables or {},
+                    )
                     result = list(token.select(xp_ctx))
-                    # Evaluate result as boolean
-                    if not _to_bool(result):
+                    if xf.filter_type == "concept":
+                        if not result or not _qname_matches_fact(result[0], fact):
+                            fact_passes = False
+                            break
+                    elif not _to_bool(result):
+                        fact_passes = False
+                        break
+                except Exception:  # noqa: BLE001
+                    if xf.filter_type in {"concept", "segment", "scenario"}:
                         fact_passes = False
                         break
             if fact_passes:
@@ -264,6 +629,22 @@ def _apply_xpath_filters(
             clear_evaluation_context()
 
     return passed
+
+
+def _qname_matches_fact(value: Any, fact: Fact) -> bool:
+    return _qname_matches(value, fact.concept)
+
+
+def _qname_matches(value: Any, qname: Any) -> bool:
+    if qname is None:
+        return False
+    namespace = getattr(value, "namespace", None)
+    local_name = getattr(value, "local_name", None)
+    if namespace is not None and local_name is not None:
+        return str(namespace) == qname.namespace and str(local_name) == qname.local_name
+    text = str(value)
+    clark = f"{{{qname.namespace}}}{qname.local_name}"
+    return text == str(qname) or text == clark
 
 
 def _get_xpath_filter_token(
