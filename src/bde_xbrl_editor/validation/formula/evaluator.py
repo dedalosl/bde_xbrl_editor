@@ -9,6 +9,7 @@ import threading
 import time
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
+from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -688,9 +689,10 @@ class FormulaEvaluator:
                     facts_by_concept=facts_by_concept,
                 )
                 for expanded_binding in expanded_bindings:
-                    if not self._binding_matches_tuple_variable_filters(
+                    if not self._binding_matches_dependent_variable_filters(
                         assertion,
                         expanded_binding,
+                        instance,
                     ):
                         continue
                     effective_general_values = general_values
@@ -733,22 +735,35 @@ class FormulaEvaluator:
         )
 
     @staticmethod
-    def _binding_matches_tuple_variable_filters(
+    def _binding_matches_dependent_variable_filters(
         assertion: FormulaAssertion,
         fact_binding: dict[str, list[Fact]],
+        instance: XbrlInstance,
     ) -> bool:
-        """Apply tuple filters whose result depends on another fact variable."""
+        """Apply filters whose result depends on another fact-variable binding."""
         for variable in assertion.variables:
             candidates = fact_binding.get(variable.variable_name, ())
             for resource in variable.filter_resources:
-                if resource.local_name not in {"siblingFilter", "locationFilter"}:
-                    continue
                 references = fact_binding.get(resource.variable or "", ())
-                matched = bool(candidates and references) and all(
-                    _tuple_variable_filter_matches(candidate, reference, resource)
-                    for candidate in candidates
-                    for reference in references
-                )
+                if resource.local_name in {"siblingFilter", "locationFilter"}:
+                    matched = bool(candidates and references) and all(
+                        _tuple_variable_filter_matches(candidate, reference, resource)
+                        for candidate in candidates
+                        for reference in references
+                    )
+                elif resource.local_name == "instantDuration":
+                    matched = bool(candidates and references) and all(
+                        _instant_duration_filter_matches(
+                            candidate,
+                            reference,
+                            resource.attributes.get("boundary", ""),
+                            instance,
+                        )
+                        for candidate in candidates
+                        for reference in references
+                    )
+                else:
+                    continue
                 if matched == bool(resource.complement):
                     return False
         return True
@@ -2156,7 +2171,9 @@ class FormulaEvaluator:
                 token in local_name for token in ("ancestor", "parent", "sibling", "location")
             ):
                 covered.add("location")
-            elif "period" in local_name:
+            elif (
+                resource.namespace == "http://xbrl.org/2008/filter/period" or "period" in local_name
+            ):
                 covered.add("period")
             elif "entity" in local_name or "identifier" in local_name:
                 covered.add("entity")
@@ -3133,6 +3150,38 @@ def _tuple_variable_filter_matches(candidate: Fact, reference: Fact, resource: A
             if selected_qname is None or wanted_qname is None or selected_qname != wanted_qname:
                 return False
     return current_path == target_path
+
+
+def _instant_duration_filter_matches(
+    candidate: Fact,
+    reference: Fact,
+    boundary: str,
+    instance: XbrlInstance,
+) -> bool:
+    """Compare an instant candidate with a bound duration-fact boundary."""
+    candidate_context = instance.contexts.get(candidate.context_ref)
+    reference_context = instance.contexts.get(reference.context_ref)
+    if candidate_context is None or reference_context is None:
+        return False
+    instant_period = candidate_context.period
+    duration_period = reference_context.period
+    if instant_period.period_type != "instant" or duration_period.period_type != "duration":
+        return False
+    if instant_period.instant_date is None:
+        return False
+
+    instant_boundary = instant_period.instant_date
+    if instant_period.instant_date_only:
+        instant_boundary += timedelta(days=1)
+    if boundary == "start":
+        duration_boundary = duration_period.start_date
+    elif boundary == "end":
+        duration_boundary = duration_period.end_date
+        if duration_boundary is not None and duration_period.end_date_only:
+            duration_boundary += timedelta(days=1)
+    else:
+        return False
+    return duration_boundary is not None and instant_boundary == duration_boundary
 
 
 def _fact_path_qname(fact: Fact, path: tuple[int, ...]) -> QName | None:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
 from functools import lru_cache
 from typing import Any
@@ -19,6 +20,8 @@ from bde_xbrl_editor.taxonomy.models import (
     TypedDimensionFilter,
     XPathFilterDefinition,
 )
+
+_PERIOD_FILTER_NS = "http://xbrl.org/2008/filter/period"
 
 
 def apply_filters(
@@ -60,6 +63,13 @@ def apply_filters(
         result = [fact for fact in result if not fact.is_nil]
 
     result = _apply_value_filter_resources(result, variable_def.filter_resources)
+
+    result = _apply_period_filter_resources(
+        result,
+        variable_def.filter_resources,
+        instance,
+        xpath_variables=xpath_variables,
+    )
 
     result = _apply_tuple_location_resources(result, variable_def.filter_resources)
 
@@ -173,6 +183,130 @@ def apply_filters(
         )
 
     return result
+
+
+def _apply_period_filter_resources(
+    facts: list[Fact],
+    resources: tuple[Any, ...],
+    instance: XbrlInstance,
+    *,
+    xpath_variables: dict[str, Any] | None,
+) -> list[Fact]:
+    """Apply the specialized Formula period filters retained by the parser."""
+    filtered = list(facts)
+    period_resources = (
+        resource
+        for resource in resources
+        if resource.namespace == _PERIOD_FILTER_NS
+        and resource.local_name in {"periodStart", "periodEnd", "periodInstant", "forever"}
+    )
+    for resource in period_resources:
+        target_date = _evaluate_period_filter_date(
+            resource.attributes.get("date"),
+            resource.namespaces,
+            xpath_variables,
+        )
+        target_time = _evaluate_period_filter_time(
+            resource.attributes.get("time"),
+            resource.namespaces,
+            xpath_variables,
+        )
+
+        filtered = [
+            fact
+            for fact in filtered
+            if _period_filter_matches(
+                fact,
+                resource.local_name,
+                target_date,
+                target_time,
+                instance,
+            )
+            != bool(resource.complement)
+        ]
+    return filtered
+
+
+def _period_filter_matches(
+    fact: Fact,
+    filter_name: str,
+    target_date: date | None,
+    target_time: time | None,
+    instance: XbrlInstance,
+) -> bool:
+    context = instance.contexts.get(fact.context_ref)
+    if context is None:
+        return False
+    period = context.period
+    if filter_name == "forever":
+        return period.period_type == "forever"
+    if target_date is None:
+        return False
+    if filter_name == "periodStart":
+        boundary = period.start_date if period.period_type == "duration" else None
+    elif filter_name == "periodEnd":
+        boundary = period.end_date if period.period_type == "duration" else None
+        if boundary is not None and target_time is not None and period.end_date_only:
+            boundary += timedelta(days=1)
+    else:
+        boundary = period.instant_date if period.period_type == "instant" else None
+        if boundary is not None and target_time is not None and period.instant_date_only:
+            boundary += timedelta(days=1)
+    if boundary is None:
+        return False
+    if target_time is None:
+        return boundary == target_date
+    return datetime.combine(boundary, time.min) == datetime.combine(target_date, target_time)
+
+
+def _evaluate_period_filter_date(
+    expression: str | None,
+    namespaces: dict[str, str],
+    xpath_variables: dict[str, Any] | None,
+) -> date | None:
+    value = _evaluate_filter_atomic(expression, namespaces, xpath_variables)
+    if value is None:
+        return None
+    try:
+        return date.fromisoformat(str(value).split("T", 1)[0])
+    except ValueError:
+        return None
+
+
+def _evaluate_period_filter_time(
+    expression: str | None,
+    namespaces: dict[str, str],
+    xpath_variables: dict[str, Any] | None,
+) -> time | None:
+    value = _evaluate_filter_atomic(expression, namespaces, xpath_variables)
+    if value is None:
+        return None
+    lexical = str(value).removesuffix("Z").split("+", 1)[0]
+    try:
+        return time.fromisoformat(lexical).replace(tzinfo=None)
+    except ValueError:
+        return None
+
+
+def _evaluate_filter_atomic(
+    expression: str | None,
+    namespaces: dict[str, str],
+    xpath_variables: dict[str, Any] | None,
+) -> Any | None:
+    if not expression:
+        return None
+    import elementpath  # type: ignore[import-untyped]
+
+    from bde_xbrl_editor.validation.formula.xfi_functions import build_formula_parser
+
+    try:
+        token = build_formula_parser(namespaces).parse(expression)
+        values = list(
+            token.select(elementpath.XPathContext(item="", variables=xpath_variables or {}))
+        )
+        return values[0] if len(values) == 1 else None
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _apply_value_filter_resources(
