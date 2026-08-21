@@ -395,7 +395,10 @@ class TestCaseExecutor:
                         EssenceAliasValidator().validate_taxonomy(taxonomy_struct)
                     )
                 if test_case.suite_id == "formula" and taxonomy_struct is not None:
-                    formula_result = FormulaProcessor(taxonomy_struct).evaluate(instance)
+                    formula_result = FormulaProcessor(taxonomy_struct).evaluate(
+                        instance,
+                        external_parameters=variation.external_parameters,
+                    )
                     findings = findings + formula_result.findings
                     findings = findings + tuple(
                         validate_assertion_severity_linkbases(variation.input_files)

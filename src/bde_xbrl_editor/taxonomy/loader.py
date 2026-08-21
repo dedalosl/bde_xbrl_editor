@@ -16,6 +16,7 @@ from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlsplit
 
 from lxml import etree
 
@@ -1427,7 +1428,7 @@ def _assertion_message_linkbases(paths: list[Path]) -> list[Path]:
 
 
 def _discover_formula_linkbases(linkbase_paths: list[Path]) -> list[Path]:
-    """Return linkbase paths that contain formula assertions (structural detection)."""
+    """Return the complete local Formula relationship graph."""
     candidates = [
         path
         for path in linkbase_paths
@@ -1436,7 +1437,8 @@ def _discover_formula_linkbases(linkbase_paths: list[Path]) -> list[Path]:
         and not _is_assertion_message_linkbase(path)
     ]
     if len(candidates) <= _LARGE_LINKBASE_SEQUENTIAL_THRESHOLD:
-        return [path for path in candidates if linkbase_contains_formula_assertions(path)]
+        formula_paths = [path for path in candidates if linkbase_contains_formula_assertions(path)]
+        return _include_formula_locator_targets(formula_paths, candidates)
 
     # FINREP/EBA: thousands of label/presentation files — skip iterparse when the
     # path cannot be a validation-rule linkbase.
@@ -1463,7 +1465,47 @@ def _discover_formula_linkbases(linkbase_paths: list[Path]) -> list[Path]:
     for path in uncertain:
         if linkbase_contains_formula_assertions(path):
             formula_paths.append(path)
-    return formula_paths
+    return _include_formula_locator_targets(formula_paths, candidates)
+
+
+def _include_formula_locator_targets(
+    formula_paths: list[Path],
+    candidates: list[Path],
+) -> list[Path]:
+    """Include local linkbases reached by ``link:loc`` from Formula files.
+
+    Formula resources and their relationship arcs may be split across linkbases.
+    A target file containing only a parameter or filter is therefore part of the
+    Formula graph even though it has no assertion or output-formula resource of
+    its own.
+    """
+    candidate_by_path = {path.resolve(): path for path in candidates}
+    discovered = list(dict.fromkeys(formula_paths))
+    seen = {path.resolve() for path in discovered}
+    pending = deque(discovered)
+    locator_tag = f"{{{NS_LINK}}}loc"
+
+    while pending:
+        source = pending.popleft()
+        try:
+            root = parse_xml_file(source).getroot()
+        except (OSError, etree.XMLSyntaxError):
+            continue
+        for locator in root.iter(locator_tag):
+            href = (locator.get(_XLINK_HREF) or "").strip()
+            parsed_href = urlsplit(href)
+            if not parsed_href.path or parsed_href.scheme not in {"", "file"}:
+                continue
+            href_path = Path(unquote(parsed_href.path))
+            target_path = href_path if href_path.is_absolute() else source.parent / href_path
+            target = candidate_by_path.get(target_path.resolve())
+            if target is None or target.resolve() in seen:
+                continue
+            seen.add(target.resolve())
+            discovered.append(target)
+            pending.append(target)
+
+    return discovered
 
 
 def _discover_custom_function_linkbases(

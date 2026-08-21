@@ -1084,6 +1084,8 @@ def _general_filter_context_item(
         return fact.value
     if "string" in type_name:
         return fact.value or ""
+    if "boolean" in type_name:
+        return fact.value.strip() in {"true", "1"}
     try:
         return Decimal(fact.value)
     except (InvalidOperation, TypeError):

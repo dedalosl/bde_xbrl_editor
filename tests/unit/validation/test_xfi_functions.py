@@ -115,6 +115,15 @@ def test_formula_parser_accepts_normalized_xpath_comments() -> None:
     assert "".join(token.evaluate()) == "planet venus"
 
 
+def test_normalize_formula_xpath_expression_atomizes_qname_node_argument() -> None:
+    expression = "fn:local-name-from-QName($category)"
+
+    assert (
+        normalize_formula_xpath_expression(expression)
+        == "fn:local-name-from-QName(data($category))"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Ensure context is cleared between tests
 # ---------------------------------------------------------------------------

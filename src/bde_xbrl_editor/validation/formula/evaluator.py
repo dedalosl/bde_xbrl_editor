@@ -11,12 +11,14 @@ from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field, replace
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
-from functools import lru_cache
+from functools import cache, lru_cache
+from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urldefrag, urljoin, urlsplit
 
 from lxml import etree
 
-from bde_xbrl_editor.instance.constants import XBRLDI_NS
+from bde_xbrl_editor.instance.constants import XBRLDI_NS, XBRLI_NS
 from bde_xbrl_editor.instance.models import Fact, XbrlInstance
 from bde_xbrl_editor.instance.s_equal import (
     canonical_context_refs_by_s_equal,
@@ -74,12 +76,43 @@ class _VariableBinding:
 
 
 @dataclass(frozen=True)
+class ExternalFormulaParameter:
+    """A client-supplied Formula parameter identified by expanded QName."""
+
+    name: str
+    datatype: str
+    lexical_value: str
+
+
+@dataclass(frozen=True)
 class _ResolvedFormulaRelationship:
     parent: QName
     child: QName
     link_role: str
     arcrole: str
     attributes: dict[QName, str]
+
+
+class _FactDecimal(Decimal):
+    """XPath decimal retaining the source fact identity for xfi functions."""
+
+    def __new__(cls, value: Decimal, fact: Fact) -> _FactDecimal:
+        result = super().__new__(cls, value)
+        result.context_ref = fact.context_ref
+        result.unit_ref = fact.unit_ref
+        result.decimals = fact.decimals
+        return result
+
+
+class _FactString(str):
+    """XPath string retaining the source fact identity for xfi functions."""
+
+    def __new__(cls, value: str, fact: Fact) -> _FactString:
+        result = super().__new__(cls, value)
+        result.context_ref = fact.context_ref
+        result.unit_ref = fact.unit_ref
+        result.decimals = fact.decimals
+        return result
 
 
 class FormulaEvaluator:
@@ -95,14 +128,19 @@ class FormulaEvaluator:
         finding_callback: FindingCallback | None = None,
         cancel_event: threading.Event | None = None,
         general_variable_values: dict[str, str] | None = None,
+        external_parameters: Iterable[ExternalFormulaParameter] = (),
     ) -> None:
         self._taxonomy = taxonomy
         self._progress_callback = progress_callback
         self._finding_callback = finding_callback
         self._cancel_event = cancel_event
         self._general_variable_values = dict(general_variable_values or {})
+        self._external_parameter_values = {
+            parameter.name: _cast_external_parameter(parameter)
+            for parameter in external_parameters
+        }
         self._detail_cache: dict[str, dict[str, str]] = {}
-        self._xpath_token_cache: dict[tuple[tuple[tuple[str, str], ...], str], Any] = {}
+        self._xpath_token_cache: dict[tuple[tuple[tuple[str, str], ...], str, str | None], Any] = {}
         self._xpath_filter_token_cache: dict[tuple[tuple[tuple[str, str], ...], str], Any] = {}
         self._variable_match_cache: dict[tuple[Any, ...], list[Fact]] = {}
         (
@@ -622,6 +660,15 @@ class FormulaEvaluator:
         """
         all_facts = instance.facts
         filter_xpath_variables = self._independent_general_variable_values(assertion, instance)
+        filter_xpath_variables.update(
+            self._resolve_parameter_values(
+                assertion.parameters,
+                {},
+                instance,
+                namespaces=assertion.namespaces,
+                existing=filter_xpath_variables,
+            )
+        )
         fact_variable_names = {variable.variable_name for variable in assertion.variables}
 
         per_variable: list[tuple[str, list[list[Fact]]]] = []
@@ -644,13 +691,31 @@ class FormulaEvaluator:
                 facts_by_concept=facts_by_concept,
                 xpath_variables=filter_xpath_variables,
             )
+            has_dependent_filters = any(
+                resource.variable
+                and resource.local_name in {"locationFilter", "siblingFilter"}
+                for resource in var_def.filter_resources
+            )
             # Each fact is one binding candidate for this variable
             # We group as list[list[Fact]] where each inner list is [one_fact]
             if matched:
                 if var_def.bind_as_sequence and assertion.aspect_model is not None:
-                    candidates = list(self._group_matched_sequence(matched, var_def, instance))
+                    candidates = list(
+                        self._group_matched_sequence(
+                            matched,
+                            var_def,
+                            instance,
+                            assertion.aspect_model,
+                        )
+                    )
                 else:
                     candidates = [matched] if var_def.bind_as_sequence else [[f] for f in matched]
+                if (
+                    len(assertion.variables) > 1
+                    and var_def.fallback_value is not None
+                    and (assertion.implicit_filtering or has_dependent_filters)
+                ):
+                    candidates.append([])
             elif var_def.fallback_value is not None:
                 candidates = [[]]  # one binding with empty set (fallback applies)
             else:
@@ -775,24 +840,86 @@ class FormulaEvaluator:
         instance: XbrlInstance,
         *,
         general_values: dict[str, Any],
+        only_variable_names: set[str] | None = None,
     ) -> bool:
         """Apply filters whose result depends on another fact-variable binding."""
         fact_variable_names = {variable.variable_name for variable in assertion.variables}
         variables_by_name = {variable.variable_name: variable for variable in assertion.variables}
+        dependent_expressions = tuple(
+            xpath_filter.xpath_expr
+            for variable in assertion.variables
+            for xpath_filter in variable.xpath_filters
+            if _xpath_variable_names(xpath_filter.xpath_expr) & fact_variable_names
+        )
+        dependent_xpath_variables = self._build_general_select_variables(
+            fact_binding,
+            general_values,
+            namespaces=assertion.namespaces,
+            fact_bindings_as_elements=_expressions_need_fact_nodes(dependent_expressions),
+            fact_bindings_with_identity=_expressions_need_fact_identity(dependent_expressions),
+        )
         for variable in assertion.variables:
+            if not fact_binding.get(variable.variable_name) and variable.fallback_value is not None:
+                dependent_xpath_variables[variable.variable_name] = self._evaluate_fallback_xpath(
+                    variable.fallback_value,
+                    dependent_xpath_variables,
+                    assertion.namespaces,
+                )
+        dependent_xpath_variables = _with_equivalent_variable_prefixes(
+            dependent_xpath_variables,
+            assertion.namespaces,
+        )
+        for variable in assertion.variables:
+            if only_variable_names is not None and variable.variable_name not in only_variable_names:
+                continue
             candidates = fact_binding.get(variable.variable_name, ())
+            has_dependent_filters = any(
+                resource.variable
+                and resource.local_name in {"locationFilter", "siblingFilter"}
+                for resource in variable.filter_resources
+            )
+            if (
+                not candidates
+                and variable.fallback_value is not None
+                and has_dependent_filters
+                and not assertion.implicit_filtering
+            ):
+                independent_variable = replace(
+                    variable,
+                    xpath_filters=tuple(
+                        xpath_filter
+                        for xpath_filter in variable.xpath_filters
+                        if not (
+                            _xpath_variable_names(xpath_filter.xpath_expr) & fact_variable_names
+                        )
+                    ),
+                )
+                possible_facts = self._matching_facts_for_variable(
+                    instance.facts,
+                    independent_variable,
+                    instance,
+                    facts_by_concept=None,
+                    xpath_variables=dependent_xpath_variables,
+                )
+                has_dependent_match = any(
+                    self._binding_matches_dependent_variable_filters(
+                        assertion,
+                        {**fact_binding, variable.variable_name: [candidate]},
+                        instance,
+                        general_values=general_values,
+                        only_variable_names={variable.variable_name},
+                    )
+                    for candidate in possible_facts
+                )
+                if has_dependent_match:
+                    return False
+                continue
             dependent_xpath_filters = tuple(
                 xpath_filter
                 for xpath_filter in variable.xpath_filters
                 if _xpath_variable_names(xpath_filter.xpath_expr) & fact_variable_names
             )
             if dependent_xpath_filters:
-                xpath_variables = self._build_general_select_variables(
-                    fact_binding,
-                    general_values,
-                    namespaces=assertion.namespaces,
-                    fact_bindings_as_elements=True,
-                )
                 filter_only_variable = FactVariableDefinition(
                     variable_name=variable.variable_name,
                     nils=True,
@@ -804,7 +931,7 @@ class FormulaEvaluator:
                     instance,
                     custom_functions=self._taxonomy.custom_functions,
                     xpath_token_cache=self._xpath_filter_token_cache,
-                    xpath_variables=xpath_variables,
+                    xpath_variables=dependent_xpath_variables,
                     concepts=self._taxonomy.concepts,
                 )
                 if len(matched_candidates) != len(candidates):
@@ -1207,11 +1334,42 @@ class FormulaEvaluator:
             next_bindings: list[dict[str, list[Fact]]] = []
             for candidate_binding in expanded:
                 if concept_expressions:
+                    expression_texts = tuple(
+                        expression.xpath_expr for expression in concept_expressions
+                    )
                     xpath_variables = self._build_general_select_variables(
                         candidate_binding,
                         general_values,
                         namespaces=assertion.namespaces,
-                        fact_bindings_as_elements=True,
+                        fact_bindings_as_elements=_expressions_need_fact_nodes(expression_texts),
+                        fact_bindings_with_identity=_expressions_need_fact_identity(
+                            expression_texts
+                        ),
+                    )
+                    xpath_variables.update(
+                        self._resolve_parameter_values(
+                            assertion.parameters,
+                            candidate_binding,
+                            instance,
+                            namespaces=assertion.namespaces,
+                            existing={**general_values, **xpath_variables},
+                        )
+                    )
+                    for fact_variable in assertion.variables:
+                        if (
+                            not candidate_binding.get(fact_variable.variable_name)
+                            and fact_variable.fallback_value is not None
+                        ):
+                            xpath_variables[fact_variable.variable_name] = (
+                                self._evaluate_fallback_xpath(
+                                    fact_variable.fallback_value,
+                                    xpath_variables,
+                                    assertion.namespaces,
+                                )
+                            )
+                    xpath_variables = _with_equivalent_variable_prefixes(
+                        xpath_variables,
+                        assertion.namespaces,
                     )
                     matched = self._matching_facts_for_variable(
                         instance.facts,
@@ -1225,6 +1383,8 @@ class FormulaEvaluator:
                         relation_resources,
                         candidate_binding,
                         instance,
+                        general_values=general_values,
+                        namespaces=assertion.namespaces,
                     )
 
                 if matched:
@@ -1248,12 +1408,161 @@ class FormulaEvaluator:
         resources: tuple[Any, ...],
         fact_binding: dict[str, list[Fact]],
         instance: XbrlInstance,
+        *,
+        general_values: dict[str, Any] | None = None,
+        namespaces: dict[str, str] | None = None,
     ) -> list[Fact]:
         matched: list[Fact] = []
         canonical_contexts = canonical_context_refs_by_s_equal(instance, self._taxonomy)
         canonical_units = canonical_unit_refs_by_structure(instance)
+        general_values = general_values or {}
+        namespaces = namespaces or {}
+
+        def expression_value(expression: str, first_fact: Fact | None = None) -> Any | None:
+            values = self._evaluate_general_variable_select(
+                expression,
+                variables=general_values,
+                instance=instance,
+                namespaces=namespaces,
+                first_fact=first_fact,
+            )
+            if isinstance(values, list):
+                return values[0] if values else None
+            return values
+
+        def expression_string(resource: Any, name: str, first_fact: Fact | None) -> str:
+            fixed = resource.attributes.get(name, "").strip()
+            expression = resource.attributes.get(f"{name}Expression", "").strip()
+            if not expression:
+                return fixed
+            value = expression_value(expression, first_fact)
+            return str(value or "")
+
+        def qname_value(value: Any, resource: Any) -> QName | None:
+            if value is None:
+                return None
+            namespace = getattr(value, "namespace", None)
+            local_name = getattr(value, "local_name", None)
+            if namespace is not None and local_name:
+                return QName(str(namespace), str(local_name))
+            lexical = str(value)
+            if lexical.startswith("{") and "}" in lexical:
+                uri, local = lexical[1:].split("}", 1)
+                return QName(uri, local)
+            if ":" in lexical:
+                prefix, local = lexical.split(":", 1)
+                resolved = resource.namespaces.get(prefix) or namespaces.get(prefix)
+                if resolved is not None:
+                    return QName(resolved, local)
+            return QName(resource.namespaces.get("", namespaces.get("", "")), lexical)
+
+        def network_arcs(arcrole: str, linkrole: str) -> list[tuple[QName, QName]]:
+            if arcrole.endswith("/parent-child"):
+                return [
+                    (arc.parent, arc.child)
+                    for role, network in self._taxonomy.presentation.items()
+                    if not linkrole or role == linkrole or network.extended_link_role == linkrole
+                    for arc in network.arcs
+                ]
+            return [
+                (arc.source, arc.target)
+                for role, arcs in self._taxonomy.definition.items()
+                for arc in arcs
+                if (not linkrole or role == linkrole or arc.extended_link_role == linkrole)
+                and (not arcrole or arc.arcrole == arcrole)
+            ]
+
+        def related_concepts(
+            source: QName,
+            axis: str,
+            arcs: list[tuple[QName, QName]],
+            generations: int | None,
+        ) -> set[QName]:
+            is_root = source.namespace == "http://www.xbrl.org/2008/function/instance"
+            is_root = is_root and source.local_name == "root"
+            if is_root:
+                roots = {parent for parent, _ in arcs} - {child for _, child in arcs}
+                return roots if axis in {"sibling", "sibling-or-self", "child"} else set()
+            children = {child for parent, child in arcs if parent == source}
+            parents = {parent for parent, child in arcs if child == source}
+            if axis == "child":
+                return children
+            if axis == "child-or-self":
+                return children | {source}
+            if axis in {"sibling", "sibling-or-self"}:
+                siblings = {
+                    child
+                    for parent, child in arcs
+                    if parent in parents and (axis.endswith("or-self") or child != source)
+                }
+                return siblings
+            forward = axis in {"descendant", "descendant-or-self"}
+            reverse = axis in {"ancestor", "ancestor-or-self"}
+            if not forward and not reverse:
+                return set()
+            result = {source} if axis.endswith("or-self") else set()
+            frontier = {source}
+            depth = 0
+            while frontier and (generations is None or depth < generations):
+                next_frontier = {
+                    target if forward else origin
+                    for origin, target in arcs
+                    if (origin if forward else target) in frontier
+                } - result
+                result.update(next_frontier)
+                frontier = next_frontier
+                depth += 1
+            return result
+
         for resource in resources:
             parent_facts = fact_binding.get(resource.variable, ()) if resource.variable else ()
+            first_fact = parent_facts[0] if parent_facts else _first_fact(fact_binding)
+            arcrole = expression_string(resource, "arcrole", first_fact)
+            linkrole = expression_string(resource, "linkrole", first_fact)
+            axis = resource.attributes.get("axis", "child").strip() or "child"
+            generations_text = resource.attributes.get("generations", "").strip()
+            generations = int(generations_text) if generations_text.isdigit() else None
+            source_concept = parent_facts[0].concept if parent_facts else None
+            if source_concept is None and resource.qname_expressions:
+                source_concept = qname_value(
+                    expression_value(resource.qname_expressions[0], first_fact),
+                    resource,
+                )
+            if source_concept is None and resource.qnames:
+                source_concept = resource.qnames[0]
+
+            if (
+                source_concept is not None
+                and not arcrole.endswith("/summation-item")
+                and not resource.test_xpath
+            ):
+                concepts = related_concepts(
+                    source_concept,
+                    axis,
+                    network_arcs(arcrole, linkrole),
+                    generations,
+                )
+                if concepts:
+                    if parent_facts:
+                        parent = parent_facts[0]
+                        parent_context = canonical_contexts.get(
+                            parent.context_ref, parent.context_ref
+                        )
+                        parent_unit = canonical_units.get(
+                            parent.unit_ref or "", parent.unit_ref or ""
+                        )
+                        matched.extend(
+                            fact
+                            for fact in instance.facts
+                            if fact.concept in concepts
+                            and canonical_contexts.get(fact.context_ref, fact.context_ref)
+                            == parent_context
+                            and canonical_units.get(fact.unit_ref or "", fact.unit_ref or "")
+                            == parent_unit
+                        )
+                    else:
+                        matched.extend(fact for fact in instance.facts if fact.concept in concepts)
+                continue
             if not parent_facts and resource.qnames:
                 item_facts = fact_binding.get("item", ())
                 parent_facts = item_facts
@@ -1299,9 +1608,6 @@ class FormulaEvaluator:
             if not parent_facts:
                 continue
             parent = parent_facts[0]
-            arcrole = resource.attributes.get("arcrole", "")
-            linkrole = resource.attributes.get("linkrole", "")
-            axis = resource.attributes.get("axis", "child")
             if axis != "child":
                 continue
             wanted_weight: float | None = None
@@ -1336,6 +1642,7 @@ class FormulaEvaluator:
         facts: list[Fact],
         variable: FactVariableDefinition,
         instance: XbrlInstance,
+        aspect_model: str,
     ) -> tuple[list[Fact], ...]:
         groups: dict[tuple[Any, ...], list[Fact]] = {}
         canonical_contexts = canonical_context_refs_by_s_equal(instance, self._taxonomy)
@@ -1359,7 +1666,34 @@ class FormulaEvaluator:
                 and "period" not in omitted
                 and "remainder" not in omitted
             ):
-                context_key = canonical_contexts.get(fact.context_ref, fact.context_ref)
+                if aspect_model == "dimensional":
+                    s_equal_key = context_s_equal_key(
+                        context,
+                        dict(self._taxonomy.element_defaults),
+                    )
+                    dimension_tags = {
+                        f"{{{XBRLDI_NS}}}explicitMember",
+                        f"{{{XBRLDI_NS}}}typedMember",
+                    }
+                    scenario, segment = s_equal_key[4:6]
+                    dimension_members = tuple(
+                        sorted(
+                            (
+                                child
+                                for child in (*scenario, *segment)
+                                if child[0] in dimension_tags
+                            ),
+                            key=repr,
+                        )
+                    )
+                    context_key = (
+                        *s_equal_key[:4],
+                        tuple(child for child in scenario if child[0] not in dimension_tags),
+                        tuple(child for child in segment if child[0] not in dimension_tags),
+                        dimension_members,
+                    )
+                else:
+                    context_key = canonical_contexts.get(fact.context_ref, fact.context_ref)
             else:
                 context_key = (
                     None if "entity" in omitted else repr(context.entity),
@@ -1427,6 +1761,7 @@ class FormulaEvaluator:
                     instance=instance,
                     namespaces=variable.namespaces or assertion.namespaces,
                     first_fact=None,
+                    base_uri=getattr(assertion, "xpath_base_uri", None),
                 )
             except Exception:  # noqa: BLE001
                 continue
@@ -1498,6 +1833,7 @@ class FormulaEvaluator:
                             instance=instance,
                             namespaces=variable.namespaces or assertion.namespaces,
                             first_fact=first_fact,
+                            base_uri=getattr(assertion, "xpath_base_uri", None),
                         )
                     except Exception as exc:  # noqa: BLE001
                         next_candidates.append((dict(candidate), candidate_uses_fallback, exc))
@@ -1572,6 +1908,7 @@ class FormulaEvaluator:
                     instance=instance,
                     namespaces=variable.namespaces or assertion.namespaces,
                     first_fact=first_fact,
+                    base_uri=getattr(assertion, "xpath_base_uri", None),
                 )
             except Exception as exc:  # noqa: BLE001
                 return values, exc
@@ -1634,6 +1971,7 @@ class FormulaEvaluator:
         *,
         namespaces: dict[str, str],
         fact_bindings_as_elements: bool = False,
+        fact_bindings_with_identity: bool = False,
     ) -> dict[str, Any]:
         variables: dict[str, Any] = dict(general_values)
         for fact_name, facts in fact_binding.items():
@@ -1643,21 +1981,20 @@ class FormulaEvaluator:
                 fact_values = [_fact_to_message_element(fact) for fact in facts]
                 variables[fact_name] = fact_values[0] if len(fact_values) == 1 else fact_values
                 continue
-            if len(facts) == 1:
-                variables[fact_name] = self._coerce_fact_xpath_value(
-                    facts[0],
+            fact_values = [
+                self._coerce_fact_xpath_value(
+                    fact,
                     namespaces=namespaces,
                     xpath_expr="",
                 )
-            else:
-                variables[fact_name] = [
-                    self._coerce_fact_xpath_value(
-                        fact,
-                        namespaces=namespaces,
-                        xpath_expr="",
-                    )
-                    for fact in facts
+                for fact in facts
+            ]
+            if fact_bindings_with_identity:
+                fact_values = [
+                    _atomic_value_with_fact_identity(value, fact)
+                    for value, fact in zip(fact_values, facts, strict=False)
                 ]
+            variables[fact_name] = fact_values[0] if len(fact_values) == 1 else fact_values
         return _with_equivalent_variable_prefixes(variables, namespaces)
 
     def _matching_facts_for_variable(
@@ -1669,7 +2006,15 @@ class FormulaEvaluator:
         facts_by_concept: dict[object, list[Fact]] | None,
         xpath_variables: dict[str, Any] | None = None,
     ) -> list[Fact]:
+        original_var_def = var_def
         var_def = self._with_expanded_dimension_members(var_def)
+        if var_def is not original_var_def and any(
+            dimension_filter.member_axis and not dimension_filter.member_qnames
+            for dimension_filter in var_def.dimension_filters
+        ):
+            # A network-selection axis whose traversal selects no domain members
+            # denotes the empty filter result (Formula erratum 1), not "any member".
+            return []
         cache_key = (
             self._variable_match_cache_key(var_def),
             tuple(
@@ -2395,9 +2740,10 @@ class FormulaEvaluator:
     ) -> Iterator[_VariableBinding]:
         """Apply Formula implicit filtering to raw Cartesian variable bindings."""
         definitions = {variable.variable_name: variable for variable in formula.variables}
+        filtered_bindings: list[_VariableBinding] = []
         for resolved in bindings:
             if resolved.error is not None or not formula.implicit_filtering:
-                yield resolved
+                filtered_bindings.append(resolved)
                 continue
             binding = {name: list(facts) for name, facts in resolved.fact_binding.items()}
             anchors = [
@@ -2458,25 +2804,124 @@ class FormulaEvaluator:
                         break
             if not compatible:
                 continue
+            uses_filtered_fallback = resolved.uses_fallback or any(
+                not binding.get(name) and definition.fallback_value is not None
+                for name, definition in definitions.items()
+            )
             if formula.general_variables and binding != resolved.fact_binding:
                 for general_values, uses_fallback, error in self._resolve_general_variable_bindings(
                     formula,  # type: ignore[arg-type]
                     binding,
                     instance,
                 ):
-                    yield _VariableBinding(
-                        fact_binding=binding,
-                        general_values=general_values,
-                        uses_fallback=resolved.uses_fallback or uses_fallback,
-                        error=error,
+                    filtered_bindings.append(
+                        _VariableBinding(
+                            fact_binding=binding,
+                            general_values=general_values,
+                            uses_fallback=uses_filtered_fallback or uses_fallback,
+                            error=error,
+                        )
                     )
                 continue
-            yield _VariableBinding(
-                fact_binding=binding,
-                general_values=resolved.general_values,
-                uses_fallback=resolved.uses_fallback,
-                error=resolved.error,
+            filtered_bindings.append(
+                _VariableBinding(
+                    fact_binding=binding,
+                    general_values=resolved.general_values,
+                    uses_fallback=uses_filtered_fallback,
+                    error=resolved.error,
+                )
             )
+
+        yielded_signatures: set[tuple[Any, ...]] = set()
+        for resolved in filtered_bindings:
+            if resolved.uses_fallback and any(
+                candidate.error is None
+                and self._binding_strictly_extends(
+                    candidate.fact_binding,
+                    resolved.fact_binding,
+                    definitions,
+                    instance,
+                )
+                for candidate in filtered_bindings
+            ):
+                continue
+            signature = self._binding_signature(resolved)
+            if signature in yielded_signatures:
+                continue
+            yielded_signatures.add(signature)
+            yield resolved
+
+    def _binding_strictly_extends(
+        self,
+        candidate: dict[str, list[Fact]],
+        fallback_binding: dict[str, list[Fact]],
+        definitions: dict[str, FactVariableDefinition],
+        instance: XbrlInstance,
+    ) -> bool:
+        """Return whether candidate supersedes a fallback in one aspect group."""
+        strictly_extended = False
+        preserves_bound_facts = True
+        for name, facts in fallback_binding.items():
+            candidate_facts = candidate.get(name, ())
+            if facts and list(candidate_facts) != facts:
+                preserves_bound_facts = False
+                break
+            if not facts and candidate_facts:
+                strictly_extended = True
+        if preserves_bound_facts and strictly_extended:
+            return True
+
+        candidate_fallbacks = {
+            name
+            for name, definition in definitions.items()
+            if definition.fallback_value is not None and not candidate.get(name)
+        }
+        binding_fallbacks = {
+            name
+            for name, definition in definitions.items()
+            if definition.fallback_value is not None and not fallback_binding.get(name)
+        }
+        if not candidate_fallbacks < binding_fallbacks:
+            return False
+
+        fact_variable_names = set(definitions)
+        dependent_filter_variables = {
+            name
+            for name, definition in definitions.items()
+            if any(
+                _xpath_variable_names(xpath_filter.xpath_expr) & fact_variable_names
+                for xpath_filter in definition.xpath_filters
+            )
+            or any(
+                resource.local_name == "conceptRelation" and resource.variable
+                for resource in definition.filter_resources
+            )
+        }
+        if not dependent_filter_variables:
+            return False
+        for name, facts in fallback_binding.items():
+            candidate_facts = candidate.get(name, ())
+            if facts and list(candidate_facts) != facts and name not in dependent_filter_variables:
+                return False
+
+        candidate_anchor = next(
+            ((name, facts[0]) for name, facts in candidate.items() if facts),
+            None,
+        )
+        fallback_anchor = next(
+            ((name, facts[0]) for name, facts in fallback_binding.items() if facts),
+            None,
+        )
+        if fallback_anchor is None:
+            return candidate_anchor is not None
+        if candidate_anchor is None:
+            return False
+        _, candidate_fact = candidate_anchor
+        _, fallback_fact = fallback_anchor
+        canonical_contexts = canonical_context_refs_by_s_equal(instance, self._taxonomy)
+        return canonical_contexts.get(
+            candidate_fact.context_ref, candidate_fact.context_ref
+        ) == canonical_contexts.get(fallback_fact.context_ref, fallback_fact.context_ref)
 
     def _filter_sequence_dimension_members(
         self,
@@ -2492,6 +2937,8 @@ class FormulaEvaluator:
         filtered = sequence
         domain_member_arcrole = "http://xbrl.org/int/dim/arcrole/domain-member"
         for dimension_filter in variable.dimension_filters:
+            if dimension_filter.member_axis is None or dimension_filter.member_qnames:
+                continue
             source_member = anchor_context.dimensions.get(dimension_filter.dimension_qname)
             if source_member is None:
                 continue
@@ -2537,6 +2984,8 @@ class FormulaEvaluator:
                     covered.add("period")
                 if "unit" in normalized_aspects:
                     covered.add("unit")
+                if "location" in normalized_aspects:
+                    covered.add("location")
                 if "dimensions" in normalized_aspects:
                     covered.add("dimensions")
                 if any(
@@ -2800,6 +3249,8 @@ class FormulaEvaluator:
                     precondition.namespaces or formula.namespaces,
                     assertion=formula,  # type: ignore[arg-type]
                     general_values=general_values,
+                    fact_bindings_as_elements=True,
+                    context_item_is_instance=True,
                 )
                 if not _to_bool(result):
                     return False
@@ -2818,6 +3269,10 @@ class FormulaEvaluator:
     ) -> dict[str, Any]:
         values: dict[str, Any] = {}
         for parameter in parameters:
+            external_name = parameter.resource_name or parameter.parameter_name
+            if external_name in self._external_parameter_values:
+                values[parameter.parameter_name] = self._external_parameter_values[external_name]
+                continue
             if not parameter.select_xpath:
                 continue
             try:
@@ -2979,9 +3434,10 @@ class FormulaEvaluator:
         instance: XbrlInstance,
         namespaces: dict[str, str] | None = None,
         *,
-        assertion: FormulaAssertion | None = None,
+        assertion: FormulaAssertion | FormulaOutputDefinition | None = None,
         general_values: dict[str, Any] | None = None,
         fact_bindings_as_elements: bool = False,
+        context_item_is_instance: bool = False,
     ) -> Any:
         """Evaluate an XPath 2.0 expression with the current fact binding."""
         import elementpath  # type: ignore[import-untyped]
@@ -2990,9 +3446,8 @@ class FormulaEvaluator:
             **(assertion.namespaces if assertion is not None else {}),
             **(namespaces or {}),
         }
-        fact_bindings_as_elements = fact_bindings_as_elements or any(
-            token in xpath_expr
-            for token in ("node-name(", "local-name(", "namespace-uri(", "name(")
+        fact_bindings_as_elements = fact_bindings_as_elements or _expressions_need_fact_nodes(
+            (xpath_expr,)
         )
 
         # Build a variable map: variable_name → Decimal, fallback value, or empty sequence.
@@ -3005,10 +3460,20 @@ class FormulaEvaluator:
         variables: dict[str, Any] = {}
         pending_fallbacks: dict[str, str] = {}
         first_fact: Fact | None = None
-        xpath_root: etree._Element | None = None
-        xpath_elements: dict[int, etree._Element] = {}
+        xpath_root: Any | None = None
+        xpath_elements: dict[int, Any] = {}
+        xpath_element_types: dict[int, str] = {}
         if fact_bindings_as_elements:
-            xpath_root = etree.Element("formula-instance")
+            xpath_root = etree.Element(
+                f"{{{XBRLI_NS}}}xbrl" if context_item_is_instance else "formula-instance"
+            )
+            if context_item_is_instance:
+                for context_id in instance.contexts:
+                    etree.SubElement(
+                        xpath_root,
+                        f"{{{XBRLI_NS}}}context",
+                        id=context_id,
+                    )
             bound_fact_ids = {id(fact) for facts in binding.values() for fact in facts}
             ordered_facts = [fact for fact in instance.facts if id(fact) in bound_fact_ids]
             ordered_ids = {id(fact) for fact in ordered_facts}
@@ -3025,9 +3490,26 @@ class FormulaEvaluator:
                 element = _fact_to_message_element(
                     fact,
                     default_value=default_value,
+                    xsd_type=(
+                        _fact_node_xsd_type(concept.data_type.local_name, fact.value)
+                        if concept is not None
+                        else None
+                    ),
                 )
                 xpath_root.append(element)
                 xpath_elements[id(fact)] = element
+                xsd_type = (
+                    _fact_node_xsd_type(concept.data_type.local_name, fact.value)
+                    if concept is not None
+                    else None
+                )
+                if xsd_type is not None:
+                    xpath_element_types[id(element)] = xsd_type
+            xpath_root, typed_nodes = _typed_xpath_tree(xpath_root, xpath_element_types)
+            xpath_elements = {
+                fact_id: typed_nodes[id(element)]
+                for fact_id, element in xpath_elements.items()
+            }
         fallback_by_name = (
             {
                 var_def.variable_name: var_def.fallback_value
@@ -3112,19 +3594,23 @@ class FormulaEvaluator:
 
         # Use the context item as a Decimal (for arithmetic) when available;
         # fall back to True as a harmless sentinel so elementpath stays happy.
-        if first_fact is None:
+        if context_item_is_instance and xpath_root is not None:
+            context_item: Any = xpath_root
+        elif first_fact is None:
             context_item: Any = True
         elif fact_bindings_as_elements:
             context_item = xpath_elements[id(first_fact)]
         else:
             context_item = _coerce_value(first_fact.value)
 
-        token = self._get_xpath_token(xpath_expr, namespaces)
+        xpath_base_uri = getattr(assertion, "xpath_base_uri", None)
+        token = self._get_xpath_token(xpath_expr, namespaces, base_uri=xpath_base_uri)
         try:
             ctx = elementpath.XPathContext(
                 root=xpath_root,
                 item=context_item,
                 variables=variables,
+                documents=_xpath_literal_documents(xpath_expr, xpath_base_uri),
             )
             result = list(token.select(ctx))
         finally:
@@ -3199,6 +3685,7 @@ class FormulaEvaluator:
                 instance=instance,
                 namespaces=variable.namespaces or namespaces,
                 first_fact=first_fact,
+                base_uri=getattr(assertion, "xpath_base_uri", None),
             )
             if selected is not None:
                 if variable.bind_as_sequence:
@@ -3221,6 +3708,7 @@ class FormulaEvaluator:
         instance: XbrlInstance,
         namespaces: dict[str, str],
         first_fact: Fact | None,
+        base_uri: str | None = None,
     ) -> Any | None:
         import elementpath  # type: ignore[import-untyped]
 
@@ -3228,6 +3716,7 @@ class FormulaEvaluator:
             return None
         if first_fact is None and select_xpath.strip() == ".":
             return None
+        xpath_root = _instance_xpath_root(instance) if "/" in select_xpath else None
         ctx_obj = None
         unit_obj = None
         if first_fact is not None:
@@ -3247,12 +3736,19 @@ class FormulaEvaluator:
                 "_custom_functions": self._taxonomy.custom_functions,
             }
         )
-        token = self._get_xpath_token(select_xpath, namespaces)
+        token = self._get_xpath_token(select_xpath, namespaces, base_uri=base_uri)
         try:
             ctx = elementpath.XPathContext(
-                root=None,
-                item=_coerce_value(first_fact.value) if first_fact is not None else True,
+                root=xpath_root,
+                item=(
+                    xpath_root
+                    if xpath_root is not None
+                    else _coerce_value(first_fact.value)
+                    if first_fact is not None
+                    else True
+                ),
                 variables=variables,
+                documents=_xpath_literal_documents(select_xpath, base_uri),
             )
             return list(token.select(ctx))
         finally:
@@ -3262,10 +3758,12 @@ class FormulaEvaluator:
         self,
         xpath_expr: str,
         namespaces: dict[str, str] | None = None,
+        *,
+        base_uri: str | None = None,
     ) -> Any:
         xpath_expr = normalize_formula_xpath_expression(xpath_expr)
         namespace_items = tuple(sorted((namespaces or {}).items()))
-        cache_key = (namespace_items, xpath_expr)
+        cache_key = (namespace_items, xpath_expr, base_uri)
         cached = self._xpath_token_cache.get(cache_key)
         if cached is not None:
             return cached
@@ -3273,6 +3771,7 @@ class FormulaEvaluator:
             dict(namespace_items),
             custom_functions=self._taxonomy.custom_functions,
             expression_hints=(xpath_expr,),
+            base_uri=base_uri,
         )
         token = parser.parse(xpath_expr)
         self._xpath_token_cache[cache_key] = token
@@ -3315,6 +3814,114 @@ def _coerce_value(raw: str) -> Any:
         return Decimal(raw)
     except InvalidOperation:
         return raw
+
+
+def _cast_external_parameter(parameter: ExternalFormulaParameter) -> Any:
+    """Cast an external lexical value to its declared XPath atomic type."""
+    datatype = parameter.datatype
+    local_name = datatype.rsplit("}", 1)[-1] if datatype.startswith("{") else datatype.split(":")[-1]
+    value = parameter.lexical_value
+    if local_name == "date":
+        from elementpath.datatypes import Date10  # type: ignore[import-untyped]
+
+        return Date10.fromstring(value)
+    if local_name == "dateTime":
+        from elementpath.datatypes import DateTime10  # type: ignore[import-untyped]
+
+        return DateTime10.fromstring(value)
+    if local_name == "boolean":
+        return value.strip() in {"true", "1"}
+    if local_name in {"decimal", "integer", "float", "double"}:
+        number = Decimal(value)
+        return int(number) if local_name == "integer" else number
+    return value
+
+
+def _atomic_value_with_fact_identity(value: Any, fact: Fact) -> Any:
+    """Attach fact identity to atomic XPath values consumed by xfi functions."""
+    if isinstance(value, Decimal):
+        return _FactDecimal(value, fact)
+    if isinstance(value, str):
+        return _FactString(value, fact)
+    return value
+
+
+def _instance_xpath_root(instance: XbrlInstance) -> etree._Element:
+    """Build the instance element view used by path-based general variables."""
+    root = etree.Element("formula-instance")
+    top_level_facts = [
+        fact
+        for fact in (*instance.facts, *instance.tuple_facts)
+        if not fact.tuple_path and fact.source_element_xml is not None
+    ]
+    for fact in sorted(top_level_facts, key=lambda item: item.position_path):
+        try:
+            root.append(etree.fromstring(fact.source_element_xml))
+        except (etree.XMLSyntaxError, ValueError, TypeError):
+            continue
+    return root
+
+
+def _xpath_literal_documents(
+    expression: str,
+    base_uri: str | None,
+) -> dict[str, Any]:
+    """Load local documents referenced by literal ``fn:doc`` calls."""
+    if base_uri is None:
+        return {}
+    documents: dict[str, Any] = {}
+    for match in re.finditer(r"\bdoc\s*\(\s*(['\"])(.*?)\1\s*\)", expression):
+        document_uri, _fragment = urldefrag(urljoin(base_uri, match.group(2)))
+        parsed_uri = urlsplit(document_uri)
+        if parsed_uri.scheme != "file" or parsed_uri.netloc not in {"", "localhost"}:
+            continue
+        document_path = Path(unquote(parsed_uri.path))
+        if not document_path.is_file():
+            continue
+        parser = etree.XMLParser(resolve_entities=False, no_network=True)
+        document_tree = etree.parse(str(document_path), parser)
+        documents[document_uri] = _schema_annotated_xpath_document(
+            document_tree,
+            document_uri,
+        )
+    return documents
+
+
+def _schema_annotated_xpath_document(
+    document_tree: etree._ElementTree,
+    document_uri: str,
+) -> Any:
+    """Apply an instance document's local schema annotations to its XPath tree."""
+    xsi_namespace = "http://www.w3.org/2001/XMLSchema-instance"
+    root = document_tree.getroot()
+    root_namespace = etree.QName(root).namespace or ""
+    schema_location = root.get(f"{{{xsi_namespace}}}schemaLocation", "").split()
+    locations = dict(zip(schema_location[::2], schema_location[1::2], strict=False))
+    location = locations.get(root_namespace)
+    if location is None and not root_namespace:
+        location = root.get(f"{{{xsi_namespace}}}noNamespaceSchemaLocation")
+    if not location:
+        return document_tree
+
+    schema_uri, _fragment = urldefrag(urljoin(document_uri, location))
+    parsed_schema_uri = urlsplit(schema_uri)
+    if parsed_schema_uri.scheme != "file" or parsed_schema_uri.netloc not in {"", "localhost"}:
+        return document_tree
+    schema_path = Path(unquote(parsed_schema_uri.path))
+    if not schema_path.is_file():
+        return document_tree
+
+    try:
+        import xmlschema  # type: ignore[import-untyped]
+        from elementpath.tree_builders import get_node_tree  # type: ignore[import-untyped]
+        from xmlschema.xpath import XMLSchemaProxy  # type: ignore[import-untyped]
+
+        schema = XMLSchemaProxy(xmlschema.XMLSchema(str(schema_path)))
+        document_node = get_node_tree(document_tree, uri=document_uri)
+        document_node.apply_schema(schema)
+        return document_node
+    except Exception:  # noqa: BLE001 - an unusable annotation leaves the document untyped
+        return document_tree
 
 
 def _xpath_error_code(exc: Exception) -> str | None:
@@ -3376,6 +3983,32 @@ def _dependent_fact_variable_names(
 def _xpath_variable_names(expression: str) -> set[str]:
     """Return lexical variable QNames referenced by an XPath expression."""
     return set(re.findall(r"\$([A-Za-z_][\w:.-]*)", expression))
+
+
+def _expressions_need_fact_nodes(expressions: Iterable[str]) -> bool:
+    """Return whether XPath expressions inspect fact nodes instead of atomic values."""
+    return any(
+        token in expression
+        for expression in expressions
+        for token in (
+            "node-name(",
+            "local-name(",
+            "namespace-uri(",
+            "name(",
+            "nilled(",
+            "instance of element(",
+            "/@",
+            " | ",
+            " intersect ",
+            " except ",
+            " union ",
+        )
+    )
+
+
+def _expressions_need_fact_identity(expressions: Iterable[str]) -> bool:
+    """Return whether xfi functions need atomic values tied to source facts."""
+    return any("xfi:" in expression for expression in expressions)
 
 
 def _schema_atomic_type_maps(
@@ -3753,6 +4386,11 @@ def _coerce_typed_fact_value(
     xpath_expr: str,
 ) -> Any:
     category = _item_type_category(type_local_name)
+    if "integer" in type_local_name.lower():
+        try:
+            return int(raw.strip())
+        except ValueError:
+            return raw
     if category == "boolean":
         value = raw.strip()
         if value in {"true", "1"}:
@@ -3841,25 +4479,77 @@ def _fact_to_message_element(
     fact: Fact,
     *,
     default_value: str | None = None,
+    xsd_type: str | None = None,
 ) -> etree._Element:
     """Build a lightweight XML element for message XPath evaluation."""
     prefix = fact.concept.prefix or "fact"
-    nsmap = {prefix: fact.concept.namespace} if fact.concept.namespace else None
+    nsmap = {prefix: fact.concept.namespace} if fact.concept.namespace else {}
+    if xsd_type is not None:
+        nsmap["xs"] = "http://www.w3.org/2001/XMLSchema"
     if fact.concept.namespace:
         tag = f"{{{fact.concept.namespace}}}{fact.concept.local_name}"
     else:
         tag = fact.concept.local_name
 
     element = etree.Element(tag, nsmap=nsmap)
+    if xsd_type is not None:
+        element.set(
+            "{http://www.w3.org/2001/XMLSchema-instance}type",
+            f"xs:{xsd_type}",
+        )
     element.set("contextRef", fact.context_ref)
     if fact.unit_ref:
         element.set("unitRef", fact.unit_ref)
     if fact.decimals is not None:
         element.set("decimals", fact.decimals)
+    if fact.precision is not None:
+        element.set("precision", fact.precision)
     if fact.is_nil:
         element.set("{http://www.w3.org/2001/XMLSchema-instance}nil", "true")
     element.text = default_value if default_value is not None else fact.value
     return element
+
+
+def _fact_node_xsd_type(type_local_name: str, lexical_value: str) -> str | None:
+    """Map an XBRL item type and lexical value to its XPath atomic type."""
+    category = _item_type_category(type_local_name)
+    if category == "dateTime":
+        return "dateTime" if "T" in lexical_value else "date"
+    if category in {"date", "boolean", "string"}:
+        return category
+    if category == "decimal":
+        return "decimal"
+    if category == "qname":
+        return "QName"
+    return None
+
+
+@cache
+def _builtin_xsd_type(type_name: str) -> Any:
+    import xmlschema  # type: ignore[import-untyped]
+
+    return xmlschema.XMLSchema10.builtin_types()[type_name]
+
+
+def _typed_xpath_tree(
+    root: etree._Element,
+    element_types: dict[int, str],
+) -> tuple[Any, dict[int, Any]]:
+    """Build an elementpath tree and attach PSVI-equivalent atomic types."""
+    from elementpath.tree_builders import get_node_tree  # type: ignore[import-untyped]
+
+    node_root = get_node_tree(root)
+    nodes_by_element: dict[int, Any] = {}
+    for node in node_root.iter():
+        element = getattr(node, "elem", None)
+        if element is None:
+            continue
+        element_id = id(element)
+        nodes_by_element[element_id] = node
+        type_name = element_types.get(element_id)
+        if type_name is not None:
+            node.xsd_type = _builtin_xsd_type(type_name)
+    return node_root, nodes_by_element
 
 
 def _tuple_variable_filter_matches(candidate: Fact, reference: Fact, resource: Any) -> bool:

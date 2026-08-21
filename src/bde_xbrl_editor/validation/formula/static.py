@@ -1769,6 +1769,12 @@ def _has_disallowed_variable_set_filter_reference(
     *,
     fact_and_general_names: set[str],
 ) -> bool:
+    for resource in variable_set.variable_set_filters:
+        references = resource.referenced_names or _extract_var_refs(resource.test_xpath)
+        for ref in references:
+            canonical, _failed = _resolve_name(ref, resource.namespaces)
+            if canonical in fact_and_general_names:
+                return True
     for variable in variable_set.variables:
         for xpath_filter in variable.xpath_filters:
             if xpath_filter.filter_type != "variable-set":

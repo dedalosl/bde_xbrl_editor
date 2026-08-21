@@ -10,7 +10,7 @@ from dataclasses import replace
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Literal
-from urllib.parse import urldefrag
+from urllib.parse import unquote, urldefrag, urljoin, urlsplit
 
 from lxml import etree
 
@@ -454,7 +454,15 @@ def _parse_filter_resource(
             text_exprs.append(text)
         elif local_name == "aspect" and text:
             aspects.append(text)
-        elif local_name in {"variable", "linkrole", "arcrole", "axis"} and text:
+        elif local_name in {
+            "variable",
+            "linkrole",
+            "linkroleExpression",
+            "arcrole",
+            "arcroleExpression",
+            "axis",
+            "generations",
+        } and text:
             attributes.setdefault(local_name, text)
 
     test_xpath = (filter_el.get("test") or "").strip() or None
@@ -729,20 +737,21 @@ def _merged_resource_and_arc_namespaces(
 def _build_variable_set_filter_arc_map(
     root: etree._Element,
     locator_targets: dict[str, str] | None = None,
-) -> dict[str, list[str]]:
-    """Build an assertion-label→[filter-label, …] mapping from variableSetFilterArc elements.
+) -> dict[str, list[tuple[str, bool]]]:
+    """Map variable sets to filters while preserving arc complementation.
 
     These filters apply at the assertion level (to all variables in the set).
     """
-    arc_map: dict[str, list[str]] = {}
+    arc_map: dict[str, list[tuple[str, bool]]] = {}
     for arc in root.iter(_TAG_VARIABLE_SET_FILTER_ARC):
         frm = arc.get(_ATTR_XLINK_FROM, "")
         to = arc.get(_ATTR_XLINK_TO, "")
+        complement = arc.get("complement", "false").strip().lower() in {"true", "1"}
         if locator_targets:
             frm = locator_targets.get(frm, frm)
             to = locator_targets.get(to, to)
         if frm and to:
-            arc_map.setdefault(frm, []).append(to)
+            arc_map.setdefault(frm, []).append((to, complement))
     return arc_map
 
 
@@ -1139,13 +1148,26 @@ def _parse_parameter(
     arc_name: str = "",
     scope: Literal["global", "local"] = "global",
 ) -> ParameterDefinition:
+    lexical_resource_name = parameter_el.get("name", "")
+    if ":" in lexical_resource_name:
+        prefix, local_name = lexical_resource_name.split(":", 1)
+        namespace = parameter_el.nsmap.get(prefix)
+        resource_name = f"{{{namespace}}}{local_name}" if namespace else lexical_resource_name
+    else:
+        default_namespace = parameter_el.nsmap.get(None)
+        resource_name = (
+            f"{{{default_namespace}}}{lexical_resource_name}"
+            if default_namespace and lexical_resource_name
+            else lexical_resource_name
+        )
     parameter_name = (
-        arc_name or parameter_el.get("name", "") or parameter_el.get(_ATTR_XLINK_LABEL, "")
+        arc_name or lexical_resource_name or parameter_el.get(_ATTR_XLINK_LABEL, "")
     )
     select_xpath = (parameter_el.get("select") or "").strip() or None
     as_type = (parameter_el.get("as") or "").strip() or None
     return ParameterDefinition(
         parameter_name=parameter_name,
+        resource_name=resource_name or None,
         select_xpath=select_xpath,
         as_type=as_type,
         required=(parameter_el.get("required") or "false").lower() == "true",
@@ -1250,7 +1272,7 @@ def _parse_assertion(
     precondition_index: dict[str, etree._Element],
     filter_arc_map: dict[str, list[tuple[str, bool]]],
     filter_index: dict[str, list[etree._Element]],
-    variable_set_filter_arc_map: dict[str, list[str]] | None = None,
+    variable_set_filter_arc_map: dict[str, list[tuple[str, bool]]] | None = None,
     bool_arc_map: dict[str, list[tuple[str, bool]]] | None = None,
 ) -> FormulaAssertion | None:
     """Build a typed assertion definition from an assertion element."""
@@ -1319,14 +1341,16 @@ def _parse_assertion(
             if assertion_label != assertion_id
             else []
         )
-        for set_filter_label in _set_filter_labels:
+        for set_filter_label, set_filter_complement in _set_filter_labels:
             if set_filter_label in _seen_set_labels:
                 continue
             _seen_set_labels.add(set_filter_label)
             filter_el = _first_filter_element(filter_index, set_filter_label)
             if filter_el is None:
                 continue
-            variable_set_filters.append(_parse_filter_resource(filter_el))
+            variable_set_filters.append(
+                _parse_filter_resource(filter_el, complement=set_filter_complement)
+            )
             if filter_el.tag in (_TAG_CF_CONCEPT_NAME, _TAG_CF_CONCEPT):
                 qn = _extract_concept_filter(filter_el)
                 if qn is not None and global_concept_filter is None:
@@ -1350,7 +1374,10 @@ def _parse_assertion(
                         XPathFilterDefinition(
                             xpath_expr=test_expr,
                             namespaces=_element_nsmap(filter_el),
-                            filter_type="variable-set",
+                            filter_type=(
+                                "entity" if filter_el.tag == _TAG_EF_IDENTIFIER else "variable-set"
+                            ),
+                            complement=set_filter_complement,
                         )
                     )
 
@@ -1615,6 +1642,29 @@ def _parse_formula_aspect_rules(formula_el: etree._Element) -> tuple[FormulaAspe
     return tuple(rules)
 
 
+def _equivalent_variable_name(
+    lexical_name: str,
+    source_namespaces: dict[str, str],
+    expression_namespaces: dict[str, str],
+) -> str:
+    """Express an arc variable QName using an equivalent expression prefix."""
+    if ":" not in lexical_name:
+        return lexical_name
+    prefix, local_name = lexical_name.split(":", 1)
+    namespace = source_namespaces.get(prefix)
+    if namespace is None:
+        return lexical_name
+    equivalent_prefix = next(
+        (
+            candidate
+            for candidate, candidate_namespace in expression_namespaces.items()
+            if candidate and candidate_namespace == namespace
+        ),
+        None,
+    )
+    return f"{equivalent_prefix}:{local_name}" if equivalent_prefix else lexical_name
+
+
 def _parse_output_formula(
     formula_el: etree._Element,
     variable_arc_map: dict[str, list[tuple[str, str]]],
@@ -1629,7 +1679,7 @@ def _parse_output_formula(
     precondition_index: dict[str, etree._Element],
     filter_arc_map: dict[str, list[tuple[str, bool]]],
     filter_index: dict[str, list[etree._Element]],
-    variable_set_filter_arc_map: dict[str, list[str]] | None = None,
+    variable_set_filter_arc_map: dict[str, list[tuple[str, bool]]] | None = None,
     bool_arc_map: dict[str, list[tuple[str, bool]]] | None = None,
     source_path: Path | None = None,
 ) -> FormulaOutputDefinition | None:
@@ -1649,14 +1699,16 @@ def _parse_output_formula(
             if formula_label != formula_id
             else []
         )
-        for set_filter_label in set_filter_labels:
+        for set_filter_label, set_filter_complement in set_filter_labels:
             if set_filter_label in seen_set_labels:
                 continue
             seen_set_labels.add(set_filter_label)
             filter_el = _first_filter_element(filter_index, set_filter_label)
             if filter_el is None:
                 continue
-            variable_set_filters.append(_parse_filter_resource(filter_el))
+            variable_set_filters.append(
+                _parse_filter_resource(filter_el, complement=set_filter_complement)
+            )
             if filter_el.tag in (_TAG_GF_GENERAL, _TAG_EF_IDENTIFIER):
                 test_expr = (filter_el.get("test") or "").strip()
                 if test_expr:
@@ -1664,7 +1716,10 @@ def _parse_output_formula(
                         XPathFilterDefinition(
                             xpath_expr=test_expr,
                             namespaces=_element_nsmap(filter_el),
-                            filter_type="variable-set",
+                            filter_type=(
+                                "entity" if filter_el.tag == _TAG_EF_IDENTIFIER else "variable-set"
+                            ),
+                            complement=set_filter_complement,
                         )
                     )
 
@@ -1675,6 +1730,19 @@ def _parse_output_formula(
         variable_arc_meta_map.get(formula_id, [])
         + (variable_arc_meta_map.get(_xlabel, []) if _xlabel and _xlabel != formula_id else [])
     )
+    if variable_arcs:
+        formula_namespaces = _element_nsmap(formula_el)
+        variable_entries = [
+            (
+                arc.to_label,
+                _equivalent_variable_name(
+                    arc.name,
+                    arc.namespaces,
+                    formula_namespaces,
+                ),
+            )
+            for arc in variable_arcs
+        ]
     parameter_entries = parameter_arc_map.get(formula_id, []) + (
         parameter_arc_map.get(_xlabel, []) if _xlabel and _xlabel != formula_id else []
     )
@@ -1748,6 +1816,7 @@ def _parse_output_formula(
 
     decimals_el = formula_el.find(_TAG_FORMULA_DECIMALS)
     precision_el = formula_el.find(_TAG_FORMULA_PRECISION)
+    effective_source_path = source_path or _element_document_path(formula_el)
     return FormulaOutputDefinition(
         formula_id=formula_id,
         label=_xlabel or _id or None,
@@ -1766,7 +1835,8 @@ def _parse_output_formula(
         variable_set_filters=tuple(variable_set_filters),
         referenced_names=_extract_referenced_names(formula_el.get("value")),
         namespaces=_merged_resource_and_arc_namespaces(formula_el, variable_arcs),
-        source_path=str(source_path) if source_path is not None else None,
+        source_path=str(effective_source_path) if effective_source_path is not None else None,
+        xpath_base_uri=_effective_xpath_base_uri(formula_el, effective_source_path),
         decimals_xpath=(decimals_el.text or "").strip() or None
         if decimals_el is not None
         else None,
@@ -1774,6 +1844,29 @@ def _parse_output_formula(
         if precision_el is not None
         else None,
     )
+
+
+def _element_document_path(element: etree._Element) -> Path | None:
+    """Recover the source document path retained by lxml's parsed tree."""
+    document_uri = (element.getroottree().docinfo.URL or "").strip()
+    if not document_uri:
+        return None
+    parsed_uri = urlsplit(document_uri)
+    if parsed_uri.scheme not in {"", "file"} or not parsed_uri.path:
+        return None
+    return Path(unquote(parsed_uri.path))
+
+
+def _effective_xpath_base_uri(
+    element: etree._Element,
+    source_path: Path | None,
+) -> str | None:
+    """Return the XML Base-resolved URI of an XPath-bearing resource."""
+    if source_path is None:
+        return None
+    source_uri = source_path.resolve().as_uri()
+    element_base = (element.base or "").strip()
+    return urljoin(source_uri, element_base) if element_base else source_uri
 
 
 # ---------------------------------------------------------------------------

@@ -490,6 +490,7 @@ class ParameterDefinition:
     """A variable:parameter resource (global or local)."""
 
     parameter_name: str
+    resource_name: str | None = None
     select_xpath: str | None = None
     as_type: str | None = None
     required: bool = False
@@ -633,6 +634,7 @@ class FormulaOutputDefinition:
     referenced_names: tuple[str, ...] = field(default_factory=tuple)
     namespaces: dict[str, str] = field(default_factory=dict)
     source_path: str | None = None
+    xpath_base_uri: str | None = None
     decimals_xpath: str | None = None
     precision_xpath: str | None = None
 

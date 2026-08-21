@@ -146,5 +146,6 @@ def _custom_function_sequence_types(
 def _normalize_custom_function_sequence_type(sequence_type: str) -> str:
     stripped = sequence_type.strip()
     if stripped.startswith("schema-element("):
-        return "item()*" if stripped.endswith("*") else "item()"
+        occurrence = stripped[-1] if stripped.endswith(("*", "+", "?")) else ""
+        return f"item(){occurrence}"
     return stripped

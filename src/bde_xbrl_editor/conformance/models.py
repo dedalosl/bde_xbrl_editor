@@ -7,6 +7,8 @@ from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
 
+from bde_xbrl_editor.validation.formula.evaluator import ExternalFormulaParameter
+
 # ---------------------------------------------------------------------------
 # Enumerations
 # ---------------------------------------------------------------------------
@@ -116,6 +118,7 @@ class TestVariation:
     taxonomy_file: Path | None
     expected_outcome: ExpectedOutcome
     mandatory: bool
+    external_parameters: tuple[ExternalFormulaParameter, ...] = ()
 
 
 @dataclass(frozen=True)

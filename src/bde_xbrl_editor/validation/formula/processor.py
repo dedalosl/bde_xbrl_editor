@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from copy import deepcopy
 from dataclasses import dataclass
 
 from bde_xbrl_editor.instance.models import XbrlInstance
 from bde_xbrl_editor.taxonomy.models import TaxonomyStructure
-from bde_xbrl_editor.validation.formula.evaluator import FormulaEvaluator
+from bde_xbrl_editor.validation.formula.evaluator import (
+    ExternalFormulaParameter,
+    FormulaEvaluator,
+)
 from bde_xbrl_editor.validation.formula.output_instance import (
     FormulaOutputInstanceEvaluator,
 )
@@ -41,19 +45,32 @@ class FormulaProcessor:
         except Exception as exc:  # noqa: BLE001
             return (self._internal_finding("static", exc),)
 
-    def evaluate(self, instance: XbrlInstance) -> FormulaProcessingResult:
+    def evaluate(
+        self,
+        instance: XbrlInstance,
+        external_parameters: Iterable[ExternalFormulaParameter] = (),
+    ) -> FormulaProcessingResult:
         """Validate and evaluate assertions and output formulas. Never raises."""
+        external_parameters = tuple(external_parameters)
         try:
             findings = list(FormulaStaticValidator(self._taxonomy).validate(instance))
         except Exception as exc:  # noqa: BLE001
             findings = [self._internal_finding("static-runtime", exc)]
         try:
-            findings.extend(FormulaEvaluator(self._taxonomy).evaluate(instance))
+            findings.extend(
+                FormulaEvaluator(
+                    self._taxonomy,
+                    external_parameters=external_parameters,
+                ).evaluate(instance)
+            )
         except Exception as exc:  # noqa: BLE001
             findings.append(self._internal_finding("assertion", exc))
 
         try:
-            output = FormulaOutputInstanceEvaluator(self._taxonomy).evaluate(instance)
+            output = FormulaOutputInstanceEvaluator(
+                self._taxonomy,
+                external_parameters=external_parameters,
+            ).evaluate(instance)
             findings.extend(output.findings)
             output_instance = output.instance
         except Exception as exc:  # noqa: BLE001

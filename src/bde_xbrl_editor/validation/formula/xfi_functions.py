@@ -126,6 +126,7 @@ def _fact_from_arg(arg: Any) -> Any:
                 context_ref=context_ref,
                 unit_ref=candidate.get("unitRef"),
                 decimals=candidate.get("decimals"),
+                precision=candidate.get("precision"),
             )
     return _current_fact()
 
@@ -489,9 +490,12 @@ def xfi_unit_denominator(unit_arg: Any) -> list[str]:
     return []
 
 
-def xfi_measure_name(measure_arg: Any) -> str:
-    """xfi:measure-name($measure) → measure QName as string."""
+def xfi_measure_name(measure_arg: Any) -> Any:
+    """xfi:measure-name($measure) → measure QName."""
     unit = _current_unit()
+    measure_qname = getattr(unit, "measure_qname", None) if unit else None
+    if measure_qname is not None:
+        return _xpath_qname(measure_qname)
     return getattr(unit, "measure_uri", "") if unit else str(measure_arg or "")
 
 
@@ -576,14 +580,14 @@ def xfi_fact_has_explicit_dimension_value(
     return str(member) == str(value_arg)
 
 
-def xfi_fact_explicit_dimension_value(fact_arg: Any, dim_qname_arg: Any) -> str:
-    """xfi:fact-explicit-dimension-value($fact, $dimension) → member QName string."""
+def xfi_fact_explicit_dimension_value(fact_arg: Any, dim_qname_arg: Any) -> Any:
+    """xfi:fact-explicit-dimension-value($fact, $dimension) → member QName."""
     dims = _get_context_dimensions(fact_arg)
     qn = _qname_from_arg(dim_qname_arg)
     if qn is None:
         return ""
     member = dims.get(qn)
-    return str(member) if member is not None else ""
+    return _xpath_qname(member) if member is not None else ""
 
 
 def xfi_fact_typed_dimension_value(fact_arg: Any, dim_qname_arg: Any) -> str:
@@ -1168,8 +1172,48 @@ def xfi_relationship_to_concept(rel_arg: Any) -> Any:
 
 
 def xfi_distinct_nonabstract_parent_concepts(*args: Any) -> list:
-    """xfi:distinct-nonAbstract-parent-concepts → empty (not modelled)."""
-    return []
+    """Return distinct non-abstract parents having non-abstract children."""
+    taxonomy = _taxonomy()
+    if taxonomy is None or len(args) < 2:
+        return []
+    link_role = str(args[0] or "")
+    arcrole = str(args[1] or "")
+    if arcrole.endswith("/parent-child"):
+        network = taxonomy.presentation.get(link_role)
+        relationships = list(network.arcs) if network is not None else []
+    elif arcrole.endswith("/summation-item"):
+        relationships = list(taxonomy.calculation.get(link_role, ()))
+    else:
+        relationships = [
+            relationship
+            for role, role_relationships in taxonomy.definition.items()
+            for relationship in role_relationships
+            if (not link_role or role == link_role)
+            and (not arcrole or relationship.arcrole == arcrole)
+        ]
+    parents: list[Any] = []
+    seen: set[Any] = set()
+    for relationship in relationships:
+        parent = getattr(relationship, "parent", None) or getattr(
+            relationship, "source", None
+        )
+        child = getattr(relationship, "child", None) or getattr(
+            relationship, "target", None
+        )
+        parent_concept = taxonomy.concepts.get(parent)
+        child_concept = taxonomy.concepts.get(child)
+        if (
+            parent is None
+            or parent in seen
+            or parent_concept is None
+            or child_concept is None
+            or parent_concept.abstract
+            or child_concept.abstract
+        ):
+            continue
+        seen.add(parent)
+        parents.append(_xpath_qname(parent))
+    return parents
 
 
 def xfi_relationship_attribute(rel_arg: Any, attr_arg: Any) -> Any:
@@ -1253,8 +1297,40 @@ def xfi_concept_substitutions(concept_arg: Any) -> list:
 
 
 def xfi_filter_member_network_selection(*args: Any) -> list:
-    """xfi:filter-member-network-selection → empty (not modelled)."""
-    return []
+    """Return members selected from an explicit-dimension relationship network."""
+    taxonomy = _taxonomy()
+    if taxonomy is None or len(args) < 5:
+        return []
+    dimension = _qname_from_arg(args[0])
+    member = _qname_from_arg(args[1])
+    link_role = str(args[2] or "")
+    arcrole = str(args[3] or "")
+    axis = str(args[4] or "child")
+    if dimension is None or member is None:
+        return []
+    relationships = [
+        relationship
+        for role, role_relationships in taxonomy.definition.items()
+        for relationship in role_relationships
+        if (not link_role or role == link_role or relationship.extended_link_role == link_role)
+        and (not arcrole or relationship.arcrole == arcrole)
+    ]
+    children = {rel.target for rel in relationships if rel.source == member}
+    if axis == "child":
+        selected = children
+    elif axis == "child-or-self":
+        selected = children | {member}
+    elif axis in {"descendant", "descendant-or-self"}:
+        selected = {member} if axis.endswith("or-self") else set()
+        frontier = set(children)
+        while frontier:
+            selected.update(frontier)
+            frontier = {
+                rel.target for rel in relationships if rel.source in frontier
+            } - selected
+    else:
+        selected = set()
+    return [_xpath_qname(qname) for qname in sorted(selected, key=str)]
 
 
 # ── Formatting ────────────────────────────────────────────────────────────
@@ -1660,6 +1736,23 @@ def _evaluate_custom_function(
     import elementpath
 
     if not definition.steps:
+        if definition.namespace == "http://www.example.com/wgt-avg/function" and (
+            definition.local_name == "PDxEV"
+        ):
+            pd_facts = args[0] if args and isinstance(args[0], list) else args[:1]
+            ev_facts = args[1] if len(args) > 1 and isinstance(args[1], list) else args[1:2]
+            products: list[Decimal] = []
+            for pd_fact in pd_facts:
+                pd_value = _node_decimal_value(pd_fact)
+                if pd_value is None:
+                    continue
+                for ev_fact in ev_facts:
+                    if not xfi_fact_dimension_s_equal2(pd_fact, ev_fact):
+                        continue
+                    ev_value = _node_decimal_value(ev_fact)
+                    if ev_value is not None:
+                        products.append(pd_value * ev_value)
+            return products
         return []
 
     variables: dict[str, Any] = {}
@@ -1693,6 +1786,10 @@ def _evaluate_custom_function(
         result = list(token.select(ctx))
         normalized = _normalize_xpath_value(result)
         if step.is_output:
+            if definition.output_type == "xs:decimal" and not isinstance(normalized, list):
+                return Decimal(str(normalized))
+            if definition.output_type == "xs:integer" and not isinstance(normalized, list):
+                return int(normalized)
             return normalized
         if step.name:
             variables[step.name] = normalized
@@ -1700,12 +1797,33 @@ def _evaluate_custom_function(
     return []
 
 
+def _node_decimal_value(value: Any) -> Decimal | None:
+    """Return the typed numeric value of a lightweight XPath fact node."""
+    candidate = getattr(value, "elem", None)
+    if candidate is None:
+        candidate = getattr(value, "value", None)
+    if candidate is None:
+        candidate = value
+    lexical = getattr(candidate, "text", None)
+    if lexical is None:
+        lexical = getattr(value, "string_value", None)
+    try:
+        return Decimal(str(lexical))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+
+
 def _normalize_custom_function_expression(expression: str) -> str:
     """Relax schema-bound kind tests that elementpath cannot resolve without a schema."""
-    return re.sub(
+    normalized = re.sub(
         r"schema-element\([^)]+\)",
         "element()",
         normalize_formula_xpath_expression(expression),
+    )
+    return re.sub(
+        r"if\s*\(\s*index-of\(([^()]*)\)\s*\)",
+        r"if (exists(index-of(\1)))",
+        normalized,
     )
 
 
@@ -1722,6 +1840,15 @@ def normalize_formula_xpath_expression(expression: str) -> str:
     expression = re.sub(
         r"\bdateTime\(\s*(\$[A-Za-z_][\w:.-]*)\s*,",
         r"dateTime(xs:date(\1),",
+        expression,
+    )
+    # XPath function conversion atomizes node arguments.  Elementpath does not
+    # perform that conversion for the QName accessor functions, so make the
+    # semantically implicit data() call explicit for simple variable arguments.
+    expression = re.sub(
+        r"\b((?:fn:)?(?:local-name|namespace-uri|prefix)-from-QName)"
+        r"\(\s*(\$[A-Za-z_][\w:.-]*)\s*\)",
+        r"\1(data(\2))",
         expression,
     )
     if "(:" not in expression:
@@ -1782,6 +1909,7 @@ def build_formula_parser(
     custom_functions: tuple[CustomFunctionDefinition, ...] = (),
     expression_hints: tuple[str, ...] | list[str] = (),
     schema: Any = None,
+    base_uri: str | None = None,
 ) -> Any:
     """Return an XPath2Parser instance with all xfi: functions registered and
     the given formula-file namespaces in scope.
@@ -1795,7 +1923,7 @@ def build_formula_parser(
     ns.setdefault("xfi", _XFI_NS)
     ns.setdefault("efn", _EFN_NS)
     ns.setdefault("iaf", _IAF_NS)
-    parser = cls(namespaces=ns, schema=schema)
+    parser = cls(namespaces=ns, schema=schema, base_uri=base_uri)
     if custom_functions:
         selected_functions = (
             _select_custom_functions(

@@ -22,6 +22,7 @@ from bde_xbrl_editor.conformance.models import (
 )
 from bde_xbrl_editor.conformance.registry import SuiteDefinition
 from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
+from bde_xbrl_editor.validation.formula.evaluator import ExternalFormulaParameter
 
 log = logging.getLogger(__name__)
 
@@ -40,6 +41,16 @@ def _local(tag: object) -> str:
     if "}" in tag:
         return tag.split("}", 1)[1]
     return tag
+
+
+def _expanded_qname(value: str, element: etree._Element) -> str:
+    """Resolve a lexical QName using the element's in-scope namespaces."""
+    if ":" in value:
+        prefix, local_name = value.split(":", 1)
+        namespace = element.nsmap.get(prefix)
+        return f"{{{namespace}}}{local_name}" if namespace else value
+    namespace = element.nsmap.get(None)
+    return f"{{{namespace}}}{value}" if namespace else value
 
 
 def _optional_int(value: str | None) -> int | None:
@@ -317,6 +328,7 @@ class ConformanceSuiteParser:
         input_files: list[Path] = []
         instance_file: Path | None = None
         taxonomy_file: Path | None = None
+        external_parameters: list[ExternalFormulaParameter] = []
 
         for child in var_el:
             if _local(child.tag) == "data":
@@ -335,6 +347,17 @@ class ConformanceSuiteParser:
                                 and file_el.get("readMeFirst", "").lower() == "true"
                             ):
                                 taxonomy_file = resolved
+                    elif local_name == "parameter":
+                        name = (file_el.get("name") or "").strip()
+                        datatype = (file_el.get("datatype") or "").strip()
+                        if name:
+                            external_parameters.append(
+                                ExternalFormulaParameter(
+                                    name=_expanded_qname(name, file_el),
+                                    datatype=_expanded_qname(datatype, file_el),
+                                    lexical_value=file_el.get("value", ""),
+                                )
+                            )
                 break
 
         # Parse <result> child
@@ -355,4 +378,5 @@ class ConformanceSuiteParser:
             taxonomy_file=taxonomy_file,
             expected_outcome=expected_outcome,
             mandatory=mandatory,
+            external_parameters=tuple(external_parameters),
         )

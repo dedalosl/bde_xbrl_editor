@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections import Counter
+from collections.abc import Iterable
 from copy import deepcopy
 from dataclasses import dataclass
 from datetime import date, timedelta
@@ -33,7 +34,11 @@ from bde_xbrl_editor.taxonomy.models import (
     QName,
     TaxonomyStructure,
 )
-from bde_xbrl_editor.validation.formula.evaluator import FormulaEvaluator, _to_bool
+from bde_xbrl_editor.validation.formula.evaluator import (
+    ExternalFormulaParameter,
+    FormulaEvaluator,
+    _to_bool,
+)
 from bde_xbrl_editor.validation.models import ValidationFinding, ValidationSeverity
 
 
@@ -59,9 +64,13 @@ class OutputInstanceComparison:
 class FormulaOutputInstanceEvaluator:
     """Evaluate Formula output resources into an XBRL instance model."""
 
-    def __init__(self, taxonomy: TaxonomyStructure) -> None:
+    def __init__(
+        self,
+        taxonomy: TaxonomyStructure,
+        external_parameters: Iterable[ExternalFormulaParameter] = (),
+    ) -> None:
         self._taxonomy = taxonomy
-        self._evaluator = FormulaEvaluator(taxonomy)
+        self._evaluator = FormulaEvaluator(taxonomy, external_parameters=external_parameters)
 
     def evaluate(self, source_instance: XbrlInstance) -> OutputInstanceEvaluation:
         output = XbrlInstance(
@@ -205,6 +214,7 @@ class FormulaOutputInstanceEvaluator:
                 assertion=formula,  # type: ignore[arg-type]
                 general_values=general_values,
                 fact_bindings_as_elements=True,
+                context_item_is_instance=True,
             )
             if not _to_bool(result):
                 return False
@@ -346,7 +356,10 @@ class FormulaOutputInstanceEvaluator:
             formula.namespaces,
             assertion=formula,  # type: ignore[arg-type]
             general_values=general_values,
-            fact_bindings_as_elements=_expression_needs_fact_nodes(formula.value_xpath),
+            fact_bindings_as_elements=_expression_needs_fact_nodes(
+                formula.value_xpath,
+                self._taxonomy.custom_functions,
+            ),
         )
         sequence = result if isinstance(result, list) else [result]
         if len(sequence) > 1:
@@ -370,18 +383,19 @@ class FormulaOutputInstanceEvaluator:
             )
 
         context_source = source_fact
-        base_context = (
-            source_instance.contexts.get(context_source.context_ref)
-            if context_source is not None
-            else None
-        )
-        if base_context is None:
-            base_context = self._explicit_context_base(formula)
+        base_context = self._explicit_context_base(formula) if formula.source is None else None
+        if base_context is None and context_source is not None:
+            base_context = source_instance.contexts.get(context_source.context_ref)
         if base_context is None:
             raise _FormulaOutputError(
                 "xbrlfe:missingEntityIdentifierRule",
                 "The output context source does not reference a context",
             )
+        base_context = self._without_fully_covered_occ(
+            formula,
+            binding,
+            base_context,
+        )
         if formula.source and _is_uncovered_source(formula.source) and len(formula.variables) > 1:
             base_context = self._assemble_uncovered_context(
                 formula,
@@ -492,6 +506,38 @@ class FormulaOutputInstanceEvaluator:
         context.s_equal_key = None
         return context
 
+    def _without_fully_covered_occ(
+        self,
+        formula: FormulaOutputDefinition,
+        binding: dict[str, list[Fact]],
+        base: XbrlContext,
+    ) -> XbrlContext:
+        """Remove OCC aspects that no bound fact variable leaves uncovered."""
+        if formula.source is not None and not _is_uncovered_source(formula.source):
+            return base
+        bound_variables = [
+            variable
+            for variable in formula.variables
+            if binding.get(variable.variable_name)
+        ]
+        if not bound_variables:
+            return base
+        covered_by_variable = [
+            self._evaluator._covered_formula_aspects(variable)[0]
+            for variable in bound_variables
+        ]
+        clear_segment = all("segment" in covered for covered in covered_by_variable)
+        clear_scenario = all("scenario" in covered for covered in covered_by_variable)
+        if not clear_segment and not clear_scenario:
+            return base
+        context = deepcopy(base)
+        if clear_segment:
+            context.segment_xml = None
+        if clear_scenario:
+            context.scenario_xml = None
+        context.s_equal_key = None
+        return context
+
     @staticmethod
     def _explicit_context_base(formula: FormulaOutputDefinition) -> XbrlContext | None:
         """Provide a neutral base when entity and period are fully rule-defined."""
@@ -528,6 +574,8 @@ class FormulaOutputInstanceEvaluator:
         instance: XbrlInstance,
         general_values: dict[str, Any],
     ) -> XbrlUnit | None:
+        if not self._is_numeric_concept(concept):
+            return None
         rule = next((item for item in formula.aspect_rules if item.aspect == "unit"), None)
         source = self._aspect_source_fact(formula, "unit", binding) or source_fact
         source_unit = (
@@ -1038,7 +1086,7 @@ class FormulaOutputInstanceEvaluator:
     ) -> XbrlContext | None:
         source = rule.source or formula.source
         if source and _is_uncovered_source(source):
-            fact = FormulaEvaluator._formula_source_fact(formula, binding)
+            fact = self._uncovered_aspect_source_fact(formula, rule.aspect, binding)
         elif source:
             facts = binding.get(source, ())
             fact = facts[0] if facts else FormulaEvaluator._formula_source_fact(formula, binding)
@@ -1168,8 +1216,34 @@ class FormulaOutputInstanceEvaluator:
     ) -> Fact | None:
         rule = next((item for item in formula.aspect_rules if item.aspect == aspect), None)
         source = rule.source if rule is not None and rule.source else formula.source
+        if source and _is_uncovered_source(source):
+            return FormulaOutputInstanceEvaluator._uncovered_aspect_source_fact(
+                formula,
+                aspect,
+                binding,
+            )
         if source and not _is_uncovered_source(source):
             facts = binding.get(source, ())
+            if facts:
+                return facts[0]
+        return FormulaEvaluator._formula_source_fact(formula, binding)
+
+    @staticmethod
+    def _uncovered_aspect_source_fact(
+        formula: FormulaOutputDefinition,
+        aspect: str | None,
+        binding: dict[str, list[Fact]],
+    ) -> Fact | None:
+        aspect_name = {
+            "entityIdentifier": "entity",
+            "explicitDimension": "dimensions",
+            "typedDimension": "dimensions",
+        }.get(aspect or "", aspect or "")
+        for variable in formula.variables:
+            covered, _covered_dimensions = FormulaEvaluator._covered_formula_aspects(variable)
+            if aspect_name in covered:
+                continue
+            facts = binding.get(variable.variable_name, ())
             if facts:
                 return facts[0]
         return FormulaEvaluator._formula_source_fact(formula, binding)
@@ -1191,6 +1265,10 @@ class FormulaOutputInstanceEvaluator:
             formula.namespaces,
             assertion=formula,  # type: ignore[arg-type]
             general_values=general_values,
+            fact_bindings_as_elements=_expression_needs_fact_nodes(
+                expression,
+                self._taxonomy.custom_functions,
+            ),
         )
         sequence = result if isinstance(result, list) else [result]
         if len(sequence) != 1:
@@ -1447,13 +1525,16 @@ def _cancel_unit_factors(
     return reduced_numerator, reduced_denominator
 
 
-def _expression_needs_fact_nodes(expression: str) -> bool:
+def _expression_needs_fact_nodes(
+    expression: str,
+    custom_functions: tuple[Any, ...] = (),
+) -> bool:
     """Use node bindings for expressions that inspect fact-node identity.
 
     Arithmetic and comparisons receive schema-typed atomic values because the
     lightweight in-memory XML nodes do not carry the source instance PSVI.
     """
-    return any(
+    if any(
         token in expression
         for token in (
             "xfi:",
@@ -1467,6 +1548,13 @@ def _expression_needs_fact_nodes(expression: str) -> bool:
             " except ",
             " union ",
         )
+    ):
+        return True
+    return any(
+        any(input_type.startswith("schema-element(") for input_type in definition.input_types)
+        and f"{definition.prefix}:{definition.local_name}(" in expression
+        for definition in custom_functions
+        if definition.prefix
     )
 
 
