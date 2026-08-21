@@ -283,6 +283,41 @@ def test_tuple_fact_rejects_xbrl_defined_attribute(tmp_path: Path) -> None:
         parser.load(xbrl)
 
 
+def test_parser_preserves_source_xml_for_tuple_and_nested_item(tmp_path: Path) -> None:
+    tuple_qname = QName(namespace=_TEST_NS, local_name="Tuple")
+    taxonomy = _make_taxonomy(
+        {
+            **_make_taxonomy().concepts,
+            tuple_qname: Concept(
+                qname=tuple_qname,
+                data_type=QName(namespace=_XBRLI_NS, local_name="anyType"),
+                period_type="duration",
+                substitution_group=QName(namespace=_XBRLI_NS, local_name="tuple"),
+            ),
+        }
+    )
+    parser, _ = _make_parser(taxonomy)
+    xbrl = _write_xbrl(
+        tmp_path,
+        """
+  <xbrli:context id="ctx">
+    <xbrli:entity>
+      <xbrli:identifier scheme="http://example.com/entity">E1</xbrli:identifier>
+    </xbrli:entity>
+    <xbrli:period><xbrli:instant>2024-12-31</xbrli:instant></xbrli:period>
+  </xbrli:context>
+  <test:Tuple id="tuple-source">
+    <test:Assets id="nested-source" contextRef="ctx">100</test:Assets>
+  </test:Tuple>
+        """,
+    )
+
+    instance, _ = parser.load(xbrl)
+
+    assert b'id="tuple-source"' in (instance.tuple_facts[0].source_element_xml or b"")
+    assert b'id="nested-source"' in (instance.facts[0].source_element_xml or b"")
+
+
 # ---------------------------------------------------------------------------
 # Tests: taxonomy resolution
 # ---------------------------------------------------------------------------

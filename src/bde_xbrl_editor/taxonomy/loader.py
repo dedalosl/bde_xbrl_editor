@@ -87,6 +87,7 @@ from bde_xbrl_editor.taxonomy.models import (
 from bde_xbrl_editor.taxonomy.schema import (
     XBRL_SG_ROOTS,
     build_global_named_type_registry,
+    build_named_type_base_map,
     collect_schema_element_defaults,
     extract_concept_enumerations_for_schema,
     extract_monetary_value_type_qnames,
@@ -876,12 +877,9 @@ def _check_dimensional_constraints(
             # Check 7: source of dimension-domain arc must be a dimension item
             # (xbrldte:DimensionDomainSourceError)
             if arcrole == ARCROLE_DIMENSION_DOMAIN:
-                if (
-                    arc.source in concepts
-                    and (
-                        arc.source not in dimension_qnames
-                        or concepts[arc.source].typed_domain_ref is not None
-                    )
+                if arc.source in concepts and (
+                    arc.source not in dimension_qnames
+                    or concepts[arc.source].typed_domain_ref is not None
                 ):
                     raise TaxonomyParseError(
                         file_path="",
@@ -1012,11 +1010,15 @@ def _check_drs_directed_cycles(definition_arcs: dict[str, list[DefinitionArc]]) 
                 continue
             reachable_elrs.add(elr)
             for arc in definition_arcs.get(elr, []):
-                if arc.arcrole in (
-                    ARCROLE_HYPERCUBE_DIMENSION,
-                    ARCROLE_DIMENSION_DOMAIN,
-                    ARCROLE_DOMAIN_MEMBER,
-                ) and arc.target_role:
+                if (
+                    arc.arcrole
+                    in (
+                        ARCROLE_HYPERCUBE_DIMENSION,
+                        ARCROLE_DIMENSION_DOMAIN,
+                        ARCROLE_DOMAIN_MEMBER,
+                    )
+                    and arc.target_role
+                ):
                     queue.append(arc.target_role)
 
         for elr in reachable_elrs:
@@ -1434,9 +1436,7 @@ def _discover_formula_linkbases(linkbase_paths: list[Path]) -> list[Path]:
         and not _is_assertion_message_linkbase(path)
     ]
     if len(candidates) <= _LARGE_LINKBASE_SEQUENTIAL_THRESHOLD:
-        return [
-            path for path in candidates if linkbase_contains_formula_assertions(path)
-        ]
+        return [path for path in candidates if linkbase_contains_formula_assertions(path)]
 
     # FINREP/EBA: thousands of label/presentation files — skip iterparse when the
     # path cannot be a validation-rule linkbase.
@@ -1453,8 +1453,7 @@ def _discover_formula_linkbases(linkbase_paths: list[Path]) -> list[Path]:
         ):
             likely.append(path)
         elif any(
-            token in name
-            for token in ("-pre", "-calc", "-def", "-ref", "-lab", "presentation")
+            token in name for token in ("-pre", "-calc", "-def", "-ref", "-lab", "presentation")
         ):
             continue
         else:
@@ -1484,32 +1483,24 @@ def _discover_custom_function_linkbases(
         and not _is_assertion_message_linkbase(path)
     ]
     if len(candidates) <= _LARGE_LINKBASE_SEQUENTIAL_THRESHOLD:
-        function_paths = [
-            path for path in candidates if linkbase_contains_custom_functions(path)
-        ]
+        function_paths = [path for path in candidates if linkbase_contains_custom_functions(path)]
     else:
         function_paths = []
         for path in candidates:
             name = path.name.lower()
             path_text = str(path).lower()
             if (
-                "/func/" in path_text
-                or "function" in name
-                or "arith" in name
+                "/func/" in path_text or "function" in name or "arith" in name
             ) and linkbase_contains_custom_functions(path):
                 function_paths.append(path)
 
     if len(candidates) > _LARGE_LINKBASE_SEQUENTIAL_THRESHOLD:
         formula_candidates = [
-            path
-            for path in formula_linkbases
-            if path in candidates and path not in function_paths
+            path for path in formula_linkbases if path in candidates and path not in function_paths
         ]
         if len(formula_candidates) <= _LARGE_LINKBASE_SEQUENTIAL_THRESHOLD:
             function_paths.extend(
-                path
-                for path in formula_candidates
-                if linkbase_contains_custom_functions(path)
+                path for path in formula_candidates if linkbase_contains_custom_functions(path)
             )
 
     return list(dict.fromkeys(function_paths))
@@ -1916,6 +1907,7 @@ class TaxonomyLoader:
             monetary_derived_types.update(mt_set)
 
         type_enum_registry = build_global_named_type_registry(schema_paths, include_ns_map)
+        type_bases = build_named_type_base_map(type_enum_registry)
         enum_workers = _schema_parse_workers(len(schema_paths))
         parsed_concept_enums = _run_path_jobs(
             schema_paths,
@@ -1935,11 +1927,22 @@ class TaxonomyLoader:
                 return True
             return c.data_type in monetary_derived_types
 
+        def _data_type_ancestry(data_type: QName) -> tuple[QName, ...]:
+            ancestry: list[QName] = []
+            seen: set[QName] = set()
+            current = type_bases.get(data_type)
+            while current is not None and current not in seen:
+                ancestry.append(current)
+                seen.add(current)
+                current = type_bases.get(current)
+            return tuple(ancestry)
+
         concepts = {
             qn: replace(
                 c,
                 monetary_item_type=_concept_is_monetary_item(c),
                 enumeration_values=enum_by_concept.get(qn, ()),
+                data_type_ancestry=_data_type_ancestry(c.data_type),
             )
             for qn, c in concepts.items()
         }

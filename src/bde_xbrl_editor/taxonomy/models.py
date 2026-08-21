@@ -146,6 +146,10 @@ class Concept:
     default_decimals: str | None = None
     default_precision: str | None = None
     schema_default_value: str | None = None
+    # Ordered direct-to-root base types retained for Formula conceptDataType filters.
+    data_type_ancestry: tuple[QName, ...] = field(default_factory=tuple)
+    # Expanded QName and lexical value of non-standard attributes on the XSD declaration.
+    custom_attributes: tuple[tuple[QName, str], ...] = field(default_factory=tuple)
 
 
 # ---------------------------------------------------------------------------
@@ -407,6 +411,7 @@ class XPathFilterDefinition:
     xpath_expr: str
     namespaces: dict[str, str] = field(default_factory=dict)
     filter_type: str = "general"
+    complement: bool = False
 
 
 @dataclass(frozen=True)

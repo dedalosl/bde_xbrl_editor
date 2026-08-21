@@ -327,6 +327,9 @@ class Fact:
     tuple_ancestor_concepts: tuple[QName, ...] = ()
     # Document position path (root child index, then tuple child indices) for duplicate detection.
     position_path: tuple[int, ...] = ()
+    # Original item element, retained so Formula general filters can evaluate
+    # node-sensitive XPath such as @customAttribute and text().
+    source_element_xml: bytes | None = None
 
 
 @dataclass

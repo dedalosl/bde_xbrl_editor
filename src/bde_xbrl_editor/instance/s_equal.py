@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from copy import deepcopy
+from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING
 
@@ -38,11 +39,17 @@ def _qname_clark_from_model(qn: QName) -> str:
 def _period_key(period: ReportingPeriod) -> tuple:
     if period.period_type == "instant":
         assert period.instant_date is not None
-        return ("instant", period.instant_date.isoformat())
+        instant = period.instant_date
+        if period.instant_date_only:
+            instant += timedelta(days=1)
+        return ("instant", instant.isoformat())
     if period.period_type == "forever":
         return ("forever",)
     assert period.start_date is not None and period.end_date is not None
-    return ("duration", period.start_date.isoformat(), period.end_date.isoformat())
+    end = period.end_date
+    if period.end_date_only:
+        end += timedelta(days=1)
+    return ("duration", period.start_date.isoformat(), end.isoformat())
 
 
 def _resolve_prefixed_qname(el: etree._Element, prefixed: str) -> str:

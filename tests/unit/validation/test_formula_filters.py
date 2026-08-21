@@ -20,6 +20,7 @@ from bde_xbrl_editor.taxonomy.models import (
     FormulaFilterResource,
     QName,
     TypedDimensionFilter,
+    XPathFilterDefinition,
 )
 from bde_xbrl_editor.validation.formula.filters import apply_filters
 
@@ -134,6 +135,37 @@ class TestNoFilter:
         var = _var_def()
         result = apply_filters(facts, var, inst)
         assert len(result) == 2
+
+
+class TestGeneralFilter:
+    def test_complement_inverts_xpath_effective_boolean_value(self) -> None:
+        ctx = _ctx("c1")
+        source = Fact(
+            concept=CONCEPT_A,
+            context_ref="c1",
+            unit_ref=None,
+            value="source",
+            source_element_xml=b'<t:ConceptA xmlns:t="http://example.com/tax" id="source"/>',
+        )
+        target = Fact(
+            concept=CONCEPT_A,
+            context_ref="c1",
+            unit_ref=None,
+            value="target",
+            source_element_xml=b'<t:ConceptA xmlns:t="http://example.com/tax" id="target"/>',
+        )
+        instance = _instance([source, target], {"c1": ctx})
+        variable = FactVariableDefinition(
+            variable_name="v",
+            xpath_filters=(
+                XPathFilterDefinition(
+                    xpath_expr="./@id eq 'source'",
+                    complement=True,
+                ),
+            ),
+        )
+
+        assert apply_filters([source, target], variable, instance) == [target]
 
 
 # ---------------------------------------------------------------------------
@@ -432,13 +464,13 @@ class TestAndFilter:
         result = apply_filters([fact], _bool_var(bf), inst)
         assert result == []
 
-    def test_and_with_no_children_passes_all(self) -> None:
+    def test_and_with_no_children_matches_no_facts(self) -> None:
         ctx = _ctx("c1", dims={})
         fact = Fact(concept=CONCEPT_A, context_ref="c1", unit_ref=None, value="5")
         inst = _instance([fact], {"c1": ctx})
         bf = BooleanFilterDefinition(filter_type="and", children=())
         result = apply_filters([fact], _bool_var(bf), inst)
-        assert result == [fact]
+        assert result == []
 
     def test_and_complement_inverts_result(self) -> None:
         """complement=True on andFilter inverts the whole result."""
@@ -500,13 +532,13 @@ class TestOrFilter:
         result = apply_filters([fact], _bool_var(bf), inst)
         assert result == []
 
-    def test_or_with_no_children_passes_all(self) -> None:
+    def test_or_with_no_children_matches_no_facts(self) -> None:
         ctx = _ctx("c1", dims={})
         fact = Fact(concept=CONCEPT_A, context_ref="c1", unit_ref=None, value="5")
         inst = _instance([fact], {"c1": ctx})
         bf = BooleanFilterDefinition(filter_type="or", children=())
         result = apply_filters([fact], _bool_var(bf), inst)
-        assert result == [fact]
+        assert result == []
 
 
 class TestNestedBooleanFilter:

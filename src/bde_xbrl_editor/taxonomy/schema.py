@@ -38,6 +38,19 @@ _ENUMERATION = f"{{{NS_XSD}}}enumeration"
 _UNION = f"{{{NS_XSD}}}union"
 _PATTERN = f"{{{NS_XSD}}}pattern"
 
+_NON_CUSTOM_ATTRIBUTE_NAMESPACES = frozenset(
+    {
+        NS_XSD,
+        NS_XBRLI,
+        NS_XBRLDT,
+        NS_XLINK,
+        NS_EXTENSIBLE_ENUM,
+        NS_EXTENSIBLE_ENUM_2,
+        "http://www.w3.org/XML/1998/namespace",
+        "http://www.w3.org/2001/XMLSchema-instance",
+    }
+)
+
 # XBRL substitution groups that mark items and tuples
 _SG_ITEM = QName(NS_XBRLI, "item", prefix="xbrli")
 _SG_TUPLE = QName(NS_XBRLI, "tuple", prefix="xbrli")
@@ -180,6 +193,13 @@ def _build_concept(
     if schema_default_value is not None:
         schema_default_value = schema_default_value.strip() or None
 
+    custom_attributes = tuple(
+        (QName.from_clark(attribute_name), attribute_value)
+        for attribute_name, attribute_value in el.attrib.items()
+        if attribute_name.startswith("{")
+        and QName.from_clark(attribute_name).namespace not in _NON_CUSTOM_ATTRIBUTE_NAMESPACES
+    )
+
     concept = Concept(
         qname=qname,
         data_type=data_type,
@@ -197,6 +217,7 @@ def _build_concept(
         default_decimals=default_decimals,
         default_precision=default_precision,
         schema_default_value=schema_default_value,
+        custom_attributes=custom_attributes,
     )
     return qname, concept, sg
 
@@ -866,6 +887,22 @@ def build_global_named_type_registry(
             qn = QName(namespace=target_ns, local_name=name)
             registry[qn] = _NamedXsdType(target_ns, ns_map, path_str, "complex_simple", el)
     return registry
+
+
+def build_named_type_base_map(
+    registry: Mapping[QName, _NamedXsdType],
+) -> dict[QName, QName]:
+    """Return the direct base QName for each named simple-content type in a DTS."""
+    bases: dict[QName, QName] = {}
+    for qname, definition in registry.items():
+        base = _direct_type_base(
+            definition.element,
+            definition.ns_map,
+            definition.schema_path_str,
+        )
+        if base is not None:
+            bases[qname] = base
+    return bases
 
 
 def extract_concept_enumerations_for_schema(

@@ -8,17 +8,21 @@ import re
 import threading
 import time
 from collections.abc import Callable, Iterable, Iterator
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
+from functools import lru_cache
 from typing import Any
 
 from lxml import etree
 
+from bde_xbrl_editor.instance.constants import XBRLDI_NS
 from bde_xbrl_editor.instance.models import Fact, XbrlInstance
 from bde_xbrl_editor.instance.s_equal import (
     canonical_context_refs_by_s_equal,
     canonical_unit_refs_by_structure,
+    context_s_equal_key,
+    unit_structure_key,
 )
 from bde_xbrl_editor.taxonomy.models import (
     AssertionTextResource,
@@ -101,6 +105,10 @@ class FormulaEvaluator:
         self._xpath_token_cache: dict[tuple[tuple[tuple[str, str], ...], str], Any] = {}
         self._xpath_filter_token_cache: dict[tuple[tuple[tuple[str, str], ...], str], Any] = {}
         self._variable_match_cache: dict[tuple[Any, ...], list[Fact]] = {}
+        (
+            self._schema_element_types,
+            self._schema_attribute_types,
+        ) = _schema_atomic_type_maps(taxonomy.schema_files)
         self._progress_interval_seconds = 0.1
         self._current_formula_relationships: tuple[_ResolvedFormulaRelationship, ...] = ()
 
@@ -614,15 +622,24 @@ class FormulaEvaluator:
         """
         all_facts = instance.facts
         filter_xpath_variables = self._independent_general_variable_values(assertion, instance)
+        fact_variable_names = {variable.variable_name for variable in assertion.variables}
 
         per_variable: list[tuple[str, list[list[Fact]]]] = []
         for var_def in assertion.variables:
             candidate_facts = all_facts
             if self._variable_requests_tuple_facts(var_def, instance.tuple_facts):
                 candidate_facts = all_facts + instance.tuple_facts
+            independent_var_def = replace(
+                var_def,
+                xpath_filters=tuple(
+                    xpath_filter
+                    for xpath_filter in var_def.xpath_filters
+                    if not (_xpath_variable_names(xpath_filter.xpath_expr) & fact_variable_names)
+                ),
+            )
             matched = self._matching_facts_for_variable(
                 candidate_facts,
-                var_def,
+                independent_var_def,
                 instance,
                 facts_by_concept=facts_by_concept,
                 xpath_variables=filter_xpath_variables,
@@ -693,6 +710,7 @@ class FormulaEvaluator:
                         assertion,
                         expanded_binding,
                         instance,
+                        general_values=general_values,
                     ):
                         continue
                     effective_general_values = general_values
@@ -719,8 +737,8 @@ class FormulaEvaluator:
                     seen_binding_signatures.add(signature)
                     yield binding
 
-    @staticmethod
     def _variable_requests_tuple_facts(
+        self,
         variable: FactVariableDefinition,
         tuple_facts: list[Fact],
     ) -> bool:
@@ -728,24 +746,145 @@ class FormulaEvaluator:
         tuple_concepts = {fact.concept for fact in tuple_facts}
         if variable.concept_filter in tuple_concepts:
             return True
-        return any(
+        if any(
             resource.local_name == "conceptName"
-            and any(qname in tuple_concepts for qname in resource.qnames)
+            and (
+                any(qname in tuple_concepts for qname in resource.qnames)
+                or (
+                    resource.complement
+                    and any(qname not in resource.qnames for qname in tuple_concepts)
+                )
+            )
+            for resource in variable.filter_resources
+        ):
+            return True
+        return any(
+            resource.local_name == "conceptSubstitutionGroup"
+            and any(
+                qname.namespace == "http://www.xbrl.org/2003/instance"
+                and qname.local_name == "tuple"
+                for qname in resource.qnames
+            )
             for resource in variable.filter_resources
         )
 
-    @staticmethod
     def _binding_matches_dependent_variable_filters(
+        self,
         assertion: FormulaAssertion,
         fact_binding: dict[str, list[Fact]],
         instance: XbrlInstance,
+        *,
+        general_values: dict[str, Any],
     ) -> bool:
         """Apply filters whose result depends on another fact-variable binding."""
+        fact_variable_names = {variable.variable_name for variable in assertion.variables}
+        variables_by_name = {variable.variable_name: variable for variable in assertion.variables}
         for variable in assertion.variables:
             candidates = fact_binding.get(variable.variable_name, ())
+            dependent_xpath_filters = tuple(
+                xpath_filter
+                for xpath_filter in variable.xpath_filters
+                if _xpath_variable_names(xpath_filter.xpath_expr) & fact_variable_names
+            )
+            if dependent_xpath_filters:
+                xpath_variables = self._build_general_select_variables(
+                    fact_binding,
+                    general_values,
+                    namespaces=assertion.namespaces,
+                    fact_bindings_as_elements=True,
+                )
+                filter_only_variable = FactVariableDefinition(
+                    variable_name=variable.variable_name,
+                    nils=True,
+                    xpath_filters=dependent_xpath_filters,
+                )
+                matched_candidates = apply_filters(
+                    list(candidates),
+                    filter_only_variable,
+                    instance,
+                    custom_functions=self._taxonomy.custom_functions,
+                    xpath_token_cache=self._xpath_filter_token_cache,
+                    xpath_variables=xpath_variables,
+                    concepts=self._taxonomy.concepts,
+                )
+                if len(matched_candidates) != len(candidates):
+                    return False
             for resource in variable.filter_resources:
+                if resource.local_name == "typedDimension" and resource.test_xpath:
+                    xpath_variables = self._build_general_select_variables(
+                        fact_binding,
+                        general_values,
+                        namespaces=resource.namespaces or assertion.namespaces,
+                        fact_bindings_as_elements=True,
+                    )
+                    matched = bool(candidates) and all(
+                        self._typed_dimension_filter_test_matches(
+                            candidate,
+                            resource,
+                            instance,
+                            xpath_variables=xpath_variables,
+                        )
+                        for candidate in candidates
+                    )
+                    if matched == bool(resource.complement):
+                        return False
+                    continue
+                if resource.local_name == "specificScheme" and "$" in resource.attributes.get(
+                    "scheme", ""
+                ):
+                    try:
+                        result = self._eval_xpath(
+                            resource.attributes["scheme"],
+                            fact_binding,
+                            instance,
+                            resource.namespaces or assertion.namespaces,
+                            assertion=assertion,
+                            fact_bindings_as_elements=True,
+                        )
+                    except Exception:  # noqa: BLE001
+                        result = []
+                    matched = bool(candidates and len(result) == 1) and all(
+                        (context := instance.contexts.get(candidate.context_ref)) is not None
+                        and context.entity.scheme == str(result[0])
+                        for candidate in candidates
+                    )
+                    if matched == bool(resource.complement):
+                        return False
+                    continue
                 references = fact_binding.get(resource.variable or "", ())
-                if resource.local_name in {"siblingFilter", "locationFilter"}:
+                if resource.local_name == "relativeFilter":
+                    reference_variable = variables_by_name.get(resource.variable or "")
+                    matched = bool(candidates and references and reference_variable) and all(
+                        self._facts_match_relative_filter_aspects(
+                            candidate,
+                            variable,
+                            reference,
+                            instance,
+                            aspect_model=assertion.aspect_model,
+                            equality_tests=getattr(assertion, "typed_dimension_equality_tests", ()),
+                        )
+                        for candidate in candidates
+                        for reference in references
+                    )
+                elif (
+                    resource.local_name == "explicitDimension"
+                    and resource.variable
+                    and resource.qnames
+                    and not variable.bind_as_sequence
+                ):
+                    dimension_matches = tuple(
+                        self._facts_match_dimension_member_variable(
+                            candidate,
+                            reference,
+                            instance,
+                            resource.qnames[0],
+                            resource,
+                        )
+                        for candidate in candidates
+                        for reference in references
+                    )
+                    matched = bool(dimension_matches) and all(dimension_matches)
+                elif resource.local_name in {"siblingFilter", "locationFilter"}:
                     matched = bool(candidates and references) and all(
                         _tuple_variable_filter_matches(candidate, reference, resource)
                         for candidate in candidates
@@ -762,11 +901,250 @@ class FormulaEvaluator:
                         for candidate in candidates
                         for reference in references
                     )
+                elif resource.local_name == "matchPeriod":
+                    period_matches = tuple(
+                        _facts_have_matching_period(candidate, reference, instance)
+                        for candidate in candidates
+                        for reference in references
+                    )
+                    matched = bool(period_matches) and (
+                        any(period_matches) if resource.match_any else all(period_matches)
+                    )
+                elif resource.local_name == "matchConcept":
+                    concept_matches = tuple(
+                        candidate.concept == reference.concept
+                        for candidate in candidates
+                        for reference in references
+                    )
+                    matched = bool(concept_matches) and (
+                        any(concept_matches) if resource.match_any else all(concept_matches)
+                    )
+                elif resource.local_name == "matchEntityIdentifier":
+                    entity_identifier_matches = tuple(
+                        _facts_have_matching_entity_identifier(candidate, reference, instance)
+                        for candidate in candidates
+                        for reference in references
+                    )
+                    matched = bool(entity_identifier_matches) and (
+                        any(entity_identifier_matches)
+                        if resource.match_any
+                        else all(entity_identifier_matches)
+                    )
+                elif resource.local_name == "matchUnit":
+                    unit_matches = tuple(
+                        _facts_have_matching_unit(candidate, reference, instance)
+                        for candidate in candidates
+                        for reference in references
+                    )
+                    matched = bool(unit_matches) and (
+                        any(unit_matches) if resource.match_any else all(unit_matches)
+                    )
+                elif resource.local_name == "matchLocation":
+                    location_matches = tuple(
+                        candidate.position_path[:-1] == reference.position_path[:-1]
+                        for candidate in candidates
+                        for reference in references
+                    )
+                    matched = bool(location_matches) and (
+                        any(location_matches) if resource.match_any else all(location_matches)
+                    )
+                elif resource.local_name == "matchSegment":
+                    segment_matches = tuple(
+                        _facts_have_matching_complete_segment(
+                            candidate,
+                            reference,
+                            instance,
+                            self._taxonomy,
+                        )
+                        for candidate in candidates
+                        for reference in references
+                    )
+                    matched = bool(segment_matches) and (
+                        any(segment_matches) if resource.match_any else all(segment_matches)
+                    )
+                elif resource.local_name == "matchNonXDTSegment":
+                    segment_matches = tuple(
+                        _facts_have_matching_non_xdt_segment(
+                            candidate,
+                            reference,
+                            instance,
+                            self._taxonomy,
+                        )
+                        for candidate in candidates
+                        for reference in references
+                    )
+                    matched = bool(segment_matches) and (
+                        any(segment_matches) if resource.match_any else all(segment_matches)
+                    )
+                elif resource.local_name == "matchScenario":
+                    scenario_matches = tuple(
+                        _facts_have_matching_complete_scenario(
+                            candidate,
+                            reference,
+                            instance,
+                            self._taxonomy,
+                        )
+                        for candidate in candidates
+                        for reference in references
+                    )
+                    matched = bool(scenario_matches) and (
+                        any(scenario_matches) if resource.match_any else all(scenario_matches)
+                    )
+                elif resource.local_name == "matchNonXDTScenario":
+                    scenario_matches = tuple(
+                        _facts_have_matching_non_xdt_scenario(
+                            candidate,
+                            reference,
+                            instance,
+                            self._taxonomy,
+                        )
+                        for candidate in candidates
+                        for reference in references
+                    )
+                    matched = bool(scenario_matches) and (
+                        any(scenario_matches) if resource.match_any else all(scenario_matches)
+                    )
+                elif resource.local_name == "matchDimension" and resource.qnames:
+                    dimension_matches = tuple(
+                        _facts_have_matching_dimension(
+                            candidate,
+                            reference,
+                            instance,
+                            resource.qnames[0],
+                            equality_tests=getattr(assertion, "typed_dimension_equality_tests", ()),
+                            schema_element_types=self._schema_element_types,
+                            schema_attribute_types=self._schema_attribute_types,
+                        )
+                        for candidate in candidates
+                        for reference in references
+                    )
+                    matched = bool(dimension_matches) and (
+                        any(dimension_matches) if resource.match_any else all(dimension_matches)
+                    )
                 else:
                     continue
                 if matched == bool(resource.complement):
                     return False
         return True
+
+    def _facts_match_dimension_member_variable(
+        self,
+        candidate: Fact,
+        reference: Fact,
+        instance: XbrlInstance,
+        dimension: QName,
+        resource: Any,
+    ) -> bool:
+        """Match a dimension member selected relative to a bound fact variable."""
+        candidate_context = instance.contexts.get(candidate.context_ref)
+        reference_context = instance.contexts.get(reference.context_ref)
+        if candidate_context is None or reference_context is None:
+            return False
+        dimension_model = self._taxonomy.dimensions.get(dimension)
+        default_member = dimension_model.default_member if dimension_model is not None else None
+        candidate_member = candidate_context.dimensions.get(dimension, default_member)
+        reference_member = reference_context.dimensions.get(dimension, default_member)
+        if candidate_member is None or reference_member is None:
+            return False
+
+        axis = resource.attributes.get("axis", "").strip()
+        if not axis or axis == "self":
+            return candidate_member == reference_member
+
+        linkrole = resource.attributes.get("linkrole", "").strip()
+        arcrole = resource.attributes.get("arcrole", "").strip()
+        arcs = [
+            arc
+            for role, role_arcs in self._taxonomy.definition.items()
+            for arc in role_arcs
+            if (not linkrole or role == linkrole or arc.extended_link_role == linkrole)
+            and (not arcrole or arc.arcrole == arcrole)
+        ]
+        children = {arc.target for arc in arcs if arc.source == reference_member}
+        if axis == "child":
+            return candidate_member in children
+        if axis == "child-or-self":
+            return candidate_member == reference_member or candidate_member in children
+
+        descendants: set[QName] = set()
+        frontier = set(children)
+        while frontier:
+            descendants.update(frontier)
+            frontier = {arc.target for arc in arcs if arc.source in frontier} - descendants
+        if axis == "descendant":
+            return candidate_member in descendants
+        if axis == "descendant-or-self":
+            return candidate_member == reference_member or candidate_member in descendants
+        return False
+
+    def _typed_dimension_filter_test_matches(
+        self,
+        candidate: Fact,
+        resource: Any,
+        instance: XbrlInstance,
+        *,
+        xpath_variables: dict[str, Any],
+    ) -> bool:
+        """Evaluate ``df:typedDimension/@test`` on its typed-member content."""
+        import elementpath  # type: ignore[import-untyped]
+
+        if not resource.qnames:
+            return False
+        context = instance.contexts.get(candidate.context_ref)
+        if context is None:
+            return False
+        dimension = resource.qnames[0]
+        typed_xml = context.typed_dimension_xml.get(dimension)
+        if typed_xml is None:
+            return False
+        try:
+            typed_element = etree.fromstring(typed_xml)
+            element_qname = _xml_name_qname(str(typed_element.tag))
+            schema_type = self._schema_element_types.get(element_qname)
+            schema, wrapper_tag = _typed_dimension_schema_proxy(
+                element_qname.namespace,
+                element_qname.local_name,
+                schema_type.namespace if schema_type is not None else "",
+                schema_type.local_name if schema_type is not None else "",
+                (typed_element.text or "").strip(),
+            )
+            wrapper = etree.Element(wrapper_tag, nsmap=typed_element.nsmap)
+            wrapper.append(typed_element)
+            expression = normalize_formula_xpath_expression(resource.test_xpath)
+            parser = build_formula_parser(
+                resource.namespaces,
+                self._taxonomy.custom_functions,
+                (expression,),
+            )
+            token = parser.parse(expression)
+        except Exception:  # noqa: BLE001
+            return False
+
+        unit = instance.units.get(candidate.unit_ref or "")
+        set_evaluation_context(
+            {
+                "_all_facts": instance.facts,
+                "_current_fact": candidate,
+                "_context": context,
+                "_unit": unit,
+                "_instance": instance,
+                "_taxonomy": self._taxonomy,
+                "_formula_relationships": self._current_formula_relationships,
+                "_custom_functions": self._taxonomy.custom_functions,
+            }
+        )
+        try:
+            xpath_context = elementpath.XPathContext(
+                root=wrapper,
+                item=wrapper,
+                schema=schema,
+                variables=xpath_variables,
+            )
+            return _to_bool(list(token.select(xpath_context)))
+        except Exception:  # noqa: BLE001
+            return False
+        finally:
+            clear_evaluation_context()
 
     def _expand_dependent_concept_bindings(
         self,
@@ -970,7 +1348,9 @@ class FormulaEvaluator:
             omitted_dimensions: set[object],
         ) -> tuple[Any, ...]:
             context = instance.contexts.get(fact.context_ref)
-            if context is None:
+            if context is None and {"entity", "period", "dimensions"} <= omitted:
+                context_key = (None, None, (), ())
+            elif context is None:
                 context_key: Any = canonical_contexts.get(fact.context_ref, fact.context_ref)
             elif (
                 not omitted_dimensions
@@ -1316,6 +1696,7 @@ class FormulaEvaluator:
                 for qname, dimension in self._taxonomy.dimensions.items()
                 if dimension.default_member is not None
             },
+            concepts=self._taxonomy.concepts,
         )
         self._variable_match_cache[cache_key] = matched
         return matched
@@ -1342,6 +1723,8 @@ class FormulaEvaluator:
                 frontier = next_frontier
             if dimension_filter.member_axis == "child":
                 selected = {arc.target for arc in arcs if arc.source in members}
+            elif dimension_filter.member_axis == "child-or-self":
+                selected = {arc.target for arc in arcs if arc.source in members} | members
             elif dimension_filter.member_axis == "descendant":
                 selected = descendants
             elif dimension_filter.member_axis == "descendant-or-self":
@@ -2031,6 +2414,7 @@ class FormulaEvaluator:
                         right_fact,
                         definitions[right_name],
                         instance,
+                        aspect_model=formula.aspect_model,
                         equality_tests=getattr(formula, "typed_dimension_equality_tests", ()),
                     ):
                         compatible = False
@@ -2065,6 +2449,7 @@ class FormulaEvaluator:
                             fact,
                             definition,
                             instance,
+                            aspect_model=formula.aspect_model,
                             equality_tests=getattr(formula, "typed_dimension_equality_tests", ()),
                         )
                     ]
@@ -2141,7 +2526,9 @@ class FormulaEvaluator:
             if local_name == "aspectcover":
                 normalized_aspects = {aspect.lower() for aspect in resource.aspects}
                 if "all" in normalized_aspects:
-                    covered.update({"concept", "entity", "period", "unit", "dimensions"})
+                    covered.update(
+                        {"concept", "entity", "period", "unit", "dimensions", "location"}
+                    )
                 if "concept" in normalized_aspects:
                     covered.add("concept")
                 if "entity-identifier" in normalized_aspects:
@@ -2156,6 +2543,10 @@ class FormulaEvaluator:
                     "segment" in aspect or "scenario" in aspect for aspect in normalized_aspects
                 ):
                     covered.add("remainder")
+                if any("segment" in aspect for aspect in normalized_aspects):
+                    covered.add("segment")
+                if any("scenario" in aspect for aspect in normalized_aspects):
+                    covered.add("scenario")
                 covered_dimensions.update(resource.qnames)
                 for expression in resource.qname_expressions:
                     match = re.fullmatch(
@@ -2179,6 +2570,10 @@ class FormulaEvaluator:
                 covered.add("entity")
             elif "unit" in local_name or "measure" in local_name:
                 covered.add("unit")
+            elif "segment" in local_name:
+                covered.add("segment")
+            elif "scenario" in local_name:
+                covered.add("scenario")
             elif "dimension" in local_name and resource.qnames:
                 covered_dimensions.add(resource.qnames[0])
         uncovered_resource_dimensions = {
@@ -2208,6 +2603,7 @@ class FormulaEvaluator:
         right_variable: FactVariableDefinition,
         instance: XbrlInstance,
         *,
+        aspect_model: str | None,
         equality_tests: tuple[str, ...] = (),
     ) -> bool:
         left_covered, left_dimensions = self._covered_formula_aspects(left_variable)
@@ -2230,6 +2626,24 @@ class FormulaEvaluator:
             and left_context.period != right_context.period
         ):
             return False
+        if left.context_ref != right.context_ref:
+            covered = left_covered | right_covered
+            if "segment" not in covered and "remainder" not in covered:
+                segment_matches = (
+                    _facts_have_matching_complete_segment
+                    if aspect_model == "non-dimensional"
+                    else _facts_have_matching_non_xdt_segment
+                )
+                if not segment_matches(left, right, instance, self._taxonomy):
+                    return False
+            if "scenario" not in covered and "remainder" not in covered:
+                scenario_matches = (
+                    _facts_have_matching_complete_scenario
+                    if aspect_model == "non-dimensional"
+                    else _facts_have_matching_non_xdt_scenario
+                )
+                if not scenario_matches(left, right, instance, self._taxonomy):
+                    return False
         dimensions = (
             set(left_context.dimensions)
             | set(right_context.dimensions)
@@ -2251,6 +2665,99 @@ class FormulaEvaluator:
             if canonical_units.get(left.unit_ref or "", left.unit_ref or "") != canonical_units.get(
                 right.unit_ref or "", right.unit_ref or ""
             ):
+                return False
+        return True
+
+    def _facts_match_relative_filter_aspects(
+        self,
+        candidate: Fact,
+        candidate_variable: FactVariableDefinition,
+        reference: Fact,
+        instance: XbrlInstance,
+        *,
+        aspect_model: str | None,
+        equality_tests: tuple[str, ...] = (),
+    ) -> bool:
+        """Match the candidate's uncovered aspects against a reference fact."""
+        covered, covered_dimensions = self._covered_formula_aspects(candidate_variable)
+        if "concept" not in covered and candidate.concept != reference.concept:
+            return False
+        if "location" not in covered and candidate.tuple_path != reference.tuple_path:
+            return False
+
+        candidate_context = instance.contexts.get(candidate.context_ref)
+        reference_context = instance.contexts.get(reference.context_ref)
+        if candidate_context is None or reference_context is None:
+            return candidate.context_ref == reference.context_ref
+        if "entity" not in covered and candidate_context.entity != reference_context.entity:
+            return False
+        if "period" not in covered and candidate_context.period != reference_context.period:
+            return False
+
+        if "remainder" not in covered:
+            if aspect_model == "non-dimensional":
+                candidate_key = context_s_equal_key(
+                    candidate_context, dict(self._taxonomy.element_defaults)
+                )
+                reference_key = context_s_equal_key(
+                    reference_context, dict(self._taxonomy.element_defaults)
+                )
+                if candidate_key[4:] != reference_key[4:]:
+                    return False
+            elif not (
+                _facts_have_matching_non_xdt_segment(candidate, reference, instance, self._taxonomy)
+                and _facts_have_matching_non_xdt_scenario(
+                    candidate, reference, instance, self._taxonomy
+                )
+            ):
+                return False
+
+        if aspect_model != "non-dimensional":
+            candidate_dimensions = set(candidate_context.dimensions) | set(
+                candidate_context.typed_dimensions
+            )
+            applicable_dimensions = {
+                dimension
+                for hypercube in self._taxonomy.hypercubes
+                if hypercube.arcrole == "all" and candidate.concept in hypercube.primary_items
+                for dimension in hypercube.dimensions
+            }
+            default_members = {
+                dimension: model.default_member
+                for dimension, model in self._taxonomy.dimensions.items()
+                if model.default_member is not None
+            }
+            candidate_dimensions.update(applicable_dimensions & default_members.keys())
+            for dimension in candidate_dimensions - covered_dimensions:
+                candidate_typed = dimension in candidate_context.typed_dimensions
+                reference_typed = dimension in reference_context.typed_dimensions
+                if candidate_typed or reference_typed:
+                    if not (candidate_typed and reference_typed):
+                        return False
+                    if not _typed_dimension_values_equal(
+                        candidate_context,
+                        reference_context,
+                        dimension,
+                        equality_tests=equality_tests,
+                        schema_element_types=self._schema_element_types,
+                        schema_attribute_types=self._schema_attribute_types,
+                    ):
+                        return False
+                    continue
+                candidate_member = candidate_context.dimensions.get(
+                    dimension, default_members.get(dimension)
+                )
+                reference_member = reference_context.dimensions.get(
+                    dimension, default_members.get(dimension)
+                )
+                if candidate_member != reference_member:
+                    return False
+
+        if "unit" not in covered:
+            canonical_units = canonical_unit_refs_by_structure(instance)
+            if canonical_units.get(
+                candidate.unit_ref or "", candidate.unit_ref or ""
+            ) != canonical_units.get(reference.unit_ref or "", reference.unit_ref or ""):
                 return False
         return True
 
@@ -2479,6 +2986,10 @@ class FormulaEvaluator:
         """Evaluate an XPath 2.0 expression with the current fact binding."""
         import elementpath  # type: ignore[import-untyped]
 
+        namespaces = {
+            **(assertion.namespaces if assertion is not None else {}),
+            **(namespaces or {}),
+        }
         fact_bindings_as_elements = fact_bindings_as_elements or any(
             token in xpath_expr
             for token in ("node-name(", "local-name(", "namespace-uri(", "name(")
@@ -2862,12 +3373,137 @@ def _dependent_fact_variable_names(
     return dependencies
 
 
+def _xpath_variable_names(expression: str) -> set[str]:
+    """Return lexical variable QNames referenced by an XPath expression."""
+    return set(re.findall(r"\$([A-Za-z_][\w:.-]*)", expression))
+
+
+def _schema_atomic_type_maps(
+    schema_files: Iterable[Any],
+) -> tuple[dict[QName, QName], dict[tuple[QName, QName], QName]]:
+    """Collect declared element and attribute types used by typed members."""
+    xsd_namespace = "http://www.w3.org/2001/XMLSchema"
+    element_tag = f"{{{xsd_namespace}}}element"
+    attribute_tag = f"{{{xsd_namespace}}}attribute"
+    element_types: dict[QName, QName] = {}
+    attribute_types: dict[tuple[QName, QName], QName] = {}
+
+    def declared_type(node: etree._Element) -> QName | None:
+        value = (node.get("type") or "").strip()
+        if not value:
+            return None
+        if ":" in value:
+            prefix, local_name = value.split(":", 1)
+            return QName(node.nsmap.get(prefix, ""), local_name, prefix)
+        return QName(xsd_namespace, value)
+
+    for schema_file in schema_files:
+        try:
+            root = etree.parse(str(schema_file)).getroot()
+        except (OSError, etree.XMLSyntaxError):
+            continue
+        target_namespace = root.get("targetNamespace", "")
+        for element in root.findall(element_tag):
+            element_name = (element.get("name") or "").strip()
+            if not element_name:
+                continue
+            element_qname = QName(target_namespace, element_name)
+            element_type = declared_type(element)
+            if element_type is not None:
+                element_types[element_qname] = element_type
+            for attribute in element.iter(attribute_tag):
+                attribute_name = (attribute.get("name") or "").strip()
+                attribute_type = declared_type(attribute)
+                if not attribute_name or attribute_type is None:
+                    continue
+                attribute_namespace = (
+                    target_namespace if attribute.get("form") == "qualified" else ""
+                )
+                attribute_types[(element_qname, QName(attribute_namespace, attribute_name))] = (
+                    attribute_type
+                )
+    return element_types, attribute_types
+
+
+def _xml_name_qname(name: str) -> QName:
+    if name.startswith("{"):
+        namespace, local_name = name[1:].split("}", 1)
+        return QName(namespace, local_name)
+    return QName("", name)
+
+
+@lru_cache(maxsize=128)
+def _typed_dimension_schema_proxy(
+    namespace: str,
+    local_name: str,
+    type_namespace: str,
+    type_local_name: str,
+    lexical_value: str,
+) -> tuple[Any, str]:
+    """Build a small schema that types a simple typed-domain context node."""
+    import xmlschema  # type: ignore[import-untyped]
+    from xmlschema.xpath import XMLSchemaProxy  # type: ignore[import-untyped]
+
+    xsd_namespace = "http://www.w3.org/2001/XMLSchema"
+    wrapper_name = "_formulaTypedMemberContext"
+    if not namespace:
+        return None, wrapper_name
+
+    type_name = type_local_name.lower()
+    if type_name == "dateunion":
+        atomic_type = "dateTime" if "T" in lexical_value else "date"
+    elif type_namespace == xsd_namespace:
+        atomic_type = type_local_name
+    elif "datetime" in type_name:
+        atomic_type = "dateTime"
+    elif "date" in type_name:
+        atomic_type = "date"
+    elif any(token in type_name for token in ("decimal", "integer", "monetary")):
+        atomic_type = "decimal"
+    elif "boolean" in type_name:
+        atomic_type = "boolean"
+    elif "qname" in type_name:
+        atomic_type = "QName"
+    else:
+        atomic_type = "string"
+
+    schema_element = etree.Element(
+        f"{{{xsd_namespace}}}schema",
+        nsmap={"xs": xsd_namespace, "typed": namespace},
+        targetNamespace=namespace,
+        elementFormDefault="qualified",
+    )
+    etree.SubElement(
+        schema_element,
+        f"{{{xsd_namespace}}}element",
+        name=local_name,
+        type=f"xs:{atomic_type}",
+        nillable="true",
+    )
+    wrapper_element = etree.SubElement(
+        schema_element,
+        f"{{{xsd_namespace}}}element",
+        name=wrapper_name,
+    )
+    complex_type = etree.SubElement(wrapper_element, f"{{{xsd_namespace}}}complexType")
+    sequence = etree.SubElement(complex_type, f"{{{xsd_namespace}}}sequence")
+    etree.SubElement(
+        sequence,
+        f"{{{xsd_namespace}}}element",
+        ref=f"typed:{local_name}",
+    )
+    schema = XMLSchemaProxy(xmlschema.XMLSchema(etree.tostring(schema_element)))
+    return schema, f"{{{namespace}}}{wrapper_name}"
+
+
 def _typed_dimension_values_equal(
     left_context: Any,
     right_context: Any,
     dimension: Any,
     *,
     equality_tests: tuple[str, ...] = (),
+    schema_element_types: dict[QName, QName] | None = None,
+    schema_attribute_types: dict[tuple[QName, QName], QName] | None = None,
 ) -> bool:
     """Compare typed members using their schema-like atomic value semantics."""
     left_xml = getattr(left_context, "typed_dimension_xml", {}).get(dimension)
@@ -2886,14 +3522,96 @@ def _typed_dimension_values_equal(
             ignore_child_order=custom,
             ignore_case=ignore_case,
             normalize_date_union=normalize_date_union,
+            schema_element_types=schema_element_types,
+            schema_attribute_types=schema_attribute_types,
         ) == _canonical_typed_member(
             etree.fromstring(right_xml),
             ignore_child_order=custom,
             ignore_case=ignore_case,
             normalize_date_union=normalize_date_union,
+            schema_element_types=schema_element_types,
+            schema_attribute_types=schema_attribute_types,
         )
     except (etree.XMLSyntaxError, ValueError):
         return False
+
+
+def _facts_have_matching_complete_segment(
+    left: Fact,
+    right: Fact,
+    instance: XbrlInstance,
+    taxonomy: TaxonomyStructure,
+) -> bool:
+    """Compare complete segment child sequences using XBRL S-equality."""
+    left_context = instance.contexts.get(left.context_ref)
+    right_context = instance.contexts.get(right.context_ref)
+    if left_context is None or right_context is None:
+        return left_context is right_context
+    left_key = context_s_equal_key(left_context, dict(taxonomy.element_defaults))
+    right_key = context_s_equal_key(right_context, dict(taxonomy.element_defaults))
+    return left_key[5] == right_key[5]
+
+
+def _facts_have_matching_non_xdt_segment(
+    left: Fact,
+    right: Fact,
+    instance: XbrlInstance,
+    taxonomy: TaxonomyStructure,
+) -> bool:
+    """Compare the ordered non-XDT child sequences of two complete segments."""
+    left_context = instance.contexts.get(left.context_ref)
+    right_context = instance.contexts.get(right.context_ref)
+    if left_context is None or right_context is None:
+        return left_context is right_context
+    dimension_tags = {
+        f"{{{XBRLDI_NS}}}explicitMember",
+        f"{{{XBRLDI_NS}}}typedMember",
+    }
+
+    def non_xdt_key(context: Any) -> tuple[Any, ...]:
+        segment_key = context_s_equal_key(context, dict(taxonomy.element_defaults))[5]
+        return tuple(child for child in segment_key if child[0] not in dimension_tags)
+
+    return non_xdt_key(left_context) == non_xdt_key(right_context)
+
+
+def _facts_have_matching_complete_scenario(
+    left: Fact,
+    right: Fact,
+    instance: XbrlInstance,
+    taxonomy: TaxonomyStructure,
+) -> bool:
+    """Compare complete scenario child sequences using XBRL S-equality."""
+    left_context = instance.contexts.get(left.context_ref)
+    right_context = instance.contexts.get(right.context_ref)
+    if left_context is None or right_context is None:
+        return left_context is right_context
+    left_key = context_s_equal_key(left_context, dict(taxonomy.element_defaults))
+    right_key = context_s_equal_key(right_context, dict(taxonomy.element_defaults))
+    return left_key[4] == right_key[4]
+
+
+def _facts_have_matching_non_xdt_scenario(
+    left: Fact,
+    right: Fact,
+    instance: XbrlInstance,
+    taxonomy: TaxonomyStructure,
+) -> bool:
+    """Compare the ordered non-XDT child sequences of two complete scenarios."""
+    left_context = instance.contexts.get(left.context_ref)
+    right_context = instance.contexts.get(right.context_ref)
+    if left_context is None or right_context is None:
+        return left_context is right_context
+    dimension_tags = {
+        f"{{{XBRLDI_NS}}}explicitMember",
+        f"{{{XBRLDI_NS}}}typedMember",
+    }
+
+    def non_xdt_key(context: Any) -> tuple[Any, ...]:
+        scenario_key = context_s_equal_key(context, dict(taxonomy.element_defaults))[4]
+        return tuple(child for child in scenario_key if child[0] not in dimension_tags)
+
+    return non_xdt_key(left_context) == non_xdt_key(right_context)
 
 
 def _canonical_typed_member(
@@ -2902,7 +3620,10 @@ def _canonical_typed_member(
     ignore_child_order: bool = False,
     ignore_case: bool = False,
     normalize_date_union: bool = False,
+    schema_element_types: dict[QName, QName] | None = None,
+    schema_attribute_types: dict[tuple[QName, QName], QName] | None = None,
 ) -> tuple[Any, ...]:
+    element_qname = _xml_name_qname(str(element.tag))
     attributes = tuple(
         sorted(
             (
@@ -2913,6 +3634,9 @@ def _canonical_typed_member(
                     element,
                     ignore_case=ignore_case,
                     normalize_date_union=normalize_date_union,
+                    schema_type=(schema_attribute_types or {}).get(
+                        (element_qname, _xml_name_qname(name))
+                    ),
                 ),
             )
             for name, value in element.attrib.items()
@@ -2925,6 +3649,7 @@ def _canonical_typed_member(
         element,
         ignore_case=ignore_case,
         normalize_date_union=normalize_date_union,
+        schema_type=(schema_element_types or {}).get(element_qname),
     )
     child_values = [
         _canonical_typed_member(
@@ -2932,6 +3657,8 @@ def _canonical_typed_member(
             ignore_child_order=ignore_child_order,
             ignore_case=ignore_case,
             normalize_date_union=normalize_date_union,
+            schema_element_types=schema_element_types,
+            schema_attribute_types=schema_attribute_types,
         )
         for child in element
         if isinstance(child.tag, str)
@@ -2949,9 +3676,28 @@ def _canonical_typed_atomic(
     *,
     ignore_case: bool,
     normalize_date_union: bool,
+    schema_type: QName | None = None,
 ) -> Any:
     lowered = local_name.lower()
-    if any(token in lowered for token in ("dec", "dbl", "int")):
+    type_name = schema_type.local_name.lower() if schema_type is not None else ""
+    if any(token in lowered for token in ("dec", "dbl", "int")) or type_name in {
+        "decimal",
+        "double",
+        "float",
+        "integer",
+        "nonnegativeinteger",
+        "nonpositiveinteger",
+        "negativeinteger",
+        "positiveinteger",
+        "long",
+        "int",
+        "short",
+        "byte",
+        "unsignedlong",
+        "unsignedint",
+        "unsignedshort",
+        "unsignedbyte",
+    }:
         try:
             return Decimal(value)
         except InvalidOperation:
@@ -3182,6 +3928,93 @@ def _instant_duration_filter_matches(
     else:
         return False
     return duration_boundary is not None and instant_boundary == duration_boundary
+
+
+def _facts_have_matching_period(
+    candidate: Fact,
+    reference: Fact,
+    instance: XbrlInstance,
+) -> bool:
+    """Compare the period aspect of two facts using XBRL boundary semantics."""
+    candidate_context = instance.contexts.get(candidate.context_ref)
+    reference_context = instance.contexts.get(reference.context_ref)
+    if candidate_context is None or reference_context is None:
+        return False
+    return _period_aspect_key(candidate_context.period) == _period_aspect_key(
+        reference_context.period
+    )
+
+
+def _facts_have_matching_entity_identifier(
+    candidate: Fact,
+    reference: Fact,
+    instance: XbrlInstance,
+) -> bool:
+    """Compare entity identifier schemes and values without URI normalization."""
+    candidate_context = instance.contexts.get(candidate.context_ref)
+    reference_context = instance.contexts.get(reference.context_ref)
+    if candidate_context is None or reference_context is None:
+        return False
+    return (
+        candidate_context.entity.scheme == reference_context.entity.scheme
+        and candidate_context.entity.identifier == reference_context.entity.identifier
+    )
+
+
+def _facts_have_matching_unit(
+    candidate: Fact,
+    reference: Fact,
+    instance: XbrlInstance,
+) -> bool:
+    """Compare the U-equality signatures of two numeric facts' units."""
+    if candidate.unit_ref is None or reference.unit_ref is None:
+        return False
+    candidate_unit = instance.units.get(candidate.unit_ref)
+    reference_unit = instance.units.get(reference.unit_ref)
+    if candidate_unit is None or reference_unit is None:
+        return False
+    return unit_structure_key(candidate_unit) == unit_structure_key(reference_unit)
+
+
+def _facts_have_matching_dimension(
+    candidate: Fact,
+    reference: Fact,
+    instance: XbrlInstance,
+    dimension: QName,
+    *,
+    equality_tests: tuple[str, ...] = (),
+    schema_element_types: dict[QName, QName] | None = None,
+    schema_attribute_types: dict[tuple[QName, QName], QName] | None = None,
+) -> bool:
+    """Compare one explicit or typed dimension aspect between two facts."""
+    candidate_context = instance.contexts.get(candidate.context_ref)
+    reference_context = instance.contexts.get(reference.context_ref)
+    if candidate_context is None or reference_context is None:
+        return False
+    return candidate_context.dimensions.get(dimension) == reference_context.dimensions.get(
+        dimension
+    ) and _typed_dimension_values_equal(
+        candidate_context,
+        reference_context,
+        dimension,
+        equality_tests=equality_tests,
+        schema_element_types=schema_element_types,
+        schema_attribute_types=schema_attribute_types,
+    )
+
+
+def _period_aspect_key(period: Any) -> tuple[Any, ...]:
+    if period.period_type == "forever":
+        return ("forever",)
+    if period.period_type == "instant":
+        instant = period.instant_date
+        if instant is not None and period.instant_date_only:
+            instant += timedelta(days=1)
+        return ("instant", instant)
+    end = period.end_date
+    if end is not None and period.end_date_only:
+        end += timedelta(days=1)
+    return ("duration", period.start_date, end)
 
 
 def _fact_path_qname(fact: Fact, path: tuple[int, ...]) -> QName | None:

@@ -64,6 +64,7 @@ _NS_SSF = "http://xbrl.org/2008/filter/segment-scenario"
 _NS_TF = "http://xbrl.org/2008/filter/tuple"
 _NS_VF = "http://xbrl.org/2008/filter/value"
 _NS_MF = "http://xbrl.org/2008/filter/match"
+_NS_RF = "http://xbrl.org/2008/filter/relative"
 _NS_ACF = "http://xbrl.org/2010/filter/aspect-cover"
 _NS_CRF = "http://xbrl.org/2010/filter/concept-relation"
 _NS_LINK = "http://www.xbrl.org/2003/linkbase"
@@ -119,6 +120,7 @@ _TAG_UF_MEASURE = f"{{{_NS_UF}}}measure"
 _TAG_UF_QNAME = f"{{{_NS_UF}}}qname"
 _TAG_VF_NIL = f"{{{_NS_VF}}}nil"
 _TAG_VF_PRECISION = f"{{{_NS_VF}}}precision"
+_TAG_RF_RELATIVE_FILTER = f"{{{_NS_RF}}}relativeFilter"
 _TAG_EQUALITY_DEFINITION = f"{{{_NS_VARIABLE}}}equalityDefinition"
 _TAG_BF_AND_FILTER = f"{{{_NS_BF}}}andFilter"
 _TAG_BF_OR_FILTER = f"{{{_NS_BF}}}orFilter"
@@ -136,6 +138,7 @@ _FILTER_NAMESPACES = frozenset(
         _NS_TF,
         _NS_VF,
         _NS_MF,
+        _NS_RF,
         _NS_ACF,
         _NS_CRF,
     }
@@ -430,6 +433,13 @@ def _parse_filter_resource(
     qname_expressions: list[str] = []
     aspects: list[str] = []
     text_exprs: list[str] = []
+    if _qname_localname(filter_el.tag) == "matchDimension":
+        dimension = _clark_to_qname(
+            (filter_el.get("dimension") or "").strip(),
+            _element_nsmap(filter_el),
+        )
+        if dimension is not None:
+            qnames.append(dimension)
     for descendant in filter_el.iter():
         if descendant is filter_el or not isinstance(descendant.tag, str):
             continue
@@ -834,20 +844,14 @@ def _build_boolean_filter(
                     XPathFilterDefinition(
                         xpath_expr=test_expr,
                         namespaces=_element_nsmap(child_el),
+                        complement=child_complement,
                     )
                 )
 
         elif child_el.tag in (_TAG_CF_CONCEPT_NAME, _TAG_CF_CONCEPT):
-            # Concept filter inside a boolean filter is unusual but possible
-            qn = _extract_concept_filter(child_el)
-            if qn is not None:
-                # Store as a 1-element XPathFilterDefinition wrapping the concept check
-                # (simpler than adding a concept-filter type to the children union)
-                # We represent it as a dimension-less DimensionFilter sentinel — not ideal,
-                # so skip for now; concept-inside-boolean is very rare in BDE taxonomies.
-                pass
+            children.append(_parse_filter_resource(child_el, complement=child_complement))
         else:
-            children.append(_parse_filter_resource(child_el))
+            children.append(_parse_filter_resource(child_el, complement=child_complement))
 
     return BooleanFilterDefinition(
         filter_type=filter_type,  # type: ignore[arg-type]
@@ -872,6 +876,7 @@ _FILTER_TAGS = [
     _TAG_UF_GENERAL_MEASURES,
     _TAG_VF_NIL,
     _TAG_VF_PRECISION,
+    _TAG_RF_RELATIVE_FILTER,
     _TAG_BF_AND_FILTER,
     _TAG_BF_OR_FILTER,
 ]
@@ -988,6 +993,7 @@ def _parse_fact_variable(
                             xpath_expr=test_expr,
                             namespaces=_element_nsmap(filter_el),
                             filter_type="period",
+                            complement=complement,
                         )
                     )
 
@@ -995,12 +1001,12 @@ def _parse_fact_variable(
             elif filter_el.tag == _TAG_DF_EXPLICIT_DIMENSION:
                 df = _extract_dimension_filter(filter_el)
                 if df is not None:
-                    dimension_filters.append(df)
+                    dimension_filters.append(replace(df, exclude=complement))
 
             elif filter_el.tag == _TAG_DF_TYPED_DIMENSION:
                 tf = _extract_typed_dimension_filter(filter_el)
                 if tf is not None:
-                    typed_dimension_filters.append(tf)
+                    typed_dimension_filters.append(replace(tf, exclude=complement))
 
             # Boolean filter (bf:andFilter / bf:orFilter)
             elif filter_el.tag in _BOOLEAN_FILTER_TAGS:
@@ -1017,6 +1023,7 @@ def _parse_fact_variable(
                             xpath_expr=test_expr,
                             namespaces=_element_nsmap(filter_el),
                             filter_type="general",
+                            complement=complement,
                         )
                     )
             elif filter_el.tag == _TAG_EF_IDENTIFIER:
@@ -1027,6 +1034,7 @@ def _parse_fact_variable(
                             xpath_expr=test_expr,
                             namespaces=_element_nsmap(filter_el),
                             filter_type="entity",
+                            complement=complement,
                         )
                     )
             elif filter_el.tag == _TAG_SSF_SEGMENT:
@@ -1037,6 +1045,7 @@ def _parse_fact_variable(
                             xpath_expr=test_expr,
                             namespaces=_element_nsmap(filter_el),
                             filter_type="segment",
+                            complement=complement,
                         )
                     )
             elif filter_el.tag == _TAG_SSF_SCENARIO:
@@ -1047,6 +1056,7 @@ def _parse_fact_variable(
                             xpath_expr=test_expr,
                             namespaces=_element_nsmap(filter_el),
                             filter_type="scenario",
+                            complement=complement,
                         )
                     )
             elif filter_el.tag == _TAG_UF_SINGLE_MEASURE:

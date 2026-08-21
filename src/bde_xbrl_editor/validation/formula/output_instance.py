@@ -154,7 +154,40 @@ class FormulaOutputInstanceEvaluator:
                 except Exception as exc:  # noqa: BLE001
                     findings.append(self._runtime_finding(formula, exc))
 
+        findings.extend(self._output_period_type_findings(output))
         return OutputInstanceEvaluation(instance=output, findings=tuple(findings))
+
+    def _output_period_type_findings(
+        self,
+        output: XbrlInstance,
+    ) -> list[ValidationFinding]:
+        """Report generated facts whose context is incompatible with the concept."""
+        findings: list[ValidationFinding] = []
+        for fact in output.facts:
+            concept = self._taxonomy.concepts.get(fact.concept)
+            context = output.contexts.get(fact.context_ref)
+            if concept is None or context is None:
+                continue
+            context_period_type = context.period.period_type
+            matches = concept.period_type == context_period_type or (
+                concept.period_type == "duration" and context_period_type == "forever"
+            )
+            if not matches:
+                findings.append(
+                    ValidationFinding(
+                        rule_id="structural:period-type-mismatch",
+                        severity=ValidationSeverity.ERROR,
+                        message=(
+                            f"Generated fact for concept '{fact.concept}' uses "
+                            f"period type '{context_period_type}', but the concept "
+                            f"declares '{concept.period_type}'."
+                        ),
+                        source="formula",
+                        concept_qname=fact.concept,
+                        context_ref=fact.context_ref,
+                    )
+                )
+        return findings
 
     def _preconditions_pass(
         self,
@@ -337,16 +370,24 @@ class FormulaOutputInstanceEvaluator:
             )
 
         context_source = source_fact
-        if context_source is None:
-            raise _FormulaOutputError(
-                "xbrlfe:missingEntityIdentifierRule",
-                "The output context cannot be determined",
-            )
-        base_context = source_instance.contexts.get(context_source.context_ref)
+        base_context = (
+            source_instance.contexts.get(context_source.context_ref)
+            if context_source is not None
+            else None
+        )
+        if base_context is None:
+            base_context = self._explicit_context_base(formula)
         if base_context is None:
             raise _FormulaOutputError(
                 "xbrlfe:missingEntityIdentifierRule",
                 "The output context source does not reference a context",
+            )
+        if formula.source and _is_uncovered_source(formula.source) and len(formula.variables) > 1:
+            base_context = self._assemble_uncovered_context(
+                formula,
+                binding,
+                source_instance,
+                base_context,
             )
         output_context = self._output_context(
             formula,
@@ -377,7 +418,7 @@ class FormulaOutputInstanceEvaluator:
         if is_nil:
             decimals = None
             precision = None
-        else:
+        elif self._is_numeric_concept(concept):
             if formula.decimals_xpath is not None:
                 decimals = self._evaluate_accuracy(
                     formula.decimals_xpath,
@@ -406,6 +447,76 @@ class FormulaOutputInstanceEvaluator:
                 precision=precision,
                 is_nil=is_nil,
             )
+        )
+
+    def _assemble_uncovered_context(
+        self,
+        formula: FormulaOutputDefinition,
+        binding: dict[str, list[Fact]],
+        instance: XbrlInstance,
+        fallback: XbrlContext,
+    ) -> XbrlContext:
+        """Assemble context aspects supplied by different uncovered variables."""
+        context = deepcopy(fallback)
+        context.dimensions.clear()
+        context.typed_dimensions.clear()
+        context.typed_dimension_elements.clear()
+        context.typed_dimension_xml.clear()
+        context.dim_containers.clear()
+
+        entity_selected = False
+        period_selected = False
+        for variable in formula.variables:
+            facts = binding.get(variable.variable_name, ())
+            if not facts:
+                continue
+            source_context = instance.contexts.get(facts[0].context_ref)
+            if source_context is None:
+                continue
+            covered, covered_dimensions = self._evaluator._covered_formula_aspects(variable)
+            if not entity_selected and "entity" not in covered:
+                context.entity = deepcopy(source_context.entity)
+                entity_selected = True
+            if not period_selected and "period" not in covered:
+                context.period = deepcopy(source_context.period)
+                period_selected = True
+            if "dimensions" in covered:
+                continue
+            for dimension in (
+                set(source_context.dimensions) | set(source_context.typed_dimensions)
+            ) - covered_dimensions:
+                if dimension in context.dimensions or dimension in context.typed_dimensions:
+                    continue
+                self._copy_dimension(context, source_context, dimension)
+
+        context.s_equal_key = None
+        return context
+
+    @staticmethod
+    def _explicit_context_base(formula: FormulaOutputDefinition) -> XbrlContext | None:
+        """Provide a neutral base when entity and period are fully rule-defined."""
+        entity_rule = next(
+            (rule for rule in formula.aspect_rules if rule.aspect == "entityIdentifier"),
+            None,
+        )
+        period_rule = next(
+            (rule for rule in formula.aspect_rules if rule.aspect == "period"),
+            None,
+        )
+        entity_root = _rule_root(entity_rule) if entity_rule is not None else None
+        period_root = _rule_root(period_rule) if period_rule is not None else None
+        if (
+            entity_root is None
+            or not entity_root.get("scheme")
+            or not entity_root.get("value")
+            or period_root is None
+            or len(period_root) == 0
+        ):
+            return None
+        return XbrlContext(
+            context_id="",
+            entity=ReportingEntity(identifier="formula", scheme="urn:xbrl:formula"),
+            period=ReportingPeriod(period_type="forever"),
         )
 
     def _output_unit(
@@ -643,7 +754,22 @@ class FormulaOutputInstanceEvaluator:
             if dimensions_changed:
                 probe = deepcopy(context)
                 probe.s_equal_key = None
-                remainder_key = effective_s_equal_key(probe)[4:]
+                model_remainder = effective_s_equal_key(probe)[4:]
+                dimension_tags = {
+                    f"{{{XBRLDI_NS}}}explicitMember",
+                    f"{{{XBRLDI_NS}}}typedMember",
+                }
+                remainder_key = tuple(
+                    (
+                        *(child for child in source if child[0] not in dimension_tags),
+                        *(child for child in generated if child[0] in dimension_tags),
+                    )
+                    for source, generated in zip(
+                        remainder_key,
+                        model_remainder,
+                        strict=True,
+                    )
+                )
             context.s_equal_key = (
                 "ctxseq1",
                 context.entity.scheme.strip(),

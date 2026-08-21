@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
@@ -17,11 +18,13 @@ from bde_xbrl_editor.taxonomy.models import (
     CustomFunctionDefinition,
     DimensionFilter,
     FactVariableDefinition,
+    FormulaFilterResource,
     TypedDimensionFilter,
     XPathFilterDefinition,
 )
 
 _PERIOD_FILTER_NS = "http://xbrl.org/2008/filter/period"
+_ENTITY_FILTER_NS = "http://xbrl.org/2008/filter/entity"
 
 
 def apply_filters(
@@ -33,6 +36,7 @@ def apply_filters(
     xpath_token_cache: dict[tuple[tuple[tuple[str, str], ...], str], Any] | None = None,
     xpath_variables: dict[str, Any] | None = None,
     dimension_defaults: Mapping[Any, Any] | None = None,
+    concepts: Mapping[Any, Any] | None = None,
 ) -> list[Fact]:
     """Return the subset of facts that satisfy all filters in variable_def.
 
@@ -62,9 +66,23 @@ def apply_filters(
     if not variable_def.nils:
         result = [fact for fact in result if not fact.is_nil]
 
+    result = _apply_concept_property_resources(
+        result,
+        variable_def.filter_resources,
+        concepts or {},
+        xpath_variables=xpath_variables,
+    )
+
     result = _apply_value_filter_resources(result, variable_def.filter_resources)
 
     result = _apply_period_filter_resources(
+        result,
+        variable_def.filter_resources,
+        instance,
+        xpath_variables=xpath_variables,
+    )
+
+    result = _apply_entity_filter_resources(
         result,
         variable_def.filter_resources,
         instance,
@@ -118,29 +136,11 @@ def apply_filters(
 
     # Dimension filters
     for dim_filter in variable_def.dimension_filters:
-        filtered = []
-        for fact in result:
-            ctx = instance.contexts.get(fact.context_ref)
-            if ctx is None:
-                continue
-            ctx_dims = ctx.dimensions
-            member = ctx_dims.get(
-                dim_filter.dimension_qname,
-                (dimension_defaults or {}).get(dim_filter.dimension_qname),
-            )
-
-            if dim_filter.exclude:
-                if dim_filter.member_qnames and member in dim_filter.member_qnames:
-                    continue
-                filtered.append(fact)
-            else:
-                if dim_filter.member_qnames:
-                    if member in dim_filter.member_qnames:
-                        filtered.append(fact)
-                else:
-                    if member is not None:
-                        filtered.append(fact)
-        result = filtered
+        result = [
+            fact
+            for fact in result
+            if _passes_dim_filter(fact, dim_filter, instance, dimension_defaults)
+        ]
 
     # Typed dimension filters
     for typed_filter in variable_def.typed_dimension_filters:
@@ -163,6 +163,7 @@ def apply_filters(
                 xpath_token_cache=xpath_token_cache,
                 xpath_variables=xpath_variables,
                 dimension_defaults=dimension_defaults,
+                concepts=concepts,
             )
         ]
 
@@ -180,9 +181,270 @@ def apply_filters(
             custom_functions=custom_functions,
             xpath_token_cache=xpath_token_cache,
             xpath_variables=xpath_variables,
+            concepts=concepts or {},
         )
 
     return result
+
+
+def _apply_concept_property_resources(
+    facts: list[Fact],
+    resources: tuple[Any, ...],
+    concepts: Mapping[Any, Any],
+    *,
+    xpath_variables: dict[str, Any] | None,
+) -> list[Fact]:
+    """Filter facts using concept metadata already loaded from the DTS."""
+    filtered = list(facts)
+    for resource in resources:
+        if resource.local_name == "conceptPeriodType":
+            expected = resource.attributes.get("periodType", "")
+
+            def matches_period(fact: Fact, wanted: str = expected) -> bool:
+                concept = concepts.get(fact.concept)
+                return concept is not None and concept.period_type == wanted
+
+            filtered = [
+                fact for fact in filtered if matches_period(fact) != bool(resource.complement)
+            ]
+        elif resource.local_name == "conceptBalance":
+            expected = resource.attributes.get("balance", "")
+
+            def matches_balance(fact: Fact, wanted: str = expected) -> bool:
+                concept = concepts.get(fact.concept)
+                if concept is None:
+                    return False
+                return concept.balance is None if wanted == "none" else concept.balance == wanted
+
+            filtered = [
+                fact for fact in filtered if matches_balance(fact) != bool(resource.complement)
+            ]
+        elif resource.local_name == "conceptSubstitutionGroup":
+            targets: list[Any] = list(resource.qnames)
+            for expression in resource.qname_expressions:
+                value = _evaluate_filter_atomic(
+                    expression,
+                    resource.namespaces,
+                    xpath_variables,
+                )
+                if value is not None:
+                    targets.append(value)
+            strict = resource.attributes.get("strict", "false").lower() == "true"
+            filtered = [
+                fact
+                for fact in filtered
+                if _concept_substitution_group_matches(
+                    fact,
+                    targets,
+                    strict=strict,
+                    concepts=concepts,
+                )
+                != bool(resource.complement)
+            ]
+        elif resource.local_name == "conceptDataType":
+            targets: list[Any] = list(resource.qnames)
+            for expression in resource.qname_expressions:
+                value = _evaluate_filter_atomic(
+                    expression,
+                    resource.namespaces,
+                    xpath_variables,
+                )
+                if value is not None:
+                    targets.append(value)
+            strict = resource.attributes.get("strict", "false").lower() == "true"
+            filtered = [
+                fact
+                for fact in filtered
+                if _concept_data_type_matches(
+                    fact,
+                    targets,
+                    strict=strict,
+                    concepts=concepts,
+                )
+                != bool(resource.complement)
+            ]
+        elif resource.local_name == "conceptCustomAttribute":
+            targets: list[Any] = list(resource.qnames)
+            for expression in resource.qname_expressions:
+                value = _evaluate_filter_atomic(
+                    expression,
+                    resource.namespaces,
+                    xpath_variables,
+                )
+                if value is not None:
+                    targets.append(value)
+            has_expected_value = "value" in resource.attributes
+            expected_value = _evaluate_filter_atomic(
+                resource.attributes.get("value"),
+                resource.namespaces,
+                xpath_variables,
+            )
+            filtered = [
+                fact
+                for fact in filtered
+                if _concept_custom_attribute_matches(
+                    fact,
+                    targets,
+                    has_expected_value=has_expected_value,
+                    expected_value=expected_value,
+                    concepts=concepts,
+                )
+                != bool(resource.complement)
+            ]
+    return filtered
+
+
+def _concept_custom_attribute_matches(
+    fact: Fact,
+    targets: list[Any],
+    *,
+    has_expected_value: bool,
+    expected_value: Any | None,
+    concepts: Mapping[Any, Any],
+) -> bool:
+    declaration = concepts.get(fact.concept)
+    if declaration is None:
+        return False
+    values = [
+        lexical
+        for qname, lexical in declaration.custom_attributes
+        if any(_qname_matches(target, qname) for target in targets)
+    ]
+    if not values:
+        return False
+    if not has_expected_value:
+        return True
+    return any(_custom_attribute_value_matches(lexical, expected_value) for lexical in values)
+
+
+def _custom_attribute_value_matches(lexical: str, expected: Any | None) -> bool:
+    if isinstance(expected, bool):
+        if lexical.strip() in {"true", "1"}:
+            return expected is True
+        if lexical.strip() in {"false", "0"}:
+            return expected is False
+        return False
+    if isinstance(expected, Decimal):
+        try:
+            return Decimal(lexical.strip()) == expected
+        except InvalidOperation:
+            return False
+    return expected is not None and lexical == str(expected)
+
+
+def _concept_data_type_matches(
+    fact: Fact,
+    targets: list[Any],
+    *,
+    strict: bool,
+    concepts: Mapping[Any, Any],
+) -> bool:
+    declaration = concepts.get(fact.concept)
+    if declaration is None:
+        return False
+    candidates = (declaration.data_type,)
+    if not strict:
+        candidates += declaration.data_type_ancestry
+    return any(_qname_matches(target, candidate) for target in targets for candidate in candidates)
+
+
+def _concept_substitution_group_matches(
+    fact: Fact,
+    targets: list[Any],
+    *,
+    strict: bool,
+    concepts: Mapping[Any, Any],
+) -> bool:
+    declaration = concepts.get(fact.concept)
+    current = declaration.substitution_group if declaration is not None else None
+    visited: set[Any] = set()
+    while current is not None and current not in visited:
+        if any(_qname_matches(target, current) for target in targets):
+            return True
+        if strict:
+            return False
+        visited.add(current)
+        parent = concepts.get(current)
+        current = parent.substitution_group if parent is not None else None
+    return False
+
+
+def _apply_entity_filter_resources(
+    facts: list[Fact],
+    resources: tuple[Any, ...],
+    instance: XbrlInstance,
+    *,
+    xpath_variables: dict[str, Any] | None,
+) -> list[Fact]:
+    """Apply entity filters whose tests do not depend on another fact variable."""
+    filtered = list(facts)
+    for resource in resources:
+        if resource.namespace != _ENTITY_FILTER_NS:
+            continue
+        if resource.local_name not in {
+            "specificScheme",
+            "regexpScheme",
+            "specificIdentifier",
+            "regexpIdentifier",
+        }:
+            continue
+        expressions = tuple(resource.attributes.get(name, "") for name in ("scheme", "value"))
+        if any("$" in expression for expression in expressions):
+            continue
+
+        expected_scheme = _evaluate_filter_atomic(
+            resource.attributes.get("scheme"),
+            resource.namespaces,
+            xpath_variables,
+        )
+        expected_value = _evaluate_filter_atomic(
+            resource.attributes.get("value"),
+            resource.namespaces,
+            xpath_variables,
+        )
+        pattern = resource.attributes.get("pattern", "")
+
+        filtered = [
+            fact
+            for fact in filtered
+            if _entity_filter_matches(
+                fact,
+                resource.local_name,
+                expected_scheme,
+                expected_value,
+                pattern,
+                instance,
+            )
+            != bool(resource.complement)
+        ]
+    return filtered
+
+
+def _entity_filter_matches(
+    fact: Fact,
+    filter_name: str,
+    expected_scheme: Any | None,
+    expected_value: Any | None,
+    pattern: str,
+    instance: XbrlInstance,
+) -> bool:
+    context = instance.contexts.get(fact.context_ref)
+    if context is None:
+        return False
+    entity = context.entity
+    if filter_name == "specificScheme":
+        return expected_scheme is not None and entity.scheme == str(expected_scheme)
+    if filter_name == "specificIdentifier":
+        return (
+            expected_scheme is not None
+            and expected_value is not None
+            and entity.scheme == str(expected_scheme)
+            and entity.identifier == str(expected_value)
+        )
+    if not pattern:
+        return False
+    compared = entity.scheme if filter_name == "regexpScheme" else entity.identifier
+    return re.search(pattern, compared) is not None
 
 
 def _apply_period_filter_resources(
@@ -628,6 +890,7 @@ def _passes_boolean_filter(
     xpath_token_cache: dict[tuple[tuple[tuple[str, str], ...], str], Any] | None = None,
     xpath_variables: dict[str, Any] | None = None,
     dimension_defaults: Mapping[Any, Any] | None = None,
+    concepts: Mapping[Any, Any] | None = None,
 ) -> bool:
     """Return True if *fact* satisfies the boolean filter tree rooted at *bf*."""
     child_results: list[bool] = []
@@ -646,6 +909,7 @@ def _passes_boolean_filter(
                     xpath_token_cache=xpath_token_cache,
                     xpath_variables=xpath_variables,
                     dimension_defaults=dimension_defaults,
+                    concepts=concepts,
                 )
             )
         elif isinstance(child, XPathFilterDefinition):
@@ -658,9 +922,29 @@ def _passes_boolean_filter(
                 xpath_variables=xpath_variables,
             )  # type: ignore[arg-type]
             child_results.append(bool(passed_list))
+        elif isinstance(child, FormulaFilterResource):
+            child_variable = FactVariableDefinition(
+                variable_name="",
+                nils=True,
+                filter_resources=(child,),
+            )
+            child_results.append(
+                bool(
+                    apply_filters(
+                        [fact],
+                        child_variable,
+                        instance,
+                        custom_functions=custom_functions,
+                        xpath_token_cache=xpath_token_cache,
+                        xpath_variables=xpath_variables,
+                        dimension_defaults=dimension_defaults,
+                        concepts=concepts,
+                    )
+                )
+            )
 
     if not child_results:
-        passes = True  # vacuously true
+        passes = False
     elif bf.filter_type == "and":
         passes = all(child_results)
     else:  # "or"
@@ -676,6 +960,7 @@ def _apply_xpath_filters(
     custom_functions: tuple[CustomFunctionDefinition, ...] = (),
     xpath_token_cache: dict[tuple[tuple[tuple[str, str], ...], str], Any] | None = None,
     xpath_variables: dict[str, Any] | None = None,
+    concepts: Mapping[Any, Any] | None = None,
 ) -> list[Fact]:
     """Apply each XPath filter expression to every candidate fact.
 
@@ -699,12 +984,6 @@ def _apply_xpath_filters(
         ctx_obj = instance.contexts.get(fact.context_ref)
         unit_obj = instance.units.get(fact.unit_ref or "") if fact.unit_ref else None
 
-        # Coerce fact value to Decimal for arithmetic filters; fallback to 0
-        try:
-            item_value: object = Decimal(fact.value)
-        except (InvalidOperation, TypeError):
-            item_value = fact.value or ""
-
         set_evaluation_context(
             {
                 "_all_facts": instance.facts,
@@ -725,7 +1004,11 @@ def _apply_xpath_filters(
                         custom_functions=custom_functions,
                         xpath_token_cache=xpath_token_cache,
                     )
-                    filter_item = item_value
+                    filter_item = _general_filter_context_item(
+                        fact,
+                        xf.xpath_expr,
+                        concepts or {},
+                    )
                     filter_root = None
                     if xf.filter_type in {"segment", "scenario"}:
                         context_xml = (
@@ -740,6 +1023,11 @@ def _apply_xpath_filters(
                             break
                         filter_item = etree.fromstring(context_xml)
                         filter_root = filter_item
+                    elif xf.filter_type == "entity":
+                        if ctx_obj is None:
+                            fact_passes = False
+                            break
+                        filter_item = ctx_obj.entity.identifier
                     xp_ctx = elementpath.XPathContext(
                         root=filter_root,
                         item=filter_item,
@@ -747,10 +1035,11 @@ def _apply_xpath_filters(
                     )
                     result = list(token.select(xp_ctx))
                     if xf.filter_type == "concept":
-                        if not result or not _qname_matches_fact(result[0], fact):
+                        matches = bool(result) and _qname_matches_fact(result[0], fact)
+                        if matches == xf.complement:
                             fact_passes = False
                             break
-                    elif not _to_bool(result):
+                    elif _to_bool(result) == xf.complement:
                         fact_passes = False
                         break
                 except Exception:  # noqa: BLE001
@@ -763,6 +1052,42 @@ def _apply_xpath_filters(
             clear_evaluation_context()
 
     return passed
+
+
+def _general_filter_context_item(
+    fact: Fact,
+    xpath_expr: str,
+    concepts: Mapping[Any, Any],
+) -> object:
+    """Return the XDM context item required by a general-filter expression."""
+    if fact.source_element_xml is not None and (
+        re.search(r"(?:^|[^\w])@", xpath_expr) or re.search(r"\btext\s*\(", xpath_expr)
+    ):
+        return etree.fromstring(fact.source_element_xml)
+
+    concept = concepts.get(fact.concept)
+    type_name = concept.data_type.local_name.lower() if concept is not None else ""
+    if "qname" in type_name and ":" in fact.value:
+        prefix, _local_name = fact.value.split(":", 1)
+        namespace = ""
+        if fact.source_element_xml is not None:
+            namespace = etree.fromstring(fact.source_element_xml).nsmap.get(prefix, "")
+        if namespace:
+            try:
+                from elementpath.datatypes import (
+                    QName as XPathQName,  # type: ignore[import-untyped]
+                )
+
+                return XPathQName(namespace, fact.value)
+            except (ImportError, TypeError, ValueError):
+                pass
+        return fact.value
+    if "string" in type_name:
+        return fact.value or ""
+    try:
+        return Decimal(fact.value)
+    except (InvalidOperation, TypeError):
+        return fact.value or ""
 
 
 def _qname_matches_fact(value: Any, fact: Fact) -> bool:

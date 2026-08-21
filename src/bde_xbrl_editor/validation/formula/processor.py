@@ -43,7 +43,10 @@ class FormulaProcessor:
 
     def evaluate(self, instance: XbrlInstance) -> FormulaProcessingResult:
         """Validate and evaluate assertions and output formulas. Never raises."""
-        findings = list(self.validate_taxonomy())
+        try:
+            findings = list(FormulaStaticValidator(self._taxonomy).validate(instance))
+        except Exception as exc:  # noqa: BLE001
+            findings = [self._internal_finding("static-runtime", exc)]
         try:
             findings.extend(FormulaEvaluator(self._taxonomy).evaluate(instance))
         except Exception as exc:  # noqa: BLE001

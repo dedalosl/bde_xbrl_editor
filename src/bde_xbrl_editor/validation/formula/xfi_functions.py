@@ -282,7 +282,7 @@ def xfi_period_start(period_arg: Any) -> Any:
     if p is None:
         return None
     d = getattr(p, "start_date", None)
-    return _to_xsd_date(d)
+    return _to_xsd_datetime(d)
 
 
 def xfi_period_end(period_arg: Any) -> Any:
@@ -299,7 +299,7 @@ def xfi_period_end(period_arg: Any) -> Any:
         from datetime import timedelta
 
         d = d + timedelta(days=1)
-    return _to_xsd_date(d)
+    return _to_xsd_datetime(d)
 
 
 # ── Entity / identifier functions ─────────────────────────────────────────
@@ -397,8 +397,15 @@ def xfi_context_segment(context_arg: Any) -> list:
 
 
 def xfi_scenario(fact_arg: Any) -> list:
-    """xfi:scenario($item) → scenario content (empty list — not modelled)."""
-    return []
+    """xfi:scenario($item) → the scenario element in the fact context."""
+    import elementpath  # type: ignore[import-untyped]
+
+    ctx = _context_from_arg(fact_arg)
+    scenario_xml = getattr(ctx, "scenario_xml", None) if ctx is not None else None
+    if scenario_xml is None:
+        return []
+    scenario = etree.fromstring(scenario_xml)
+    return [elementpath.get_node_tree(scenario)]
 
 
 def xfi_context_scenario(context_arg: Any) -> list:
@@ -1709,6 +1716,14 @@ def normalize_formula_xpath_expression(expression: str) -> str:
     parser does not accept the ``(: ... :)`` comment form, so strip comments
     before parsing/evaluating while leaving quoted string contents untouched.
     """
+    # lxml-backed nodes are untyped in elementpath.  The XPath 2.0 dateTime()
+    # constructor requires its first argument to be xs:date, so preserve the
+    # schema-aware Formula semantics by casting a node-bound variable explicitly.
+    expression = re.sub(
+        r"\bdateTime\(\s*(\$[A-Za-z_][\w:.-]*)\s*,",
+        r"dateTime(xs:date(\1),",
+        expression,
+    )
     if "(:" not in expression:
         return expression
 

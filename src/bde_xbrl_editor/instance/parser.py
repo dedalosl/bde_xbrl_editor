@@ -688,6 +688,7 @@ def _collect_facts_under_element(
                     tuple_path=tuple_path,
                     tuple_ancestor_concepts=tuple_ancestor_concepts,
                     position_path=tuple_path + (idx,),
+                    source_element_xml=etree.tostring(child, encoding="utf-8", with_tail=False),
                 )
             )
             _collect_facts_under_element(
@@ -734,6 +735,7 @@ def _collect_facts_under_element(
                     tuple_path=tuple_path,
                     tuple_ancestor_concepts=tuple_ancestor_concepts,
                     position_path=tuple_path + (idx,),
+                    source_element_xml=etree.tostring(child, encoding="utf-8", with_tail=False),
                 )
             )
         else:
@@ -1117,6 +1119,9 @@ class InstanceParser:
                                 tuple_path=(),
                                 tuple_ancestor_concepts=(),
                                 position_path=(root_idx,),
+                                source_element_xml=etree.tostring(
+                                    child, encoding="utf-8", with_tail=False
+                                ),
                             )
                         )
                         facts_seen += 1
@@ -1167,6 +1172,9 @@ class InstanceParser:
                                 is_nil=is_nil,
                                 tuple_path=(),
                                 position_path=(root_idx,),
+                                source_element_xml=etree.tostring(
+                                    child, encoding="utf-8", with_tail=False
+                                ),
                             )
                         )
                     else:
