@@ -71,6 +71,7 @@ def test_run_catalog_scrape_prepares_runtime_copy_and_installs_dependencies(
 
     monkeypatch.setattr(scraper, "bundled_scraper_root", lambda: bundled_root)
     monkeypatch.setattr(scraper, "default_runtime_scraper_root", lambda: runtime_root)
+    monkeypatch.setattr(scraper, "_npm_executable", lambda: "npm")
     monkeypatch.setattr(scraper.subprocess, "Popen", FakeProcess)
 
     result = scraper.run_catalog_scrape(output_path=output_path)
@@ -121,6 +122,7 @@ def test_setup_catalog_scraper_prepares_runtime_without_running_scrape(
 
     monkeypatch.setattr(scraper, "bundled_scraper_root", lambda: bundled_root)
     monkeypatch.setattr(scraper, "default_runtime_scraper_root", lambda: runtime_root)
+    monkeypatch.setattr(scraper, "_npm_executable", lambda: "npm")
     monkeypatch.setattr(scraper.subprocess, "Popen", FakeProcess)
 
     result = scraper.setup_catalog_scraper()
@@ -128,6 +130,17 @@ def test_setup_catalog_scraper_prepares_runtime_without_running_scrape(
     assert result == runtime_root
     assert calls == [(["npm", "ci"], runtime_root)]
     assert (runtime_root / "src" / "index.ts").is_file()
+
+
+def test_npm_executable_uses_cmd_launcher_on_windows(monkeypatch) -> None:
+    monkeypatch.setattr(scraper.os, "name", "nt")
+    monkeypatch.setattr(
+        scraper.shutil,
+        "which",
+        lambda command: "C:/Program Files/nodejs/npm.cmd" if command == "npm.cmd" else None,
+    )
+
+    assert scraper._npm_executable() == "C:/Program Files/nodejs/npm.cmd"
 
 
 def test_run_catalog_scrape_uses_prepared_offline_runtime_without_npm(

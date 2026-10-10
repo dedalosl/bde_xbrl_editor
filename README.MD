@@ -168,7 +168,25 @@ pip install -e ".[dev,build]"
 python scripts/build_offline_package.py
 ```
 
+En Windows, usar el lanzador especifico que resuelve los comandos `npm.cmd` y `npx.cmd`:
+
+```powershell
+python scripts/build_offline_package_windows.py
+```
+
 Este build prepara un runtime del scraper con `node_modules`, Chromium de Playwright y una copia de Node.js. El resultado queda en `dist/offline/<plataforma>/` con el ejecutable y `offline-runtime/`, y tambien se genera un `.zip` distribuible en la misma carpeta padre. Ese paquete no necesita Node.js/npm instalado en la maquina destino.
+
+En Windows tambien puede generarse un paquete ligero:
+
+```powershell
+python scripts/build_lite_package_windows.py
+```
+
+El resultado se guarda en `dist/lite/windows-amd64/` y no incluye Node.js,
+`node_modules` ni Chromium. La aplicacion y el catalogo incluido funcionan sin
+ellos, pero para actualizar el catalogo mediante el scraper la maquina destino
+debe tener Node.js 20 o superior, npm y acceso a Internet. La primera
+actualizacion instala las dependencias del scraper en el perfil del usuario.
 
 Por defecto no copia el directorio local `cache/`, porque puede ser muy grande. Si se necesita un paquete tambien offline para taxonomias ya cacheadas, usar:
 
