@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import contextlib
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -54,9 +54,9 @@ from bde_xbrl_editor.ui.widgets.z_axis_selector import (
 )
 
 if TYPE_CHECKING:
-    from bde_xbrl_editor.instance.editor import InstanceEditor
-    from bde_xbrl_editor.instance.models import XbrlInstance
+    from bde_xbrl_editor.instance.models import XbrlContext, XbrlInstance
     from bde_xbrl_editor.taxonomy.models import BreakdownNode, TableDefinitionPWD, TaxonomyStructure
+    from bde_xbrl_editor.ui.instance_editor_adapter import InstanceEditorAdapter
 
 _DEFAULT_BODY_COLUMN_WIDTH = 172
 _OPEN_ROW_PLACEHOLDER_LABEL = "Open row"
@@ -627,6 +627,8 @@ def _ensure_context_ref_for_dimensions(
     typed_dimensions: dict[QName, str] | None = None,
     typed_dimension_elements: dict[QName, QName] | None = None,
     context_element: str = "scenario",
+    source_context: XbrlContext | None = None,
+    on_changed: Callable[[], None] | None = None,
 ) -> str:
     from bde_xbrl_editor.instance.context_builder import (  # noqa: PLC0415
         build_dimensional_context,
@@ -655,6 +657,36 @@ def _ensure_context_ref_for_dimensions(
     for dim_qname in typed_dimensions or {}:
         dim_containers[dim_qname] = target_context_element
 
+    if source_context is not None:
+        import hashlib
+        from dataclasses import replace
+
+        from bde_xbrl_editor.instance.context_xml import effective_context_containers
+        from bde_xbrl_editor.instance.s_equal import context_s_equal_key
+
+        dim_containers.update({
+            dim: source_context.dim_containers.get(dim, source_context.context_element)
+            for dim in set(merged_dimensions) | set(typed_dimensions or {})
+            if dim in source_context.dimensions or dim in source_context.typed_dimensions
+        })
+        ctx = replace(
+            source_context, dimensions=dict(merged_dimensions),
+            typed_dimensions=dict(typed_dimensions or {}),
+            typed_dimension_elements=dict(typed_dimension_elements or {}),
+            typed_dimension_xml=dict(source_context.typed_dimension_xml),
+            dim_containers=dim_containers, s_equal_key=None,
+        )
+        effective_context_containers(ctx)  # Reject unrepresentable edits before publishing.
+        fingerprint = repr(context_s_equal_key(ctx)).encode()
+        ctx_id = "ctx_" + hashlib.sha256(fingerprint).hexdigest()[:16]
+        ctx.context_id = ctx_id
+        if ctx_id not in instance.contexts:
+            instance.contexts[ctx_id] = ctx
+            instance._dirty = True
+            if on_changed is not None:
+                on_changed()
+        return ctx_id
+
     ctx_id = generate_context_id(
         instance.entity,
         instance.period,
@@ -673,6 +705,9 @@ def _ensure_context_ref_for_dimensions(
             dim_containers=dim_containers,
         )
         instance.contexts[ctx_id] = ctx
+        instance._dirty = True
+        if on_changed is not None:
+            on_changed()
     return ctx_id
 
 
@@ -1717,6 +1752,7 @@ class XbrlTableView(QFrame):
     z_index_changed = Signal(int)
     editing_mode_changed = Signal(bool)
     layout_ready = Signal(object)
+    instance_changed = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -1724,7 +1760,7 @@ class XbrlTableView(QFrame):
         self._taxonomy: TaxonomyStructure | None = None
         self._table: TableDefinitionPWD | None = None
         self._instance: XbrlInstance | None = None
-        self._editor: InstanceEditor | None = None
+        self._editor: InstanceEditorAdapter | None = None
         self._layout: ComputedTableLayout | None = None
         self._open_row_candidates: list[dict[str, object]] = []
         self._open_row_members_by_table: dict[str, dict[tuple[object, ...], list[str]]] = {}
@@ -1732,6 +1768,7 @@ class XbrlTableView(QFrame):
         self._active_z_index: int = 0
         self._active_z_constraints: dict[QName, QName] = {}
         self._language_preference: list[str] = ["es", "en"]
+        self._decimal_separator = "."
         self._editing_enabled: bool = False
         self._pending_table_request: tuple[
             TableDefinitionPWD,
@@ -1970,12 +2007,30 @@ class XbrlTableView(QFrame):
     def active_z_constraints(self) -> dict[QName, QName]:
         return dict(self._active_z_constraints)
 
-    def set_editor(self, editor: InstanceEditor | None) -> None:
+    def set_editor(self, editor: InstanceEditorAdapter | None) -> None:
         self._editor = editor
+        # Previous layouts can leave Qt-owned delegates below the body view.
+        # Retiring a document must detach all of them, not only the active one.
+        for delegate in self._body_view.findChildren(CellEditDelegate):
+            delegate.set_editor(editor)
 
     def set_editing_enabled(self, enabled: bool) -> None:
         """Enable or disable inline fact editing for the active instance view."""
         self._set_editing_enabled(enabled)
+
+    def set_decimal_separator(self, separator: str) -> None:
+        """Refresh presentation only; keep layout and instance values unchanged."""
+        from bde_xbrl_editor.table_renderer.fact_formatter import FactFormatter
+
+        if separator not in (".", ","):
+            raise ValueError("Decimal separator must be '.' or ','")
+        self._decimal_separator = separator
+        model = self._body_view.model()
+        if isinstance(model, TableBodyModel) and self._taxonomy is not None:
+            model.set_formatter(FactFormatter(self._taxonomy, separator), self._taxonomy)
+        delegate = self._body_view.itemDelegate()
+        if isinstance(delegate, CellEditDelegate):
+            delegate.set_decimal_separator(separator)
 
     def set_language_preference(self, language_preference: list[str]) -> None:
         """Set the label language preference and refresh the active table."""
@@ -2373,7 +2428,7 @@ class XbrlTableView(QFrame):
         if self._taxonomy is not None:
             from bde_xbrl_editor.table_renderer.fact_formatter import FactFormatter  # noqa: PLC0415
 
-            formatter = FactFormatter(self._taxonomy)
+            formatter = FactFormatter(self._taxonomy, self._decimal_separator)
             model.set_formatter(formatter, self._taxonomy)
         model.set_open_key_handler(self._handle_open_key_edit)
         self._body_view.setModel(model)
@@ -2384,8 +2439,13 @@ class XbrlTableView(QFrame):
         existing_delegate = self._body_view.itemDelegate()
         if isinstance(existing_delegate, CellEditDelegate):
             existing_delegate.set_table_layout(layout)
+            existing_delegate.set_decimal_separator(self._decimal_separator)
         else:
-            self._body_view.setItemDelegate(CellEditDelegate(table_view_widget=self._body_view))
+            self._body_view.setItemDelegate(
+                CellEditDelegate(
+                    table_view_widget=self._body_view, decimal_separator=self._decimal_separator
+                )
+            )
 
         self._set_editing_enabled(self._editing_enabled and self._instance is not None)
 
@@ -2634,13 +2694,19 @@ class XbrlTableView(QFrame):
                     if old_context is not None:
                         for dim_qname, element_qname in (getattr(old_context, "typed_dimension_elements", {}) or {}).items():
                             target_typed_elements.setdefault(dim_qname, element_qname)
-                    target_context_ref = _ensure_context_ref_for_dimensions(
-                        self._instance,
-                        dimensions=target_dimensions,
-                        typed_dimensions=target_typed_dimensions,
-                        typed_dimension_elements=target_typed_elements,
-                        context_element=getattr(old_context, "context_element", "scenario"),
-                    )
+                    try:
+                        target_context_ref = _ensure_context_ref_for_dimensions(
+                            self._instance,
+                            dimensions=target_dimensions,
+                            typed_dimensions=target_typed_dimensions,
+                            typed_dimension_elements=target_typed_elements,
+                            context_element=getattr(old_context, "context_element", "scenario"),
+                            source_context=old_context,
+                            on_changed=self.instance_changed.emit,
+                        )
+                    except ValueError as exc:
+                        QMessageBox.warning(self, "Open rows", str(exc))
+                        return False
                     existing_fact_indexes.extend(
                         _find_fact_indexes(self._instance, row_cell.coordinate, self._taxonomy, table_elr=table_elr)
                     )
@@ -2654,6 +2720,7 @@ class XbrlTableView(QFrame):
                             self._instance.facts[fact_index].context_ref = target_context_ref
                         if hasattr(self._instance, "_dirty"):
                             self._instance._dirty = True  # type: ignore[attr-defined]  # noqa: SLF001
+                        self.instance_changed.emit()
                 except Exception as exc:  # noqa: BLE001
                     QMessageBox.warning(self, "Open rows", str(exc))
                     return False
@@ -2680,11 +2747,19 @@ class XbrlTableView(QFrame):
                 matches = _find_fact_indexes(self._instance, row_cell.coordinate, self._taxonomy, table_elr=table_elr)
                 if matches:
                     old_context = self._instance.contexts.get(self._instance.facts[matches[0]].context_ref)
-                target_context_ref = _ensure_context_ref_for_dimensions(
-                    self._instance,
-                    dimensions=target_dimensions,
-                    context_element=getattr(old_context, "context_element", "scenario"),
-                )
+                try:
+                    target_context_ref = _ensure_context_ref_for_dimensions(
+                        self._instance,
+                        dimensions=target_dimensions,
+                        typed_dimensions=getattr(old_context, "typed_dimensions", None),
+                        typed_dimension_elements=getattr(old_context, "typed_dimension_elements", None),
+                        context_element=getattr(old_context, "context_element", "scenario"),
+                        source_context=old_context,
+                        on_changed=self.instance_changed.emit,
+                    )
+                except ValueError as exc:
+                    QMessageBox.warning(self, "Open rows", str(exc))
+                    return False
             existing_fact_indexes.extend(
                 _find_fact_indexes(self._instance, row_cell.coordinate, self._taxonomy, table_elr=table_elr)
             )
@@ -2699,6 +2774,7 @@ class XbrlTableView(QFrame):
                         self._instance.facts[fact_index].context_ref = target_context_ref
                     if hasattr(self._instance, "_dirty"):
                         self._instance._dirty = True  # type: ignore[attr-defined]  # noqa: SLF001
+                    self.instance_changed.emit()
             except Exception as exc:  # noqa: BLE001
                 QMessageBox.warning(self, "Open rows", str(exc))
                 return False

@@ -45,6 +45,132 @@ def _simple_table(x_root: BreakdownNode, y_root: BreakdownNode) -> TableDefiniti
     )
 
 
+@pytest.mark.parametrize("table_id", ["es_tFI_100-2.a", "es_tFI_100-2.b"])
+def test_fi_100_2_inherits_root_dimensions_with_closed_hypercubes(table_id):
+    """Portable FI_100-2 shapes: inherited BAS (and MCY/MCB) must match facts."""
+    from copy import deepcopy
+    from dataclasses import replace
+    from datetime import date
+    from pathlib import Path
+
+    from bde_xbrl_editor.instance.models import (
+        Fact,
+        ReportingEntity,
+        ReportingPeriod,
+        XbrlContext,
+        XbrlInstance,
+    )
+    from bde_xbrl_editor.taxonomy.models import HypercubeModel
+
+    def qname(local):
+        return QName("https://example.com/root-inheritance", local)
+
+    concept = qname("Loans")
+    bas, mcy, mcb, sector = map(qname, ("BAS", "MCY", "MCB", "Sector"))
+    basis, currency, portfolio, household = map(qname, ("x6", "x469", "x3", "Household"))
+
+    def constraints(dimensions):
+        return {
+            "explicitDimension": {
+                f"{{{dim.namespace}}}{dim.local_name}": f"{{{member.namespace}}}{member.local_name}"
+                for dim, member in dimensions.items()
+            }
+        }
+
+    x_constraints = {"concept": str(concept), **constraints({bas: basis})}
+    row_dimensions = {mcy: currency, mcb: portfolio}
+    y_constraints = constraints(row_dimensions) if table_id.endswith(".b") else {}
+    leaf_constraints = {} if table_id.endswith(".b") else constraints(row_dimensions)
+    x_root = _make_node(
+        aspect_constraints=x_constraints,
+        children=[
+            _make_node(
+                "Households",
+                aspect_constraints={
+                    "concept": str(concept),
+                    **constraints({sector: household}),
+                },
+            )
+        ],
+    )
+    y_root = _make_node(
+        aspect_constraints=y_constraints,
+        children=[_make_node("Loans", aspect_constraints=leaf_constraints)],
+    )
+    original_roots = deepcopy((x_root, y_root))
+    table = replace(_simple_table(x_root, y_root), table_id=table_id)
+    dimensions = {bas: basis, mcy: currency, mcb: portfolio, sector: household}
+    taxonomy = _make_taxonomy()
+    taxonomy.dimensions = {}
+    taxonomy.definition = {}
+    taxonomy.hypercubes = [
+        HypercubeModel(
+            qname=qname("Cube"),
+            arcrole="all",
+            closed=True,
+            context_element="scenario",
+            primary_items=(concept,),
+            dimensions=tuple(dimensions),
+            extended_link_role=table.extended_link_role + "/cube",
+        )
+    ]
+    entity = ReportingEntity(identifier="synthetic", scheme="https://example.com/entity")
+    period = ReportingPeriod(period_type="instant", instant_date=date(2026, 3, 31))
+    instance = XbrlInstance(
+        taxonomy_entry_point=Path("synthetic.xsd"),
+        schema_ref_href="synthetic.xsd",
+        entity=entity,
+        period=period,
+        contexts={"context": XbrlContext("context", entity, period, dimensions)},
+        facts=[Fact(concept, "context", None, "123")],
+    )
+
+    layout = TableLayoutEngine(taxonomy).compute(table, instance=instance)
+
+    assert layout.body[0][0].fact_value == "123"
+    assert layout.body[0][0].coordinate.explicit_dimensions == dimensions
+    assert not layout.body[0][0].is_duplicate
+    assert (x_root, y_root) == original_roots
+
+
+@pytest.mark.parametrize("axis", ["x", "y"])
+def test_descendant_constraints_override_root_without_losing_other_dimensions(axis):
+    """A child overrides the root concept/member while retaining other root bindings."""
+    from copy import deepcopy
+
+    namespace = "https://example.com/override"
+    root = _make_node(
+        aspect_constraints={
+            "concept": f"{{{namespace}}}RootConcept",
+            "explicitDimension": {
+                f"{{{namespace}}}D": f"{{{namespace}}}Root",
+                f"{{{namespace}}}E": f"{{{namespace}}}Keep",
+            },
+        },
+        children=[
+            _make_node(
+                aspect_constraints={
+                    "concept": f"{{{namespace}}}ChildConcept",
+                    "explicitDimension": {f"{{{namespace}}}D": f"{{{namespace}}}Child"},
+                }
+            )
+        ],
+    )
+    original = deepcopy(root)
+    other = _make_node(children=[_make_node()])
+    table = _simple_table(root, other) if axis == "x" else _simple_table(other, root)
+    taxonomy = _make_taxonomy()
+    taxonomy.dimensions = {}
+    cell = TableLayoutEngine(taxonomy).compute(table).body[0][0]
+
+    assert cell.coordinate.concept == QName(namespace, "ChildConcept")
+    assert cell.coordinate.explicit_dimensions == {
+        QName(namespace, "D"): QName(namespace, "Child"),
+        QName(namespace, "E"): QName(namespace, "Keep"),
+    }
+    assert root == original
+
+
 class TestAxisDFS:
     """Tests for X/Y axis DFS traversal."""
 

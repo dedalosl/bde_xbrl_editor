@@ -323,7 +323,6 @@ export class BDECrawler {
 
               const isValidText = text &&
                 text.length > 3 &&
-                text.length < 100 &&
                 !text.includes('Volver') &&
                 !text.includes('Ir a') &&
                 !text.includes('Inicio') &&
@@ -335,7 +334,7 @@ export class BDECrawler {
               if (isTaxonomyPage && isValidText) {
                 results.push({
                   href: href.startsWith('http') ? href : baseUrl + href,
-                  text: text.substring(0, 100)
+                  text
                 });
               }
             });

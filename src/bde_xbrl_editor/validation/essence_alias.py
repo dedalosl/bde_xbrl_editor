@@ -9,6 +9,7 @@ from decimal import InvalidOperation
 from bde_xbrl_editor.instance.models import Fact, XbrlInstance, XbrlUnit
 from bde_xbrl_editor.instance.s_equal import canonical_context_refs_by_s_equal
 from bde_xbrl_editor.taxonomy.models import Concept, QName, TaxonomyStructure
+from bde_xbrl_editor.taxonomy.type_traits import concept_is_numeric
 from bde_xbrl_editor.validation.calculation import _fact_is_nil_numeric, _round_fact
 from bde_xbrl_editor.validation.models import ValidationFinding, ValidationSeverity
 
@@ -48,8 +49,7 @@ _EssenceKey = tuple[QName, tuple[int, ...], str]
 
 
 def _concept_is_numeric(concept: Concept) -> bool:
-    ln = concept.data_type.local_name.lower()
-    return any(k in ln for k in ("monetary", "decimal", "integer", "float", "double"))
+    return concept_is_numeric(concept)
 
 
 def _alias_values_equal(left: Fact, right: Fact, taxonomy: TaxonomyStructure) -> bool:

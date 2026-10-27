@@ -43,13 +43,9 @@ def generate_context_id(
     container_str = "|".join(
         f"{str(k)}={v}" for k, v in sorted(containers.items(), key=lambda kv: str(kv[0]))
     )
-    period_str = (
-        str(period.instant_date)
-        if period.period_type == "instant"
-        else "forever"
-        if period.period_type == "forever"
-        else f"{period.start_date}/{period.end_date}"
-    )
+    from bde_xbrl_editor.instance.temporal import period_key
+
+    period_str = repr(period_key(period))
     canonical = (
         f"{entity.scheme}|{entity.identifier}|{period.period_type}|{period_str}|"
         f"{dim_str}|{typed_dim_str}|{container_str}"

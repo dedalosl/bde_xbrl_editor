@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from copy import deepcopy
 from dataclasses import replace
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -35,6 +36,7 @@ from bde_xbrl_editor.instance.models import (
     XbrlUnit,
 )
 from bde_xbrl_editor.instance.s_equal import build_s_equal_key_from_xml_fragments
+from bde_xbrl_editor.instance.temporal import normalize_lexical, parse_boundary
 from bde_xbrl_editor.paths import iter_existing_cache_roots
 from bde_xbrl_editor.taxonomy.models import QName
 from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
@@ -207,24 +209,11 @@ def _reject_xbrli_in_segment_or_scenario(container: etree._Element, context_id: 
 
 
 def _parse_date_boundary(text: str, *, date_only_is_end_boundary: bool = False) -> date:
-    stripped = text.strip()
-    if "T" not in stripped:
-        parsed = date.fromisoformat(stripped)
-        return parsed + timedelta(days=1) if date_only_is_end_boundary else parsed
-
-    day, time = stripped.split("T", 1)
-    parsed = date.fromisoformat(day)
-    return parsed + timedelta(days=1) if time.startswith("24:00:00") else parsed
+    return parse_boundary(text, end=date_only_is_end_boundary).wall.date()
 
 
 def _parse_date(text: str) -> date:
-    stripped = text.strip()
-    # XBRL allows ISO 8601 datetime strings for instant dates (e.g. "2009-01-01T00:00:00").
-    # The editor model stores dates, so keep the lexical calendar date here and
-    # apply end-boundary semantics only to S-equality keys.
-    if "T" in stripped:
-        stripped = stripped.split("T")[0]
-    return date.fromisoformat(stripped)
+    return parse_boundary(text).wall.date()
 
 
 def _has_inherited_xml_lang(el: etree._Element) -> bool:
@@ -234,6 +223,19 @@ def _has_inherited_xml_lang(el: etree._Element) -> bool:
             return True
         current = current.getparent()
     return False
+
+
+def _source_element_xml(el: etree._Element) -> bytes:
+    """Retain effective language when a fact is detached from its ancestors."""
+    source = deepcopy(el)
+    current = el
+    while current is not None:
+        language = current.get(_XML_LANG)
+        if language is not None:
+            source.set(_XML_LANG, language)
+            break
+        current = current.getparent()
+    return etree.tostring(source, encoding="utf-8", with_tail=False)
 
 
 def _reject_duplicate_instance_refs(root: etree._Element, path_str: str) -> None:
@@ -267,10 +269,7 @@ def _period_s_equal_key(period_el: etree._Element) -> tuple:
     if instant_el is not None:
         return (
             "instant",
-            _parse_date_boundary(
-                instant_el.text or "",
-                date_only_is_end_boundary=True,
-            ).isoformat(),
+            parse_boundary(instant_el.text or "", end=True).isoformat(canonical=True),
         )
 
     if period_el.find(_XBRLI_FOREVER) is not None:
@@ -280,11 +279,8 @@ def _period_s_equal_key(period_el: etree._Element) -> tuple:
     end_el = period_el.find(_XBRLI_END)
     return (
         "duration",
-        _parse_date_boundary((start_el.text or "") if start_el is not None else "").isoformat(),
-        _parse_date_boundary(
-            (end_el.text or "") if end_el is not None else "",
-            date_only_is_end_boundary=True,
-        ).isoformat(),
+        parse_boundary((start_el.text or "") if start_el is not None else "").isoformat(canonical=True),
+        parse_boundary((end_el.text or "") if end_el is not None else "", end=True).isoformat(canonical=True),
     )
 
 
@@ -307,11 +303,12 @@ def _parse_context(el: etree._Element) -> XbrlContext:
         raise InstanceParseError("", f"context '{context_id}' missing xbrli:period")
     instant_el = period_el.find(_XBRLI_INSTANT)
     if instant_el is not None:
-        instant_text = instant_el.text or ""
+        instant_text = normalize_lexical(instant_el.text or "")
         period = ReportingPeriod(
             period_type="instant",
             instant_date=_parse_date(instant_text),
             instant_date_only="T" not in instant_text,
+            instant_lexical=instant_text,
         )
     elif period_el.find(_XBRLI_FOREVER) is not None:
         period = ReportingPeriod(period_type="forever")
@@ -320,6 +317,8 @@ def _parse_context(el: etree._Element) -> XbrlContext:
         end_el = period_el.find(_XBRLI_END)
         period = ReportingPeriod(
             period_type="duration",
+            start_lexical=normalize_lexical(start_el.text or "") if start_el is not None else None,
+            end_lexical=normalize_lexical(end_el.text or "") if end_el is not None else None,
             start_date=_parse_date((start_el.text or "") if start_el is not None else ""),
             end_date=_parse_date((end_el.text or "") if end_el is not None else ""),
             end_date_only=(end_el is not None and "T" not in (end_el.text or "")),
@@ -688,7 +687,7 @@ def _collect_facts_under_element(
                     tuple_path=tuple_path,
                     tuple_ancestor_concepts=tuple_ancestor_concepts,
                     position_path=tuple_path + (idx,),
-                    source_element_xml=etree.tostring(child, encoding="utf-8", with_tail=False),
+                    source_element_xml=_source_element_xml(child),
                 )
             )
             _collect_facts_under_element(
@@ -735,11 +734,11 @@ def _collect_facts_under_element(
                     tuple_path=tuple_path,
                     tuple_ancestor_concepts=tuple_ancestor_concepts,
                     position_path=tuple_path + (idx,),
-                    source_element_xml=etree.tostring(child, encoding="utf-8", with_tail=False),
+                    source_element_xml=_source_element_xml(child),
                 )
             )
         else:
-            raw_xml = etree.tostring(child, encoding="unicode").encode("utf-8")
+            raw_xml = _source_element_xml(child)
             orphaned.append(
                 OrphanedFact(
                     concept_qname_str=tag,
@@ -748,6 +747,8 @@ def _collect_facts_under_element(
                     value=value,
                     decimals=decimals,
                     raw_element_xml=raw_xml,
+                    tuple_path=tuple_path,
+                    position_path=tuple_path + (idx,),
                 )
             )
 
@@ -852,13 +853,33 @@ class InstanceParser:
             progress(f"Loading taxonomy… {message}", min(mapped, 70))
 
         resolved_taxonomy_path = self._resolve_taxonomy_path(path, schema_href, schema_ref_el)
+        additional_schema_refs = [
+            (
+                el.get(_XLINK_HREF, ""),
+                self._resolve_taxonomy_path(path, el.get(_XLINK_HREF, ""), el),
+            )
+            for el in schema_ref_els[1:]
+            if el.get(_XLINK_HREF, "")
+        ]
+        instance_dts_roots = tuple(
+            sorted(
+                set(instance_linkbase_refs)
+                | {resolved for _, resolved in additional_schema_refs if resolved is not None}
+            )
+        )
         if (
             preloaded_taxonomy is not None
             and resolved_taxonomy_path is not None
             and resolved_taxonomy_path == preloaded_taxonomy.metadata.entry_point_path.resolve()
+            and getattr(preloaded_taxonomy, "instance_dts_roots", ()) == instance_dts_roots
+            and all(resolved is not None for _, resolved in additional_schema_refs)
         ):
             progress("Reusing loaded taxonomy…", 22)
-            taxonomy = preloaded_taxonomy
+            taxonomy = (
+                preloaded_taxonomy
+                if hasattr(preloaded_taxonomy, "instance_dts_roots")
+                else replace(preloaded_taxonomy, instance_dts_roots=())
+            )
         else:
             taxonomy = self._resolve_taxonomy(
                 path,
@@ -866,16 +887,9 @@ class InstanceParser:
                 path_str,
                 progress_callback=taxonomy_progress,
                 resolved_taxonomy_path=resolved_taxonomy_path,
+                instance_linkbase_seeds=instance_linkbase_refs or None,
             )
-            for extra_schema_ref_el in schema_ref_els[1:]:
-                extra_href = extra_schema_ref_el.get(_XLINK_HREF, "")
-                if not extra_href:
-                    continue
-                extra_resolved_path = self._resolve_taxonomy_path(
-                    path,
-                    extra_href,
-                    extra_schema_ref_el,
-                )
+            for extra_href, extra_resolved_path in additional_schema_refs:
                 try:
                     extra_taxonomy = self._resolve_taxonomy(
                         path,
@@ -889,6 +903,8 @@ class InstanceParser:
                         continue
                     raise
                 taxonomy = _merge_taxonomies(taxonomy, extra_taxonomy)
+            if getattr(taxonomy, "instance_dts_roots", ()) != instance_dts_roots:
+                taxonomy = replace(taxonomy, instance_dts_roots=instance_dts_roots)
         if taxonomy_resolved_callback is not None:
             taxonomy_resolved_callback(taxonomy)
         progress(
@@ -1119,9 +1135,7 @@ class InstanceParser:
                                 tuple_path=(),
                                 tuple_ancestor_concepts=(),
                                 position_path=(root_idx,),
-                                source_element_xml=etree.tostring(
-                                    child, encoding="utf-8", with_tail=False
-                                ),
+                                source_element_xml=_source_element_xml(child),
                             )
                         )
                         facts_seen += 1
@@ -1172,13 +1186,11 @@ class InstanceParser:
                                 is_nil=is_nil,
                                 tuple_path=(),
                                 position_path=(root_idx,),
-                                source_element_xml=etree.tostring(
-                                    child, encoding="utf-8", with_tail=False
-                                ),
+                                source_element_xml=_source_element_xml(child),
                             )
                         )
                     else:
-                        raw_xml = etree.tostring(child, encoding="unicode").encode("utf-8")
+                        raw_xml = _source_element_xml(child)
                         orphaned.append(
                             OrphanedFact(
                                 concept_qname_str=tag,
@@ -1187,6 +1199,7 @@ class InstanceParser:
                                 value=value,
                                 decimals=decimals,
                                 raw_element_xml=raw_xml,
+                                position_path=(root_idx,),
                             )
                         )
 

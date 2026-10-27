@@ -4,6 +4,7 @@
   "description": "Scraper for BDE taxonomies using Playwright",
   "main": "dist/index.js",
   "scripts": {
+    "test": "node -r ts-node/register/transpile-only --test tests/*.test.cjs",
     "scrape": "ts-node src/index.ts",
     "reprocess": "ts-node src/reprocess.ts",
     "build": "tsc",

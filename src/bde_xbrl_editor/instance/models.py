@@ -172,6 +172,9 @@ class ReportingPeriod:
     # period S-equality and xfi:* boundary functions.
     instant_date_only: bool = False
     end_date_only: bool = False
+    instant_lexical: str | None = None
+    start_lexical: str | None = None
+    end_lexical: str | None = None
 
     def __post_init__(self) -> None:
         if self.period_type == "instant":
@@ -186,7 +189,11 @@ class ReportingPeriod:
                     "duration",
                     "start_date and end_date must both be set for duration periods",
                 )
-            if self.end_date < self.start_date:
+            if self.start_lexical or self.end_lexical:
+                from bde_xbrl_editor.instance.temporal import validate_duration
+
+                validate_duration(self)
+            elif self.end_date < self.start_date:
                 raise InvalidReportingPeriodError(
                     "duration",
                     "duration",
@@ -342,6 +349,8 @@ class OrphanedFact:
     value: str
     decimals: str | None
     raw_element_xml: bytes  # serialised XML element for lossless round-trip
+    tuple_path: tuple[int, ...] = ()
+    position_path: tuple[int, ...] = ()
 
 
 @dataclass
@@ -376,8 +385,7 @@ class XbrlInstance:
     contexts: dict[ContextId, XbrlContext] = field(default_factory=dict)
     units: dict[UnitId, XbrlUnit] = field(default_factory=dict)
     facts: list[Fact] = field(default_factory=list)
-    # Formula fact variables can bind tuples, while item validators and the
-    # serializer continue to consume only ``facts``.
+    # Formula variables and serialization consume tuples separately from items.
     tuple_facts: list[Fact] = field(default_factory=list)
     orphaned_facts: list[OrphanedFact] = field(default_factory=list)
     edit_history: list[EditOperation] = field(default_factory=list)
@@ -409,6 +417,7 @@ class XbrlInstance:
     def update_fact(self, index: int, new_value: str) -> None:
         """Update the value of an existing fact by index."""
         self.facts[index].value = new_value
+        self.facts[index].is_nil = False
         self._dirty = True
 
     def remove_fact(self, index: int) -> None:

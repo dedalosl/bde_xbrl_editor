@@ -1,19 +1,18 @@
-"""Unit tests for FactFormatter — monetary, date, percent, string, fallback."""
+"""FactFormatter preserves exact lexical values and does not guess numeric types."""
 
 from __future__ import annotations
 
 from unittest.mock import MagicMock
 
 from bde_xbrl_editor.table_renderer.fact_formatter import FactFormatter
-from bde_xbrl_editor.taxonomy.models import QName
+from bde_xbrl_editor.taxonomy.models import Concept, QName
 
 
 def _make_formatter(type_local: str = "") -> FactFormatter:
     taxonomy = MagicMock()
-    concept_def = MagicMock()
-    type_qn = MagicMock()
-    type_qn.local_name = type_local
-    concept_def.type_qname = type_qn
+    concept_def = Concept(
+        _CONCEPT, QName("http://www.xbrl.org/2003/instance", type_local), "instant"
+    )
     taxonomy.concepts = {_CONCEPT: concept_def}
     return FactFormatter(taxonomy)
 
@@ -25,17 +24,17 @@ class TestFactFormatter:
     def test_monetary_no_decimals(self):
         f = _make_formatter("monetaryItemType")
         result = f.format("1234567", _CONCEPT)
-        assert "1,234,567" in result
+        assert result == "1234567"
 
     def test_monetary_with_negative_decimals(self):
         """@decimals='-3' declares accuracy to thousands but does not round the stored value.
 
-        The stored value is displayed as-is (integer, with comma separator). Rounding to
+        The stored value is displayed as-is, without grouping. Rounding to
         the quantum would corrupt small values (e.g. 1, 2, 3) to 0.
         """
         f = _make_formatter("monetaryItemType")
         result = f.format("1234567", _CONCEPT, decimals="-3")
-        assert "1,234,567" in result
+        assert result == "1234567"
 
     def test_monetary_small_value_with_negative_decimals_not_zeroed(self):
         """Values like 1 with decimals='-3' must display as '1', not '0'."""
@@ -44,9 +43,9 @@ class TestFactFormatter:
         assert f.format("999", _CONCEPT, decimals="-3") == "999"
 
     def test_percent(self):
-        f = _make_formatter("percentItemType")
+        f = _make_formatter("pureItemType")
         result = f.format("0.1234", _CONCEPT)
-        assert "12.34%" in result
+        assert result == "0.1234"
 
     def test_date_passthrough(self):
         f = _make_formatter("dateItemType")
@@ -71,8 +70,8 @@ class TestFactFormatter:
             result = f.format(val, _CONCEPT)
             assert isinstance(result, str)
 
-    def test_unknown_type_falls_back_to_numeric(self):
-        """Unknown concept type tries numeric formatting first."""
+    def test_unknown_type_preserves_raw_value(self):
+        """Unknown concept types are not guessed from their values."""
         f = _make_formatter("")
         result = f.format("42", _CONCEPT)
         assert "42" in result

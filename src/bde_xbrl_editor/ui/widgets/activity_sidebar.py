@@ -1551,7 +1551,12 @@ class ActivitySidebar(QWidget):
         self._instance_panel.set_editor(editor)
 
     def clear_instance(self) -> None:
-        """Switch back to the Tables panel (used when an instance is closed)."""
+        """Release document owners and switch back to the Tables panel."""
+        if self._instance_panel is not None:
+            self._instance_panel.set_editor(None)
+            self._instance_panel._instance = None
+            self._instance_panel._data_presence_cache_key = None
+            self._instance_panel._data_presence_cache.clear()
         fallback_index = 1 if 1 in self._visible_indexes else (self._visible_indexes[0] if self._visible_indexes else None)
         if fallback_index is not None:
             self._activate(fallback_index)

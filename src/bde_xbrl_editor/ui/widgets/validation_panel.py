@@ -53,6 +53,7 @@ class ValidationWorker(QObject):
     findings_ready = Signal(object)  # tuple[ValidationFinding, ...]
     validation_completed = Signal(object)  # ValidationReport
     validation_failed = Signal(str)
+    finished = Signal()
 
     def __init__(
         self,
@@ -70,8 +71,6 @@ class ValidationWorker(QObject):
     @Slot()
     def run(self) -> None:
         """Execute validation; emit result or error signal."""
-        from bde_xbrl_editor.validation.orchestrator import InstanceValidator
-
         def _progress(current: int, total: int, message: str) -> None:
             self.progress_changed.emit(current, total, message)
 
@@ -79,6 +78,8 @@ class ValidationWorker(QObject):
             self.findings_ready.emit(findings)
 
         try:
+            from bde_xbrl_editor.validation.orchestrator import InstanceValidator
+
             validator = InstanceValidator(
                 taxonomy=self._taxonomy,
                 progress_callback=_progress,
@@ -90,6 +91,8 @@ class ValidationWorker(QObject):
             self.validation_completed.emit(report)
         except Exception as exc:  # noqa: BLE001
             self.validation_failed.emit(str(exc))
+        finally:
+            self.finished.emit()
 
     @Slot()
     def cancel(self) -> None:
@@ -289,8 +292,7 @@ class ValidationPanel(QWidget):
         self._current_report = report
         self._current_findings = list(report.findings)
 
-        if self._model.rowCount() != len(report.findings):
-            self._model.populate(report.findings)
+        self._model.populate(report.findings)
 
         self._update_summary()
         self._update_table_filter_options(report.findings)
@@ -334,6 +336,11 @@ class ValidationPanel(QWidget):
         self._table_combo.blockSignals(False)
         self._proxy.clear_filters()
 
+    def invalidate_report(self) -> None:
+        """Remove results that no longer describe the current document."""
+        self.clear()
+        self._summary_label.setText("Results outdated — run validation again")
+
     def set_available_tables(self, tables: list[tuple[str, str]]) -> None:
         """Populate the table filter combobox. tables = list of (table_id, label)."""
         self._table_combo.blockSignals(True)
@@ -352,13 +359,14 @@ class ValidationPanel(QWidget):
         from bde_xbrl_editor.validation.errors import ExportPermissionError  # noqa: PLC0415
         from bde_xbrl_editor.validation.exporter import ValidationReportExporter  # noqa: PLC0415
 
+        report = self._current_report
         path_str, selected_filter = QFileDialog.getSaveFileName(
             self,
             "Export Validation Report",
             "validation_report",
             "Text Files (*.txt);;JSON Files (*.json)",
         )
-        if not path_str:
+        if not path_str or self._current_report is not report:
             return
 
         export_path = Path(path_str)

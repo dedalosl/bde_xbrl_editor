@@ -14,10 +14,14 @@ from bde_xbrl_editor.instance.s_equal import canonical_context_refs_by_s_equal
 from bde_xbrl_editor.taxonomy.constants import NS_XBRLI
 from bde_xbrl_editor.taxonomy.models import Concept, QName, TaxonomyStructure
 from bde_xbrl_editor.taxonomy.schema import parse_schema_raw
+from bde_xbrl_editor.taxonomy.type_traits import (
+    concept_is_monetary,
+    concept_is_numeric,
+    concept_is_shares,
+)
 from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
 from bde_xbrl_editor.validation.models import ValidationFinding, ValidationSeverity
 
-_NUMERIC_TYPE_KEYWORDS = ("monetary", "decimal", "integer", "float", "double")
 _XBRLI_ITEM = QName(NS_XBRLI, "item")
 _XBRLI_TUPLE = QName(NS_XBRLI, "tuple")
 _ARCROLE_ESSENCE_ALIAS = "http://www.xbrl.org/2003/arcrole/essence-alias"
@@ -88,12 +92,7 @@ def _effective_simple_measure_count(unit: XbrlUnit) -> int:
 
 def _concept_requires_iso4217_unit(concept: Concept) -> bool:
     """True when *concept* is a monetary item (explicit flag or xbrli:monetaryItemType)."""
-    if concept.monetary_item_type:
-        return True
-    return (
-        concept.data_type.namespace == NS_XBRLI
-        and concept.data_type.local_name == "monetaryItemType"
-    )
+    return concept_is_monetary(concept)
 
 
 def _iter_descendant_qnames(container_xml: bytes) -> list[QName]:
@@ -134,8 +133,7 @@ def _substitution_root_for_concept(
 
 
 def _is_numeric_concept(concept: Concept) -> bool:
-    local_name_lower = concept.data_type.local_name.lower()
-    return any(kw in local_name_lower for kw in _NUMERIC_TYPE_KEYWORDS)
+    return concept_is_numeric(concept)
 
 
 class StructuralConformanceValidator:
@@ -465,8 +463,7 @@ class StructuralConformanceValidator:
             concept = taxonomy.concepts.get(fact.concept)
             if concept is None:
                 continue
-            local_name_lower = concept.data_type.local_name.lower()
-            is_numeric = any(kw in local_name_lower for kw in _NUMERIC_TYPE_KEYWORDS)
+            is_numeric = concept_is_numeric(concept)
             if not is_numeric:
                 continue
             if fact.unit_ref is None or fact.unit_ref not in instance.units:
@@ -761,11 +758,7 @@ class StructuralConformanceValidator:
 
     @staticmethod
     def _concept_is_shares_item(concept: Concept | None) -> bool:
-        return (
-            concept is not None
-            and concept.data_type.namespace == NS_XBRLI
-            and concept.data_type.local_name == "sharesItemType"
-        )
+        return concept_is_shares(concept)
 
     @staticmethod
     def _shares_unit_finding(fact: Fact, unit: XbrlUnit) -> ValidationFinding | None:

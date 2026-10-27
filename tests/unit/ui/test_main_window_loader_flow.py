@@ -126,7 +126,7 @@ def test_loader_instance_handoff_survives_recent_file_write_error(qtbot, qapp, m
     assert not isinstance(window.centralWidget(), TaxonomyLoaderWidget)
 
 
-def test_validation_cleanup_cancels_worker_before_waiting(qtbot, qapp) -> None:
+def test_validation_cleanup_retires_worker_without_waiting(qtbot, qapp, monkeypatch) -> None:
     events: list[str] = []
 
     class Worker:
@@ -135,10 +135,18 @@ def test_validation_cleanup_cancels_worker_before_waiting(qtbot, qapp) -> None:
 
     class Thread:
         def quit(self) -> None:
-            events.append("quit")
+            raise AssertionError("Validation thread shutdown belongs to the supervisor")
 
         def wait(self) -> None:
-            events.append("wait")
+            raise AssertionError("Validation cleanup must not block the GUI")
+
+    class Supervisor:
+        def retire(self, worker, *, cancel) -> None:
+            assert cancel
+            events.append("retire")
+            worker.cancel()
+
+    monkeypatch.setattr("bde_xbrl_editor.ui.main_window.validation_supervisor", Supervisor)
 
     window = MainWindow()
     qtbot.addWidget(window)
@@ -147,7 +155,9 @@ def test_validation_cleanup_cancels_worker_before_waiting(qtbot, qapp) -> None:
 
     window._cleanup_validation_thread(cancel=True)
 
-    assert events == ["cancel", "quit", "wait"]
+    assert events == ["retire", "cancel"]
+    assert window._validation_worker is None
+    assert window._validation_thread is None
 
 
 def test_main_window_instance_handoff_loads_workspace(qtbot, qapp) -> None:
@@ -450,7 +460,7 @@ def test_close_instance_then_back_shuts_down_replaced_table_views(
     assert reopened_taxonomy_view in shutdown_views
 
 
-def test_close_instance_cancels_active_validation(qtbot, qapp) -> None:
+def test_close_instance_cancels_active_validation(qtbot, qapp, monkeypatch) -> None:
     events: list[str] = []
 
     class Worker:
@@ -459,10 +469,18 @@ def test_close_instance_cancels_active_validation(qtbot, qapp) -> None:
 
     class Thread:
         def quit(self) -> None:
-            events.append("quit")
+            raise AssertionError("Validation thread shutdown belongs to the supervisor")
 
         def wait(self) -> None:
-            events.append("wait")
+            raise AssertionError("Closing a document must not block the GUI")
+
+    class Supervisor:
+        def retire(self, worker, *, cancel) -> None:
+            assert cancel
+            events.append("retire")
+            worker.cancel()
+
+    monkeypatch.setattr("bde_xbrl_editor.ui.main_window.validation_supervisor", Supervisor)
 
     window = MainWindow()
     qtbot.addWidget(window)
@@ -473,7 +491,7 @@ def test_close_instance_cancels_active_validation(qtbot, qapp) -> None:
 
     window._on_close_instance()
 
-    assert events == ["cancel", "quit", "wait"]
+    assert events == ["retire", "cancel"]
     assert window._validation_worker is None
     assert window._validation_thread is None
 

@@ -72,10 +72,10 @@ def test_monetary_valid_simple() -> None:
     assert msg == ""
 
 
-def test_monetary_valid_with_thousands_sep() -> None:
+def test_monetary_rejects_thousands_sep() -> None:
     v = _make_validator(_concept("Amount", "monetaryItemType"))
     ok, _ = v.validate("1,000.50", _qname("Amount"))
-    assert ok
+    assert not ok
 
 
 def test_monetary_invalid() -> None:
@@ -85,16 +85,16 @@ def test_monetary_invalid() -> None:
     assert msg != ""
 
 
-def test_monetary_normalise_dot_decimal() -> None:
+def test_monetary_normalise_preserves_mixed_comma_dot_input() -> None:
     v = _make_validator(_concept("Amount", "monetaryItemType"))
     result = v.normalise("1,234.56", _qname("Amount"))
-    assert result == "1234.56"
+    assert result == "1,234.56"
 
 
-def test_monetary_normalise_comma_decimal() -> None:
+def test_monetary_normalise_preserves_mixed_dot_comma_input() -> None:
     v = _make_validator(_concept("Amount", "monetaryItemType"))
     result = v.normalise("1.234,56", _qname("Amount"))
-    assert result == "1234.56"
+    assert result == "1.234,56"
 
 
 # ---------------------------------------------------------------------------
@@ -126,26 +126,48 @@ def test_integer_valid() -> None:
     assert ok
 
 
-def test_integer_valid_with_thousands() -> None:
-    v = _make_validator(_concept("Count", "integerItemType"))
-    ok, _ = v.validate("1,000,000", _qname("Count"))
-    assert ok
+@pytest.mark.parametrize(
+    "value",
+    [
+        "12.9",
+        "12.bad",
+        "abc",
+        "-1.5",
+        "12,9",
+        "1,234",
+        "1,000,000",
+        "1.000",
+        "１２",
+        "١٢",
+        "1_000",
+        "+",
+        "",
+    ],
+)
+def test_integer_rejects_non_integer_lexical_input(value: str) -> None:
+    validator = _make_validator(_concept("Count", "integerItemType"))
+    valid, message = validator.validate(value, _qname("Count"))
+    assert not valid
+    assert message
+    assert validator.normalise(value, _qname("Count")) == value
 
 
-def test_integer_invalid() -> None:
-    v = _make_validator(_concept("Count", "integerItemType"))
-    ok, msg = v.validate("12.5", _qname("Count"))
-    # 12.5 after stripping decimal is "12" which is valid as integer
-    # So let's test a clearly invalid one
-    ok2, msg2 = v.validate("abc", _qname("Count"))
-    assert not ok2
-    assert msg2 != ""
+@pytest.mark.parametrize(
+    "value",
+    ["+42", "-42", "00042", "0", "9" * 5000],
+    ids=["positive-sign", "negative-sign", "leading-zeros", "zero", "5000-digits"],
+)
+def test_integer_preserves_signed_and_large_ascii_values(value: str) -> None:
+    validator = _make_validator(_concept("Count", "integerItemType"))
+    assert validator.validate(value, _qname("Count")) == (True, "")
+    assert validator.normalise(value, _qname("Count")) == value
 
 
-def test_integer_normalise() -> None:
-    v = _make_validator(_concept("Count", "integerItemType"))
-    result = v.normalise("1,000,000", _qname("Count"))
-    assert result == "1000000"
+def test_integer_normalise_trims_only_valid_input() -> None:
+    validator = _make_validator(_concept("Count", "integerItemType"))
+    assert validator.validate("  +42  ", _qname("Count")) == (True, "")
+    assert validator.normalise("  +42  ", _qname("Count")) == "+42"
+    assert validator.normalise("  12.9  ", _qname("Count")) == "  12.9  "
 
 
 # ---------------------------------------------------------------------------

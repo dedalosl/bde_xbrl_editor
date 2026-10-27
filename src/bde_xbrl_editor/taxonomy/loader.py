@@ -1638,6 +1638,13 @@ class TaxonomyLoader:
 
         cached = self._cache.get(cache_key)
         if cached is not None:
+            # Older cached structures lack provenance; the seed-keyed cache
+            # entry still identifies it. Repair by replacement, never mutation.
+            if not hasattr(cached, "instance_dts_roots") or (
+                seed_paths and cached.instance_dts_roots != seed_paths
+            ):
+                cached = replace(cached, instance_dts_roots=seed_paths)
+                self._cache.put(cache_key, cached)
             if progress_callback:
                 progress_callback(
                     (
@@ -1650,6 +1657,8 @@ class TaxonomyLoader:
             return cached
 
         structure = self._do_load(entry_point, progress_callback, seed_linkbases=seed_paths)
+        if seed_paths:
+            structure = replace(structure, instance_dts_roots=tuple(seed_paths))
         self._cache.put(cache_key, structure)
         return structure
 
@@ -1665,6 +1674,8 @@ class TaxonomyLoader:
         cache_key = _loader_cache_key(entry_point, seed_paths)
         self._cache.invalidate(cache_key)
         structure = self._do_load(entry_point, progress_callback, seed_linkbases=seed_paths)
+        if seed_paths:
+            structure = replace(structure, instance_dts_roots=tuple(seed_paths))
         self._cache.put(cache_key, structure)
         return structure
 

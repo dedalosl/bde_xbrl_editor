@@ -22,6 +22,7 @@ from bde_xbrl_editor.taxonomy.models import (
     TypedDimensionFilter,
     XPathFilterDefinition,
 )
+from bde_xbrl_editor.taxonomy.type_traits import concept_type_category
 
 _PERIOD_FILTER_NS = "http://xbrl.org/2008/filter/period"
 _ENTITY_FILTER_NS = "http://xbrl.org/2008/filter/entity"
@@ -344,7 +345,7 @@ def _concept_data_type_matches(
         return False
     candidates = (declaration.data_type,)
     if not strict:
-        candidates += declaration.data_type_ancestry
+        candidates += getattr(declaration, "data_type_ancestry", ()) or ()
     return any(_qname_matches(target, candidate) for target in targets for candidate in candidates)
 
 
@@ -1066,8 +1067,8 @@ def _general_filter_context_item(
         return etree.fromstring(fact.source_element_xml)
 
     concept = concepts.get(fact.concept)
-    type_name = concept.data_type.local_name.lower() if concept is not None else ""
-    if "qname" in type_name and ":" in fact.value:
+    category = concept_type_category(concept)
+    if category == "qname" and ":" in fact.value:
         prefix, _local_name = fact.value.split(":", 1)
         namespace = ""
         if fact.source_element_xml is not None:
@@ -1082,10 +1083,17 @@ def _general_filter_context_item(
             except (ImportError, TypeError, ValueError):
                 pass
         return fact.value
-    if "string" in type_name:
+    if category in {"string", "fraction"}:
         return fact.value or ""
-    if "boolean" in type_name:
+    if category == "boolean":
         return fact.value.strip() in {"true", "1"}
+    if category in {"float", "double"}:
+        try:
+            from bde_xbrl_editor.validation.formula.evaluator import _builtin_xsd_type
+
+            return _builtin_xsd_type(category).decode(fact.value)
+        except Exception:  # noqa: BLE001
+            return fact.value or ""
     try:
         return Decimal(fact.value)
     except (InvalidOperation, TypeError):

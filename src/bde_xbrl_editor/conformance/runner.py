@@ -30,7 +30,8 @@ ProgressCallback = Callable[[str, int, int], None]
 def _compute_suite_status(results: list[TestCaseResult]) -> SuiteStatus:
     """Derive a SuiteStatus from a list of test results."""
     if not results:
-        return SuiteStatus.PASSED
+        # Empty execution is incomplete, never a successful conformance run.
+        return SuiteStatus.INCOMPLETE
 
     has_mandatory_fail = any(r.outcome == TestResultOutcome.FAIL and r.mandatory for r in results)
     has_error = any(r.outcome == TestResultOutcome.ERROR for r in results)

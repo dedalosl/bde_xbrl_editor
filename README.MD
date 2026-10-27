@@ -20,6 +20,21 @@ El repositorio contiene:
 - Runner CLI para suites de conformidad XBRL.
 - Tests unitarios e integracion con `pytest` y `pytest-qt`.
 
+## Separador decimal de la interfaz
+
+En **Settings > Display and Loader Settings…**, elige **Dot (1234.56)** o
+**Comma (1234,56)** para mostrar e introducir decimales. La preferencia se guarda
+para futuras sesiones; el valor predeterminado es el punto. También está disponible
+el mismo selector desde **Settings…** en la pantalla de carga.
+
+No introduzcas separadores de miles ni mezcles punto y coma: la entrada se rechaza
+sin modificar el dato. Los enteros admiten solo dígitos y un signo opcional.
+Cambiar la preferencia no modifica los hechos ni el estado de guardado del documento.
+Una edición ya abierta conserva su separador anterior hasta terminar; las siguientes
+usan la nueva preferencia. Los valores decimales se muestran sin agrupar, redondear
+ni convertir porcentajes. Los archivos XBRL siguen usando el punto y conservando la
+precisión del texto original; la preferencia no repara valores inválidos importados.
+
 ## Stack tecnologico
 
 - Lenguaje: Python 3.13+
@@ -132,7 +147,7 @@ pytest
 Ejecutar tests con cobertura:
 
 ```bash
-pytest --cov=bde_xbrl_editor
+python -m pytest --cov=bde_xbrl_editor --cov-report=term-missing
 ```
 
 Ejecutar lint:
@@ -146,6 +161,36 @@ Formatear el codigo:
 ```bash
 ruff format .
 ```
+
+### Verificación rápida y datos externos
+
+La instalación con `python -m pip install -e ".[dev]"` incluye `pytest-cov`.
+Las pruebas muestran los motivos de omisión (`-ra`) y rechazan marcadores desconocidos.
+En entornos sin pantalla, usar `QT_QPA_PLATFORM=offscreen` (los tests también lo establecen
+por defecto).
+
+```bash
+# Mismo alcance que CI: incluye regresiones unitarias del runner de conformidad.
+python -m pytest -m "not external_conformance" --cov=bde_xbrl_editor --cov-report=term-missing
+
+# Smoke tests con datos externos: manifiestos y comportamiento del runner.
+python -m pytest -m external_conformance -v
+
+# Solo lectura de suites, sin ejecutar los casos marcados como lentos.
+python -m pytest -m "external_conformance and not slow" -v
+```
+
+**Una batería verde no certifica conformidad XBRL.** Algunos smoke tests comprueban
+que el runner completa y devuelve un informe, incluso si contiene casos fallidos.
+Los datos ausentes producen omisiones explícitas; una ejecución vacía del runner
+es `INCOMPLETE`, nunca aprobada. Para evaluar conformidad, ejecutar el CLI de la
+sección siguiente con los datos preparados y revisar tanto el informe como el
+código de salida.
+
+El flujo de GitHub Actions ejecuta lint y pruebas rápidas con cobertura en Python 3.13,
+y publica informes de pruebas y cobertura como artefactos. No descarga suites externas
+ni presenta esas pruebas como una certificación. La cobertura se informa sin imponer
+un umbral arbitrario; las pruebas de fidelidad siguen siendo necesarias.
 
 ## Distribucion y empaquetado
 
@@ -216,7 +261,7 @@ ln -sfn "$(pwd)/conformance/formula-conformance-2022-07-21" tests/conformance/su
 Tambien se pueden ejecutar las pruebas de integracion, que preparan esos enlaces dinamicamente:
 
 ```bash
-python -m pytest tests/integration/conformance/ -v -k "not slow"
+python -m pytest tests/integration/conformance/ -v -m "not slow"
 ```
 
 ## Estructura del proyecto

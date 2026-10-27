@@ -81,7 +81,7 @@ def test_compute_status_mixed_pass_and_mandatory_skip_is_incomplete() -> None:
 
 
 def test_compute_status_empty() -> None:
-    assert _compute_suite_status([]) == SuiteStatus.PASSED
+    assert _compute_suite_status([]) == SuiteStatus.INCOMPLETE
 
 
 # ---------------------------------------------------------------------------

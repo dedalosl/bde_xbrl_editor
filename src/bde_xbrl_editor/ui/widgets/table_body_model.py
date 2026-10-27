@@ -215,6 +215,12 @@ class TableBodyModel(QAbstractTableModel):
         """Inject FactFormatter for DisplayRole formatting."""
         self._formatter = formatter
         self._taxonomy = taxonomy
+        if self.rowCount() and self.columnCount():
+            self.dataChanged.emit(
+                self.index(0, 0),
+                self.index(self.rowCount() - 1, self.columnCount() - 1),
+                [Qt.ItemDataRole.DisplayRole],
+            )
 
     def set_open_key_handler(self, handler: Any) -> None:
         self._open_key_handler = handler

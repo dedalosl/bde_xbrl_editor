@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import QEvent, QModelIndex, QPoint, QRect, Qt
@@ -18,23 +19,81 @@ from PySide6.QtWidgets import (
 )
 
 from bde_xbrl_editor.instance.constants import BDE_DIM_NS
-from bde_xbrl_editor.instance.models import DuplicateFactError
-from bde_xbrl_editor.instance.validator import XbrlTypeValidator
+from bde_xbrl_editor.instance.models import DuplicateFactError, XbrlUnit
+from bde_xbrl_editor.instance.validator import XbrlTypeValidator, display_decimal_value
 from bde_xbrl_editor.taxonomy.models import QName, TaxonomyStructure
+from bde_xbrl_editor.taxonomy.type_traits import concept_is_pure, concept_is_shares
 from bde_xbrl_editor.ui import theme
 from bde_xbrl_editor.ui.widgets.table_body_model import (
     CELL_CODE_ROLE,
     FACT_OPTIONS_ROLE,
     OPEN_KEY_ROLE,
 )
+from bde_xbrl_editor.validation.structural import (
+    _effective_simple_measure_count,
+    _is_iso4217_currency_code,
+    _resolved_unit_measure_qname,
+)
 
 if TYPE_CHECKING:
-    from bde_xbrl_editor.instance.editor import InstanceEditor
     from bde_xbrl_editor.instance.models import XbrlInstance
     from bde_xbrl_editor.table_renderer.models import CellCoordinate, ComputedTableLayout
+    from bde_xbrl_editor.ui.instance_editor_adapter import InstanceEditorAdapter
 
 _FACT_ENUM_LANG_PREF = ["es", "en"]
 _AGRUPACION_DIM = QName(namespace=BDE_DIM_NS, local_name="Agrupacion")
+
+
+def _ensure_numeric_unit(
+    instance: XbrlInstance, taxonomy: TaxonomyStructure, concept: QName, category: str
+) -> str:
+    """Reuse a family-compatible unit; create only the established standard fallback."""
+    declaration = taxonomy.concepts.get(concept)
+    xbrli = "http://www.xbrl.org/2003/instance"
+    iso4217 = "http://www.xbrl.org/2003/iso4217"
+    family = (
+        "EUR"
+        if category == "monetary"
+        else "shares"
+        if concept_is_shares(declaration)
+        else "pure"
+        if concept_is_pure(declaration)
+        else None
+    )
+    if family is None and instance.units:
+        # Generic numeric concepts retain the existing unit-selection policy.
+        return next(iter(instance.units))
+    measure = QName(iso4217, "EUR") if family == "EUR" else QName(xbrli, family or "pure")
+    for unit_id, unit in instance.units.items():
+        if unit.unit_form != "simple" or _effective_simple_measure_count(unit) != 1:
+            continue
+        actual = (
+            unit.simple_measure_qnames[0]
+            if len(unit.simple_measure_qnames) == 1
+            else _resolved_unit_measure_qname(unit)
+        )
+        compatible = (
+            actual is not None
+            and actual.namespace == iso4217
+            and _is_iso4217_currency_code(actual.local_name)
+            if family == "EUR"
+            else actual == measure
+        )
+        if compatible:
+            return unit_id
+    unit_id = family or "pure"
+    suffix = 1
+    while unit_id in instance.units:
+        unit_id = f"{family or 'pure'}_{suffix}"
+        suffix += 1
+    instance.units[unit_id] = XbrlUnit(
+        unit_id,
+        str(measure),
+        measure_qname=measure,
+        simple_measure_count=1,
+        simple_measure_qnames=(measure,),
+    )
+    return unit_id
 
 
 def _build_namespace_prefix_map(taxonomy: TaxonomyStructure) -> dict[str, str]:
@@ -160,12 +219,12 @@ def _display_option_value(raw_value: str) -> str:
 
 def _get_type_category(taxonomy: TaxonomyStructure, concept: QName) -> str:
     """Return the broad type category for a concept."""
-    from bde_xbrl_editor.instance.validator import _type_category  # noqa: PLC0415
+    from bde_xbrl_editor.taxonomy.type_traits import concept_type_category  # noqa: PLC0415
 
     concept_def = taxonomy.concepts.get(concept)
     if concept_def is None:
         return "string"
-    return _type_category(concept_def.data_type.local_name)
+    return concept_type_category(concept_def)
 
 
 def _find_fact_index(
@@ -202,7 +261,10 @@ def _report_level_bde_dimensions(
     return {}, {}
 
 
-def _ensure_context_ref(instance: XbrlInstance, coordinate: CellCoordinate) -> str:
+def _ensure_context_ref(
+    instance: XbrlInstance, coordinate: CellCoordinate,
+    *, on_changed: Callable[[], None] | None = None,
+) -> str:
     """Return the deterministic context_ref for this coordinate, creating the context if needed."""
     from bde_xbrl_editor.instance.context_builder import (  # noqa: PLC0415
         build_dimensional_context,
@@ -238,6 +300,9 @@ def _ensure_context_ref(instance: XbrlInstance, coordinate: CellCoordinate) -> s
             context_element=context_element,
         )
         instance.contexts[ctx_id] = ctx
+        instance._dirty = True
+        if on_changed is not None:
+            on_changed()
     return ctx_id
 
 
@@ -247,18 +312,33 @@ class CellEditDelegate(QStyledItemDelegate):
     def __init__(
         self,
         taxonomy: TaxonomyStructure | None = None,
-        editor: InstanceEditor | None = None,
+        editor: InstanceEditorAdapter | None = None,
         table_layout: ComputedTableLayout | None = None,
         table_view_widget: QWidget | None = None,
+        decimal_separator: str = ".",
     ) -> None:
         super().__init__(table_view_widget)
         self._taxonomy = taxonomy
         self._editor = editor
         self._table_layout = table_layout
         self._table_view_widget = table_view_widget
-        self._validator = XbrlTypeValidator(taxonomy) if taxonomy is not None else None
+        self._decimal_separator = decimal_separator
+        self._validator = (
+            XbrlTypeValidator(taxonomy, decimal_separator) if taxonomy is not None else None
+        )
         self._invalid_editors: set[int] = set()  # id(editor) for invalid-state editors
         self._prefix_maps_cache: tuple[int, dict[str, str], dict[str, str]] | None = None
+
+    def set_editor(self, editor: InstanceEditorAdapter | None) -> None:
+        """Replace or detach the document editing owner."""
+        self._editor = editor
+
+    def set_decimal_separator(self, separator: str) -> None:
+        """Apply to future editors; existing editors retain their input convention."""
+        self._validator = (
+            XbrlTypeValidator(self._taxonomy, separator) if self._taxonomy is not None else None
+        )
+        self._decimal_separator = separator
 
     def set_table_layout(self, layout: ComputedTableLayout | None) -> None:
         """Update active layout reference after Z-axis change."""
@@ -418,11 +498,9 @@ class CellEditDelegate(QStyledItemDelegate):
         # monetary, decimal, integer, string
         line = QLineEdit(parent)
         if category in ("monetary", "decimal"):
-            from PySide6.QtGui import QDoubleValidator  # noqa: PLC0415
-
-            v = QDoubleValidator(line)
-            v.setNotation(QDoubleValidator.Notation.StandardNotation)
-            line.setValidator(v)
+            # Keep intermediate text editable; complete lexical validation runs on commit.
+            # A double validator would impose locale and finite-precision limitations.
+            line.setProperty("decimal_separator", self._decimal_separator)
         elif category == "integer":
             from PySide6.QtGui import QIntValidator  # noqa: PLC0415
 
@@ -465,6 +543,18 @@ class CellEditDelegate(QStyledItemDelegate):
             if idx >= 0:
                 editor_widget.setCurrentIndex(idx)
         elif isinstance(editor_widget, QLineEdit):
+            coordinate = self._get_coordinate(index)
+            if (
+                coordinate is not None
+                and self._taxonomy is not None
+                and coordinate.concept is not None
+            ):
+                category = _get_type_category(self._taxonomy, coordinate.concept)
+                if category in ("monetary", "decimal"):
+                    separator = (
+                        editor_widget.property("decimal_separator") or self._decimal_separator
+                    )
+                    raw_value = display_decimal_value(raw_value, separator)
             editor_widget.setText(raw_value)
 
     # ------------------------------------------------------------------
@@ -493,6 +583,9 @@ class CellEditDelegate(QStyledItemDelegate):
                 model.setData(index, editor_widget.text(), Qt.ItemDataRole.EditRole)
             return
 
+        if self._editor is None or self._taxonomy is None or self._validator is None:
+            return
+
         fact_options = index.data(FACT_OPTIONS_ROLE)
         if isinstance(fact_options, tuple) and fact_options:
             if isinstance(editor_widget, QComboBox):
@@ -502,8 +595,6 @@ class CellEditDelegate(QStyledItemDelegate):
                 )
             else:
                 submitted = ""
-        elif self._editor is None or self._taxonomy is None or self._validator is None:
-            return
         coordinate = self._get_coordinate(index)
         if coordinate is None or coordinate.concept is None:
             return
@@ -535,24 +626,30 @@ class CellEditDelegate(QStyledItemDelegate):
             return
 
         # Validate
-        is_valid, error_msg = self._validator.validate(submitted, coordinate.concept)
+        separator = editor_widget.property("decimal_separator") or self._decimal_separator
+        validator = XbrlTypeValidator(self._taxonomy, separator)
+        is_valid, error_msg = validator.validate(submitted, coordinate.concept)
         if not is_valid:
             self._mark_invalid(editor_widget, error_msg)
             return
 
         # Normalise
-        normalised = self._validator.normalise(submitted, coordinate.concept)
+        normalised = validator.normalise(submitted, coordinate.concept)
 
         # Update or add
         try:
             if fact_index is not None:
                 self._editor.update_fact(fact_index, normalised)
             else:
-                context_ref = _ensure_context_ref(instance, coordinate)
+                context_ref = _ensure_context_ref(
+                    instance, coordinate, on_changed=self._editor.changes_made.emit
+                )
                 category = _get_type_category(self._taxonomy, coordinate.concept)
                 unit_ref = None
-                if category in ("monetary", "decimal", "integer"):
-                    unit_ref = next(iter(instance.units), None)
+                if category in ("monetary", "decimal", "integer", "float", "double"):
+                    unit_ref = _ensure_numeric_unit(
+                        instance, self._taxonomy, coordinate.concept, category
+                    )
                 self._editor.add_fact(
                     concept=coordinate.concept,
                     context_ref=context_ref,

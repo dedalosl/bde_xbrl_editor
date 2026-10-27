@@ -42,6 +42,7 @@ from bde_xbrl_editor.taxonomy.models import (
     ValueAssertionDefinition,
     XPathFilterDefinition,
 )
+from bde_xbrl_editor.taxonomy.type_traits import concept_is_numeric, concept_type_category
 from bde_xbrl_editor.validation.errors import ValidationEngineError
 from bde_xbrl_editor.validation.formula.details import build_formula_display_details
 from bde_xbrl_editor.validation.formula.filters import apply_filters
@@ -1610,13 +1611,13 @@ class FormulaEvaluator:
             parent = parent_facts[0]
             if axis != "child":
                 continue
-            wanted_weight: float | None = None
+            wanted_weight: Decimal | None = None
             weight_match = re.search(
                 r"\bweight\b.*?\beq\s+(-?\d+(?:\.\d+)?)",
                 resource.test_xpath or "",
             )
             if weight_match:
-                wanted_weight = float(weight_match.group(1))
+                wanted_weight = Decimal(weight_match.group(1))
             child_concepts = {
                 arc.child
                 for arcs in self._taxonomy.calculation.values()
@@ -1624,7 +1625,7 @@ class FormulaEvaluator:
                 if arc.parent == parent.concept
                 and (not arcrole or arcrole.endswith("summation-item"))
                 and (not linkrole or arc.extended_link_role == linkrole)
-                and (wanted_weight is None or arc.weight == wanted_weight)
+                and (wanted_weight is None or Decimal(str(arc.weight)) == wanted_weight)
             }
             parent_context = canonical_contexts.get(parent.context_ref, parent.context_ref)
             parent_unit = canonical_units.get(parent.unit_ref or "", parent.unit_ref or "")
@@ -2348,7 +2349,7 @@ class FormulaEvaluator:
         concept = self._taxonomy.concepts.get(fact.concept)
         if concept is None:
             return None
-        return _item_type_category(concept.data_type.local_name)
+        return "decimal" if concept_is_numeric(concept) else concept_type_category(concept)
 
     def _coerce_fact_xpath_value(
         self,
@@ -2368,7 +2369,7 @@ class FormulaEvaluator:
             )
         return _coerce_typed_fact_value(
             fact.value,
-            concept.data_type.local_name,
+            concept,
             namespaces=namespaces,
             xpath_expr=xpath_expr,
         )
@@ -3491,7 +3492,7 @@ class FormulaEvaluator:
                     fact,
                     default_value=default_value,
                     xsd_type=(
-                        _fact_node_xsd_type(concept.data_type.local_name, fact.value)
+                        _fact_node_xsd_type(concept, fact.value)
                         if concept is not None
                         else None
                     ),
@@ -3499,7 +3500,7 @@ class FormulaEvaluator:
                 xpath_root.append(element)
                 xpath_elements[id(fact)] = element
                 xsd_type = (
-                    _fact_node_xsd_type(concept.data_type.local_name, fact.value)
+                    _fact_node_xsd_type(concept, fact.value)
                     if concept is not None
                     else None
                 )
@@ -4380,16 +4381,21 @@ def _coerce_xpath_variable_value(
 
 def _coerce_typed_fact_value(
     raw: str,
-    type_local_name: str,
+    concept: Any,
     *,
     namespaces: dict[str, str],
     xpath_expr: str,
 ) -> Any:
-    category = _item_type_category(type_local_name)
-    if "integer" in type_local_name.lower():
+    category = concept_type_category(concept)
+    if category == "integer":
         try:
             return int(raw.strip())
         except ValueError:
+            return raw
+    if category in {"float", "double"}:
+        try:
+            return _builtin_xsd_type(category).decode(raw.strip())
+        except Exception:  # noqa: BLE001
             return raw
     if category == "boolean":
         value = raw.strip()
@@ -4425,7 +4431,7 @@ def _coerce_typed_fact_value(
                 except Exception:  # noqa: BLE001
                     return raw
         return raw
-    if category == "string":
+    if category in {"string", "fraction"}:
         return raw
     return _coerce_xpath_variable_value(
         raw,
@@ -4452,26 +4458,6 @@ def _comparison_rhs_type(rhs: str) -> str | None:
         return "dateTime" if constructor == "datetime" else constructor
     if constructor in {"decimal", "integer", "float", "double"}:
         return "decimal"
-    return None
-
-
-def _item_type_category(type_local_name: str) -> str | None:
-    local = type_local_name.lower()
-    if "boolean" in local:
-        return "boolean"
-    if "datetime" in local:
-        return "dateTime"
-    if "date" in local:
-        return "date"
-    if "qname" in local:
-        return "qname"
-    if any(
-        token in local
-        for token in ("decimal", "integer", "float", "double", "monetary", "shares", "pure")
-    ):
-        return "decimal"
-    if "string" in local:
-        return "string"
     return None
 
 
@@ -4510,14 +4496,16 @@ def _fact_to_message_element(
     return element
 
 
-def _fact_node_xsd_type(type_local_name: str, lexical_value: str) -> str | None:
+def _fact_node_xsd_type(concept: Any, lexical_value: str) -> str | None:
     """Map an XBRL item type and lexical value to its XPath atomic type."""
-    category = _item_type_category(type_local_name)
+    category = concept_type_category(concept)
     if category == "dateTime":
         return "dateTime" if "T" in lexical_value else "date"
     if category in {"date", "boolean", "string"}:
         return category
-    if category == "decimal":
+    if category in {"float", "double", "integer"}:
+        return category
+    if category in {"monetary", "decimal"}:
         return "decimal"
     if category == "qname":
         return "QName"

@@ -8,11 +8,23 @@ summation fact. Rounding behaviour matches the widely used Arelle
 
 from __future__ import annotations
 
-import math
 import threading
 from collections import defaultdict
 from dataclasses import dataclass
-from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
+from decimal import (
+    MAX_EMAX,
+    MIN_EMIN,
+    ROUND_HALF_EVEN,
+    Context,
+    Decimal,
+    DecimalException,
+    DivisionByZero,
+    Inexact,
+    InvalidOperation,
+    Overflow,
+    Underflow,
+    localcontext,
+)
 
 from bde_xbrl_editor.instance.models import Fact, XbrlInstance
 from bde_xbrl_editor.instance.s_equal import (
@@ -20,13 +32,11 @@ from bde_xbrl_editor.instance.s_equal import (
     canonical_unit_refs_by_structure,
 )
 from bde_xbrl_editor.taxonomy.models import CalculationArc, Concept, QName, TaxonomyStructure
+from bde_xbrl_editor.taxonomy.type_traits import concept_is_numeric
 from bde_xbrl_editor.validation.models import ValidationFinding, ValidationSeverity
-
-_NUMERIC_TYPE_KEYWORDS = ("monetary", "decimal", "integer", "float", "double")
 
 _ZERO = Decimal(0)
 _ONE = Decimal(1)
-_TEN = Decimal(10)
 _NAN = Decimal("NaN")
 
 
@@ -46,21 +56,76 @@ class _CalculationFactIndex:
     item_bind_keys: dict[QName, set[_BindKey]]
     dup_bind_keys: set[_BindKey]
     duplicate_fact_ids: set[int]
+    arithmetic_errors: dict[_FactKey, str]
 
 
 def _concept_is_numeric(concept: Concept) -> bool:
-    ln = concept.data_type.local_name.lower()
-    return any(k in ln for k in _NUMERIC_TYPE_KEYWORDS)
+    return concept_is_numeric(concept)
+
+
+_MAX_WORK_DIGITS = 100_000
+
+
+class _CalculationArithmeticError(ValueError):
+    """Calculation cannot be completed within the exact arithmetic work budget."""
+
+
+def _arithmetic_context(precision: int) -> Context:
+    if precision > _MAX_WORK_DIGITS:
+        raise _CalculationArithmeticError(
+            f"Exact calculation requires {precision} working digits; limit is {_MAX_WORK_DIGITS}"
+        )
+    return Context(
+        prec=max(1, precision),
+        rounding=ROUND_HALF_EVEN,
+        Emin=MIN_EMIN,
+        Emax=MAX_EMAX,
+        traps=[InvalidOperation, DivisionByZero, Overflow],
+    )
+
+
+def _exact_multiply(left: Decimal, right: Decimal) -> Decimal:
+    precision = len(left.as_tuple().digits) + len(right.as_tuple().digits)
+    with localcontext(_arithmetic_context(precision)) as context:
+        context.traps[Inexact] = True
+        context.traps[Underflow] = True
+        return left * right
+
+
+def _exact_add(left: Decimal, right: Decimal) -> Decimal:
+    if left.is_finite() and left.is_zero():
+        return right
+    if right.is_finite() and right.is_zero():
+        return left
+    if left.is_finite() and right.is_finite():
+        precision = (
+            max(left.adjusted(), right.adjusted())
+            - min(left.as_tuple().exponent, right.as_tuple().exponent)
+            + 2
+        )
+    else:
+        precision = 1
+    with localcontext(_arithmetic_context(precision)) as context:
+        context.traps[Inexact] = True
+        context.traps[Underflow] = True
+        return left + right
 
 
 def _decimal_round(x: Decimal, d: int, rounding: str = ROUND_HALF_EVEN) -> Decimal:
-    """Round *x* to *d* fraction digits (``d`` may be negative)."""
-    if not x.is_normal() or not (-28 <= d <= 28):
+    """Round with an operand-derived context, including negative accuracy."""
+    if not x.is_finite() or x.is_zero():
         return x
-    if d >= 0:
-        return x.quantize(_ONE.scaleb(-d), rounding)
-    scaled = x.scaleb(d).quantize(_ONE, rounding)
-    return scaled * (_TEN ** (-d))
+    target_exponent = -d
+    if target_exponent <= x.as_tuple().exponent:
+        # Already exact: avoid allocating arbitrary zero padding for huge decimals.
+        return x
+    precision = max(1, x.adjusted() - target_exponent + 2)
+    context = _arithmetic_context(precision)
+    if not MIN_EMIN <= target_exponent <= MAX_EMAX:
+        raise _CalculationArithmeticError("Rounding exponent exceeds Decimal capacity")
+    quantum = Decimal((0, (1,), target_exponent))
+    with localcontext(context):
+        return x.quantize(quantum, rounding=rounding)
 
 
 def _round_fact(
@@ -71,22 +136,13 @@ def _round_fact(
     concept: Concept | None = None,
 ) -> Decimal:
     """Round a fact's value, or an explicit ``v_decimal`` using *fact*'s decimals/precision."""
-    if v_decimal is None:
-        v_str = fact.value
-        try:
-            v_dec = Decimal(v_str.strip())
-        except (InvalidOperation, AttributeError):
-            v_dec = _NAN
-        v_float_fact = float(v_str) if v_str and v_str.strip() else float("nan")
-    else:
-        v_dec = v_decimal
-        if v_dec.is_nan():
-            return v_dec
-        v_str = None
-        try:
-            v_float_fact = float(fact.value)
-        except (ValueError, TypeError):
-            v_float_fact = float("nan")
+    try:
+        reported_value = Decimal(fact.value.strip())
+    except (InvalidOperation, AttributeError):
+        reported_value = _NAN
+    v_dec = reported_value if v_decimal is None else v_decimal
+    if v_dec.is_nan():
+        return v_dec
 
     d_str = (
         fact.decimals
@@ -106,12 +162,11 @@ def _round_fact(
             p = int(p_str)
             if p == 0:
                 return _NAN
-            if v_dec == 0:
-                return _ZERO
-            v_abs = abs(v_float_fact)
-            if v_abs == 0 or math.isnan(v_float_fact):
+            if reported_value.is_finite() and reported_value.is_zero():
+                return v_dec
+            if not reported_value.is_finite() or reported_value.is_zero():
                 return _NAN
-            d_int = p - int(math.floor(math.log10(v_abs))) - 1
+            d_int = p - reported_value.adjusted() - 1
             return _decimal_round(v_dec, d_int, ROUND_HALF_EVEN)
         if d_str is not None and str(d_str).strip() != "":
             d_int = int(d_str)
@@ -140,6 +195,33 @@ class CalculationConsistencyValidator:
         return bool(self._cancel_event and self._cancel_event.is_set())
 
     def validate(
+        self,
+        instance: XbrlInstance,
+        taxonomy: TaxonomyStructure,
+    ) -> list[ValidationFinding]:
+        # Isolate conversion/comparison flags and traps, not just arithmetic precision.
+        with localcontext(
+            Context(
+                prec=28,
+                rounding=ROUND_HALF_EVEN,
+                Emin=MIN_EMIN,
+                Emax=MAX_EMAX,
+                traps=[InvalidOperation, DivisionByZero, Overflow],
+            )
+        ):
+            try:
+                return self._validate(instance, taxonomy)
+            except (DecimalException, ValueError, OverflowError) as exc:
+                return [
+                    ValidationFinding(
+                        rule_id="calculation:arithmetic-incomplete",
+                        severity=ValidationSeverity.ERROR,
+                        message=f"Calculation not completed: {exc}",
+                        source="calculation",
+                    )
+                ]
+
+    def _validate(
         self,
         instance: XbrlInstance,
         taxonomy: TaxonomyStructure,
@@ -196,6 +278,7 @@ class CalculationConsistencyValidator:
         item_bind_keys: dict[QName, set[_BindKey]] = defaultdict(set)
         dup_bind_keys: set[_BindKey] = set()
         duplicate_fact_ids: set[int] = set()
+        arithmetic_errors: dict[_FactKey, str] = {}
         duplicate_sum_keys: dict[_FactKey, Fact] = {}
         duplicate_item_keys: dict[_FactKey, Fact] = {}
         numeric_concepts = {
@@ -252,11 +335,16 @@ class CalculationConsistencyValidator:
                     Decimal(fact.value.strip())
                 except (InvalidOperation, AttributeError):
                     continue
-                rounded_value = _round_fact(
-                    fact,
-                    infer_decimals=True,
-                    concept=concept_def,
-                )
+                try:
+                    rounded_value = _round_fact(
+                        fact,
+                        infer_decimals=True,
+                        concept=concept_def,
+                    )
+                except (DecimalException, ValueError, OverflowError) as exc:
+                    rounded_value = _NAN
+                    for anc_path in prefix_paths:
+                        arithmetic_errors[(fact.concept, anc_path, bind_ctx, bind_unit)] = str(exc)
 
             for anc_path in prefix_paths:
                 item_key: _FactKey = (fact.concept, anc_path, bind_ctx, bind_unit)
@@ -274,6 +362,7 @@ class CalculationConsistencyValidator:
             item_bind_keys=dict(item_bind_keys),
             dup_bind_keys=dup_bind_keys,
             duplicate_fact_ids=duplicate_fact_ids,
+            arithmetic_errors=arithmetic_errors,
         )
 
     def _validate_arc_balance_constraints(
@@ -462,75 +551,92 @@ class CalculationConsistencyValidator:
                 if len(raw_sum_entries) > 1:
                     continue
                 sum_entries = [
-                    entry
-                    for entry in raw_sum_entries
-                    if not _fact_is_nil_numeric(entry[0])
+                    entry for entry in raw_sum_entries if not _fact_is_nil_numeric(entry[0])
                 ]
                 if not sum_entries:
                     continue
 
-                bound_sum = _ZERO
-                bound_items_have_zero_precision = False
-                contributors_seen = False
-                for arc in rel_arcs:
-                    if self._cancelled():
-                        return findings
-                    w = Decimal(str(arc.weight))
-                    item_key: _FactKey = (arc.child, anc_path, bind_ctx, bind_unit)
-                    for item_fact, rounded_item in fact_index.item_facts.get(item_key, ()):
+                try:
+                    relevant_keys = [
+                        sum_key,
+                        *((arc.child, anc_path, bind_ctx, bind_unit) for arc in rel_arcs),
+                    ]
+                    for key in relevant_keys:
+                        if key in fact_index.arithmetic_errors:
+                            raise _CalculationArithmeticError(fact_index.arithmetic_errors[key])
+                    bound_sum = _ZERO
+                    bound_items_have_zero_precision = False
+                    contributors_seen = False
+                    for arc in rel_arcs:
                         if self._cancelled():
                             return findings
-                        if id(item_fact) in fact_index.duplicate_fact_ids:
-                            continue
-                        contributors_seen = True
-                        bound_items_have_zero_precision = (
-                            bound_items_have_zero_precision
-                            or _fact_has_zero_precision(item_fact)
-                        )
-                        bound_sum += rounded_item * w
+                        w = Decimal(str(arc.weight))
+                        item_key: _FactKey = (arc.child, anc_path, bind_ctx, bind_unit)
+                        for item_fact, rounded_item in fact_index.item_facts.get(item_key, ()):
+                            if self._cancelled():
+                                return findings
+                            if id(item_fact) in fact_index.duplicate_fact_ids:
+                                continue
+                            contributors_seen = True
+                            bound_items_have_zero_precision = (
+                                bound_items_have_zero_precision
+                                or _fact_has_zero_precision(item_fact)
+                            )
+                            bound_sum = _exact_add(bound_sum, _exact_multiply(rounded_item, w))
 
-                if not contributors_seen:
-                    continue
-
-                for sum_fact, rounded_sum in sum_entries:
-
-                    rounded_items_sum = _round_fact(
-                        sum_fact,
-                        infer_decimals=True,
-                        v_decimal=bound_sum,
-                        concept=taxonomy.concepts.get(sum_fact.concept),
-                    )
-                    if rounded_items_sum.is_nan() or rounded_sum.is_nan():
-                        if not (
-                            _fact_has_zero_precision(sum_fact) or bound_items_have_zero_precision
-                        ):
-                            continue
-                    elif rounded_items_sum == rounded_sum:
+                    if not contributors_seen:
                         continue
 
-                    unreported: list[str] = []
-                    for arc in rel_arcs:
-                        item_key = (arc.child, anc_path, bind_ctx, bind_unit)
-                        if not fact_index.item_facts.get(item_key):
-                            unreported.append(str(arc.child))
+                    for sum_fact, rounded_sum in sum_entries:
+                        rounded_items_sum = _round_fact(
+                            sum_fact,
+                            infer_decimals=True,
+                            v_decimal=bound_sum,
+                            concept=taxonomy.concepts.get(sum_fact.concept),
+                        )
+                        if rounded_items_sum.is_nan() or rounded_sum.is_nan():
+                            if not (
+                                _fact_has_zero_precision(sum_fact)
+                                or bound_items_have_zero_precision
+                            ):
+                                continue
+                        elif rounded_items_sum == rounded_sum:
+                            continue
 
+                        unreported: list[str] = []
+                        for arc in rel_arcs:
+                            item_key = (arc.child, anc_path, bind_ctx, bind_unit)
+                            if not fact_index.item_facts.get(item_key):
+                                unreported.append(str(arc.child))
+
+                        findings.append(
+                            ValidationFinding(
+                                rule_id="calculation:summation-inconsistent",
+                                severity=ValidationSeverity.ERROR,
+                                message=(
+                                    f"Calculation inconsistent for summation concept "
+                                    f"'{sum_concept}' in link role '{elr}': reported rounded "
+                                    f"total {rounded_sum} vs computed {rounded_items_sum} "
+                                    f"(context '{bind_ctx}', unit '{bind_unit}'). "
+                                    f"Missing or nil contributing facts: "
+                                    f"{', '.join(unreported) if unreported else 'none'}."
+                                ),
+                                source="calculation",
+                                concept_qname=sum_concept,
+                                context_ref=bind_ctx,
+                            )
+                        )
+                        break
+                except (DecimalException, ValueError, OverflowError) as exc:
                     findings.append(
                         ValidationFinding(
-                            rule_id="calculation:summation-inconsistent",
+                            rule_id="calculation:arithmetic-incomplete",
                             severity=ValidationSeverity.ERROR,
-                            message=(
-                                f"Calculation inconsistent for summation concept "
-                                f"'{sum_concept}' in link role '{elr}': reported rounded "
-                                f"total {rounded_sum} vs computed {rounded_items_sum} "
-                                f"(context '{bind_ctx}', unit '{bind_unit}'). "
-                                f"Missing or nil contributing facts: "
-                                f"{', '.join(unreported) if unreported else 'none'}."
-                            ),
+                            message=f"Calculation not completed for '{sum_concept}' in '{elr}': {exc}",
                             source="calculation",
                             concept_qname=sum_concept,
                             context_ref=bind_ctx,
                         )
                     )
-                    break
 
         return findings

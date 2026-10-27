@@ -252,7 +252,7 @@ class CalculationArc:
     parent: QName
     child: QName
     order: float
-    weight: float  # +1.0 (add) or −1.0 (subtract)
+    weight: Decimal | float  # Exact parsed decimal; float supports legacy in-memory arcs.
     extended_link_role: str
     use: str = "optional"
     priority: int = 0
@@ -677,6 +677,9 @@ class TaxonomyStructure:
     # Validation can reuse this instead of reparsing schema XML.
     schema_substitution_groups: Mapping[QName, QName] = field(default_factory=dict)
     element_defaults: Mapping[QName, SchemaElementDefaults] = field(default_factory=dict)
+    # Supplementary instance discovery roots; not part of the primary schema DTS.
+    # Keep provenance when replacing/hydrating structures so warm opens remain isolated.
+    instance_dts_roots: tuple[Path, ...] = field(default_factory=tuple)
 
     def get_table(self, table_id: str) -> TableDefinitionPWD | None:
         """Return the table with the given ID, or None if not found."""

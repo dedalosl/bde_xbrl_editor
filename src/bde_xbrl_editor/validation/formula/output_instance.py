@@ -7,7 +7,7 @@ from collections import Counter
 from collections.abc import Iterable
 from copy import deepcopy
 from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
@@ -932,19 +932,12 @@ class FormulaOutputInstanceEvaluator:
                 general_values,
                 rule.namespaces,
             )
+            lexical = _formula_boundary_lexical(item)
             return ReportingPeriod(
                 period_type="instant",
-                instant_date=_formula_boundary_date(
-                    item,
-                    end_boundary=not any(
-                        function_name in expression
-                        for function_name in (
-                            "period-start",
-                            "period-end",
-                            "period-instant",
-                        )
-                    ),
-                ),
+                instant_date=_formula_boundary_date(item),
+                instant_date_only="T" not in lexical,
+                instant_lexical=lexical,
             )
         if kind == "duration":
             start_item = self._evaluate_single(
@@ -966,7 +959,10 @@ class FormulaOutputInstanceEvaluator:
             return ReportingPeriod(
                 period_type="duration",
                 start_date=_formula_boundary_date(start_item),
-                end_date=_formula_boundary_date(end_item, end_boundary=True),
+                end_date=_formula_boundary_date(end_item),
+                start_lexical=_formula_boundary_lexical(start_item),
+                end_lexical=_formula_boundary_lexical(end_item),
+                end_date_only="T" not in _formula_boundary_lexical(end_item),
             )
         return deepcopy(source_period)
 
@@ -1489,18 +1485,17 @@ def _lexical_qname(value: str, namespaces: dict[str, str]) -> QName | None:
     return QName(namespace=namespace, local_name=local_name, prefix=prefix)
 
 
+def _formula_boundary_lexical(value: Any) -> str:
+    from bde_xbrl_editor.instance.temporal import normalize_lexical
+
+    raw = getattr(value, "value", value)
+    return normalize_lexical(raw.isoformat() if isinstance(raw, date) else str(raw))
+
+
 def _formula_boundary_date(value: Any, *, end_boundary: bool = False) -> date:
-    raw_value = getattr(value, "value", value)
-    if isinstance(raw_value, date):
-        parsed = raw_value
-        has_time = raw_value.__class__.__name__.lower().startswith("datetime")
-    else:
-        lexical = str(raw_value)
-        parsed = date.fromisoformat(lexical[:10])
-        has_time = "T" in lexical or "datetime" in value.__class__.__name__.lower()
-    if end_boundary and not has_time:
-        return parsed + timedelta(days=1)
-    return parsed
+    from bde_xbrl_editor.instance.temporal import parse_boundary
+
+    return parse_boundary(_formula_boundary_lexical(value), end=end_boundary).wall.date()
 
 
 def _unit_factors(unit: XbrlUnit) -> tuple[tuple[QName, ...], tuple[QName, ...]]:

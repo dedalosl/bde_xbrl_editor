@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from collections import defaultdict
 from copy import deepcopy
-from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING
 
@@ -17,6 +16,7 @@ from lxml import etree
 
 from bde_xbrl_editor.instance.constants import XBRLDI_NS
 from bde_xbrl_editor.instance.models import ReportingEntity, ReportingPeriod, XbrlContext
+from bde_xbrl_editor.instance.temporal import period_key
 from bde_xbrl_editor.taxonomy.models import QName, SchemaElementDefaults
 
 if TYPE_CHECKING:
@@ -37,19 +37,7 @@ def _qname_clark_from_model(qn: QName) -> str:
 
 
 def _period_key(period: ReportingPeriod) -> tuple:
-    if period.period_type == "instant":
-        assert period.instant_date is not None
-        instant = period.instant_date
-        if period.instant_date_only:
-            instant += timedelta(days=1)
-        return ("instant", instant.isoformat())
-    if period.period_type == "forever":
-        return ("forever",)
-    assert period.start_date is not None and period.end_date is not None
-    end = period.end_date
-    if period.end_date_only:
-        end += timedelta(days=1)
-    return ("duration", period.start_date.isoformat(), end.isoformat())
+    return period_key(period)
 
 
 def _resolve_prefixed_qname(el: etree._Element, prefixed: str) -> str:
@@ -209,29 +197,22 @@ def context_s_equal_key(
     ctx: XbrlContext,
     element_defaults: dict[QName, SchemaElementDefaults] | None = None,
 ) -> tuple:
-    if element_defaults:
-        scenario_el: etree._Element | None = None
-        segment_el: etree._Element | None = None
-        if ctx.scenario_xml:
-            scenario_el = _apply_schema_defaults_to_container(
-                etree.fromstring(ctx.scenario_xml),
-                element_defaults,
-            )
-        if ctx.segment_xml:
-            segment_el = _apply_schema_defaults_to_container(
-                etree.fromstring(ctx.segment_xml),
-                element_defaults,
-            )
-        if scenario_el is not None or segment_el is not None:
-            return build_s_equal_key_from_xml_fragments(
-                ctx.entity,
-                ctx.period,
-                scenario_el,
-                segment_el,
-                period_key=_period_key(ctx.period),
-            )
+    if ctx.scenario_xml or ctx.segment_xml or ctx.typed_dimension_xml:
+        from bde_xbrl_editor.instance.context_xml import effective_context_containers
+
+        containers = effective_context_containers(ctx)
+        if element_defaults:
+            containers = {
+                name: _apply_schema_defaults_to_container(container, element_defaults)
+                for name, container in containers.items()
+            }
+        period_key = _period_key(ctx.period)
+        return build_s_equal_key_from_xml_fragments(
+            ctx.entity, ctx.period, containers.get("scenario"), containers.get("segment"),
+            period_key=period_key,
+        )
     if ctx.s_equal_key is not None:
-        return ctx.s_equal_key
+        return (*ctx.s_equal_key[:3], _period_key(ctx.period), *ctx.s_equal_key[4:])
     return build_s_equal_key_from_model(ctx)
 
 

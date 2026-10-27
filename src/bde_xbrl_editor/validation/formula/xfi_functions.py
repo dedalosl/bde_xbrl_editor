@@ -265,12 +265,11 @@ def xfi_period_instant(period_arg: Any) -> Any:
         p = _period_of(ctx)
     if p is None:
         return None
-    d = getattr(p, "instant_date", None)
-    if d is not None and getattr(p, "instant_date_only", False):
-        from datetime import timedelta
+    from bde_xbrl_editor.instance.temporal import xfi_boundary
 
-        d = d + timedelta(days=1)
-    return _to_xsd_datetime(d)
+    if getattr(p, "instant_date", None) is None:
+        return None
+    return xfi_boundary(p, "instant")
 
 
 def xfi_period_start(period_arg: Any) -> Any:
@@ -282,8 +281,11 @@ def xfi_period_start(period_arg: Any) -> Any:
         p = _period_of(ctx)
     if p is None:
         return None
-    d = getattr(p, "start_date", None)
-    return _to_xsd_datetime(d)
+    from bde_xbrl_editor.instance.temporal import xfi_boundary
+
+    if getattr(p, "start_date", None) is None:
+        return None
+    return xfi_boundary(p, "start")
 
 
 def xfi_period_end(period_arg: Any) -> Any:
@@ -295,12 +297,11 @@ def xfi_period_end(period_arg: Any) -> Any:
         p = _period_of(ctx)
     if p is None:
         return None
-    d = getattr(p, "end_date", None)
-    if d is not None and getattr(p, "end_date_only", False):
-        from datetime import timedelta
+    from bde_xbrl_editor.instance.temporal import xfi_boundary
 
-        d = d + timedelta(days=1)
-    return _to_xsd_datetime(d)
+    if getattr(p, "end_date", None) is None:
+        return None
+    return xfi_boundary(p, "end")
 
 
 # ── Entity / identifier functions ─────────────────────────────────────────
@@ -733,7 +734,11 @@ def xfi_start_equal(fact1_arg: Any, fact2_arg: Any) -> bool:
     ctx2 = _context_from_arg(fact2_arg)
     p1 = _period_of(ctx1)
     p2 = _period_of(ctx2)
-    return getattr(p1, "start_date", None) == getattr(p2, "start_date", None)
+    from bde_xbrl_editor.instance.temporal import period_boundary
+
+    if getattr(p1, "start_date", None) is None or getattr(p2, "start_date", None) is None:
+        return getattr(p1, "start_date", None) == getattr(p2, "start_date", None)
+    return period_boundary(p1, "start").isoformat(canonical=True) == period_boundary(p2, "start").isoformat(canonical=True)
 
 
 def xfi_end_equal(fact1_arg: Any, fact2_arg: Any) -> bool:
@@ -742,7 +747,11 @@ def xfi_end_equal(fact1_arg: Any, fact2_arg: Any) -> bool:
     ctx2 = _context_from_arg(fact2_arg)
     p1 = _period_of(ctx1)
     p2 = _period_of(ctx2)
-    return getattr(p1, "end_date", None) == getattr(p2, "end_date", None)
+    from bde_xbrl_editor.instance.temporal import period_boundary
+
+    if getattr(p1, "end_date", None) is None or getattr(p2, "end_date", None) is None:
+        return getattr(p1, "end_date", None) == getattr(p2, "end_date", None)
+    return period_boundary(p1, "end").isoformat(canonical=True) == period_boundary(p2, "end").isoformat(canonical=True)
 
 
 def xfi_identical_nodes(node1: Any, node2: Any) -> bool:

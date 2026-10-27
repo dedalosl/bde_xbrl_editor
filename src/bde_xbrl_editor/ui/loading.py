@@ -49,13 +49,6 @@ def _instance_load_process_entry(
             preloaded_taxonomy=preloaded_taxonomy,
         )
         taxonomy = resolved_taxonomy or preloaded_taxonomy
-        if resolved_taxonomy is not None and instance.instance_linkbase_refs:
-            on_progress("Preparing editor…", 96, 100)
-            taxonomy = loader.load(
-                instance.taxonomy_entry_point,
-                progress_callback=on_progress,
-                instance_linkbase_seeds=instance.instance_linkbase_refs,
-            )
         if taxonomy is None:
             on_progress("Preparing editor…", 96, 100)
             taxonomy = loader.load(
@@ -89,13 +82,21 @@ def _parse_instance_with_preloaded_taxonomy(
 
     loader = TaxonomyLoader(cache=TaxonomyCache(), settings=settings)
     parser = InstanceParser(taxonomy_loader=loader)
+    resolved_taxonomy = None
+
+    def on_taxonomy_ready(taxonomy: object) -> None:
+        nonlocal resolved_taxonomy
+        resolved_taxonomy = taxonomy
+
     instance, orphaned_facts = parser.load(
         path,
         progress_callback=progress_callback,
+        taxonomy_resolved_callback=on_taxonomy_ready,
         preloaded_taxonomy=preloaded_taxonomy,
     )
-
-    return instance, preloaded_taxonomy, len(orphaned_facts)
+    if resolved_taxonomy is None:
+        raise RuntimeError("Instance parser did not resolve a taxonomy")
+    return instance, resolved_taxonomy, len(orphaned_facts)
 
 
 def _table_layout_process_entry(

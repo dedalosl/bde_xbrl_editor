@@ -193,15 +193,19 @@ class ConformanceSuiteParser:
         test_cases: list[TestCase] = []
         for tc_path in tc_paths:
             if not tc_path.exists():
-                log.warning("Test case file not found, skipping: %s", tc_path)
-                continue
+                raise SuiteDataMissingError(suite_def.suite_id, tc_path)
             try:
                 tc = self._parse_test_case(tc_path, suite_def.suite_id)
                 test_cases.append(tc)
             except TestCaseParseError as exc:
-                log.warning("Skipping test case due to parse error: %s", exc)
+                raise exc
             except Exception as exc:  # noqa: BLE001
-                log.warning("Skipping test case '%s': %s", tc_path, exc)
+                raise TestCaseParseError(tc_path, str(exc)) from exc
+
+        # An index that yields no test cases must never be treated as a
+        # successful empty suite by the runner.
+        if not test_cases:
+            raise TestCaseParseError(index_path, "index references no test case files")
 
         return test_cases
 

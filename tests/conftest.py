@@ -32,3 +32,11 @@ def loaded_taxonomy(bde_sample_taxonomy_path):
     settings = LoaderSettings()
     loader = TaxonomyLoader(cache=cache, settings=settings)
     return loader.load(bde_sample_taxonomy_path)
+
+
+def pytest_collection_modifyitems(items):
+    """Separate external-suite smoke tests without excluding unit regressions."""
+    external_root = Path(__file__).parent / "integration" / "conformance"
+    for item in items:
+        if item.path.is_relative_to(external_root):
+            item.add_marker(pytest.mark.external_conformance)

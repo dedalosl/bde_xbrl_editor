@@ -19,6 +19,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
+    "pytest-cov>=5.0",
     "pytest-qt>=4.4",
     "pytest-benchmark>=4.0",
     "ruff>=0.4",
@@ -57,11 +58,13 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM"]
 ignore = ["E501"]
 
 [tool.pytest.ini_options]
+addopts = "-ra --strict-markers"
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 markers = [
+    "external_conformance: integration smoke tests requiring external XBRL suite data (not certification)",
     "qt: marks tests that exercise Qt/PySide UI behavior",
     "slow: marks conformance tests that process complete external suites",
 ]
