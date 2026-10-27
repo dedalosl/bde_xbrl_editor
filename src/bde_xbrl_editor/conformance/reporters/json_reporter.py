@@ -16,20 +16,22 @@ class JsonReporter:
         suites = []
         for sr in report.suite_results:
             results = [self._result_to_dict(r) for r in sr.results]
-            suites.append({
-                "suite_id": sr.suite_id,
-                "label": sr.label,
-                "blocking": sr.blocking,
-                "status": sr.status.value,
-                "total": sr.total,
-                "passed": sr.passed,
-                "failed": sr.failed,
-                "failed_optional": sr.failed_optional,
-                "errored": sr.errored,
-                "skipped": sr.skipped,
-                "informational_note": sr.informational_note,
-                "results": results,
-            })
+            suites.append(
+                {
+                    "suite_id": sr.suite_id,
+                    "label": sr.label,
+                    "blocking": sr.blocking,
+                    "status": sr.status.value,
+                    "total": sr.total,
+                    "passed": sr.passed,
+                    "failed": sr.failed,
+                    "failed_optional": sr.failed_optional,
+                    "errored": sr.errored,
+                    "skipped": sr.skipped,
+                    "informational_note": sr.informational_note,
+                    "results": results,
+                }
+            )
 
         return {
             "run_timestamp": report.run_timestamp.isoformat(),
@@ -64,6 +66,22 @@ class JsonReporter:
             "expected_outcome": {
                 "type": r.expected_outcome.outcome_type.value,
                 "error_code": r.expected_outcome.error_code,
+                "assertion_tests": [
+                    {
+                        "assertion_id": assertion_test.assertion_id,
+                        "count_satisfied": assertion_test.count_satisfied,
+                        "count_not_satisfied": assertion_test.count_not_satisfied,
+                    }
+                    for assertion_test in r.expected_outcome.assertion_tests
+                ],
+                "result_files": [
+                    {
+                        "type": result_file.file_type.value,
+                        "path": str(result_file.path),
+                    }
+                    for result_file in r.expected_outcome.result_files
+                ],
+                "unsupported_result_elements": list(r.expected_outcome.unsupported_result_elements),
             },
             "actual_error_codes": list(r.actual_error_codes),
             "exception_message": r.exception_message,

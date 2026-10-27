@@ -188,7 +188,7 @@ def _build_row_axis_grid(
             _dfs(child, depth + 1, accumulated)
 
     for child in root.children:
-        _dfs(child, 0, {})
+        _dfs(child, 0, root.aspect_constraints)
 
     if not dfs_cells:
         dfs_cells = [
@@ -318,7 +318,7 @@ def _build_axis_grid(
 
     for child in root.children:
         child_width = _subtree_leaf_width(child)
-        _dfs(child, 0, cursor, {})
+        _dfs(child, 0, cursor, root.aspect_constraints)
         cursor += child_width
         total_leaf_count += child_width
 

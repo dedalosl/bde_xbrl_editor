@@ -25,6 +25,7 @@ htmlcov/
 # Distribution
 *.whl
 *.tar.gz
+*.tar.zst
 
 # IDE
 .vscode/

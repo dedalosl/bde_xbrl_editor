@@ -6,7 +6,7 @@ import contextlib
 import time
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import QCoreApplication, Qt, QThread, Signal
 from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
@@ -177,6 +177,7 @@ class TaxonomyLoaderWidget(QWidget):
 
     taxonomy_loaded = Signal(object)
     instance_loaded = Signal(object, object)  # (XbrlInstance, TaxonomyStructure)
+    settings_changed = Signal()
 
     def __init__(
         self,
@@ -213,6 +214,12 @@ class TaxonomyLoaderWidget(QWidget):
     def _close_progress_dialog(self) -> None:
         if self._progress_dialog is not None:
             self._progress_dialog.close()
+
+    def shutdown_background_tasks(self) -> None:
+        """Stop worker threads before this widget is destroyed or replaced."""
+        self._cleanup_inst_thread(wait=False)
+        self._cleanup_thread(wait=False)
+        self._close_progress_dialog()
 
     def _setup_ui(self) -> None:
         self.setStyleSheet(f"TaxonomyLoaderWidget {{ background: {_BG}; }}")
@@ -509,13 +516,17 @@ class TaxonomyLoaderWidget(QWidget):
         self._thread = QThread(self)
         self._worker.moveToThread(self._thread)
         self._thread.started.connect(self._worker.run)
+        self._thread.finished.connect(self._worker.deleteLater)
         self._worker.finished.connect(
             self._on_load_finished, Qt.ConnectionType.QueuedConnection
         )
         self._worker.error.connect(
             self._on_load_error, Qt.ConnectionType.QueuedConnection
         )
-        self._worker.progress.connect(progress_dialog.update_progress)
+        self._worker.progress.connect(
+            progress_dialog.update_progress,
+            Qt.ConnectionType.QueuedConnection,
+        )
         self._thread.start()
 
     def _on_load_finished(self, payload: object) -> None:
@@ -551,8 +562,8 @@ class TaxonomyLoaderWidget(QWidget):
                 100,
                 100,
             )
-        self.taxonomy_loaded.emit(structure)
         self._close_progress_dialog()
+        self.taxonomy_loaded.emit(structure)
 
     def _on_load_error(self, message: str) -> None:
         self._cleanup_thread()
@@ -560,12 +571,31 @@ class TaxonomyLoaderWidget(QWidget):
         self._load_btn.setEnabled(True)
         QMessageBox.critical(self, "Taxonomy Load Error", message)
 
-    def _cleanup_thread(self) -> None:
-        if self._thread:
-            self._thread.quit()
-            self._thread.wait()
-            self._thread = None
-            self._worker = None
+    def _cleanup_thread(self, *, wait: bool = True) -> None:
+        worker, thread = self._worker, self._thread
+        self._worker = None
+        self._thread = None
+        if not wait and worker is not None:
+            worker.cancel()
+            for signal_name, callback in (
+                ("finished", self._on_load_finished),
+                ("error", self._on_load_error),
+            ):
+                signal = getattr(worker, signal_name, None)
+                if signal is not None:
+                    with contextlib.suppress(RuntimeError, TypeError):
+                        signal.disconnect(callback)
+            if self._progress_dialog is not None:
+                progress = getattr(worker, "progress", None)
+                if progress is not None:
+                    with contextlib.suppress(RuntimeError, TypeError):
+                        progress.disconnect(self._progress_dialog.update_progress)
+        if thread is not None:
+            if not wait and thread.parent() is self and (app := QCoreApplication.instance()) is not None:
+                thread.setParent(app)
+            thread.quit()
+            if wait:
+                thread.wait()
 
     # ── Instance slots ─────────────────────────────────────────────────────
 
@@ -606,6 +636,7 @@ class TaxonomyLoaderWidget(QWidget):
         self._inst_thread = QThread(self)
         self._inst_worker.moveToThread(self._inst_thread)
         self._inst_thread.started.connect(self._inst_worker.run)
+        self._inst_thread.finished.connect(self._inst_worker.deleteLater)
         self._inst_worker.finished.connect(
             self._on_inst_load_finished, Qt.ConnectionType.QueuedConnection
         )
@@ -642,8 +673,8 @@ class TaxonomyLoaderWidget(QWidget):
                 100,
                 100,
             )
-        self.instance_loaded.emit(instance, taxonomy)
         self._close_progress_dialog()
+        self.instance_loaded.emit(instance, taxonomy)
 
     def _on_inst_orphaned(self, count: int) -> None:
         QMessageBox.information(
@@ -659,12 +690,32 @@ class TaxonomyLoaderWidget(QWidget):
         self._load_inst_btn.setEnabled(True)
         QMessageBox.critical(self, "Instance Load Error", message)
 
-    def _cleanup_inst_thread(self) -> None:
-        if self._inst_thread:
-            self._inst_thread.quit()
-            self._inst_thread.wait()
-            self._inst_thread = None
-            self._inst_worker = None
+    def _cleanup_inst_thread(self, *, wait: bool = True) -> None:
+        worker, thread = self._inst_worker, self._inst_thread
+        self._inst_worker = None
+        self._inst_thread = None
+        if not wait and worker is not None:
+            worker.cancel()
+            for signal_name, callback in (
+                ("finished", self._on_inst_load_finished),
+                ("error", self._on_inst_load_error),
+                ("orphaned", self._on_inst_orphaned),
+            ):
+                signal = getattr(worker, signal_name, None)
+                if signal is not None:
+                    with contextlib.suppress(RuntimeError, TypeError):
+                        signal.disconnect(callback)
+            if self._progress_dialog is not None:
+                progress = getattr(worker, "progress", None)
+                if progress is not None:
+                    with contextlib.suppress(RuntimeError, TypeError):
+                        progress.disconnect(self._progress_dialog.update_progress)
+        if thread is not None:
+            if not wait and thread.parent() is self and (app := QCoreApplication.instance()) is not None:
+                thread.setParent(app)
+            thread.quit()
+            if wait:
+                thread.wait()
 
     # ── Settings ───────────────────────────────────────────────────────────
 
@@ -677,3 +728,4 @@ class TaxonomyLoaderWidget(QWidget):
         if dialog.exec():
             self._settings = dialog.get_settings()
             self._loader = TaxonomyLoader(cache=self._cache, settings=self._settings)
+            self.settings_changed.emit()

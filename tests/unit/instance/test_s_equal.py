@@ -7,9 +7,12 @@ from datetime import date
 from lxml import etree
 
 from bde_xbrl_editor.instance.constants import XBRLI_NS
-from bde_xbrl_editor.instance.models import ReportingEntity, ReportingPeriod
+from bde_xbrl_editor.instance.models import ReportingEntity, ReportingPeriod, XbrlContext
 from bde_xbrl_editor.instance.parser import _parse_date_boundary
-from bde_xbrl_editor.instance.s_equal import build_s_equal_key_from_xml_fragments
+from bde_xbrl_editor.instance.s_equal import (
+    build_s_equal_key_from_model,
+    build_s_equal_key_from_xml_fragments,
+)
 
 
 def _entity() -> ReportingEntity:
@@ -130,3 +133,36 @@ def test_xbrl_end_boundary_date_only_matches_next_midnight() -> None:
 def test_xbrl_start_boundary_date_only_stays_same_day() -> None:
     assert _parse_date_boundary("2008-03-01") == date(2008, 3, 1)
     assert _parse_date_boundary("2008-02-29T24:00:00") == date(2008, 3, 1)
+
+
+def test_model_s_equal_key_uses_following_midnight_for_date_only_instant() -> None:
+    context = XbrlContext(
+        context_id="generated",
+        entity=_entity(),
+        period=ReportingPeriod(
+            period_type="instant",
+            instant_date=date(2007, 12, 31),
+            instant_date_only=True,
+        ),
+    )
+
+    assert build_s_equal_key_from_model(context)[3] == ("instant", "2008-01-01")
+
+
+def test_model_s_equal_key_uses_following_midnight_for_date_only_duration_end() -> None:
+    context = XbrlContext(
+        context_id="generated",
+        entity=_entity(),
+        period=ReportingPeriod(
+            period_type="duration",
+            start_date=date(2007, 1, 1),
+            end_date=date(2007, 12, 31),
+            end_date_only=True,
+        ),
+    )
+
+    assert build_s_equal_key_from_model(context)[3] == (
+        "duration",
+        "2007-01-01",
+        "2008-01-01",
+    )

@@ -25,12 +25,15 @@ from bde_xbrl_editor.instance.constants import (
 from bde_xbrl_editor.instance.models import (
     BdeEstadoReportado,
     BdePreambulo,
+    Fact,
     InstanceSaveError,
+    OrphanedFact,
     ReportingPeriod,
     XbrlContext,
     XbrlInstance,
     XbrlUnit,
 )
+from bde_xbrl_editor.instance.temporal import period_lexical
 from bde_xbrl_editor.taxonomy.models import QName
 from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_fragment
 
@@ -104,8 +107,14 @@ def _collect_extra_nsmap(instance: XbrlInstance) -> dict[str, str]:
     for ctx in instance.contexts.values():
         qnames.extend(ctx.dimensions.keys())
         qnames.extend(ctx.dimensions.values())
-    for fact in instance.facts:
+    for fact in (*instance.facts, *instance.tuple_facts):
         qnames.append(fact.concept)
+    for unit in instance.units.values():
+        if unit.unit_form == "divide":
+            qnames.extend(unit.numerator_measure_qnames)
+            qnames.extend(unit.denominator_measure_qnames)
+        else:
+            qnames.extend(_simple_unit_measures(unit))
 
     for qn in qnames:
         if not qn.namespace or qn.namespace in base_ns:
@@ -166,7 +175,9 @@ def _date_str(d) -> str:  # type: ignore[no-untyped-def]
 
 def _build_context_el(ctx: XbrlContext, ns_to_prefix: dict[str, str]) -> etree._Element:
     """Build a single <xbrli:context> element with fully-prefixed QName strings."""
-    ctx_el = etree.Element(f"{{{XBRLI_NS}}}context", attrib={"id": ctx.context_id})
+    ctx_el = etree.Element(
+        f"{{{XBRLI_NS}}}context", attrib={"id": ctx.context_id}, nsmap={"xbrli": XBRLI_NS}
+    )
 
     # <xbrli:entity>
     entity_el = etree.SubElement(ctx_el, f"{{{XBRLI_NS}}}entity")
@@ -181,53 +192,13 @@ def _build_context_el(ctx: XbrlContext, ns_to_prefix: dict[str, str]) -> etree._
     period_el = etree.SubElement(ctx_el, f"{{{XBRLI_NS}}}period")
     _fill_period(period_el, ctx.period)
 
-    explicit_dimensions = {
-        dim_qname: member_qname
-        for dim_qname, member_qname in ctx.dimensions.items()
-        if dim_qname not in (ctx.typed_dimensions or {})
-    }
+    from bde_xbrl_editor.instance.context_xml import (
+        append_preserving_namespaces,
+        effective_context_containers,
+    )
 
-    dim_containers = ctx.dim_containers or {}
-    container_dims: dict[str, dict[QName, QName]] = {"scenario": {}, "segment": {}}
-    container_typed: dict[str, dict[QName, str]] = {"scenario": {}, "segment": {}}
-
-    for dim_qname, member_qname in explicit_dimensions.items():
-        container = dim_containers.get(dim_qname, ctx.context_element)
-        container_dims[container][dim_qname] = member_qname
-
-    for dim_qname, typed_value in (ctx.typed_dimensions or {}).items():
-        container = dim_containers.get(dim_qname, ctx.context_element)
-        container_typed[container][dim_qname] = typed_value
-
-    for container_name in ("segment", "scenario"):
-        if not container_dims[container_name] and not container_typed[container_name]:
-            continue
-        container_tag = (
-            f"{{{XBRLI_NS}}}segment" if container_name == "segment" else f"{{{XBRLI_NS}}}scenario"
-        )
-        container_el = etree.SubElement(ctx_el, container_tag)
-        for dim_qname, member_qname in sorted(
-            container_dims[container_name].items(), key=lambda kv: str(kv[0])
-        ):
-            em = etree.SubElement(
-                container_el,
-                f"{{{XBRLDI_NS}}}explicitMember",
-                attrib={"dimension": _qname_str(dim_qname, ns_to_prefix)},
-            )
-            em.text = _qname_str(member_qname, ns_to_prefix)
-        for dim_qname, typed_value in sorted(
-            container_typed[container_name].items(), key=lambda kv: str(kv[0])
-        ):
-            tm = etree.SubElement(
-                container_el,
-                f"{{{XBRLDI_NS}}}typedMember",
-                attrib={"dimension": _qname_str(dim_qname, ns_to_prefix)},
-            )
-            typed_element_qname = (ctx.typed_dimension_elements or {}).get(dim_qname, dim_qname)
-            typed_el = etree.SubElement(
-                tm, etree.QName(typed_element_qname.namespace, typed_element_qname.local_name)
-            )
-            typed_el.text = typed_value
+    for name, container in effective_context_containers(ctx, ns_to_prefix).items():
+        append_preserving_namespaces(entity_el if name == "segment" else ctx_el, container)
 
     return ctx_el
 
@@ -235,44 +206,134 @@ def _build_context_el(ctx: XbrlContext, ns_to_prefix: dict[str, str]) -> etree._
 def _fill_period(period_el: etree._Element, period: ReportingPeriod) -> None:
     if period.period_type == "instant":
         inst_el = etree.SubElement(period_el, f"{{{XBRLI_NS}}}instant")
-        inst_el.text = _date_str(period.instant_date)
+        inst_el.text = period_lexical(period, "instant")
     elif period.period_type == "duration":
         start_el = etree.SubElement(period_el, f"{{{XBRLI_NS}}}startDate")
-        start_el.text = _date_str(period.start_date)
+        start_el.text = period_lexical(period, "start")
         end_el = etree.SubElement(period_el, f"{{{XBRLI_NS}}}endDate")
-        end_el.text = _date_str(period.end_date)
+        end_el.text = period_lexical(period, "end")
     else:
         etree.SubElement(period_el, f"{{{XBRLI_NS}}}forever")
 
 
-def _build_unit_el(unit: XbrlUnit) -> etree._Element:
-    """Build a <xbrli:unit> element."""
+def _simple_unit_measures(unit: XbrlUnit) -> tuple[QName, ...]:
+    """Prefer structured measures, retaining legacy URI-only construction."""
+    if unit.simple_measure_qnames:
+        return unit.simple_measure_qnames
+    if unit.measure_qname is not None:
+        return (unit.measure_qname,)
+    lexical = unit.measure_uri.strip()
+    if lexical.startswith("{"):
+        return (QName.from_clark(lexical),)
+    for namespace in (ISO4217_NS, XBRLI_NS):
+        if lexical.startswith(namespace + ":"):
+            return (QName(namespace, lexical[len(namespace) + 1:]),)
+    prefix, separator, local = lexical.partition(":")
+    if separator:
+        if prefix not in _BASE_NSMAP:
+            raise ValueError(f"Unit {unit.unit_id} has an unresolved measure prefix: {prefix}")
+        return (QName(_BASE_NSMAP[prefix], local),)
+    if not lexical:
+        raise ValueError(f"Unit {unit.unit_id} has no measures")
+    return (QName("", lexical),)
+
+
+def _build_unit_el(unit: XbrlUnit, ns_to_prefix: dict[str, str]) -> etree._Element:
+    """Write each measure, preserving products, quotients and multiplicity."""
     unit_el = etree.Element(f"{{{XBRLI_NS}}}unit", attrib={"id": unit.unit_id})
-    measure_el = etree.SubElement(unit_el, f"{{{XBRLI_NS}}}measure")
-
-    mq = unit.measure_qname
-    if mq is not None:
-        if mq.namespace == ISO4217_NS:
-            measure_el.text = f"iso4217:{mq.local_name}"
-        elif mq.namespace == XBRLI_NS:
-            measure_el.text = f"xbrli:{mq.local_name}"
-        else:
-            measure_el.text = str(mq) if mq.namespace else mq.local_name
-        return unit_el
-
-    # Normalise measure URI to prefixed form if possible
-    measure_uri = unit.measure_uri
-    if measure_uri.startswith(ISO4217_NS + ":"):
-        currency = measure_uri[len(ISO4217_NS) + 1 :]
-        measure_el.text = f"iso4217:{currency}"
-    elif measure_uri.startswith(XBRLI_NS + ":"):
-        local = measure_uri[len(XBRLI_NS) + 1 :]
-        measure_el.text = f"xbrli:{local}"
+    if unit.unit_form == "divide":
+        divide = etree.SubElement(unit_el, f"{{{XBRLI_NS}}}divide")
+        groups = (
+            (etree.SubElement(divide, f"{{{XBRLI_NS}}}unitNumerator"), unit.numerator_measure_qnames),
+            (etree.SubElement(divide, f"{{{XBRLI_NS}}}unitDenominator"), unit.denominator_measure_qnames),
+        )
     else:
-        measure_el.text = measure_uri
-
+        groups = ((unit_el, _simple_unit_measures(unit)),)
+    for parent, measures in groups:
+        if not measures:
+            raise ValueError(f"Unit {unit.unit_id} has an empty measure group")
+        for qname in measures:
+            measure = etree.SubElement(parent, f"{{{XBRLI_NS}}}measure")
+            measure.text = _qname_str(qname, ns_to_prefix) if qname.namespace else qname.local_name
     return unit_el
 
+
+
+def _append_fact(parent: etree._Element, fact: Fact, *, tuple_shell: bool = False) -> etree._Element:
+    """Preserve source metadata while applying the current editable item state."""
+    from bde_xbrl_editor.instance.context_xml import append_preserving_namespaces
+
+    tag = (f"{{{fact.concept.namespace}}}{fact.concept.local_name}"
+           if fact.concept.namespace else fact.concept.local_name)
+    source = parse_xml_fragment(fact.source_element_xml) if fact.source_element_xml else None
+    if source is not None and tuple_shell:
+        for child in list(source):
+            source.remove(child)
+    if source is None:
+        element = etree.SubElement(parent, tag)
+    else:
+        source.tag = tag
+        element = append_preserving_namespaces(parent, source)
+    if tuple_shell:
+        return element
+    for attribute in ("contextRef", "unitRef", "decimals", "precision", "{http://www.w3.org/2001/XMLSchema-instance}nil"):
+        element.attrib.pop(attribute, None)
+    element.set("contextRef", fact.context_ref)
+    if fact.unit_ref:
+        element.set("unitRef", fact.unit_ref)
+    if not fact.is_nil and fact.decimals is not None:
+        element.set("decimals", fact.decimals)
+    elif not fact.is_nil and fact.precision is not None:
+        element.set("precision", fact.precision)
+    if fact.is_nil:
+        element.set("{http://www.w3.org/2001/XMLSchema-instance}nil", "true")
+        for child in list(element):
+            element.remove(child)
+        element.text = None
+    elif source is None or (source.text or "").strip() != fact.value:
+        if len(element):
+            raise ValueError(f"Cannot replace structured item {fact.concept} with a scalar value")
+        element.text = fact.value
+    return element
+
+
+def _append_instance_facts(root: etree._Element, instance: XbrlInstance) -> None:
+    """Rebuild only current nodes; tuple source children must never be resurrected."""
+    from collections import defaultdict
+
+    from bde_xbrl_editor.instance.context_xml import append_preserving_namespaces
+
+    tuples = {fact.position_path: fact for fact in instance.tuple_facts if fact.position_path}
+    groups = defaultdict(list)
+    seen_positions = set()
+    nodes = [*instance.tuple_facts, *instance.facts, *instance.orphaned_facts]
+    tuple_ids = {id(fact) for fact in instance.tuple_facts}
+    for index, fact in enumerate(nodes):
+        position = fact.position_path
+        parent = fact.tuple_path
+        if parent and parent not in tuples:
+            raise ValueError(f"Missing tuple parent {parent} for fact")
+        if position:
+            if position in seen_positions:
+                raise ValueError(f"Duplicate fact position {position}")
+            if position[:-1] != parent:
+                raise ValueError(f"Fact position {position} does not match tuple parent {parent}")
+            seen_positions.add(position)
+        groups[parent].append((position, index, fact))
+
+    def append_children(parent: etree._Element, owner: tuple[int, ...]) -> None:
+        ordered = sorted(groups[owner], key=lambda item: (not bool(item[0]), item[0], item[1]))
+        for position, _, fact in ordered:
+            if isinstance(fact, OrphanedFact):
+                append_preserving_namespaces(parent, parse_xml_fragment(fact.raw_element_xml))
+            elif id(fact) in tuple_ids:
+                element = _append_fact(parent, fact, tuple_shell=True)
+                if position:
+                    append_children(element, position)
+            else:
+                _append_fact(parent, fact)
+
+    append_children(root, ())
 
 def _build_bde_preambulo_els(preambulo: BdePreambulo, root: etree._Element) -> None:
     """Append BDE IE_2008_02 preamble elements as direct children of *root*.
@@ -372,11 +433,13 @@ class InstanceSerializer:
 
         # 3. Contexts — sorted by context_id for determinism
         for ctx in sorted(instance.contexts.values(), key=lambda c: c.context_id):
-            root.append(_build_context_el(ctx, ns_to_prefix))
+            from bde_xbrl_editor.instance.context_xml import append_preserving_namespaces
+
+            append_preserving_namespaces(root, _build_context_el(ctx, ns_to_prefix))
 
         # 4. Units — sorted by unit_id
         for unit in sorted(instance.units.values(), key=lambda u: u.unit_id):
-            root.append(_build_unit_el(unit))
+            root.append(_build_unit_el(unit, ns_to_prefix))
 
         # 5. Filing indicators wrapper
         # BDE instances encode filing-indicator semantics in EstadosReportados,
@@ -398,28 +461,8 @@ class InstanceSerializer:
                 )
                 fi_el.text = fi.template_id
 
-        # 6. Known facts
-        for fact in instance.facts:
-            concept_qname = fact.concept
-            tag = (
-                f"{{{concept_qname.namespace}}}{concept_qname.local_name}"
-                if concept_qname.namespace
-                else concept_qname.local_name
-            )
-            attrib: dict[str, str] = {"contextRef": fact.context_ref}
-            if fact.unit_ref:
-                attrib["unitRef"] = fact.unit_ref
-            if fact.decimals is not None:
-                attrib["decimals"] = fact.decimals
-            elif fact.precision is not None:
-                attrib["precision"] = fact.precision
-            fact_el = etree.SubElement(root, tag, attrib=attrib)
-            fact_el.text = fact.value
-
-        # 7. Orphaned facts — preserved verbatim in original document order
-        for orphan in instance.orphaned_facts:
-            orphan_el = parse_xml_fragment(orphan.raw_element_xml)
-            root.append(orphan_el)
+        # 6. Items, tuples and unknown items retain their original ownership/order.
+        _append_instance_facts(root, instance)
 
         return etree.tostring(
             root,
@@ -437,9 +480,9 @@ class InstanceSerializer:
             InstanceSaveError — file write failed.
         """
         path = Path(path)
-        xml_bytes = self.to_xml(instance)
         try:
+            xml_bytes = self.to_xml(instance)
             path.write_bytes(xml_bytes)
-        except OSError as exc:
+        except (OSError, ValueError) as exc:
             raise InstanceSaveError(path=str(path), reason=str(exc)) from exc
         instance.mark_saved(path)

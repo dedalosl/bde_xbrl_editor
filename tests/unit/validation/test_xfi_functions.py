@@ -1,4 +1,5 @@
 """Unit tests for xfi: function implementations (validation/formula/xfi_functions.py)."""
+
 from __future__ import annotations
 
 import logging
@@ -114,6 +115,15 @@ def test_formula_parser_accepts_normalized_xpath_comments() -> None:
     assert "".join(token.evaluate()) == "planet venus"
 
 
+def test_normalize_formula_xpath_expression_atomizes_qname_node_argument() -> None:
+    expression = "fn:local-name-from-QName($category)"
+
+    assert (
+        normalize_formula_xpath_expression(expression)
+        == "fn:local-name-from-QName(data($category))"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Ensure context is cleared between tests
 # ---------------------------------------------------------------------------
@@ -188,21 +198,31 @@ class TestXfiPeriod:
         assert result is not None
         assert "2024-12-31" in str(result)
 
-    def test_period_start_returns_date_object(self) -> None:
-        """xfi_period_start returns a Date10 for a duration period."""
+    def test_period_start_returns_datetime_object(self) -> None:
+        """xfi_period_start returns an xs:dateTime for a duration period."""
         ctx = _duration_ctx(start=date(2024, 1, 1), end=date(2024, 12, 31))
         period = ctx.period
         result = xfi_period_start(period)
         assert result is not None
-        assert str(result) == "2024-01-01"
+        assert str(result) == "2024-01-01T00:00:00"
 
-    def test_period_end_returns_date_object(self) -> None:
-        """xfi_period_end returns a Date10 for a duration period."""
+    def test_period_end_returns_datetime_object(self) -> None:
+        """xfi_period_end returns an xs:dateTime for a duration period."""
         ctx = _duration_ctx(start=date(2024, 1, 1), end=date(2024, 12, 31))
         period = ctx.period
         result = xfi_period_end(period)
         assert result is not None
-        assert str(result) == "2024-12-31"
+        assert str(result) == "2024-12-31T00:00:00"
+
+    def test_period_end_advances_a_lexical_date_to_the_next_midnight(self) -> None:
+        period = ReportingPeriod(
+            period_type="duration",
+            start_date=date(2024, 1, 1),
+            end_date=date(2024, 12, 31),
+            end_date_only=True,
+        )
+
+        assert str(xfi_period_end(period)) == "2025-01-01T00:00:00"
 
 
 # ---------------------------------------------------------------------------
@@ -264,7 +284,9 @@ class TestTypedDimensions:
         fact = _fact()
         _set_ctx({"_context": _instant_ctx(), "_fact": fact})
 
-        with caplog.at_level(logging.DEBUG, logger="bde_xbrl_editor.validation.formula.xfi_functions"):
+        with caplog.at_level(
+            logging.DEBUG, logger="bde_xbrl_editor.validation.formula.xfi_functions"
+        ):
             assert xfi_fact_has_explicit_dimension(fact, "{http://example.com/dim") is False
 
         assert "Could not parse QName argument" in caplog.text
@@ -429,7 +451,9 @@ class TestIafFunctions:
         """The registered iaf:sum function accepts a multi-item XPath sequence."""
         parser = build_formula_parser({})
         token = parser.parse("iaf:sum($values)")
-        ctx = elementpath.XPathContext(root=None, item=Decimal("0"), variables={"values": [1, 2, 3]})
+        ctx = elementpath.XPathContext(
+            root=None, item=Decimal("0"), variables={"values": [1, 2, 3]}
+        )
 
         result = list(token.select(ctx))
 

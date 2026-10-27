@@ -14,6 +14,7 @@ from bde_xbrl_editor.validation.exporter import ValidationReportExporter
 from bde_xbrl_editor.validation.models import (
     ValidationFinding,
     ValidationReport,
+    ValidationRunStatus,
     ValidationSeverity,
     ValidationStatus,
 )
@@ -51,6 +52,7 @@ _TIMESTAMP = datetime(2024, 6, 15, 10, 30, 0)
 def _report(
     findings: tuple[ValidationFinding, ...] = (),
     passed_by_design: bool = True,
+    run_status: ValidationRunStatus = ValidationRunStatus.COMPLETED,
 ) -> ValidationReport:
     return ValidationReport(
         instance_path="/reports/instance.xbrl",
@@ -59,6 +61,7 @@ def _report(
         run_timestamp=_TIMESTAMP,
         findings=findings,
         formula_linkbase_available=True,
+        run_status=run_status,
     )
 
 
@@ -96,6 +99,18 @@ class TestExportText:
         out = tmp_path / "report.txt"
         ValidationReportExporter().export_text(_report(findings=findings), out)
         assert "FAILED" in out.read_text(encoding="utf-8")
+
+    def test_cancelled_label_in_header(self, tmp_path: Path) -> None:
+        out = tmp_path / "report.txt"
+        report = _report(run_status=ValidationRunStatus.CANCELLED)
+
+        ValidationReportExporter().export_text(report, out)
+
+        content = out.read_text(encoding="utf-8")
+        assert "Result    : CANCELLED" in content
+        assert "Result    : FAILED" not in content
+        assert "passes all validation checks" not in content
+        assert "cancelled before all validation checks completed" in content
 
     def test_each_finding_appears(self, tmp_path: Path) -> None:
         """Each finding's rule_id and message appear in the exported file."""

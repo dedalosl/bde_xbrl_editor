@@ -1,4 +1,4 @@
-"""BDE taxonomy catalog — parse taxonomies.json from bde_taxonomies_checker."""
+"""BDE taxonomy catalog loading and bundled scraper support."""
 
 from bde_xbrl_editor.taxonomy_catalog.changes import (
     build_file_snapshot,

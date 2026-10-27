@@ -19,7 +19,6 @@ from PySide6.QtWidgets import QTableView
 
 from bde_xbrl_editor.instance.constants import BDE_DIM_NS
 from bde_xbrl_editor.instance.context_builder import build_dimensional_context
-from bde_xbrl_editor.instance.editor import InstanceEditor
 from bde_xbrl_editor.instance.models import (
     BdeEstadoReportado,
     BdePreambulo,
@@ -47,6 +46,7 @@ from bde_xbrl_editor.taxonomy.models import (
     TaxonomyMetadata,
     TaxonomyStructure,
 )
+from bde_xbrl_editor.ui.instance_editor_adapter import InstanceEditorAdapter
 from bde_xbrl_editor.ui.widgets.activity_sidebar import _InstancePanel
 from bde_xbrl_editor.ui.widgets.table_body_model import OPEN_KEY_ROLE
 from bde_xbrl_editor.ui.widgets.xbrl_table_view import XbrlTableView
@@ -61,6 +61,20 @@ class _LabelResolverStub:
 
     def get_all_labels(self, qname) -> list:
         return []
+
+
+def test_table_shutdown_invalidates_queued_worker_result() -> None:
+    view = SimpleNamespace(
+        _table_load_request_id=0,
+        _table_load_worker=None,
+        _table_load_thread=None,
+    )
+    cancelled_request_id = view._table_load_request_id
+
+    XbrlTableView._cancel_async_table_load(view)
+
+    assert view._table_load_request_id > cancelled_request_id
+    assert not XbrlTableView._finish_async_table_load(view, cancelled_request_id)
 
 
 def _leaf(label: str) -> BreakdownNode:
@@ -801,7 +815,7 @@ def test_instance_panel_edits_bde_filing_indicators_with_checkboxes(qtbot, monke
     empty_table = _table("es_tF1_11", "Coberturas", table_code="0011")
     taxonomy = _taxonomy_with_tables(table_with_data, empty_table)
     instance = _instance_with_tables("0010", "0011")
-    editor = InstanceEditor(instance)
+    editor = InstanceEditorAdapter(instance)
 
     monkeypatch.setattr(
         _InstancePanel,
@@ -1329,7 +1343,7 @@ def test_editing_existing_open_row_key_migrates_fact_context(qtbot) -> None:
     )
     taxonomy.labels._mapping[member_d] = "Member D"  # type: ignore[attr-defined]  # noqa: SLF001
     instance = _editable_instance_with_open_row_fact(member_c)
-    editor = InstanceEditor(instance)
+    editor = InstanceEditorAdapter(instance)
 
     view = XbrlTableView()
     view.set_editor(editor)

@@ -112,15 +112,24 @@ class ValidationFilterProxy(QSortFilterProxyModel):
 
     def set_severity_filter(self, severity: SeverityFilterValue) -> None:
         self._severity_filter = severity
-        self.invalidateFilter()
+        self._refresh_filter()
 
     def set_table_filter(self, table_id: str | None) -> None:
         self._table_filter = table_id
-        self.invalidateFilter()
+        self._refresh_filter()
 
     def clear_filters(self) -> None:
         self._severity_filter = None
         self._table_filter = None
+        self._refresh_filter()
+
+    def _refresh_filter(self) -> None:
+        begin_change = getattr(self, "beginFilterChange", None)
+        end_change = getattr(self, "endFilterChange", None)
+        if callable(begin_change) and callable(end_change):
+            begin_change()
+            end_change()
+            return
         self.invalidateFilter()
 
     def filterAcceptsRow(self, source_row: int, source_parent) -> bool:  # type: ignore[override]

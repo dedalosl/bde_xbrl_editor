@@ -74,9 +74,8 @@ def main(argv: list[str] | None = None) -> None:
     report = runner.run(progress_callback=reporter.print_progress)
     reporter.print_report(report)
 
-    if args.output_file:
-        if args.output_format == "json":
-            JsonReporter().write(report, Path(args.output_file))
+    if args.output_file and args.output_format == "json":
+        JsonReporter().write(report, Path(args.output_file))
 
     sys.exit(report.exit_code)
 

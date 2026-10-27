@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from datetime import date, datetime
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from bde_xbrl_editor.instance.models import (
 )
 from bde_xbrl_editor.taxonomy.models import (
     Concept,
+    DefinitionArc,
     DimensionModel,
     DomainMember,
     FormulaAssertionSet,
@@ -518,6 +520,87 @@ class TestInvalidMember:
         findings = DimensionalConstraintValidator(taxonomy).validate(inst)
         assert not any(f.constraint_type == "INVALID_MEMBER" for f in findings)
 
+    def test_dimension_domain_unusable_root_does_not_make_descendants_unusable(self) -> None:
+        """usable=false on a dimension-domain root excludes the root, not child members."""
+        domain_qn = _qn("DomainRoot", _MEM_NS)
+        elr_hc = "http://example.com/elr/hc"
+        elr_dim = "http://example.com/elr/dim"
+        ctx = _make_context("ctx1", dims={DIM_QN: MEM_QN_ES})
+        fact = Fact(concept=CONCEPT_QN, context_ref="ctx1", unit_ref=None, value="1")
+        inst = _make_instance([fact], {"ctx1": ctx})
+        taxonomy = TaxonomyStructure(
+            metadata=TaxonomyMetadata(
+                name="Test",
+                version="1.0",
+                publisher="Example",
+                entry_point_path=Path("tax.xsd"),
+                loaded_at=datetime(2024, 1, 1),
+                declared_languages=("en",),
+            ),
+            concepts={},
+            labels=None,
+            presentation={},
+            calculation={},
+            definition={
+                elr_hc: (
+                    DefinitionArc(
+                        arcrole="http://xbrl.org/int/dim/arcrole/hypercube-dimension",
+                        source=HC_QN,
+                        target=DIM_QN,
+                        order=1.0,
+                        extended_link_role=elr_hc,
+                        target_role=elr_dim,
+                    ),
+                ),
+                elr_dim: (
+                    DefinitionArc(
+                        arcrole="http://xbrl.org/int/dim/arcrole/dimension-domain",
+                        source=DIM_QN,
+                        target=domain_qn,
+                        order=1.0,
+                        extended_link_role=elr_dim,
+                        usable=False,
+                    ),
+                    DefinitionArc(
+                        arcrole="http://xbrl.org/int/dim/arcrole/domain-member",
+                        source=domain_qn,
+                        target=MEM_QN_ES,
+                        order=1.0,
+                        extended_link_role=elr_dim,
+                    ),
+                ),
+            },
+            hypercubes=(
+                HypercubeModel(
+                    qname=HC_QN,
+                    arcrole="all",
+                    closed=True,
+                    context_element="scenario",
+                    primary_items=(CONCEPT_QN,),
+                    dimensions=(DIM_QN,),
+                    extended_link_role=elr_hc,
+                    dimension_link_role=elr_hc,
+                ),
+            ),
+            dimensions={
+                DIM_QN: DimensionModel(
+                    qname=DIM_QN,
+                    dimension_type="explicit",
+                    domain=domain_qn,
+                    members=(
+                        DomainMember(qname=domain_qn, parent=None, order=1.0, usable=False),
+                        DomainMember(qname=MEM_QN_ES, parent=domain_qn, order=1.0),
+                    ),
+                )
+            },
+            tables=[],
+            formula_assertion_set=FormulaAssertionSet(),
+        )
+
+        findings = DimensionalConstraintValidator(taxonomy).validate(inst)
+
+        assert findings == []
+
     def test_typed_dimension_no_members_skips_member_check(self) -> None:
         """A typed dimension with no declared members skips the INVALID_MEMBER check."""
         typed_dim = DimensionModel(
@@ -769,3 +852,20 @@ class TestConceptNotInHypercube:
         taxonomy = _make_taxonomy(_all_closed_hc(), dims={DIM_QN: _dim_model_with_members()})
         findings = DimensionalConstraintValidator(taxonomy).validate(inst)
         assert findings == []
+
+
+def test_validation_stops_when_cancelled() -> None:
+    cancel_event = threading.Event()
+    cancel_event.set()
+    ctx = _make_context("ctx1", dims={})
+    fact = Fact(concept=CONCEPT_QN, context_ref="ctx1", unit_ref=None, value="1")
+    instance = _make_instance([fact], {"ctx1": ctx})
+    taxonomy = _make_taxonomy(
+        _all_open_hc(), dims={DIM_QN: _dim_model_with_members()}
+    )
+
+    findings = DimensionalConstraintValidator(
+        taxonomy, cancel_event=cancel_event
+    ).validate(instance)
+
+    assert findings == []

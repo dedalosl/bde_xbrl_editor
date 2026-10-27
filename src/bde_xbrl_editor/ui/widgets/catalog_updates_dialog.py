@@ -58,7 +58,7 @@ class CatalogUpdatesDialog(QDialog):
             )
         if self._report.updated_files:
             parts.append(
-                f"{len(self._report.updated_files)} archivo(s) con cambios en metadatos o marcados como actualizados."
+                f"{len(self._report.updated_files)} archivo(s) cambiaron frente al catálogo cargado."
             )
         summary = QLabel(" ".join(parts) if parts else "Revisa los archivos listados a continuación.")
         summary.setWordWrap(True)

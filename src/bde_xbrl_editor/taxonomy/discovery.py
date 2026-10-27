@@ -12,6 +12,7 @@ from __future__ import annotations
 from collections import deque
 from pathlib import Path
 from urllib.parse import unquote, urlparse
+from urllib.request import url2pathname
 
 from lxml import etree
 
@@ -190,9 +191,16 @@ def _element_base_dir(el: etree._Element, fallback: Path) -> Path:
         return fallback
     raw_base = el.base
     parsed = urlparse(raw_base)
-    # lxml exposes percent-encoded file URIs (e.g. "%20" for spaces).
-    # Convert back to a local filesystem path before Path resolution.
-    base_value = unquote(parsed.path) if parsed.scheme == "file" else unquote(raw_base)
+    # lxml exposes local paths as file URIs on Windows (e.g.
+    # ``file:/C:/...``). ``parsed.path`` is ``/C:/...``, which pathlib does
+    # not consider absolute on Windows; joining it to *fallback* duplicates
+    # the path. Convert the URI path with the platform-aware URL helper first.
+    if parsed.scheme == "file":
+        base_value = url2pathname(parsed.path)
+        if parsed.netloc and parsed.netloc.lower() != "localhost":
+            base_value = f"//{parsed.netloc}{base_value}"
+    else:
+        base_value = unquote(raw_base)
 
     base_path = Path(base_value)
     if not base_path.is_absolute():

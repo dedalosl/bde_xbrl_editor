@@ -8,8 +8,11 @@ from pathlib import Path
 import pytest
 
 import bde_xbrl_editor.conformance.parser as parser_module
-from bde_xbrl_editor.conformance.errors import SuiteDataMissingError
-from bde_xbrl_editor.conformance.models import ExpectedOutcomeType
+from bde_xbrl_editor.conformance.errors import (
+    SuiteDataMissingError,
+    TestCaseParseError as CaseParseError,
+)
+from bde_xbrl_editor.conformance.models import ExpectedOutcomeType, ExpectedResultFileType
 from bde_xbrl_editor.conformance.parser import ConformanceSuiteParser
 from bde_xbrl_editor.conformance.registry import SuiteDefinition
 
@@ -51,6 +54,68 @@ def test_load_suite_raises_when_index_missing(tmp_path: Path) -> None:
     with pytest.raises(SuiteDataMissingError) as exc_info:
         parser.load_suite(suite_def)
     assert "missing-suite" in str(exc_info.value) or "index.xml" in str(exc_info.value)
+
+
+@pytest.mark.parametrize(
+    "index_xml",
+    ["<testcases/>", "<documentation><testcases root='cases'/></documentation>"],
+)
+def test_load_suite_rejects_index_without_testcase_references(
+    tmp_path: Path, index_xml: str
+) -> None:
+    index_path = _write(tmp_path, "test-suite/index.xml", index_xml)
+
+    with pytest.raises(CaseParseError, match="index references no test case files") as exc_info:
+        ConformanceSuiteParser(tmp_path).load_suite(_make_suite_def())
+
+    assert exc_info.value.file_path == index_path
+    assert exc_info.value.reason == "index references no test case files"
+
+
+def test_parse_rich_result_expectations(tmp_path: Path) -> None:
+    """Formula result payloads must not collapse to a plain VALID outcome."""
+    tc_content = """\
+        <?xml version="1.0"?>
+        <testcase name="FormulaTest">
+          <variation id="V-01">
+            <data><instance readMeFirst="true">input.xml</instance></data>
+            <result>
+              <assertionTests assertionID="assertion"
+                              countSatisfied="2"
+                              countNotSatisfied="1"/>
+              <instance>expected-output.xml</instance>
+              <table>expected-table.xml</table>
+              <messageTests assertionID="assertion"/>
+            </result>
+          </variation>
+        </testcase>
+    """
+    _write(tmp_path, "suite/testcases/formula.xml", tc_content)
+    _write(tmp_path, "suite/testcases/input.xml", "<xbrl/>")
+    _write(
+        tmp_path,
+        "suite/index.xml",
+        "<testcases><testcase uri='testcases/formula.xml'/></testcases>",
+    )
+
+    test_cases = ConformanceSuiteParser(tmp_path).load_suite(
+        _make_suite_def(suite_id="formula", subdirectory="suite")
+    )
+
+    expected = test_cases[0].variations[0].expected_outcome
+    assert expected.outcome_type == ExpectedOutcomeType.VALID
+    assert len(expected.assertion_tests) == 1
+    assert expected.assertion_tests[0].assertion_id == "assertion"
+    assert expected.assertion_tests[0].count_satisfied == 2
+    assert expected.assertion_tests[0].count_not_satisfied == 1
+    assert [(result.file_type, result.path.name) for result in expected.result_files] == [
+        (ExpectedResultFileType.INSTANCE, "expected-output.xml"),
+        (ExpectedResultFileType.TABLE, "expected-table.xml"),
+    ]
+    assert len(expected.message_tests) == 1
+    assert expected.message_tests[0].assertion_id == "assertion"
+    assert expected.message_tests[0].messages == ()
+    assert expected.unsupported_result_elements == ()
 
 
 def test_parse_flat_testcases_index(tmp_path: Path) -> None:
@@ -385,8 +450,8 @@ def test_xbrl21_variation_optional_still_overrides_minimal_default(tmp_path: Pat
     assert tc.variations[0].mandatory is False
 
 
-def test_skip_missing_testcase_file(tmp_path: Path) -> None:
-    """load_suite should warn and skip test cases whose files don't exist."""
+def test_missing_testcase_file_is_reported(tmp_path: Path) -> None:
+    """A missing testcase referenced by the index makes the suite incomplete."""
     index_content = """\
         <?xml version="1.0"?>
         <testcases name="Test">
@@ -397,6 +462,24 @@ def test_skip_missing_testcase_file(tmp_path: Path) -> None:
 
     parser = ConformanceSuiteParser(tmp_path)
     suite_def = _make_suite_def(subdirectory="suite", index_filename="index.xml")
-    # Should not raise; just return empty list
-    test_cases = parser.load_suite(suite_def)
-    assert test_cases == []
+    with pytest.raises(SuiteDataMissingError) as exc_info:
+        parser.load_suite(suite_def)
+    assert exc_info.value.expected_path.name == "nonexistent.xml"
+
+
+def test_malformed_testcase_file_is_reported(tmp_path: Path) -> None:
+    """A malformed testcase referenced by the index cannot be silently skipped."""
+    _write(
+        tmp_path,
+        "suite/index.xml",
+        """
+        <testcases><testcase uri="broken.xml"/></testcases>
+        """,
+    )
+    _write(tmp_path, "suite/broken.xml", "<testcase><variation>")
+
+    parser = ConformanceSuiteParser(tmp_path)
+    suite_def = _make_suite_def(subdirectory="suite", index_filename="index.xml")
+
+    with pytest.raises(CaseParseError):
+        parser.load_suite(suite_def)

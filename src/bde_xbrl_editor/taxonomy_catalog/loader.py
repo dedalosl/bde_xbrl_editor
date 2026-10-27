@@ -22,12 +22,19 @@ class TaxonomyCatalogError(Exception):
 
 def default_catalog_paths() -> tuple[Path, ...]:
     """Candidate locations for taxonomies.json, most preferred first."""
+    from bde_xbrl_editor.taxonomy_catalog.scraper import (
+        bundled_catalog_path,
+        default_generated_catalog_path,
+    )
+
     candidates: list[Path] = []
     env_path = os.environ.get("BDE_TAXONOMIES_CATALOG_PATH", "").strip()
     if env_path:
         candidates.append(Path(env_path).expanduser())
     candidates.extend(
         (
+            default_generated_catalog_path(),
+            bundled_catalog_path(),
             Path.home() / "git" / "bde_taxonomies_checker" / "scraper" / "data" / "taxonomies.json",
             Path.home()
             / "git"
@@ -122,6 +129,8 @@ def parse_catalog_document(raw: dict) -> TaxonomyCatalogData:
         last_run=str(meta_raw.get("lastRun", "")),
         total_count=int(meta_raw.get("totalCount", 0)),
         reporting_module_count=meta_raw.get("reportingModuleCount"),
+        taxonomies_with_updates=meta_raw.get("taxonomiesWithUpdates"),
+        entry_points_with_updates=meta_raw.get("entryPointsWithUpdates"),
         files_with_updates=meta_raw.get("filesWithUpdates"),
     )
     taxonomies = tuple(_parse_taxonomy(t) for t in raw.get("taxonomies", []))

@@ -1,0 +1,455 @@
+{"kind":"deck","id":"pr/p9hi10","name":"Deck"}
+{"kind":"layout","layoutId":"4cda7bab-c072-405d-9b73-342247b830ad","name":"Master","type":"master"}
+{"kind":"layout","layoutId":"d0417a24-6f59-4016-9dea-b2418fe62cf7","name":"Title Slide","type":"title"}
+{"kind":"slide","id":"sl/nrd0bt","slide":1,"title":"BDE XBRL Editor","textShapes":4}
+{"kind":"shape","id":"sh/7uh8nm5s","slide":1,"bbox":[0,0,720,720]}
+{"kind":"shape","id":"sh/6to7uho7","slide":1,"bbox":[64,86,86,6]}
+{"kind":"textbox","id":"sh/lsfqlcnm","slide":1,"text":"BDE XBRL Editor","textPreview":"BDE XBRL Editor","textChars":15,"textLines":1,"bbox":[64,126,620,74]}
+{"kind":"textbox","id":"sh/kr6psr6h","slide":1,"text":"Editor de escritorio para crear, editar, renderizar y validar informes XBRL orientados a taxonomias del Banco de Espana","textPreview":"Editor de escritorio para crear, editar, renderizar y validar informes XBRL orientados a taxonomias del Banco de Espana","textChars":119,"textLines":1,"bbox":[66,216,560,92]}
+{"kind":"textbox","id":"sh/jqx8jm5w","slide":1,"text":"Trabajo Fin de Master","textPreview":"Trabajo Fin de Master","textChars":21,"textLines":1,"bbox":[66,570,360,26]}
+{"kind":"textbox","id":"sh/ypo7qhob","slide":1,"text":"Python 3.13+ + PySide6 | XBRL 2.1 | Table Linkbase PWD | Formula 1.0 | pytest","textPreview":"Python 3.13+ + PySide6 | XBRL 2.1 | Table Linkbase PWD | Formula 1.0 | pytest","textChars":77,"textLines":1,"bbox":[66,602,560,22]}
+{"kind":"image","id":"im/18z69g3y","slide":1,"name":"","alt":"Abstract XBRL processing background","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/nrd0bt","slide":1,"text":"Abrir explicando que el proyecto no es solo una interfaz, sino una herramienta completa para cargar taxonomias, editar instancias, renderizar tablas y validar informes XBRL. Mencionar stack actual: Python 3.13+, PySide6, lxml, xmlschema y elementpath."}
+{"kind":"slide","id":"sl/bi59hv","slide":2,"title":"BDE XBRL Editor","textShapes":13}
+{"kind":"shape","id":"sh/1gf2xgfi","slide":2,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/zex0vqxc","slide":2,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/83q1svet","slide":2,"bbox":[0,0,560,720]}
+{"kind":"shape","id":"sh/94z210ve","slide":2,"bbox":[0,0,1280,7]}
+{"kind":"textbox","id":"sh/m1ojqlw3","slide":2,"text":"BDE XBRL Editor","textPreview":"BDE XBRL Editor","textChars":15,"textLines":1,"bbox":[64,34,340,22]}
+{"kind":"textbox","id":"sh/n2hkzqd8","slide":2,"text":"El reto es trabajar con confianza sobre XBRL","textPreview":"El reto es trabajar con confianza sobre XBRL","textChars":44,"textLines":1,"bbox":[64,94,470,118]}
+{"kind":"textbox","id":"sh/w7q1wfe5","slide":2,"text":"La informacion esta repartida entre taxonomias, XML, dimensiones, reglas de validacion y plantillas regulatorias. Sin una vista integrada, cada revision aumenta el coste y el riesgo.","textPreview":"La informacion esta repartida entre taxonomias, XML, dimensiones, reglas de validacion y plantillas regulatorias. Sin una vista integrada...","textChars":182,"textLines":1,"bbox":[66,242,438,84]}
+{"kind":"shape","id":"sh/x8z250vq","slide":2,"bbox":[66,382,420,68]}
+{"kind":"shape","id":"sh/1kvatk3e","slide":2,"bbox":[66,382,6,68]}
+{"kind":"textbox","id":"sh/0zmtkfm9","slide":2,"text":"Dominio XBRL","textPreview":"Dominio XBRL","textChars":12,"textLines":1,"bbox":[88,393,160,22]}
+{"kind":"textbox","id":"sh/fydsra5o","slide":2,"text":"conceptos, contextos, unidades, dimensiones y hechos","textPreview":"conceptos, contextos, unidades, dimensiones y hechos","textChars":52,"textLines":1,"bbox":[88,418,360,18]}
+{"kind":"shape","id":"sh/exkbi543","slide":2,"bbox":[66,460,420,68]}
+{"kind":"shape","id":"sh/povaxk3q","slide":2,"bbox":[66,460,6,68]}
+{"kind":"textbox","id":"sh/onmtozm5","slide":2,"text":"BDE","textPreview":"BDE","textChars":3,"textLines":1,"bbox":[88,471,160,22]}
+{"kind":"textbox","id":"sh/nmdsvulk","slide":2,"text":"zips de taxonomia, Table Linkbase PWD e indicadores Eurofiling","textPreview":"zips de taxonomia, Table Linkbase PWD e indicadores Eurofiling","textChars":62,"textLines":1,"bbox":[88,496,360,18]}
+{"kind":"shape","id":"sh/2l4bmp4z","slide":2,"bbox":[66,538,420,68]}
+{"kind":"shape","id":"sh/5sbal0nm","slide":2,"bbox":[66,538,6,68]}
+{"kind":"textbox","id":"sh/4r29cvm1","slide":2,"text":"Validacion","textPreview":"Validacion","textChars":10,"textLines":1,"bbox":[88,549,160,22]}
+{"kind":"textbox","id":"sh/wbmt8vux","slide":2,"text":"errores tecnicos que deben ser accionables antes del envio","textPreview":"errores tecnicos que deben ser accionables antes del envio","textChars":58,"textLines":1,"bbox":[88,574,360,18]}
+{"kind":"textbox","id":"sh/hcfa10v2","slide":2,"text":"Tesis del proyecto","textPreview":"Tesis del proyecto","textChars":18,"textLines":1,"bbox":[690,540,190,22]}
+{"kind":"textbox","id":"sh/u94b6lcr","slide":2,"text":"Un editor especializado puede convertir una taxonomia compleja en un flujo visual, validable y mantenible para el usuario final.","textPreview":"Un editor especializado puede convertir una taxonomia compleja en un flujo visual, validable y mantenible para el usuario final.","textChars":128,"textLines":1,"bbox":[690,566,460,54]}
+{"kind":"textbox","id":"sh/vadszqdc","slide":2,"text":"02","textPreview":"02","textChars":2,"textLines":1,"bbox":[1168,42,48,24]}
+{"kind":"shape","id":"sh/4f6twfut","slide":2,"bbox":[64,676,1090,1]}
+{"kind":"textbox","id":"sh/50fa5kve","slide":2,"text":"Trabajo Fin de Master | Python 3.13+ + PySide6 | XBRL / BDE","textPreview":"Trabajo Fin de Master | Python 3.13+ + PySide6 | XBRL / BDE","textChars":59,"textLines":1,"bbox":[64,686,720,18]}
+{"kind":"image","id":"im/7yh8v29g","slide":2,"name":"","alt":"Visual tecnico de flujo XBRL regulatorio con taxonomia, validacion y tabla final","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/bi59hv","slide":2,"text":"Enfatizar el problema: XBRL exige coherencia entre conceptos, contextos, unidades, dimensiones y reglas. BDE anade particularidades: distribucion local de taxonomias y Table Linkbase PWD."}
+{"kind":"slide","id":"sl/2rwfwl","slide":3,"title":"BDE XBRL EDITOR","textShapes":24}
+{"kind":"shape","id":"sh/4ze5o7mp","slide":3,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/3y5ofm54","slide":3,"bbox":[0,0,1280,7]}
+{"kind":"textbox","id":"sh/idcnmh4j","slide":3,"text":"BDE XBRL EDITOR","textPreview":"BDE XBRL EDITOR","textChars":15,"textLines":1,"bbox":[64,34,430,22]}
+{"kind":"textbox","id":"sh/d4n6lwn6","slide":3,"text":"Objetivo: cubrir el ciclo de vida completo de una instancia XBRL","textPreview":"Objetivo: cubrir el ciclo de vida completo de una instancia XBRL","textChars":64,"textLines":1,"bbox":[64,58,760,56]}
+{"kind":"textbox","id":"sh/s3e5srml","slide":3,"text":"03","textPreview":"03","textChars":2,"textLines":1,"bbox":[1168,42,48,24]}
+{"kind":"shape","id":"sh/r25ojm50","slide":3,"bbox":[70,214,190,210]}
+{"kind":"shape","id":"sh/q1wnqh4f","slide":3,"bbox":[70,214,190,8]}
+{"kind":"textbox","id":"sh/1876pwn2","slide":3,"text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[88,244,42,42]}
+{"kind":"textbox","id":"sh/07y5wbmh","slide":3,"text":"Taxonomia","textPreview":"Taxonomia","textChars":9,"textLines":1,"bbox":[88,298,152,28]}
+{"kind":"textbox","id":"sh/ytsni5wn","slide":3,"text":"Cargar DTS, linkbases, etiquetas, tablas y formulas","textPreview":"Cargar DTS, linkbases, etiquetas, tablas y formulas","textChars":51,"textLines":1,"bbox":[88,340,150,56]}
+{"kind":"shape","id":"sh/zu14bads","slide":3,"bbox":[260,317.5,24,3]}
+{"kind":"shape","id":"sh/0va5kfed","slide":3,"bbox":[284,312,13,13]}
+{"kind":"shape","id":"sh/lw3md0vy","slide":3,"bbox":[292,214,190,210]}
+{"kind":"shape","id":"sh/mxcnm5wj","slide":3,"bbox":[292,214,190,8]}
+{"kind":"textbox","id":"sh/nyl4fad4","slide":3,"text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[310,244,42,42]}
+{"kind":"textbox","id":"sh/8zu5ofep","slide":3,"text":"Instancia","textPreview":"Instancia","textChars":9,"textLines":1,"bbox":[310,298,152,28]}
+{"kind":"textbox","id":"sh/903mhkva","slide":3,"text":"Crear o abrir XML/XBRL con entidad, periodo y filing indicators","textPreview":"Crear o abrir XML/XBRL con entidad, periodo y filing indicators","textChars":63,"textLines":1,"bbox":[310,340,150,56]}
+{"kind":"shape","id":"sh/2183alwf","slide":3,"bbox":[482,317.5,24,3]}
+{"kind":"shape","id":"sh/32h43qd0","slide":3,"bbox":[506,312,13,13]}
+{"kind":"shape","id":"sh/7udsvipg","slide":3,"bbox":[514,214,190,210]}
+{"kind":"shape","id":"sh/6t4bmd8v","slide":3,"bbox":[514,214,190,8]}
+{"kind":"textbox","id":"sh/twvaxs76","slide":3,"text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[532,244,42,42]}
+{"kind":"textbox","id":"sh/8vmtonq1","slide":3,"text":"Tabla","textPreview":"Tabla","textChars":5,"textLines":1,"bbox":[532,298,152,28]}
+{"kind":"textbox","id":"sh/j6tsrip4","slide":3,"text":"Renderizar layouts BDE y mapear hechos a celdas","textPreview":"Renderizar layouts BDE y mapear hechos a celdas","textChars":47,"textLines":1,"bbox":[532,340,150,56]}
+{"kind":"shape","id":"sh/y5krid8j","slide":3,"bbox":[704,317.5,24,3]}
+{"kind":"shape","id":"sh/lsvats7a","slide":3,"bbox":[728,312,13,13]}
+{"kind":"shape","id":"sh/k72tknqp","slide":3,"bbox":[736,214,190,210]}
+{"kind":"shape","id":"sh/32xs32po","slide":3,"bbox":[736,214,190,8]}
+{"kind":"textbox","id":"sh/i1obux83","slide":3,"text":"4","textPreview":"4","textChars":1,"textLines":1,"bbox":[754,244,42,42]}
+{"kind":"textbox","id":"sh/07ypoz6l","slide":3,"text":"Edicion","textPreview":"Edicion","textChars":7,"textLines":1,"bbox":[754,298,152,28]}
+{"kind":"textbox","id":"sh/187qx4n6","slide":3,"text":"Modificar valores con validacion de tipo y guardado seguro","textPreview":"Modificar valores con validacion de tipo y guardado seguro","textChars":58,"textLines":1,"bbox":[754,340,150,56]}
+{"kind":"shape","id":"sh/e5g7mpof","slide":3,"bbox":[926,317.5,24,3]}
+{"kind":"shape","id":"sh/z6p8vu50","slide":3,"bbox":[950,312,13,13]}
+{"kind":"shape","id":"sh/obipsj6h","slide":3,"bbox":[958,214,190,210]}
+{"kind":"shape","id":"sh/9crq1on2","slide":3,"bbox":[958,214,190,8]}
+{"kind":"textbox","id":"sh/m907q9ob","slide":3,"text":"5","textPreview":"5","textChars":1,"textLines":1,"bbox":[976,244,42,42]}
+{"kind":"textbox","id":"sh/na98ze5w","slide":3,"text":"Validacion","textPreview":"Validacion","textChars":10,"textLines":1,"bbox":[976,298,152,28]}
+{"kind":"textbox","id":"sh/wzipwj6t","slide":3,"text":"Ejecutar checks estructurales, dimensionales, calculo y formulas","textPreview":"Ejecutar checks estructurales, dimensionales, calculo y formulas","textChars":64,"textLines":1,"bbox":[976,340,150,56]}
+{"kind":"shape","id":"sh/x0bq5ony","slide":3,"bbox":[188,486,806,64]}
+{"kind":"textbox","id":"sh/h8jqlore","slide":3,"text":"Resultado buscado: una unica aplicacion local para preparar informes, entender su estructura y detectar errores antes de la entrega.","textPreview":"Resultado buscado: una unica aplicacion local para preparar informes, entender su estructura y detectar errores antes de la entrega.","textChars":132,"textLines":1,"bbox":[226,506,730,26]}
+{"kind":"shape","id":"sh/w7apcjat","slide":3,"bbox":[210,592,150,30]}
+{"kind":"textbox","id":"sh/v618je98","slide":3,"text":"Offline por defecto","textPreview":"Offline por defecto","textChars":19,"textLines":1,"bbox":[220,599,130,16]}
+{"kind":"shape","id":"sh/uls7a9sn","slide":3,"bbox":[390,592,170,30]}
+{"kind":"textbox","id":"sh/9kjqh4r2","slide":3,"text":"Core testeable sin Qt","textPreview":"Core testeable sin Qt","textChars":21,"textLines":1,"bbox":[400,599,150,16]}
+{"kind":"shape","id":"sh/8jap8zax","slide":3,"bbox":[590,592,150,30]}
+{"kind":"textbox","id":"sh/7ih8fu9c","slide":3,"text":"Precision numerica","textPreview":"Precision numerica","textChars":18,"textLines":1,"bbox":[600,599,130,16]}
+{"kind":"shape","id":"sh/mh876psr","slide":3,"bbox":[770,592,170,30]}
+{"kind":"textbox","id":"sh/tg3qt8rm","slide":3,"text":"Conformidad medible","textPreview":"Conformidad medible","textChars":19,"textLines":1,"bbox":[780,599,150,16]}
+{"kind":"shape","id":"sh/sfu9k3a1","slide":3,"bbox":[64,676,1090,1]}
+{"kind":"textbox","id":"sh/q94vy147","slide":3,"text":"Trabajo Fin de Master | Python 3.13+ + PySide6 | XBRL / BDE","textPreview":"Trabajo Fin de Master | Python 3.13+ + PySide6 | XBRL / BDE","textChars":59,"textLines":1,"bbox":[64,686,720,18]}
+{"kind":"notes","id":"nt/2rwfwl","slide":3,"text":"Explicar el ciclo completo: cargar taxonomia, crear o abrir instancia, navegar tablas, editar hechos, guardar y validar. La propuesta de valor es un flujo local unificado."}
+{"kind":"slide","id":"sl/c9i5pb","slide":4,"title":"BDE XBRL EDITOR","textShapes":14}
+{"kind":"shape","id":"sh/ap0b6xon","slide":4,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/xsra1s7e","slide":4,"bbox":[0,0,1280,7]}
+{"kind":"textbox","id":"sh/writ8n6t","slide":4,"text":"BDE XBRL EDITOR","textPreview":"BDE XBRL EDITOR","textChars":15,"textLines":1,"bbox":[64,34,430,22]}
+{"kind":"textbox","id":"sh/nmpsvipc","slide":4,"text":"La arquitectura separa UI, servicios y nucleo XBRL","textPreview":"La arquitectura separa UI, servicios y nucleo XBRL","textChars":50,"textLines":1,"bbox":[64,58,760,56]}
+{"kind":"textbox","id":"sh/m1gb2dor","slide":4,"text":"04","textPreview":"04","textChars":2,"textLines":1,"bbox":[1168,42,48,24]}
+{"kind":"textbox","id":"sh/9oraxs7i","slide":4,"text":"La decision principal fue aislar el conocimiento XBRL de la interfaz: PySide6 queda en la capa visual y los modelos/reglas se prueban sin Qt.","textPreview":"La decision principal fue aislar el conocimiento XBRL de la interfaz: PySide6 queda en la capa visual y los modelos/reglas se prueban sin...","textChars":141,"textLines":1,"bbox":[64,116,560,54]}
+{"kind":"shape","id":"sh/zypsrip0","slide":4,"bbox":[676,118,520,392]}
+{"kind":"shape","id":"sh/yxgbydof","slide":4,"bbox":[676,118,520,392]}
+{"kind":"shape","id":"sh/onylcj6t","slide":4,"bbox":[64,196,560,74]}
+{"kind":"shape","id":"sh/por2lony","slide":4,"bbox":[64,196,10,74]}
+{"kind":"textbox","id":"sh/2lg3aton","slide":4,"text":"UI / API","textPreview":"UI / API","textChars":8,"textLines":1,"bbox":[94,209,245,26]}
+{"kind":"textbox","id":"sh/3mpkjy58","slide":4,"text":"PySide6: ventana principal, widgets, paneles, tablas, validacion","textPreview":"PySide6: ventana principal, widgets, paneles, tablas, validacion","textChars":64,"textLines":1,"bbox":[94,238,486,20]}
+{"kind":"shape","id":"sh/gjyl8j6h","slide":4,"bbox":[64,282,560,74]}
+{"kind":"shape","id":"sh/1k72hon2","slide":4,"bbox":[64,282,10,74]}
+{"kind":"textbox","id":"sh/ehg369ob","slide":4,"text":"Servicios de aplicacion","textPreview":"Servicios de aplicacion","textChars":23,"textLines":1,"bbox":[94,295,245,26]}
+{"kind":"textbox","id":"sh/fipkfe5w","slide":4,"text":"orquestacion: crear instancia, editar, validar, renderizar","textPreview":"orquestacion: crear instancia, editar, validar, renderizar","textChars":58,"textLines":1,"bbox":[94,324,486,20]}
+{"kind":"shape","id":"sh/kfilk36l","slide":4,"bbox":[64,368,560,74]}
+{"kind":"shape","id":"sh/lgbmt8n6","slide":4,"bbox":[64,368,10,74]}
+{"kind":"textbox","id":"sh/90nuhobe","slide":4,"text":"Adaptacion BDE","textPreview":"Adaptacion BDE","textChars":14,"textLines":1,"bbox":[94,381,245,26]}
+{"kind":"textbox","id":"sh/8zetojut","slide":4,"text":"Table Linkbase PWD, Eurofiling filing indicators, formulas","textPreview":"Table Linkbase PWD, Eurofiling filing indicators, formulas","textChars":58,"textLines":1,"bbox":[94,410,486,20]}
+{"kind":"shape","id":"sh/ny5cfet8","slide":4,"bbox":[64,454,560,74]}
+{"kind":"shape","id":"sh/mxwbm9cn","slide":4,"bbox":[64,454,10,74]}
+{"kind":"textbox","id":"sh/lw3ud4b2","slide":4,"text":"Core XBRL","textPreview":"Core XBRL","textChars":9,"textLines":1,"bbox":[94,467,245,26]}
+{"kind":"textbox","id":"sh/0vutkzuh","slide":4,"text":"taxonomy/, instance/, validation/: modelos y reglas sin Qt","textPreview":"taxonomy/, instance/, validation/: modelos y reglas sin Qt","textChars":58,"textLines":1,"bbox":[94,496,486,20]}
+{"kind":"shape","id":"sh/zulcbutc","slide":4,"bbox":[704,544,438,52]}
+{"kind":"textbox","id":"sh/ytcbipcr","slide":4,"text":"Principio de dependencia: lo regulatorio vive en modelos y servicios; la UI solo orquesta experiencia.","textPreview":"Principio de dependencia: lo regulatorio vive en modelos y servicios; la UI solo orquesta experiencia.","textChars":102,"textLines":1,"bbox":[728,558,390,24]}
+{"kind":"shape","id":"sh/ds3u94b6","slide":4,"bbox":[64,676,1090,1]}
+{"kind":"textbox","id":"sh/crutgzul","slide":4,"text":"Trabajo Fin de Master | Python 3.13+ + PySide6 | XBRL / BDE","textPreview":"Trabajo Fin de Master | Python 3.13+ + PySide6 | XBRL / BDE","textChars":59,"textLines":1,"bbox":[64,686,720,18]}
+{"kind":"image","id":"im/t0b2hkna","slide":4,"name":"","alt":"Visual abstracto de arquitectura por capas con dependencias descendentes","bbox":[676,118,520,392]}
+{"kind":"notes","id":"nt/c9i5pb","slide":4,"text":"Presentar la arquitectura por capas. Mensaje clave: el core XBRL no depende de Qt; la UI consume servicios y modelos, pero la logica se puede probar de forma aislada."}
+{"kind":"slide","id":"sl/3gvoqq","slide":5,"title":"BDE XBRL EDITOR","textShapes":23}
+{"kind":"shape","id":"sh/f29sre5w","slide":5,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/03it0jmh","slide":5,"bbox":[0,0,1280,7]}
+{"kind":"textbox","id":"sh/14raton2","slide":5,"text":"BDE XBRL EDITOR","textPreview":"BDE XBRL EDITOR","textChars":15,"textLines":1,"bbox":[64,34,430,22]}
+{"kind":"textbox","id":"sh/qd0bu94f","slide":5,"text":"Como se trabajo: Spec-Driven Development","textPreview":"Como se trabajo: Spec-Driven Development","textChars":40,"textLines":1,"bbox":[64,58,760,56]}
+{"kind":"textbox","id":"sh/re9sne50","slide":5,"text":"05","textPreview":"05","textChars":2,"textLines":1,"bbox":[1168,42,48,24]}
+{"kind":"shape","id":"sh/sfitwjm5","slide":5,"bbox":[60,178,170,112]}
+{"kind":"textbox","id":"sh/dgraponq","slide":5,"text":"PRD","textPreview":"PRD","textChars":3,"textLines":1,"bbox":[76,204,138,24]}
+{"kind":"textbox","id":"sh/a9kb6t4j","slide":5,"text":"Problema, usuarios, objetivos y criterios de exito","textPreview":"Problema, usuarios, objetivos y criterios de exito","textChars":50,"textLines":1,"bbox":[74,240,142,36]}
+{"kind":"shape","id":"sh/batczy54","slide":5,"bbox":[250,178,170,112]}
+{"kind":"textbox","id":"sh/b2h0bqhk","slide":5,"text":"spec.md","textPreview":"spec.md","textChars":7,"textLines":1,"bbox":[266,204,138,24]}
+{"kind":"textbox","id":"sh/a18jilgz","slide":5,"text":"Historias de usuario, requisitos y casos limite","textPreview":"Historias de usuario, requisitos y casos limite","textChars":47,"textLines":1,"bbox":[264,240,142,36]}
+{"kind":"shape","id":"sh/x4zidgza","slide":5,"bbox":[440,178,170,112]}
+{"kind":"textbox","id":"sh/c3q1kbyp","slide":5,"text":"plan.md","textPreview":"plan.md","textChars":7,"textLines":1,"bbox":[456,204,138,24]}
+{"kind":"textbox","id":"sh/z610fqhg","slide":5,"text":"Contexto tecnico, arquitectura y decisiones","textPreview":"Contexto tecnico, arquitectura y decisiones","textChars":43,"textLines":1,"bbox":[454,240,142,36]}
+{"kind":"shape","id":"sh/y5sjmlgv","slide":5,"bbox":[630,178,170,112]}
+{"kind":"textbox","id":"sh/lsjih0zm","slide":5,"text":"data-model","textPreview":"data-model","textChars":10,"textLines":1,"bbox":[646,204,138,24]}
+{"kind":"textbox","id":"sh/k7a1ovy1","slide":5,"text":"Entidades, servicios y relaciones","textPreview":"Entidades, servicios y relaciones","textChars":33,"textLines":1,"bbox":[644,240,142,36]}
+{"kind":"shape","id":"sh/7u1kjahc","slide":5,"bbox":[820,178,170,112]}
+{"kind":"textbox","id":"sh/mtsjq5g7","slide":5,"text":"contracts","textPreview":"contracts","textChars":9,"textLines":1,"bbox":[836,204,138,24]}
+{"kind":"textbox","id":"sh/ipw3i90f","slide":5,"text":"API esperada antes de implementar","textPreview":"API esperada antes de implementar","textChars":33,"textLines":1,"bbox":[834,240,142,36]}
+{"kind":"shape","id":"sh/jq54bu1k","slide":5,"bbox":[1010,178,170,112]}
+{"kind":"textbox","id":"sh/4relkzi5","slide":5,"text":"tasks.md","textPreview":"tasks.md","textChars":8,"textLines":1,"bbox":[1026,204,138,24]}
+{"kind":"textbox","id":"sh/5snmd4jq","slide":5,"text":"Trabajo desglosado y verificable","textPreview":"Trabajo desglosado y verificable","textChars":32,"textLines":1,"bbox":[1024,240,142,36]}
+{"kind":"shape","id":"sh/u1c3ep03","slide":5,"bbox":[86,352,1010,1]}
+{"kind":"textbox","id":"sh/vml47u1o","slide":5,"text":"6","textPreview":"6","textChars":1,"textLines":1,"bbox":[126,400,170,42]}
+{"kind":"textbox","id":"sh/wnulgzi9","slide":5,"text":"features especificadas de forma incremental","textPreview":"features especificadas de forma incremental","textChars":43,"textLines":1,"bbox":[126,443,170,36]}
+{"kind":"textbox","id":"sh/honm94ju","slide":5,"text":"248","textPreview":"248","textChars":3,"textLines":1,"bbox":[378,400,210,42]}
+{"kind":"textbox","id":"sh/exgnqt07","slide":5,"text":"tareas marcadas como completadas en specs/","textPreview":"tareas marcadas como completadas en specs/","textChars":42,"textLines":1,"bbox":[378,443,210,36]}
+{"kind":"textbox","id":"sh/fip4je1s","slide":5,"text":"100%","textPreview":"100%","textChars":4,"textLines":1,"bbox":[674,400,220,42]}
+{"kind":"textbox","id":"sh/9oby5c76","slide":5,"text":"trazabilidad de requisito a modulo y prueba","textPreview":"trazabilidad de requisito a modulo y prueba","textChars":43,"textLines":1,"bbox":[674,443,220,36]}
+{"kind":"textbox","id":"sh/on2xw761","slide":5,"text":"El enfoque reduce ambiguedad: antes de escribir codigo se fija que debe hacer cada feature, como se prueba y donde encaja en la arquitectura.","textPreview":"El enfoque reduce ambiguedad: antes de escribir codigo se fija que debe hacer cada feature, como se prueba y donde encaja en la arquitect...","textChars":141,"textLines":1,"bbox":[126,560,920,42]}
+{"kind":"shape","id":"sh/n2tg32pg","slide":5,"bbox":[64,676,1090,1]}
+{"kind":"textbox","id":"sh/m1kfuhov","slide":5,"text":"Trabajo Fin de Master | Python 3.13+ + PySide6 | XBRL / BDE","textPreview":"Trabajo Fin de Master | Python 3.13+ + PySide6 | XBRL / BDE","textChars":59,"textLines":1,"bbox":[64,686,720,18]}
+{"kind":"notes","id":"nt/3gvoqq","slide":5,"text":"Explicar spec-driven development: PRD, spec, plan, data model, contratos y tareas. Hay seis features y 248 tareas completadas; esto da trazabilidad para un dominio complejo."}
+{"kind":"slide","id":"sl/7ywek2","slide":6,"title":"BDE XBRL EDITOR","textShapes":18}
+{"kind":"shape","id":"sh/hwzm1ofq","slide":6,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/ut8n69wf","slide":6,"bbox":[0,0,1280,7]}
+{"kind":"textbox","id":"sh/vuh4zexk","slide":6,"text":"BDE XBRL EDITOR","textPreview":"BDE XBRL EDITOR","textChars":15,"textLines":1,"bbox":[64,34,430,22]}
+{"kind":"textbox","id":"sh/4zq5cjeh","slide":6,"text":"Capacidades principales de la aplicacion","textPreview":"Capacidades principales de la aplicacion","textChars":40,"textLines":1,"bbox":[64,58,760,56]}
+{"kind":"textbox","id":"sh/50jm5of2","slide":6,"text":"06","textPreview":"06","textChars":2,"textLines":1,"bbox":[1168,42,48,24]}
+{"kind":"shape","id":"sh/ix8natwb","slide":6,"bbox":[72,145,1038,468]}
+{"kind":"shape","id":"sh/jyh43exw","slide":6,"bbox":[92,176,244,390]}
+{"kind":"textbox","id":"sh/sna5g3ed","slide":6,"text":"Catalogo BDE y taxonomias","textPreview":"Catalogo BDE y taxonomias","textChars":25,"textLines":1,"bbox":[112,198,220,26]}
+{"kind":"shape","id":"sh/tojm98vy","slide":6,"bbox":[116,246,176,28]}
+{"kind":"textbox","id":"sh/d47ud0f2","slide":6,"text":"entry points","textPreview":"entry points","textChars":12,"textLines":1,"bbox":[132,253,140,14]}
+{"kind":"shape","id":"sh/c3ydkfeh","slide":6,"bbox":[116,294,176,28]}
+{"kind":"textbox","id":"sh/r2pcbaxc","slide":6,"text":"linkbases","textPreview":"linkbases","textChars":9,"textLines":1,"bbox":[132,301,140,14]}
+{"kind":"shape","id":"sh/q1wvi5wr","slide":6,"bbox":[116,342,176,28]}
+{"kind":"textbox","id":"sh/187ehkfe","slide":6,"text":"tablas","textPreview":"tablas","textChars":6,"textLines":1,"bbox":[132,349,140,14]}
+{"kind":"shape","id":"sh/07ydofet","slide":6,"bbox":[116,390,176,28]}
+{"kind":"textbox","id":"sh/z6pcfax8","slide":6,"text":"scraper","textPreview":"scraper","textChars":7,"textLines":1,"bbox":[132,397,140,14]}
+{"kind":"shape","id":"sh/e5gvm5wn","slide":6,"bbox":[116,438,176,28]}
+{"kind":"textbox","id":"sh/hcnu5gfu","slide":6,"text":"cache","textPreview":"cache","textChars":5,"textLines":1,"bbox":[132,445,140,14]}
+{"kind":"shape","id":"sh/gbedcbyp","slide":6,"bbox":[378,176,430,390]}
+{"kind":"textbox","id":"sh/8vidsv65","slide":6,"text":"Workspace de instancia","textPreview":"Workspace de instancia","textChars":22,"textLines":1,"bbox":[402,198,260,28]}
+{"kind":"shape","id":"sh/tgrul0nq","slide":6,"bbox":[414,258,56,240]}
+{"kind":"shape","id":"sh/6tgvqlof","slide":6,"bbox":[484,258,56,240]}
+{"kind":"shape","id":"sh/7upcjq50","slide":6,"bbox":[554,258,56,240]}
+{"kind":"shape","id":"sh/gjidwvmh","slide":6,"bbox":[624,258,56,240]}
+{"kind":"shape","id":"sh/hkrep0n2","slide":6,"bbox":[694,258,56,240]}
+{"kind":"shape","id":"sh/uh0vulob","slide":6,"bbox":[414,258,336,2]}
+{"kind":"shape","id":"sh/vi9wnq5w","slide":6,"bbox":[414,306,336,2]}
+{"kind":"shape","id":"sh/4n2d0fmd","slide":6,"bbox":[414,354,336,2]}
+{"kind":"shape","id":"sh/5obetkny","slide":6,"bbox":[414,402,336,2]}
+{"kind":"shape","id":"sh/zuxofytc","slide":6,"bbox":[414,450,336,2]}
+{"kind":"shape","id":"sh/eto76tcr","slide":6,"bbox":[484,354,56,48]}
+{"kind":"shape","id":"sh/1wf6h8bi","slide":6,"bbox":[624,402,56,48]}
+{"kind":"textbox","id":"sh/0v6p83ax","slide":6,"text":"edicion directa sobre celdas renderizadas","textPreview":"edicion directa sobre celdas renderizadas","textChars":41,"textLines":1,"bbox":[428,515,310,20]}
+{"kind":"shape","id":"sh/rqdobytg","slide":6,"bbox":[842,176,236,118]}
+{"kind":"shape","id":"sh/qp472tcv","slide":6,"bbox":[842,176,5,118]}
+{"kind":"textbox","id":"sh/dsf6d8bm","slide":6,"text":"Validacion","textPreview":"Validacion","textChars":10,"textLines":1,"bbox":[860,192,206,26]}
+{"kind":"textbox","id":"sh/crmp43u1","slide":6,"text":"Estructural, tipos, dimensiones, calculo, essence-alias y Formula 1.0.","textPreview":"Estructural, tipos, dimensiones, calculo, essence-alias y Formula 1.0.","textChars":70,"textLines":1,"bbox":[860,224,206,60]}
+{"kind":"shape","id":"sh/vmh8nitk","slide":6,"bbox":[842,318,236,118]}
+{"kind":"shape","id":"sh/al87edsz","slide":6,"bbox":[842,318,5,118]}
+{"kind":"textbox","id":"sh/itob2h8j","slide":6,"text":"Conformidad","textPreview":"Conformidad","textChars":11,"textLines":1,"bbox":[860,334,206,26]}
+{"kind":"textbox","id":"sh/juxsbmpo","slide":6,"text":"Runner CLI contra suites XBRL.org, con salida textual, JSON y exit code para CI.","textPreview":"Runner CLI contra suites XBRL.org, con salida textual, JSON y exit code para CI.","textChars":80,"textLines":1,"bbox":[860,366,206,60]}
+{"kind":"shape","id":"sh/4v6t4rq9","slide":6,"bbox":[842,460,236,106]}
+{"kind":"shape","id":"sh/5wfadw7u","slide":6,"bbox":[842,460,5,106]}
+{"kind":"textbox","id":"sh/u54byx87","slide":6,"text":"Distribucion","textPreview":"Distribucion","textChars":12,"textLines":1,"bbox":[860,476,206,26]}
+{"kind":"textbox","id":"sh/v6xs72ps","slide":6,"text":"Ejecucion local, scripts run.sh/run.bat y paquete offline con runtime del scraper.","textPreview":"Ejecucion local, scripts run.sh/run.bat y paquete offline con runtime del scraper.","textChars":82,"textLines":1,"bbox":[860,508,206,48]}
+{"kind":"shape","id":"sh/w76t07qd","slide":6,"bbox":[64,676,1090,1]}
+{"kind":"textbox","id":"sh/h8fa9c7y","slide":6,"text":"Trabajo Fin de Master | Python 3.13+ + PySide6 | XBRL / BDE","textPreview":"Trabajo Fin de Master | Python 3.13+ + PySide6 | XBRL / BDE","textChars":59,"textLines":1,"bbox":[64,686,720,18]}
+{"kind":"notes","id":"nt/7ywek2","slide":6,"text":"Resumir capacidades: catalogo BDE con scraper TypeScript/Playwright, workspace de instancia, validacion/conformidad y distribucion offline con runtime del scraper preparado."}
+{"kind":"slide","id":"sl/25zps1","slide":7,"title":"BDE XBRL EDITOR","textShapes":25}
+{"kind":"shape","id":"sh/zi587e5c","slide":7,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/kje9gj6x","slide":7,"bbox":[0,0,1280,7]}
+{"kind":"textbox","id":"sh/lknq9oni","slide":7,"text":"BDE XBRL EDITOR","textPreview":"BDE XBRL EDITOR","textChars":15,"textLines":1,"bbox":[64,34,430,22]}
+{"kind":"textbox","id":"sh/adwrapov","slide":7,"text":"Renderizado PWD: de la taxonomia a una tabla editable","textPreview":"Renderizado PWD: de la taxonomia a una tabla editable","textChars":53,"textLines":1,"bbox":[64,58,760,56]}
+{"kind":"textbox","id":"sh/be583upg","slide":7,"text":"07","textPreview":"07","textChars":2,"textLines":1,"bbox":[1168,42,48,24]}
+{"kind":"textbox","id":"sh/cfe9cz61","slide":7,"text":"El motor no dibuja plantillas fijas: calcula cabeceras, ejes y coordenadas desde la Table Linkbase PWD usada por BDE.","textPreview":"El motor no dibuja plantillas fijas: calcula cabeceras, ejes y coordenadas desde la Table Linkbase PWD usada por BDE.","textChars":117,"textLines":1,"bbox":[64,124,890,38]}
+{"kind":"textbox","id":"sh/xgnq54n6","slide":7,"text":"Eje X: columnas","textPreview":"Eje X: columnas","textChars":15,"textLines":1,"bbox":[416,190,240,20]}
+{"kind":"textbox","id":"sh/2pc76poj","slide":7,"text":"Eje Y: filas","textPreview":"Eje Y: filas","textChars":12,"textLines":1,"bbox":[114,286,190,20]}
+{"kind":"textbox","id":"sh/nql8zup4","slide":7,"text":"Eje Z: filtro / slice","textPreview":"Eje Z: filtro / slice","textChars":21,"textLines":1,"bbox":[832,190,220,20]}
+{"kind":"shape","id":"sh/3ipof6xw","slide":7,"bbox":[332,218,430,76]}
+{"kind":"shape","id":"sh/2hg7m1wb","slide":7,"bbox":[350,242,84,28]}
+{"kind":"textbox","id":"sh/pk76hgfm","slide":7,"text":"C0010","textPreview":"C0010","textChars":5,"textLines":1,"bbox":[360,250,64,12]}
+{"kind":"shape","id":"sh/4jypobeh","slide":7,"bbox":[448,242,84,28]}
+{"kind":"textbox","id":"sh/rmpojqxs","slide":7,"text":"C0020","textPreview":"C0020","textChars":5,"textLines":1,"bbox":[458,250,64,12]}
+{"kind":"shape","id":"sh/qlg7qlw7","slide":7,"bbox":[546,242,84,28]}
+{"kind":"textbox","id":"sh/dor6lgfy","slide":7,"text":"C0030","textPreview":"C0030","textChars":5,"textLines":1,"bbox":[556,250,64,12]}
+{"kind":"shape","id":"sh/cnipsved","slide":7,"bbox":[644,242,84,28]}
+{"kind":"textbox","id":"sh/7q5o7mxo","slide":7,"text":"C0040","textPreview":"C0040","textChars":5,"textLines":1,"bbox":[654,250,64,12]}
+{"kind":"shape","id":"sh/6pwnehw3","slide":7,"bbox":[112,318,192,220]}
+{"kind":"shape","id":"sh/alkrmpgr","slide":7,"bbox":[132,342,150,28]}
+{"kind":"textbox","id":"sh/b6dsfuhc","slide":7,"text":"R0010","textPreview":"R0010","textChars":5,"textLines":1,"bbox":[148,350,54,12]}
+{"kind":"textbox","id":"sh/w7m9ozyx","slide":7,"text":"Concept label","textPreview":"Concept label","textChars":13,"textLines":1,"bbox":[204,350,68,12]}
+{"kind":"shape","id":"sh/x8vah4z2","slide":7,"bbox":[132,386,150,28]}
+{"kind":"textbox","id":"sh/mhkripgf","slide":7,"text":"R0020","textPreview":"R0020","textChars":5,"textLines":1,"bbox":[148,394,54,12]}
+{"kind":"textbox","id":"sh/nitsbuh0","slide":7,"text":"Concept label","textPreview":"Concept label","textChars":13,"textLines":1,"bbox":[204,394,68,12]}
+{"kind":"shape","id":"sh/oj29kfyl","slide":7,"bbox":[132,430,150,28]}
+{"kind":"textbox","id":"sh/9kbadkz6","slide":7,"text":"R0030","textPreview":"R0030","textChars":5,"textLines":1,"bbox":[148,438,54,12]}
+{"kind":"textbox","id":"sh/ed0re5gj","slide":7,"text":"Concept label","textPreview":"Concept label","textChars":13,"textLines":1,"bbox":[204,438,68,12]}
+{"kind":"shape","id":"sh/ze987ah4","slide":7,"bbox":[132,474,150,28]}
+{"kind":"textbox","id":"sh/h8zut8jm","slide":7,"text":"R0040","textPreview":"R0040","textChars":5,"textLines":1,"bbox":[148,482,54,12]}
+{"kind":"textbox","id":"sh/g7qdk3i1","slide":7,"text":"Concept label","textPreview":"Concept label","textChars":13,"textLines":1,"bbox":[204,482,68,12]}
+{"kind":"shape","id":"sh/f6hcry1g","slide":7,"bbox":[332,318,430,220]}
+{"kind":"shape","id":"sh/u5ovid0v","slide":7,"bbox":[439.5,318,1,220]}
+{"kind":"shape","id":"sh/t4fup8ja","slide":7,"bbox":[547,318,1,220]}
+{"kind":"shape","id":"sh/836tg3i5","slide":7,"bbox":[654.5,318,1,220]}
+{"kind":"shape","id":"sh/72xcny1k","slide":7,"bbox":[332,373,430,1]}
+{"kind":"shape","id":"sh/61obet0z","slide":7,"bbox":[332,428,430,1]}
+{"kind":"shape","id":"sh/l0fuloje","slide":7,"bbox":[332,483,430,1]}
+{"kind":"shape","id":"sh/kf6tcjit","slide":7,"bbox":[440,373,107,55]}
+{"kind":"textbox","id":"sh/kjylsnip","slide":7,"text":"Fact","textPreview":"Fact","textChars":4,"textLines":1,"bbox":[466,389,54,15]}
+{"kind":"shape","id":"sh/l472lsja","slide":7,"bbox":[655,428,107,55]}
+{"kind":"textbox","id":"sh/yhg3qx0z","slide":7,"text":"Duplicado","textPreview":"Duplicado","textChars":9,"textLines":1,"bbox":[674,444,68,15]}
+{"kind":"shape","id":"sh/zipkj21k","slide":7,"bbox":[832,230,260,44]}
+{"kind":"textbox","id":"sh/87ylw7i1","slide":7,"text":"Consolidado","textPreview":"Consolidado","textChars":11,"textLines":1,"bbox":[856,244,120,16]}
+{"kind":"shape","id":"sh/t87mpcjm","slide":7,"bbox":[832,288,260,44]}
+{"kind":"textbox","id":"sh/65g3ux0v","slide":7,"text":"Individual","textPreview":"Individual","textChars":10,"textLines":1,"bbox":[856,302,120,16]}
+{"kind":"textbox","id":"sh/76pkn21g","slide":7,"text":"Cada celda queda identificada por: concepto + entidad + periodo + dimensiones explicitas. Esa coordenada permite mostrar, editar y validar el hecho correcto.","textPreview":"Cada celda queda identificada por: concepto + entidad + periodo + dimensiones explicitas. Esa coordenada permite mostrar, editar y valida...","textChars":157,"textLines":1,"bbox":[824,388,278,92]}
+{"kind":"shape","id":"sh/obelk3ih","slide":7,"bbox":[64,676,1090,1]}
+{"kind":"textbox","id":"sh/pcn2d8j2","slide":7,"text":"Trabajo Fin de Master | Python 3.13+ + PySide6 | XBRL / BDE","textPreview":"Trabajo Fin de Master | Python 3.13+ + PySide6 | XBRL / BDE","textChars":59,"textLines":1,"bbox":[64,686,720,18]}
+{"kind":"notes","id":"nt/25zps1","slide":7,"text":"Detallar el renderizado PWD: ejes X/Y/Z, coordenada de celda y mapeo a hechos. Recalcar que las tablas no estan hardcodeadas: salen de la taxonomia."}
+{"kind":"slide","id":"sl/k2u9pa","slide":8,"title":"BDE XBRL Editor","textShapes":22}
+{"kind":"shape","id":"sh/65cjal4f","slide":8,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/87u1cvm5","slide":8,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/j2l0z65o","slide":8,"bbox":[0,0,526,720]}
+{"kind":"shape","id":"sh/y1cj6143","slide":8,"bbox":[0,0,1280,7]}
+{"kind":"textbox","id":"sh/l43i1gnu","slide":8,"text":"BDE XBRL Editor","textPreview":"BDE XBRL Editor","textChars":15,"textLines":1,"bbox":[64,34,340,22]}
+{"kind":"textbox","id":"sh/k3u18bm9","slide":8,"text":"Validar no debe romper el flujo: debe producir hallazgos accionables","textPreview":"Validar no debe romper el flujo: debe producir hallazgos accionables","textChars":68,"textLines":1,"bbox":[64,86,430,136]}
+{"kind":"textbox","id":"sh/3y5kba5s","slide":8,"text":"El orquestador captura errores, aplica reglas por niveles y devuelve un ValidationReport inmutable con severidad, regla, mensaje y contexto de negocio.","textPreview":"El orquestador captura errores, aplica reglas por niveles y devuelve un ValidationReport inmutable con severidad, regla, mensaje y contex...","textChars":151,"textLines":1,"bbox":[66,248,420,82]}
+{"kind":"shape","id":"sh/ixwji547","slide":8,"bbox":[66,372,406,42]}
+{"kind":"shape","id":"sh/8bmhcfi1","slide":8,"bbox":[66,372,6,42]}
+{"kind":"textbox","id":"sh/9cvylkzm","slide":8,"text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[84,382,22,18]}
+{"kind":"textbox","id":"sh/mp4za50v","slide":8,"text":"Parser instancia","textPreview":"Parser instancia","textChars":16,"textLines":1,"bbox":[116,380,136,20]}
+{"kind":"textbox","id":"sh/nqdgjahg","slide":8,"text":"XML, schemaRef, contextos, unidades, hechos","textPreview":"XML, schemaRef, contextos, unidades, hechos","textChars":43,"textLines":1,"bbox":[260,382,188,18]}
+{"kind":"shape","id":"sh/0nmh8vi5","slide":8,"bbox":[66,421,406,42]}
+{"kind":"shape","id":"sh/1ovyh0zq","slide":8,"bbox":[66,421,6,42]}
+{"kind":"textbox","id":"sh/elkz650z","slide":8,"text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[84,431,22,18]}
+{"kind":"textbox","id":"sh/zmdgfqhk","slide":8,"text":"Estructural","textPreview":"Estructural","textChars":11,"textLines":1,"bbox":[116,429,136,20]}
+{"kind":"textbox","id":"sh/cj2h4vit","slide":8,"text":"referencias, namespaces, duplicados, tipos base","textPreview":"referencias, namespaces, duplicados, tipos base","textChars":47,"textLines":1,"bbox":[260,431,188,18]}
+{"kind":"shape","id":"sh/dkbyd0ze","slide":8,"bbox":[66,470,406,42]}
+{"kind":"shape","id":"sh/t4j6lsn6","slide":8,"bbox":[66,470,6,42]}
+{"kind":"textbox","id":"sh/s3a5sn6l","slide":8,"text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[84,480,22,18]}
+{"kind":"textbox","id":"sh/721ojip0","slide":8,"text":"Dimensional","textPreview":"Dimensional","textChars":11,"textLines":1,"bbox":[116,478,136,20]}
+{"kind":"textbox","id":"sh/61snqdof","slide":8,"text":"hypercubes, miembros permitidos, contextElement","textPreview":"hypercubes, miembros permitidos, contextElement","textChars":47,"textLines":1,"bbox":[260,480,188,18]}
+{"kind":"shape","id":"sh/50j6h87u","slide":8,"bbox":[66,519,406,42]}
+{"kind":"shape","id":"sh/kza5o369","slide":8,"bbox":[66,519,6,42]}
+{"kind":"textbox","id":"sh/jy14fip4","slide":8,"text":"4","textPreview":"4","textChars":1,"textLines":1,"bbox":[84,529,22,18]}
+{"kind":"textbox","id":"sh/id8nmdoj","slide":8,"text":"Relaciones","textPreview":"Relaciones","textChars":10,"textLines":1,"bbox":[116,527,136,20]}
+{"kind":"textbox","id":"sh/pw36tcne","slide":8,"text":"calculation, essence-alias, consistencia","textPreview":"calculation, essence-alias, consistencia","textChars":40,"textLines":1,"bbox":[260,529,188,18]}
+{"kind":"shape","id":"sh/4vu5076t","slide":8,"bbox":[66,568,406,42]}
+{"kind":"shape","id":"sh/mho3u94b","slide":8,"bbox":[66,568,6,42]}
+{"kind":"textbox","id":"sh/nixkne5w","slide":8,"text":"5","textPreview":"5","textChars":1,"textLines":1,"bbox":[84,578,22,18]}
+{"kind":"textbox","id":"sh/8j6lwjm1","slide":8,"text":"Formula 1.0","textPreview":"Formula 1.0","textChars":11,"textLines":1,"bbox":[116,576,136,20]}
+{"kind":"textbox","id":"sh/94f2p4nm","slide":8,"text":"assertions, variables, filtros, XPath 2.0","textPreview":"assertions, variables, filtros, XPath 2.0","textChars":41,"textLines":1,"bbox":[260,578,188,18]}
+{"kind":"shape","id":"sh/ed43qp4z","slide":8,"bbox":[642,538,486,76]}
+{"kind":"textbox","id":"sh/zexkju5k","slide":8,"text":"findings inmutables con severidad, regla, mensaje, concepto, contexto y tabla asociada cuando existe mapeo a celda.","textPreview":"findings inmutables con severidad, regla, mensaje, concepto, contexto y tabla asociada cuando existe mapeo a celda.","textChars":115,"textLines":1,"bbox":[674,570,420,28]}
+{"kind":"textbox","id":"sh/0f6lszm5","slide":8,"text":"ValidationReport","textPreview":"ValidationReport","textChars":16,"textLines":1,"bbox":[674,552,190,22]}
+{"kind":"textbox","id":"sh/lgf2l4nq","slide":8,"text":"08","textPreview":"08","textChars":2,"textLines":1,"bbox":[1168,42,48,24]}
+{"kind":"shape","id":"sh/i9832t4j","slide":8,"bbox":[64,676,1090,1]}
+{"kind":"textbox","id":"sh/jah4vylo","slide":8,"text":"Trabajo Fin de Master | Python 3.13+ + PySide6 | XBRL / BDE","textPreview":"Trabajo Fin de Master | Python 3.13+ + PySide6 | XBRL / BDE","textChars":59,"textLines":1,"bbox":[64,686,720,18]}
+{"kind":"image","id":"im/wf6dgvmt","slide":8,"name":"","alt":"Visual tecnico de pipeline de validacion XBRL con checks, avisos e informe final","bbox":[0,0,1280,720]}
+{"kind":"notes","id":"nt/k2u9pa","slide":8,"text":"Describir el pipeline de validacion: parser, checks estructurales, dimensionales, relaciones y formulas. El resultado es un ValidationReport con findings accionables."}
+{"kind":"slide","id":"sl/kov21n","slide":9,"title":"BDE XBRL EDITOR","textShapes":28}
+{"kind":"shape","id":"sh/5ofexore","slide":9,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/i1of29s3","slide":9,"bbox":[0,0,1280,7]}
+{"kind":"textbox","id":"sh/j2xwveto","slide":9,"text":"BDE XBRL EDITOR","textPreview":"BDE XBRL EDITOR","textChars":15,"textLines":1,"bbox":[64,34,430,22]}
+{"kind":"textbox","id":"sh/sr6x83a5","slide":9,"text":"La calidad se demuestra con pruebas reproducibles","textPreview":"La calidad se demuestra con pruebas reproducibles","textChars":49,"textLines":1,"bbox":[64,58,760,56]}
+{"kind":"textbox","id":"sh/tszy1orq","slide":9,"text":"09","textPreview":"09","textChars":2,"textLines":1,"bbox":[1168,42,48,24]}
+{"kind":"shape","id":"sh/6pof6tsz","slide":9,"bbox":[64,132,424,444]}
+{"kind":"textbox","id":"sh/rqxwzy9k","slide":9,"text":"Evidencia de trabajo","textPreview":"Evidencia de trabajo","textChars":20,"textLines":1,"bbox":[96,164,260,30]}
+{"kind":"textbox","id":"sh/8vmxwza1","slide":9,"text":"La conformidad deja de ser una declaracion: se mide con datos locales, resultados reproducibles y automatizacion apta para CI.","textPreview":"La conformidad deja de ser una declaracion: se mide con datos locales, resultados reproducibles y automatizacion apta para CI.","textChars":126,"textLines":1,"bbox":[96,214,330,78]}
+{"kind":"shape","id":"sh/9wvep4b6","slide":9,"bbox":[96,332,320,58]}
+{"kind":"textbox","id":"sh/l8rqdwf6","slide":9,"text":"248","textPreview":"248","textChars":3,"textLines":1,"bbox":[120,342,120,32]}
+{"kind":"textbox","id":"sh/k7ip4rel","slide":9,"text":"tareas completadas","textPreview":"tareas completadas","textChars":18,"textLines":1,"bbox":[238,352,150,20]}
+{"kind":"shape","id":"sh/z69obmx0","slide":9,"bbox":[96,404,320,58]}
+{"kind":"textbox","id":"sh/y5072hwf","slide":9,"text":"6","textPreview":"6","textChars":1,"textLines":1,"bbox":[120,414,120,32]}
+{"kind":"textbox","id":"sh/9cbqhwf2","slide":9,"text":"features especificadas","textPreview":"features especificadas","textChars":22,"textLines":1,"bbox":[238,424,150,20]}
+{"kind":"shape","id":"sh/8b2p8reh","slide":9,"bbox":[96,476,320,58]}
+{"kind":"textbox","id":"sh/7at8f6xw","slide":9,"text":"offline","textPreview":"offline","textChars":7,"textLines":1,"bbox":[120,486,120,32]}
+{"kind":"textbox","id":"sh/m90761wb","slide":9,"text":"runner sin red","textPreview":"runner sin red","textChars":14,"textLines":1,"bbox":[238,496,150,20]}
+{"kind":"textbox","id":"sh/h0bqlgfy","slide":9,"text":"pytest + pytest-qt + suites de conformidad","textPreview":"pytest + pytest-qt + suites de conformidad","textChars":42,"textLines":1,"bbox":[96,546,320,22]}
+{"kind":"textbox","id":"sh/gz2pcbet","slide":9,"text":"Suites de conformidad","textPreview":"Suites de conformidad","textChars":21,"textLines":1,"bbox":[552,142,360,30]}
+{"kind":"textbox","id":"sh/gja98fmp","slide":9,"text":"Cada suite actua como una barrera de confianza sobre una parte distinta del dominio.","textPreview":"Cada suite actua como una barrera de confianza sobre una parte distinta del dominio.","textChars":84,"textLines":1,"bbox":[552,178,520,24]}
+{"kind":"shape","id":"sh/14jahk3a","slide":9,"bbox":[552,238,590,66]}
+{"kind":"shape","id":"sh/ehsr654z","slide":9,"bbox":[552,238,9,66]}
+{"kind":"textbox","id":"sh/fi1sfa54","slide":9,"text":"XBRL 2.1","textPreview":"XBRL 2.1","textChars":8,"textLines":1,"bbox":[584,250,210,24]}
+{"kind":"textbox","id":"sh/o7u9czm1","slide":9,"text":"procesador e instancias","textPreview":"procesador e instancias","textChars":23,"textLines":1,"bbox":[584,277,260,16]}
+{"kind":"shape","id":"sh/p83al43m","slide":9,"bbox":[948,255,150,30]}
+{"kind":"textbox","id":"sh/25crap4v","slide":9,"text":"bloqueante","textPreview":"bloqueante","textChars":10,"textLines":1,"bbox":[966,263,114,14]}
+{"kind":"shape","id":"sh/36lsjulg","slide":9,"bbox":[826,304,2,19]}
+{"kind":"shape","id":"sh/4bq90vmh","slide":9,"bbox":[552,323,590,66]}
+{"kind":"shape","id":"sh/5czq90n2","slide":9,"bbox":[552,323,9,66]}
+{"kind":"textbox","id":"sh/7i94v29w","slide":9,"text":"Dimensions 1.0","textPreview":"Dimensions 1.0","textChars":14,"textLines":1,"bbox":[584,335,210,24]}
+{"kind":"textbox","id":"sh/mhg32xsb","slide":9,"text":"hipercubos y contexto","textPreview":"hipercubos y contexto","textChars":21,"textLines":1,"bbox":[584,362,260,16]}
+{"kind":"shape","id":"sh/9krmxcr2","slide":9,"bbox":[948,340,150,30]}
+{"kind":"textbox","id":"sh/8jil47ah","slide":9,"text":"bloqueante","textPreview":"bloqueante","textChars":10,"textLines":1,"bbox":[966,348,114,14]}
+{"kind":"shape","id":"sh/zep4rit0","slide":9,"bbox":[826,389,2,19]}
+{"kind":"shape","id":"sh/ydg3ydsf","slide":9,"bbox":[552,408,590,66]}
+{"kind":"shape","id":"sh/lg7mtsrq","slide":9,"bbox":[552,408,9,66]}
+{"kind":"textbox","id":"sh/kfyl0na5","slide":9,"text":"Formula 1.0","textPreview":"Formula 1.0","textChars":11,"textLines":1,"bbox":[584,420,210,24]}
+{"kind":"textbox","id":"sh/ba5knito","slide":9,"text":"assertions y XPath","textPreview":"assertions y XPath","textChars":18,"textLines":1,"bbox":[584,447,260,16]}
+{"kind":"shape","id":"sh/a9w3uds3","slide":9,"bbox":[948,425,150,30]}
+{"kind":"textbox","id":"sh/qx07ylon","slide":9,"text":"bloqueante","textPreview":"bloqueante","textChars":10,"textLines":1,"bbox":[966,433,114,14]}
+{"kind":"shape","id":"sh/ri98r6p8","slide":9,"bbox":[826,474,2,19]}
+{"kind":"shape","id":"sh/cjip0b6t","slide":9,"bbox":[552,493,590,66]}
+{"kind":"shape","id":"sh/dkrqtg7e","slide":9,"bbox":[552,493,9,66]}
+{"kind":"textbox","id":"sh/2tg7u1or","slide":9,"text":"Table Linkbase 1.0","textPreview":"Table Linkbase 1.0","textChars":18,"textLines":1,"bbox":[584,505,210,24]}
+{"kind":"textbox","id":"sh/3upon6pc","slide":9,"text":"seguimiento; BDE prioriza PWD","textPreview":"seguimiento; BDE prioriza PWD","textChars":29,"textLines":1,"bbox":[584,532,260,16]}
+{"kind":"shape","id":"sh/4vypwb6x","slide":9,"bbox":[948,510,150,30]}
+{"kind":"textbox","id":"sh/pwr6pg7i","slide":9,"text":"informativa","textPreview":"informativa","textChars":11,"textLines":1,"bbox":[966,518,114,14]}
+{"kind":"shape","id":"sh/upg7qhov","slide":9,"bbox":[552,590,590,1]}
+{"kind":"textbox","id":"sh/vqpojmp0","slide":9,"text":"Resultado: errores detectables localmente antes de una entrega regulatoria.","textPreview":"Resultado: errores detectables localmente antes de una entrega regulatoria.","textChars":75,"textLines":1,"bbox":[552,608,590,24]}
+{"kind":"shape","id":"sh/xkva54ri","slide":9,"bbox":[64,676,1090,1]}
+{"kind":"textbox","id":"sh/wjm9wzqd","slide":9,"text":"Trabajo Fin de Master | Python 3.13+ + PySide6 | XBRL / BDE","textPreview":"Trabajo Fin de Master | Python 3.13+ + PySide6 | XBRL / BDE","textChars":59,"textLines":1,"bbox":[64,686,720,18]}
+{"kind":"notes","id":"nt/kov21n","slide":9,"text":"Mostrar calidad verificable: tests unitarios, integracion y runner offline de conformidad. Table Linkbase 1.0 es informativa porque v1 prioriza PWD por BDE."}
+{"kind":"slide","id":"sl/bscdob","slide":10,"title":"BDE XBRL EDITOR","textShapes":23}
+{"kind":"shape","id":"sh/1cv69cr2","slide":10,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/e947yhsb","slide":10,"bbox":[0,0,1280,7]}
+{"kind":"textbox","id":"sh/fado729w","slide":10,"text":"BDE XBRL EDITOR","textPreview":"BDE XBRL EDITOR","textChars":15,"textLines":1,"bbox":[64,34,430,22]}
+{"kind":"textbox","id":"sh/of6p4rad","slide":10,"text":"Demo en vivo: mostrar el hilo completo, no todos los detalles","textPreview":"Demo en vivo: mostrar el hilo completo, no todos los detalles","textChars":61,"textLines":1,"bbox":[64,58,760,56]}
+{"kind":"textbox","id":"sh/p0f6dwry","slide":10,"text":"10","textPreview":"10","textChars":2,"textLines":1,"bbox":[1168,42,48,24]}
+{"kind":"shape","id":"sh/2d472hsn","slide":10,"bbox":[122,148,58,58]}
+{"kind":"textbox","id":"sh/3exobm98","slide":10,"text":"1","textPreview":"1","textChars":1,"textLines":1,"bbox":[122,162,58,22]}
+{"kind":"shape","id":"sh/4j25sna9","slide":10,"bbox":[210,148,770,58]}
+{"kind":"textbox","id":"sh/5kb61sru","slide":10,"text":"Arrancar aplicacion","textPreview":"Arrancar aplicacion","textChars":19,"textLines":1,"bbox":[236,158,260,20]}
+{"kind":"textbox","id":"sh/tcrq1sbq","slide":10,"text":"./run.sh o python -m bde_xbrl_editor.","textPreview":"./run.sh o python -m bde_xbrl_editor.","textChars":37,"textLines":1,"bbox":[520,161,410,18]}
+{"kind":"shape","id":"sh/sbipsnu5","slide":10,"bbox":[149.5,206,3,16]}
+{"kind":"shape","id":"sh/rq98zitk","slide":10,"bbox":[144,222,13,13]}
+{"kind":"shape","id":"sh/6pg7qdcf","slide":10,"bbox":[122,226,58,58]}
+{"kind":"textbox","id":"sh/1grq5sb2","slide":10,"text":"2","textPreview":"2","textChars":1,"textLines":1,"bbox":[122,240,58,22]}
+{"kind":"shape","id":"sh/gfipw7uh","slide":10,"bbox":[210,226,770,58]}
+{"kind":"textbox","id":"sh/fe9832tw","slide":10,"text":"Cargar taxonomia","textPreview":"Cargar taxonomia","textChars":16,"textLines":1,"bbox":[236,236,260,20]}
+{"kind":"textbox","id":"sh/ed07uxcb","slide":10,"text":"Metadatos, catalogo BDE, tablas y cache.","textPreview":"Metadatos, catalogo BDE, tablas y cache.","textChars":40,"textLines":1,"bbox":[520,239,410,18]}
+{"kind":"shape","id":"sh/pkbq9cby","slide":10,"bbox":[149.5,284,3,16]}
+{"kind":"shape","id":"sh/oj2p07ud","slide":10,"bbox":[144,300,13,13]}
+{"kind":"shape","id":"sh/8zu1sfm1","slide":10,"bbox":[122,304,58,58]}
+{"kind":"textbox","id":"sh/903ilkn6","slide":10,"text":"3","textPreview":"3","textChars":1,"textLines":1,"bbox":[122,318,58,22]}
+{"kind":"shape","id":"sh/mxsjq54v","slide":10,"bbox":[210,304,770,58]}
+{"kind":"textbox","id":"sh/7y10ja5g","slide":10,"text":"Abrir instancia","textPreview":"Abrir instancia","textChars":15,"textLines":1,"bbox":[236,314,260,20]}
+{"kind":"textbox","id":"sh/w3u1wfmx","slide":10,"text":"schemaRef, entidad, periodo y filing indicators.","textPreview":"schemaRef, entidad, periodo y filing indicators.","textChars":48,"textLines":1,"bbox":[520,317,410,18]}
+{"kind":"shape","id":"sh/h43ipkni","slide":10,"bbox":[149.5,362,3,16]}
+{"kind":"shape","id":"sh/u1cjup4r","slide":10,"bbox":[144,378,13,13]}
+{"kind":"shape","id":"sh/v2l0na5c","slide":10,"bbox":[122,382,58,58]}
+{"kind":"textbox","id":"sh/c7qhkv6t","slide":10,"text":"4","textPreview":"4","textChars":1,"textLines":1,"bbox":[122,396,58,22]}
+{"kind":"shape","id":"sh/x8jid0ne","slide":10,"bbox":[210,382,770,58]}
+{"kind":"textbox","id":"sh/fmp4zypw","slide":10,"text":"Navegar tabla","textPreview":"Navegar tabla","textChars":13,"textLines":1,"bbox":[236,392,260,20]}
+{"kind":"textbox","id":"sh/elg3qtob","slide":10,"text":"Cabeceras multinivel, codigos RC, eje Z y hechos.","textPreview":"Cabeceras multinivel, codigos RC, eje Z y hechos.","textChars":49,"textLines":1,"bbox":[520,395,410,18]}
+{"kind":"shape","id":"sh/1o7m187m","slide":10,"bbox":[149.5,440,3,16]}
+{"kind":"shape","id":"sh/gnyls36h","slide":10,"bbox":[144,456,13,13]}
+{"kind":"shape","id":"sh/rip4vepk","slide":10,"bbox":[122,460,58,58]}
+{"kind":"textbox","id":"sh/6xw3mtoz","slide":10,"text":"5","textPreview":"5","textChars":1,"textLines":1,"bbox":[122,474,58,22]}
+{"kind":"shape","id":"sh/tk7mxo7q","slide":10,"bbox":[210,460,770,58]}
+{"kind":"textbox","id":"sh/sjyloj65","slide":10,"text":"Editar y validar","textPreview":"Editar y validar","textChars":16,"textLines":1,"bbox":[236,470,260,20]}
+{"kind":"textbox","id":"sh/ju5krepo","slide":10,"text":"Valor como string, finding y navegacion a celda.","textPreview":"Valor como string, finding y navegacion a celda.","textChars":48,"textLines":1,"bbox":[520,473,410,18]}
+{"kind":"shape","id":"sh/itw3i9o3","slide":10,"bbox":[149.5,518,3,16]}
+{"kind":"shape","id":"sh/y1g7mhkn","slide":10,"bbox":[144,534,13,13]}
+{"kind":"shape","id":"sh/j2p8v2l8","slide":10,"bbox":[122,538,58,58]}
+{"kind":"textbox","id":"sh/k3ypo72t","slide":10,"text":"6","textPreview":"6","textChars":1,"textLines":1,"bbox":[122,552,58,22]}
+{"kind":"shape","id":"sh/l4rqxc3e","slide":10,"bbox":[210,538,770,58]}
+{"kind":"textbox","id":"sh/axg7ix4r","slide":10,"text":"Conformance CLI","textPreview":"Conformance CLI","textChars":15,"textLines":1,"bbox":[236,548,260,20]}
+{"kind":"textbox","id":"sh/bypor2lw","slide":10,"text":"pytest integration o runner con JSON.","textPreview":"pytest integration o runner con JSON.","textChars":37,"textLines":1,"bbox":[520,551,410,18]}
+{"kind":"textbox","id":"sh/wzypk7mh","slide":10,"text":"Regla de demo: preparar una instancia conocida, evitar esperas largas y verbalizar que cada paso corresponde a una feature especificada.","textPreview":"Regla de demo: preparar una instancia conocida, evitar esperas largas y verbalizar que cada paso corresponde a una feature especificada.","textChars":136,"textLines":1,"bbox":[164,632,850,24]}
+{"kind":"shape","id":"sh/x07qtc32","slide":10,"bbox":[64,676,1090,1]}
+{"kind":"textbox","id":"sh/29w7ex4f","slide":10,"text":"Trabajo Fin de Master | Python 3.13+ + PySide6 | XBRL / BDE","textPreview":"Trabajo Fin de Master | Python 3.13+ + PySide6 | XBRL / BDE","textChars":59,"textLines":1,"bbox":[64,686,720,18]}
+{"kind":"notes","id":"nt/bscdob","slide":10,"text":"Usar esta slide como checklist de demo. No intentar demostrar todo; ensenar hilo completo: app, taxonomia, instancia, tabla, edicion, validacion y CLI si hay tiempo."}
+{"kind":"slide","id":"sl/wg66rc","slide":11,"title":"BDE XBRL EDITOR","textShapes":17}
+{"kind":"shape","id":"sh/xkrax0fe","slide":11,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/axgrm5gn","slide":11,"bbox":[0,0,1280,7]}
+{"kind":"textbox","id":"sh/bypsvqx8","slide":11,"text":"BDE XBRL EDITOR","textPreview":"BDE XBRL EDITOR","textChars":15,"textLines":1,"bbox":[64,34,430,22]}
+{"kind":"textbox","id":"sh/ovy9kvyh","slide":11,"text":"Limites actuales y evolucion futura","textPreview":"Limites actuales y evolucion futura","textChars":35,"textLines":1,"bbox":[64,58,760,56]}
+{"kind":"textbox","id":"sh/9w7at0f2","slide":11,"text":"11","textPreview":"11","textChars":2,"textLines":1,"bbox":[1168,42,48,24]}
+{"kind":"shape","id":"sh/mtgrilgr","slide":11,"bbox":[80,168,480,420]}
+{"kind":"textbox","id":"sh/nupsrqxw","slide":11,"text":"Fuera de alcance v1","textPreview":"Fuera de alcance v1","textChars":19,"textLines":1,"bbox":[112,198,280,30]}
+{"kind":"shape","id":"sh/0ry9gbyl","slide":11,"bbox":[120,258,12,12]}
+{"kind":"textbox","id":"sh/1s7apgf6","slide":11,"text":"Reglas BDE publicadas fuera de la taxonomia","textPreview":"Reglas BDE publicadas fuera de la taxonomia","textChars":43,"textLines":1,"bbox":[148,250,350,26]}
+{"kind":"shape","id":"sh/dcfylwjy","slide":11,"bbox":[120,306,12,12]}
+{"kind":"textbox","id":"sh/cb6xsrid","slide":11,"text":"iXBRL y tagging sobre HTML","textPreview":"iXBRL y tagging sobre HTML","textChars":26,"textLines":1,"bbox":[148,298,350,26]}
+{"kind":"shape","id":"sh/rqxgjm1s","slide":11,"bbox":[120,354,12,12]}
+{"kind":"textbox","id":"sh/qpofq107","slide":11,"text":"Envio directo al portal BDE","textPreview":"Envio directo al portal BDE","textChars":27,"textLines":1,"bbox":[148,346,350,26]}
+{"kind":"shape","id":"sh/pofyhwjm","slide":11,"bbox":[120,402,12,12]}
+{"kind":"textbox","id":"sh/4n6xori1","slide":11,"text":"Validacion batch y diferencial","textPreview":"Validacion batch y diferencial","textChars":30,"textLines":1,"bbox":[148,394,350,26]}
+{"kind":"shape","id":"sh/3mxgfm1w","slide":11,"bbox":[120,450,12,12]}
+{"kind":"textbox","id":"sh/ilofmhkb","slide":11,"text":"Undo/redo avanzado y multi-instancia","textPreview":"Undo/redo avanzado y multi-instancia","textChars":36,"textLines":1,"bbox":[148,442,350,26]}
+{"kind":"shape","id":"sh/hkvydcjq","slide":11,"bbox":[630,168,480,420]}
+{"kind":"textbox","id":"sh/gjmxk725","slide":11,"text":"Roadmap razonable","textPreview":"Roadmap razonable","textChars":17,"textLines":1,"bbox":[662,198,280,30]}
+{"kind":"shape","id":"sh/8fapgbed","slide":11,"bbox":[662,252,386,82]}
+{"kind":"shape","id":"sh/tgj6pgvy","slide":11,"bbox":[662,252,5,82]}
+{"kind":"textbox","id":"sh/6ds7e1w7","slide":11,"text":"v1.1: robustez operativa","textPreview":"v1.1: robustez operativa","textChars":24,"textLines":1,"bbox":[680,268,356,26]}
+{"kind":"textbox","id":"sh/7e1on6ds","slide":11,"text":"Mejoras de UX, empaquetado offline, reporting de errores y cobertura adicional.","textPreview":"Mejoras de UX, empaquetado offline, reporting de errores y cobertura adicional.","textChars":79,"textLines":1,"bbox":[680,300,356,24]}
+{"kind":"shape","id":"sh/kbqpcre1","slide":11,"bbox":[662,358,386,82]}
+{"kind":"shape","id":"sh/lcj6lwvm","slide":11,"bbox":[662,358,5,82]}
+{"kind":"textbox","id":"sh/y987a1wb","slide":11,"text":"v2: reglas BDE externas","textPreview":"v2: reglas BDE externas","textChars":23,"textLines":1,"bbox":[680,374,356,26]}
+{"kind":"textbox","id":"sh/jahoj6dg","slide":11,"text":"Incorporar validaciones publicadas fuera de la taxonomia y trazabilidad documental.","textPreview":"Incorporar validaciones publicadas fuera de la taxonomia y trazabilidad documental.","textChars":83,"textLines":1,"bbox":[680,406,356,24]}
+{"kind":"shape","id":"sh/47upovel","slide":11,"bbox":[662,464,386,82]}
+{"kind":"shape","id":"sh/p83qx0vq","slide":11,"bbox":[662,464,5,82]}
+{"kind":"textbox","id":"sh/z25snux8","slide":11,"text":"v3: interoperabilidad","textPreview":"v3: interoperabilidad","textChars":21,"textLines":1,"bbox":[680,480,356,26]}
+{"kind":"textbox","id":"sh/e1wrepgn","slide":11,"text":"iXBRL, exportaciones, comparativas y automatizacion de flujos de reporting.","textPreview":"iXBRL, exportaciones, comparativas y automatizacion de flujos de reporting.","textChars":75,"textLines":1,"bbox":[680,512,356,24]}
+{"kind":"shape","id":"sh/147ap4fy","slide":11,"bbox":[64,676,1090,1]}
+{"kind":"textbox","id":"sh/03y9gzyt","slide":11,"text":"Trabajo Fin de Master | Python 3.13+ + PySide6 | XBRL / BDE","textPreview":"Trabajo Fin de Master | Python 3.13+ + PySide6 | XBRL / BDE","textChars":59,"textLines":1,"bbox":[64,686,720,18]}
+{"kind":"notes","id":"nt/wg66rc","slide":11,"text":"Explicar limites como decisiones de alcance: iXBRL, envio BDE, batch/diferencial y reglas externas BDE quedan fuera de v1. Presentar roadmap incremental."}
+{"kind":"slide","id":"sl/bbum3f","slide":12,"title":"Conclusiones","textShapes":8}
+{"kind":"shape","id":"sh/jq5gzihg","slide":12,"bbox":[0,0,1280,720]}
+{"kind":"shape","id":"sh/lsny18zm","slide":12,"bbox":[560,0,720,720]}
+{"kind":"shape","id":"sh/6twzad07","slide":12,"bbox":[0,0,720,720]}
+{"kind":"shape","id":"sh/7u5g3ihs","slide":12,"bbox":[78,82,90,6]}
+{"kind":"textbox","id":"sh/8vehcnid","slide":12,"text":"Conclusiones","textPreview":"Conclusiones","textChars":12,"textLines":1,"bbox":[78,122,620,60]}
+{"kind":"shape","id":"sh/tw7y5szi","slide":12,"bbox":[92,232,16,70]}
+{"kind":"textbox","id":"sh/2xcfyt03","slide":12,"text":"Producto real","textPreview":"Producto real","textChars":13,"textLines":1,"bbox":[134,230,300,26]}
+{"kind":"textbox","id":"sh/nylgry18","slide":12,"text":"No es un prototipo aislado: cubre carga, instancia, tabla, edicion, validacion y conformidad.","textPreview":"No es un prototipo aislado: cubre carga, instancia, tabla, edicion, validacion y conformidad.","textChars":93,"textLines":1,"bbox":[134,264,620,30]}
+{"kind":"shape","id":"sh/ni9gre18","slide":12,"bbox":[92,336,16,70]}
+{"kind":"textbox","id":"sh/mxgfy9kn","slide":12,"text":"Arquitectura sostenible","textPreview":"Arquitectura sostenible","textChars":23,"textLines":1,"bbox":[134,334,300,26]}
+{"kind":"textbox","id":"sh/9krytoje","slide":12,"text":"Core XBRL independiente de Qt, capas claras y modelos pensados para pruebas.","textPreview":"Core XBRL independiente de Qt, capas claras y modelos pensados para pruebas.","textChars":76,"textLines":1,"bbox":[134,368,620,30]}
+{"kind":"shape","id":"sh/ojix0j2t","slide":12,"bbox":[92,440,16,70]}
+{"kind":"textbox","id":"sh/zupwnu1w","slide":12,"text":"Metodo defendible","textPreview":"Metodo defendible","textChars":17,"textLines":1,"bbox":[134,438,300,26]}
+{"kind":"textbox","id":"sh/etgfu9kb","slide":12,"text":"Spec-driven development conecta problema, requisitos, diseno, tareas y verificacion.","textPreview":"Spec-driven development conecta problema, requisitos, diseno, tareas y verificacion.","textChars":84,"textLines":1,"bbox":[134,472,620,30]}
+{"kind":"shape","id":"sh/1w7ep4j2","slide":12,"bbox":[78,594,650,1]}
+{"kind":"textbox","id":"sh/0vyxwz2h","slide":12,"text":"Idea final: convertir la complejidad tecnica de XBRL/BDE en un flujo visual, verificable y mantenible.","textPreview":"Idea final: convertir la complejidad tecnica de XBRL/BDE en un flujo visual, verificable y mantenible.","textChars":102,"textLines":1,"bbox":[78,620,690,30]}
+{"kind":"image","id":"im/hgnet8ji","slide":12,"name":"","alt":"Visual tecnico de tablas XBRL y validacion","bbox":[640,0,640,720]}
+{"kind":"notes","id":"nt/bbum3f","slide":12,"text":"Cerrar con tres ideas: producto real, arquitectura sostenible y metodo defendible. Frase final: convertir complejidad XBRL/BDE en un flujo visual, verificable y mantenible."}

@@ -5,6 +5,7 @@ from pathlib import Path
 import elementpath
 
 from bde_xbrl_editor.taxonomy.linkbases.custom_functions import (
+    linkbase_contains_custom_functions,
     parse_custom_function_linkbase,
 )
 from bde_xbrl_editor.validation.formula.xfi_functions import build_formula_parser
@@ -49,6 +50,32 @@ def test_parse_custom_function_linkbase_reads_signature_and_steps(tmp_path: Path
     assert len(definition.steps) == 2
     assert definition.steps[0].name == "without-trailing"
     assert definition.steps[1].is_output is True
+
+
+def test_linkbase_contains_custom_functions_detects_signature_only_file(
+    tmp_path: Path,
+) -> None:
+    linkbase = tmp_path / "interval-arithmetics.xml"
+    linkbase.write_text(
+        """<?xml version="1.0" encoding="UTF-8"?>
+<link:linkbase xmlns:link="http://www.xbrl.org/2003/linkbase"
+  xmlns:gen="http://xbrl.org/2008/generic"
+  xmlns:variable="http://xbrl.org/2008/variable"
+  xmlns:iaf="http://www.eurofiling.info/xbrl/func/interval-arithmetics"
+  xmlns:xlink="http://www.w3.org/1999/xlink">
+  <gen:link xlink:type="extended" xlink:role="http://www.xbrl.org/2003/role/link">
+    <variable:function xlink:type="resource" xlink:label="subtract"
+      name="iaf:numeric-subtract" output="item()">
+      <variable:input type="item()"/>
+      <variable:input type="item()"/>
+    </variable:function>
+  </gen:link>
+</link:linkbase>
+""",
+        encoding="utf-8",
+    )
+
+    assert linkbase_contains_custom_functions(linkbase) is True
 
 
 def test_build_formula_parser_executes_linkbase_defined_custom_functions(tmp_path: Path) -> None:
@@ -119,6 +146,19 @@ def test_cache_external_attributes_includes_signature_only_host_functions() -> N
 
     assert signature_only
     assert signature_only[0].steps == ()
+
+
+def test_cache_interval_arithmetics_includes_numeric_subtract() -> None:
+    definitions = parse_custom_function_linkbase(
+        Path("cache/www.eurofiling.info/eu/fr/xbrl/func/interval-arithmetics.xml")
+    )
+
+    matches = [
+        definition for definition in definitions if definition.name == "iaf:numeric-subtract"
+    ]
+
+    assert matches
+    assert matches[0].input_types == ("item()", "item()")
 
 
 def test_build_formula_parser_parses_external_attribute_wrapper() -> None:

@@ -332,7 +332,9 @@ def parse_definition_linkbase(
             domain_q,
             start_elr,
             arcs_by_elr,
-            start_usable=dm_usable,
+            # xbrldt:usable on dimension-domain applies to the domain root, not
+            # to every descendant reached through domain-member arcs.
+            start_usable=True,
         ):
             child_key = (child_q, domain_q, 1.0, child_usable)
             if child_key not in member_keys:

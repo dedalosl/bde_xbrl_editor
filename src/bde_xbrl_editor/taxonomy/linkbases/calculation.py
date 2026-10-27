@@ -47,7 +47,7 @@ def _normalise_equivalence_value(raw: str) -> tuple[str, str]:
     s = raw.strip()
     low = s.lower()
     if low == "true":
-        return ("dec", "1")
+        return ("dec", "0:1:0")
     if low == "false":
         return ("dec", "0")
     try:
@@ -56,7 +56,14 @@ def _normalise_equivalence_value(raw: str) -> tuple[str, str]:
             return ("nan", s)
         if d.is_zero():
             return ("dec", "0")
-        return ("dec", format(d.normalize(), "f"))
+        if not d.is_finite():
+            return ("nonfinite", str(d))
+        sign, digits, exponent = d.as_tuple()
+        digits = list(digits)
+        while digits[-1] == 0:
+            digits.pop()
+            exponent += 1
+        return ("dec", f"{sign}:{''.join(map(str, digits))}:{exponent}")
     except InvalidOperation:
         return ("str", s)
 
@@ -121,9 +128,11 @@ def parse_calculation_linkbase_from_root(
             except ValueError:
                 order = 1.0
             try:
-                weight = float(arc.get("weight", "1"))
-            except ValueError:
-                weight = 1.0
+                weight = Decimal(arc.get("weight", "1"))
+                if not weight.is_finite():
+                    weight = Decimal(1)
+            except InvalidOperation:
+                weight = Decimal(1)
             use = arc.get("use", "optional")
             try:
                 arc_priority = int(arc.get("priority", "0"))

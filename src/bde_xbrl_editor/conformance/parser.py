@@ -10,18 +10,25 @@ from lxml import etree
 
 from bde_xbrl_editor.conformance.errors import SuiteDataMissingError, TestCaseParseError
 from bde_xbrl_editor.conformance.models import (
+    ExpectedAssertionTest,
+    ExpectedMessage,
+    ExpectedMessageTest,
     ExpectedOutcome,
     ExpectedOutcomeType,
+    ExpectedResultFile,
+    ExpectedResultFileType,
     TestCase,
     TestVariation,
 )
 from bde_xbrl_editor.conformance.registry import SuiteDefinition
 from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
+from bde_xbrl_editor.validation.formula.evaluator import ExternalFormulaParameter
 
 log = logging.getLogger(__name__)
 
 # Data element local names that describe input files
 _DATA_FILE_TAGS = frozenset(["xsd", "schema", "instance", "linkbase"])
+_RESULT_FILE_TAGS = frozenset(member.value for member in ExpectedResultFileType)
 
 
 def _local(tag: object) -> str:
@@ -36,35 +43,98 @@ def _local(tag: object) -> str:
     return tag
 
 
-def _parse_expected_outcome(result_el: etree._Element | None) -> ExpectedOutcome:
+def _expanded_qname(value: str, element: etree._Element) -> str:
+    """Resolve a lexical QName using the element's in-scope namespaces."""
+    if ":" in value:
+        prefix, local_name = value.split(":", 1)
+        namespace = element.nsmap.get(prefix)
+        return f"{{{namespace}}}{local_name}" if namespace else value
+    namespace = element.nsmap.get(None)
+    return f"{{{namespace}}}{value}" if namespace else value
+
+
+def _optional_int(value: str | None) -> int | None:
+    if value is None or not value.strip():
+        return None
+    return int(value)
+
+
+def _parse_expected_outcome(
+    result_el: etree._Element | None,
+    base_dir: Path,
+) -> ExpectedOutcome:
     """Convert a <result> element into an ExpectedOutcome."""
     if result_el is None:
         return ExpectedOutcome(outcome_type=ExpectedOutcomeType.VALID)
 
-    # Check @expected attribute
-    expected_attr = result_el.get("expected", "")
-    if expected_attr == "valid":
-        return ExpectedOutcome(outcome_type=ExpectedOutcomeType.VALID)
-    if expected_attr == "invalid":
-        return ExpectedOutcome(outcome_type=ExpectedOutcomeType.ERROR)
+    expected_attr = result_el.get("expected", "").strip().lower()
+    outcome_type = (
+        ExpectedOutcomeType.ERROR if expected_attr == "invalid" else ExpectedOutcomeType.VALID
+    )
+    error_code: str | None = None
+    assertion_tests: list[ExpectedAssertionTest] = []
+    message_tests: list[ExpectedMessageTest] = []
+    result_files: list[ExpectedResultFile] = []
+    unsupported_result_elements: list[str] = []
 
-    # Check child elements for error/warning codes
     for child in result_el:
         local = _local(child.tag)
         code = (child.text or "").strip()
         if local == "error":
-            return ExpectedOutcome(
-                outcome_type=ExpectedOutcomeType.ERROR,
-                error_code=code if code else None,
+            outcome_type = ExpectedOutcomeType.ERROR
+            if error_code is None:
+                error_code = code or None
+        elif local == "warning":
+            outcome_type = ExpectedOutcomeType.WARNING
+            if error_code is None:
+                error_code = code or None
+        elif local == "assertionTests":
+            assertion_tests.append(
+                ExpectedAssertionTest(
+                    assertion_id=child.get("assertionID", "").strip(),
+                    count_satisfied=_optional_int(child.get("countSatisfied")),
+                    count_not_satisfied=_optional_int(child.get("countNotSatisfied")),
+                )
             )
-        if local == "warning":
-            return ExpectedOutcome(
-                outcome_type=ExpectedOutcomeType.WARNING,
-                error_code=code if code else None,
+        elif local == "messageTests":
+            messages: list[ExpectedMessage] = []
+            for message_el in child:
+                message_kind = _local(message_el.tag)
+                if message_kind not in {"satisfied", "notSatisfied"}:
+                    continue
+                messages.append(
+                    ExpectedMessage(
+                        satisfied=message_kind == "satisfied",
+                        text="".join(message_el.itertext()).strip(),
+                        language=message_el.get(
+                            "{http://www.w3.org/XML/1998/namespace}lang"
+                        ),
+                    )
+                )
+            message_tests.append(
+                ExpectedMessageTest(
+                    assertion_id=child.get("assertionID", "").strip(),
+                    messages=tuple(messages),
+                )
             )
+        elif local in _RESULT_FILE_TAGS and code:
+            result_files.append(
+                ExpectedResultFile(
+                    file_type=ExpectedResultFileType(local),
+                    path=_resolve_suite_file(base_dir, code),
+                )
+            )
+        elif local:
+            unsupported_result_elements.append(local)
 
-    # Empty <result/> element with no attributes and no children = valid
-    return ExpectedOutcome(outcome_type=ExpectedOutcomeType.VALID)
+    return ExpectedOutcome(
+        outcome_type=outcome_type,
+        error_code=error_code,
+        assertion_tests=tuple(assertion_tests),
+        message_tests=tuple(message_tests),
+        result_files=tuple(result_files),
+        unsupported_result_elements=tuple(unsupported_result_elements),
+    )
 
 
 def _resolve_suite_file(base_dir: Path, filename: str) -> Path:
@@ -123,15 +193,19 @@ class ConformanceSuiteParser:
         test_cases: list[TestCase] = []
         for tc_path in tc_paths:
             if not tc_path.exists():
-                log.warning("Test case file not found, skipping: %s", tc_path)
-                continue
+                raise SuiteDataMissingError(suite_def.suite_id, tc_path)
             try:
                 tc = self._parse_test_case(tc_path, suite_def.suite_id)
                 test_cases.append(tc)
             except TestCaseParseError as exc:
-                log.warning("Skipping test case due to parse error: %s", exc)
+                raise exc
             except Exception as exc:  # noqa: BLE001
-                log.warning("Skipping test case '%s': %s", tc_path, exc)
+                raise TestCaseParseError(tc_path, str(exc)) from exc
+
+        # An index that yields no test cases must never be treated as a
+        # successful empty suite by the runner.
+        if not test_cases:
+            raise TestCaseParseError(index_path, "index references no test case files")
 
         return test_cases
 
@@ -258,6 +332,7 @@ class ConformanceSuiteParser:
         input_files: list[Path] = []
         instance_file: Path | None = None
         taxonomy_file: Path | None = None
+        external_parameters: list[ExternalFormulaParameter] = []
 
         for child in var_el:
             if _local(child.tag) == "data":
@@ -276,6 +351,17 @@ class ConformanceSuiteParser:
                                 and file_el.get("readMeFirst", "").lower() == "true"
                             ):
                                 taxonomy_file = resolved
+                    elif local_name == "parameter":
+                        name = (file_el.get("name") or "").strip()
+                        datatype = (file_el.get("datatype") or "").strip()
+                        if name:
+                            external_parameters.append(
+                                ExternalFormulaParameter(
+                                    name=_expanded_qname(name, file_el),
+                                    datatype=_expanded_qname(datatype, file_el),
+                                    lexical_value=file_el.get("value", ""),
+                                )
+                            )
                 break
 
         # Parse <result> child
@@ -285,7 +371,7 @@ class ConformanceSuiteParser:
                 result_el = child
                 break
 
-        expected_outcome = _parse_expected_outcome(result_el)
+        expected_outcome = _parse_expected_outcome(result_el, tc_path.parent)
 
         return TestVariation(
             variation_id=variation_id,
@@ -296,4 +382,5 @@ class ConformanceSuiteParser:
             taxonomy_file=taxonomy_file,
             expected_outcome=expected_outcome,
             mandatory=mandatory,
+            external_parameters=tuple(external_parameters),
         )

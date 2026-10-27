@@ -75,6 +75,8 @@ class CatalogMetadata:
     last_run: str
     total_count: int
     reporting_module_count: int | None = None
+    taxonomies_with_updates: int | None = None
+    entry_points_with_updates: int | None = None
     files_with_updates: int | None = None
 
 
@@ -106,4 +108,4 @@ class CatalogChangeReport:
 
     @property
     def has_updates(self) -> bool:
-        return bool(self.updated_files) or self.scrape_is_newer
+        return bool(self.updated_files)

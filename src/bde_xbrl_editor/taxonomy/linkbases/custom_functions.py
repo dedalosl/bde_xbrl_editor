@@ -21,13 +21,28 @@ _TAG_CFI_INPUT = f"{{{_NS_CFI}}}input"
 _TAG_CFI_STEP = f"{{{_NS_CFI}}}step"
 _TAG_CFI_OUTPUT = f"{{{_NS_CFI}}}output"
 _TAG_GEN_ARC = f"{{{_NS_GENERIC}}}arc"
+_TAG_LINK_LOC = "{http://www.xbrl.org/2003/linkbase}loc"
 
 _ATTR_XLINK_LABEL = f"{{{_NS_XLINK}}}label"
 _ATTR_XLINK_FROM = f"{{{_NS_XLINK}}}from"
 _ATTR_XLINK_TO = f"{{{_NS_XLINK}}}to"
 _ATTR_XLINK_ARCROLE = f"{{{_NS_XLINK}}}arcrole"
+_ATTR_XLINK_HREF = f"{{{_NS_XLINK}}}href"
 
 _ARCROLE_FUNCTION_IMPLEMENTATION = "http://xbrl.org/arcrole/2010/function-implementation"
+
+
+def linkbase_contains_custom_functions(path: Path) -> bool:
+    """Return True when *path* contains Formula custom function signatures."""
+    if not path.exists() or path.suffix.lower() not in (".xml", ".xbrl"):
+        return False
+    try:
+        for _evt, el in etree.iterparse(str(path), events=("end",), tag=_TAG_FUNCTION):
+            el.clear()
+            return True
+    except Exception:  # noqa: BLE001
+        return False
+    return False
 
 
 def parse_custom_function_linkbase(linkbase_path: Path) -> tuple[CustomFunctionDefinition, ...]:
@@ -56,6 +71,32 @@ def parse_custom_function_linkbase(linkbase_path: Path) -> tuple[CustomFunctionD
         for el in root.iter(_TAG_IMPLEMENTATION)
         if (el.get(_ATTR_XLINK_LABEL) or "").strip()
     }
+    for locator in root.iter(_TAG_LINK_LOC):
+        locator_label = (locator.get(_ATTR_XLINK_LABEL) or "").strip()
+        href = (locator.get(_ATTR_XLINK_HREF) or "").strip()
+        if not locator_label or "#" not in href:
+            continue
+        path_text, fragment = href.rsplit("#", 1)
+        if not path_text or "://" in path_text:
+            continue
+        target_path = (linkbase_path.parent / path_text).resolve()
+        if not target_path.exists():
+            continue
+        try:
+            target_root = parse_xml_file(target_path).getroot()
+        except etree.XMLSyntaxError:
+            continue
+        implementation = next(
+            (
+                element
+                for element in target_root.iter(_TAG_IMPLEMENTATION)
+                if (element.get("id") or "").strip() == fragment
+                or (element.get(_ATTR_XLINK_LABEL) or "").strip() == fragment
+            ),
+            None,
+        )
+        if implementation is not None:
+            implementation_index[locator_label] = implementation
 
     functions: list[CustomFunctionDefinition] = []
     implemented_labels: set[str] = set()

@@ -2,15 +2,10 @@
 
 from __future__ import annotations
 
-import textwrap
-from datetime import datetime
 from pathlib import Path
-
-import pytest
 
 from bde_xbrl_editor.conformance.models import SuiteStatus, TestResultOutcome
 from bde_xbrl_editor.conformance.runner import ConformanceRunner, _compute_suite_status
-
 
 # ---------------------------------------------------------------------------
 # _compute_suite_status tests
@@ -23,6 +18,7 @@ def _make_result(outcome: TestResultOutcome, mandatory: bool = True):
         ExpectedOutcomeType,
         TestCaseResult,
     )
+
     return TestCaseResult(
         variation_id="V-01",
         test_case_id="TC-001",
@@ -66,13 +62,26 @@ def test_compute_status_error() -> None:
     assert _compute_suite_status(results) == SuiteStatus.ERRORED
 
 
-def test_compute_status_all_skipped() -> None:
+def test_compute_status_mandatory_skipped_is_incomplete() -> None:
     results = [_make_result(TestResultOutcome.SKIPPED)]
+    assert _compute_suite_status(results) == SuiteStatus.INCOMPLETE
+
+
+def test_compute_status_optional_skipped_is_skipped() -> None:
+    results = [_make_result(TestResultOutcome.SKIPPED, mandatory=False)]
     assert _compute_suite_status(results) == SuiteStatus.SKIPPED
 
 
+def test_compute_status_mixed_pass_and_mandatory_skip_is_incomplete() -> None:
+    results = [
+        _make_result(TestResultOutcome.PASS),
+        _make_result(TestResultOutcome.SKIPPED),
+    ]
+    assert _compute_suite_status(results) == SuiteStatus.INCOMPLETE
+
+
 def test_compute_status_empty() -> None:
-    assert _compute_suite_status([]) == SuiteStatus.PASSED
+    assert _compute_suite_status([]) == SuiteStatus.INCOMPLETE
 
 
 # ---------------------------------------------------------------------------

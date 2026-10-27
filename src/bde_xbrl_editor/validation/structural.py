@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from collections import Counter, defaultdict
 from dataclasses import dataclass
 
@@ -13,10 +14,14 @@ from bde_xbrl_editor.instance.s_equal import canonical_context_refs_by_s_equal
 from bde_xbrl_editor.taxonomy.constants import NS_XBRLI
 from bde_xbrl_editor.taxonomy.models import Concept, QName, TaxonomyStructure
 from bde_xbrl_editor.taxonomy.schema import parse_schema_raw
+from bde_xbrl_editor.taxonomy.type_traits import (
+    concept_is_monetary,
+    concept_is_numeric,
+    concept_is_shares,
+)
 from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
 from bde_xbrl_editor.validation.models import ValidationFinding, ValidationSeverity
 
-_NUMERIC_TYPE_KEYWORDS = ("monetary", "decimal", "integer", "float", "double")
 _XBRLI_ITEM = QName(NS_XBRLI, "item")
 _XBRLI_TUPLE = QName(NS_XBRLI, "tuple")
 _ARCROLE_ESSENCE_ALIAS = "http://www.xbrl.org/2003/arcrole/essence-alias"
@@ -87,12 +92,7 @@ def _effective_simple_measure_count(unit: XbrlUnit) -> int:
 
 def _concept_requires_iso4217_unit(concept: Concept) -> bool:
     """True when *concept* is a monetary item (explicit flag or xbrli:monetaryItemType)."""
-    if concept.monetary_item_type:
-        return True
-    return (
-        concept.data_type.namespace == NS_XBRLI
-        and concept.data_type.local_name == "monetaryItemType"
-    )
+    return concept_is_monetary(concept)
 
 
 def _iter_descendant_qnames(container_xml: bytes) -> list[QName]:
@@ -133,8 +133,7 @@ def _substitution_root_for_concept(
 
 
 def _is_numeric_concept(concept: Concept) -> bool:
-    local_name_lower = concept.data_type.local_name.lower()
-    return any(kw in local_name_lower for kw in _NUMERIC_TYPE_KEYWORDS)
+    return concept_is_numeric(concept)
 
 
 class StructuralConformanceValidator:
@@ -144,6 +143,12 @@ class StructuralConformanceValidator:
     Never raises — exceptions are caught and returned as error findings.
     """
 
+    def __init__(self, cancel_event: threading.Event | None = None) -> None:
+        self._cancel_event = cancel_event
+
+    def _cancelled(self) -> bool:
+        return bool(self._cancel_event and self._cancel_event.is_set())
+
     def validate(
         self,
         instance: XbrlInstance,
@@ -151,11 +156,17 @@ class StructuralConformanceValidator:
     ) -> list[ValidationFinding]:
         """Run all structural checks and return the aggregated findings list."""
         findings: list[ValidationFinding] = []
+        if self._cancelled():
+            return findings
+
         fact_analysis: _FactAnalysis | None = None
         try:
             fact_analysis = self._analyze_facts(instance, taxonomy)
         except Exception as exc:  # noqa: BLE001
             findings.append(self._internal_error("structural:fact-analysis", exc))
+
+        if self._cancelled():
+            return findings
 
         try:
             findings.extend(self._check_missing_schemaref(instance))
@@ -235,10 +246,16 @@ class StructuralConformanceValidator:
         except Exception as exc:  # noqa: BLE001
             findings.append(self._internal_error("structural:segment-scenario-substitution", exc))
 
+        if self._cancelled():
+            return findings
+
         try:
             findings.extend(self._check_essence_alias_units(instance, taxonomy))
         except Exception as exc:  # noqa: BLE001
             findings.append(self._internal_error("structural:essence-alias-unit", exc))
+
+        if self._cancelled():
+            return findings
 
         try:
             findings.extend(self._check_requires_element(instance, taxonomy))
@@ -290,6 +307,8 @@ class StructuralConformanceValidator:
             return traits
 
         for fact in instance.facts:
+            if self._cancelled():
+                break
             concept, is_numeric, requires_iso4217 = _traits_for_fact(fact)
             ctx = instance.contexts.get(fact.context_ref)
             if ctx is None:
@@ -444,8 +463,7 @@ class StructuralConformanceValidator:
             concept = taxonomy.concepts.get(fact.concept)
             if concept is None:
                 continue
-            local_name_lower = concept.data_type.local_name.lower()
-            is_numeric = any(kw in local_name_lower for kw in _NUMERIC_TYPE_KEYWORDS)
+            is_numeric = concept_is_numeric(concept)
             if not is_numeric:
                 continue
             if fact.unit_ref is None or fact.unit_ref not in instance.units:
@@ -740,11 +758,7 @@ class StructuralConformanceValidator:
 
     @staticmethod
     def _concept_is_shares_item(concept: Concept | None) -> bool:
-        return (
-            concept is not None
-            and concept.data_type.namespace == NS_XBRLI
-            and concept.data_type.local_name == "sharesItemType"
-        )
+        return concept_is_shares(concept)
 
     @staticmethod
     def _shares_unit_finding(fact: Fact, unit: XbrlUnit) -> ValidationFinding | None:
@@ -889,6 +903,8 @@ class StructuralConformanceValidator:
         )
         if not schema_substitution_groups:
             for schema_path in taxonomy.schema_files:
+                if self._cancelled():
+                    return findings
                 try:
                     raw_candidates, _target_ns = parse_schema_raw(schema_path)
                 except Exception as exc:  # noqa: BLE001
@@ -909,6 +925,8 @@ class StructuralConformanceValidator:
                     schema_substitution_groups[qname] = substitution_group
 
         for ctx_id, ctx in instance.contexts.items():
+            if self._cancelled():
+                return findings
             for container_name, container_xml in (
                 ("scenario", getattr(ctx, "scenario_xml", None)),
                 ("segment", getattr(ctx, "segment_xml", None)),
@@ -981,22 +999,30 @@ class StructuralConformanceValidator:
 
         facts_by_concept: dict[QName, list[Fact]] = defaultdict(list)
         for fact in instance.facts:
+            if self._cancelled():
+                return []
             facts_by_concept[fact.concept].append(fact)
 
         findings: list[ValidationFinding] = []
         seen_pairs: set[tuple[QName, QName, str, str | None, str | None]] = set()
         for arc in essence_alias_arcs:
+            if self._cancelled():
+                return findings
             source_facts = facts_by_concept.get(arc.source, [])
             target_facts = facts_by_concept.get(arc.target, [])
             if not source_facts or not target_facts:
                 continue
 
             for source_fact in source_facts:
+                if self._cancelled():
+                    return findings
                 source_ctx = canonical_context_refs.get(
                     source_fact.context_ref,
                     source_fact.context_ref,
                 )
                 for target_fact in target_facts:
+                    if self._cancelled():
+                        return findings
                     target_ctx = canonical_context_refs.get(
                         target_fact.context_ref,
                         target_fact.context_ref,
@@ -1064,6 +1090,8 @@ class StructuralConformanceValidator:
 
         findings: list[ValidationFinding] = []
         for arc in requires_arcs:
+            if self._cancelled():
+                return findings
             if arc.source in present and arc.target not in present:
                 findings.append(
                     ValidationFinding(

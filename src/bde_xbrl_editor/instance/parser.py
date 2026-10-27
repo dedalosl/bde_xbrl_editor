@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from copy import deepcopy
 from dataclasses import replace
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -35,6 +36,8 @@ from bde_xbrl_editor.instance.models import (
     XbrlUnit,
 )
 from bde_xbrl_editor.instance.s_equal import build_s_equal_key_from_xml_fragments
+from bde_xbrl_editor.instance.temporal import normalize_lexical, parse_boundary
+from bde_xbrl_editor.paths import iter_existing_cache_roots
 from bde_xbrl_editor.taxonomy.models import QName
 from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
 
@@ -134,7 +137,23 @@ _XBRL_ORG_REMOTE_PREFIXES = (
     "http://www.xbrl.org/",
     "https://www.xbrl.org/",
 )
-_DEFAULT_XBRL_ORG_CACHE_ROOT = Path(__file__).resolve().parents[3] / "cache" / "www.xbrl.org"
+_SOURCE_DEFAULT_XBRL_ORG_CACHE_ROOT = Path(__file__).resolve().parents[3] / "cache" / "www.xbrl.org"
+_DEFAULT_XBRL_ORG_CACHE_ROOT = _SOURCE_DEFAULT_XBRL_ORG_CACHE_ROOT
+
+
+def _iter_xbrl_org_cache_roots() -> tuple[Path, ...]:
+    roots = [_DEFAULT_XBRL_ORG_CACHE_ROOT]
+    if _DEFAULT_XBRL_ORG_CACHE_ROOT == _SOURCE_DEFAULT_XBRL_ORG_CACHE_ROOT:
+        roots.extend(cache_root / "www.xbrl.org" for cache_root in iter_existing_cache_roots())
+    seen: set[Path] = set()
+    result: list[Path] = []
+    for root in roots:
+        resolved = root.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        result.append(resolved)
+    return tuple(result)
 
 
 def _catalog_path_candidates(local_root: Path, rel: str) -> list[Path]:
@@ -167,9 +186,11 @@ def _resolve_default_xbrl_org_cache_path(href: str) -> Path | None:
     href = href.split("#", 1)[0]
     for prefix in _XBRL_ORG_REMOTE_PREFIXES:
         if href.startswith(prefix):
-            candidate = (_DEFAULT_XBRL_ORG_CACHE_ROOT / href[len(prefix) :].lstrip("/")).resolve()
-            if candidate.exists():
-                return candidate
+            rel = href[len(prefix) :].lstrip("/")
+            for xbrl_org_cache_root in _iter_xbrl_org_cache_roots():
+                candidate = (xbrl_org_cache_root / rel).resolve()
+                if candidate.exists():
+                    return candidate
             return None
     return None
 
@@ -188,24 +209,11 @@ def _reject_xbrli_in_segment_or_scenario(container: etree._Element, context_id: 
 
 
 def _parse_date_boundary(text: str, *, date_only_is_end_boundary: bool = False) -> date:
-    stripped = text.strip()
-    if "T" not in stripped:
-        parsed = date.fromisoformat(stripped)
-        return parsed + timedelta(days=1) if date_only_is_end_boundary else parsed
-
-    day, time = stripped.split("T", 1)
-    parsed = date.fromisoformat(day)
-    return parsed + timedelta(days=1) if time.startswith("24:00:00") else parsed
+    return parse_boundary(text, end=date_only_is_end_boundary).wall.date()
 
 
 def _parse_date(text: str) -> date:
-    stripped = text.strip()
-    # XBRL allows ISO 8601 datetime strings for instant dates (e.g. "2009-01-01T00:00:00").
-    # The editor model stores dates, so keep the lexical calendar date here and
-    # apply end-boundary semantics only to S-equality keys.
-    if "T" in stripped:
-        stripped = stripped.split("T")[0]
-    return date.fromisoformat(stripped)
+    return parse_boundary(text).wall.date()
 
 
 def _has_inherited_xml_lang(el: etree._Element) -> bool:
@@ -215,6 +223,19 @@ def _has_inherited_xml_lang(el: etree._Element) -> bool:
             return True
         current = current.getparent()
     return False
+
+
+def _source_element_xml(el: etree._Element) -> bytes:
+    """Retain effective language when a fact is detached from its ancestors."""
+    source = deepcopy(el)
+    current = el
+    while current is not None:
+        language = current.get(_XML_LANG)
+        if language is not None:
+            source.set(_XML_LANG, language)
+            break
+        current = current.getparent()
+    return etree.tostring(source, encoding="utf-8", with_tail=False)
 
 
 def _reject_duplicate_instance_refs(root: etree._Element, path_str: str) -> None:
@@ -248,10 +269,7 @@ def _period_s_equal_key(period_el: etree._Element) -> tuple:
     if instant_el is not None:
         return (
             "instant",
-            _parse_date_boundary(
-                instant_el.text or "",
-                date_only_is_end_boundary=True,
-            ).isoformat(),
+            parse_boundary(instant_el.text or "", end=True).isoformat(canonical=True),
         )
 
     if period_el.find(_XBRLI_FOREVER) is not None:
@@ -261,11 +279,8 @@ def _period_s_equal_key(period_el: etree._Element) -> tuple:
     end_el = period_el.find(_XBRLI_END)
     return (
         "duration",
-        _parse_date_boundary((start_el.text or "") if start_el is not None else "").isoformat(),
-        _parse_date_boundary(
-            (end_el.text or "") if end_el is not None else "",
-            date_only_is_end_boundary=True,
-        ).isoformat(),
+        parse_boundary((start_el.text or "") if start_el is not None else "").isoformat(canonical=True),
+        parse_boundary((end_el.text or "") if end_el is not None else "", end=True).isoformat(canonical=True),
     )
 
 
@@ -288,9 +303,12 @@ def _parse_context(el: etree._Element) -> XbrlContext:
         raise InstanceParseError("", f"context '{context_id}' missing xbrli:period")
     instant_el = period_el.find(_XBRLI_INSTANT)
     if instant_el is not None:
+        instant_text = normalize_lexical(instant_el.text or "")
         period = ReportingPeriod(
             period_type="instant",
-            instant_date=_parse_date(instant_el.text or ""),
+            instant_date=_parse_date(instant_text),
+            instant_date_only="T" not in instant_text,
+            instant_lexical=instant_text,
         )
     elif period_el.find(_XBRLI_FOREVER) is not None:
         period = ReportingPeriod(period_type="forever")
@@ -299,8 +317,11 @@ def _parse_context(el: etree._Element) -> XbrlContext:
         end_el = period_el.find(_XBRLI_END)
         period = ReportingPeriod(
             period_type="duration",
+            start_lexical=normalize_lexical(start_el.text or "") if start_el is not None else None,
+            end_lexical=normalize_lexical(end_el.text or "") if end_el is not None else None,
             start_date=_parse_date((start_el.text or "") if start_el is not None else ""),
             end_date=_parse_date((end_el.text or "") if end_el is not None else ""),
+            end_date_only=(end_el is not None and "T" not in (end_el.text or "")),
         )
 
     # Parse explicit and typed dimensions from scenario/segment.
@@ -309,6 +330,7 @@ def _parse_context(el: etree._Element) -> XbrlContext:
     dimensions: dict[QName, QName] = {}
     typed_dimensions: dict[QName, str] = {}
     typed_dimension_elements: dict[QName, QName] = {}
+    typed_dimension_xml: dict[QName, bytes] = {}
     dim_containers: dict[QName, str] = {}
     context_element: str = "scenario"
     _segment_container = entity_el.find(_XBRLI_SEGMENT) if entity_el is not None else None
@@ -371,6 +393,11 @@ def _parse_context(el: etree._Element) -> XbrlContext:
                 if child_el is not None:
                     typed_dimensions[dim_qname] = "".join(child_el.itertext()).strip()
                     typed_dimension_elements[dim_qname] = _tag_to_qname(str(child_el.tag))
+                    typed_dimension_xml[dim_qname] = etree.tostring(
+                        child_el,
+                        encoding="utf-8",
+                        with_tail=False,
+                    )
                 else:
                     typed_dimensions[dim_qname] = (member_el.text or "").strip()
                 dim_containers[dim_qname] = _ce
@@ -402,6 +429,7 @@ def _parse_context(el: etree._Element) -> XbrlContext:
         dimensions=dimensions,
         typed_dimensions=typed_dimensions,
         typed_dimension_elements=typed_dimension_elements,
+        typed_dimension_xml=typed_dimension_xml,
         context_element=context_element,  # type: ignore[arg-type]
         dim_containers=dim_containers,  # type: ignore[arg-type]
         s_equal_key=s_equal_key,
@@ -418,7 +446,7 @@ def _parse_measure_qname(measure_el: etree._Element, measure_text: str) -> QName
         return QName.from_clark(measure_text)
     if ":" in measure_text:
         return QName.from_clark(_resolve_prefixed_qname(measure_el, measure_text))
-    return QName(namespace="", local_name=measure_text)
+    return QName(namespace=(measure_el.nsmap or {}).get(None, ""), local_name=measure_text)
 
 
 def _parse_unit(el: etree._Element) -> XbrlUnit:
@@ -579,7 +607,9 @@ def _resolve_instance_linkbase_refs(instance_path: Path, root: etree._Element) -
         xml_base = (lb_ref.get(_XML_BASE) or "").strip()
         if xml_base and not xml_base.startswith(("http://", "https://")):
             base_dir = (base_dir / xml_base).resolve()
-        candidate = (base_dir / href).resolve() if not href.startswith("/") else Path(href).resolve()
+        candidate = (
+            (base_dir / href).resolve() if not href.startswith("/") else Path(href).resolve()
+        )
         if candidate.exists() and candidate not in seen:
             seen.add(candidate)
             refs.append(candidate)
@@ -608,10 +638,12 @@ def _collect_facts_under_element(
     el: etree._Element,
     *,
     tuple_path: tuple[int, ...],
+    tuple_ancestor_concepts: tuple[QName, ...],
     path_str: str,
     known_concepts: dict,
     taxonomy: TaxonomyStructure | None,
     facts: list[Fact],
+    tuple_facts: list[Fact],
     orphaned: list[OrphanedFact],
 ) -> None:
     """Collect item facts nested under tuples (XBRL 2.1 summation-item binding)."""
@@ -629,31 +661,47 @@ def _collect_facts_under_element(
                 f"QName parse error for element '{tag}': {exc}",
             ) from exc
 
-        if taxonomy is not None and concept_qname in known_concepts:
-            if _concept_substitution_chain_reaches(
-                concept_qname, taxonomy, _XBRLI_TUPLE_QNAME
-            ):
-                _reject_xbrl_defined_attrs_on_tuple_fact(
-                    child,
-                    concept_qname,
-                    taxonomy,
+        if (
+            taxonomy is not None
+            and concept_qname in known_concepts
+            and _concept_substitution_chain_reaches(concept_qname, taxonomy, _XBRLI_TUPLE_QNAME)
+        ):
+            _reject_xbrl_defined_attrs_on_tuple_fact(
+                child,
+                concept_qname,
+                taxonomy,
+                path_str,
+            )
+            if "contextRef" in child.attrib:
+                raise InstanceParseError(
                     path_str,
+                    f"Tuple '{concept_qname}' must not carry contextRef.",
                 )
-                if "contextRef" in child.attrib:
-                    raise InstanceParseError(
-                        path_str,
-                        f"Tuple '{concept_qname}' must not carry contextRef.",
-                    )
-                _collect_facts_under_element(
-                    child,
-                    tuple_path=tuple_path + (idx,),
-                    path_str=path_str,
-                    known_concepts=known_concepts,
-                    taxonomy=taxonomy,
-                    facts=facts,
-                    orphaned=orphaned,
+            tuple_facts.append(
+                Fact(
+                    concept=concept_qname,
+                    context_ref="",
+                    unit_ref=None,
+                    value="",
+                    is_tuple=True,
+                    tuple_path=tuple_path,
+                    tuple_ancestor_concepts=tuple_ancestor_concepts,
+                    position_path=tuple_path + (idx,),
+                    source_element_xml=_source_element_xml(child),
                 )
-                continue
+            )
+            _collect_facts_under_element(
+                child,
+                tuple_path=tuple_path + (idx,),
+                tuple_ancestor_concepts=tuple_ancestor_concepts + (concept_qname,),
+                path_str=path_str,
+                known_concepts=known_concepts,
+                taxonomy=taxonomy,
+                facts=facts,
+                tuple_facts=tuple_facts,
+                orphaned=orphaned,
+            )
+            continue
 
         if "contextRef" not in child.attrib:
             continue
@@ -684,11 +732,13 @@ def _collect_facts_under_element(
                     precision=precision,
                     is_nil=is_nil,
                     tuple_path=tuple_path,
+                    tuple_ancestor_concepts=tuple_ancestor_concepts,
                     position_path=tuple_path + (idx,),
+                    source_element_xml=_source_element_xml(child),
                 )
             )
         else:
-            raw_xml = etree.tostring(child, encoding="unicode").encode("utf-8")
+            raw_xml = _source_element_xml(child)
             orphaned.append(
                 OrphanedFact(
                     concept_qname_str=tag,
@@ -697,6 +747,8 @@ def _collect_facts_under_element(
                     value=value,
                     decimals=decimals,
                     raw_element_xml=raw_xml,
+                    tuple_path=tuple_path,
+                    position_path=tuple_path + (idx,),
                 )
             )
 
@@ -801,13 +853,33 @@ class InstanceParser:
             progress(f"Loading taxonomy… {message}", min(mapped, 70))
 
         resolved_taxonomy_path = self._resolve_taxonomy_path(path, schema_href, schema_ref_el)
+        additional_schema_refs = [
+            (
+                el.get(_XLINK_HREF, ""),
+                self._resolve_taxonomy_path(path, el.get(_XLINK_HREF, ""), el),
+            )
+            for el in schema_ref_els[1:]
+            if el.get(_XLINK_HREF, "")
+        ]
+        instance_dts_roots = tuple(
+            sorted(
+                set(instance_linkbase_refs)
+                | {resolved for _, resolved in additional_schema_refs if resolved is not None}
+            )
+        )
         if (
             preloaded_taxonomy is not None
             and resolved_taxonomy_path is not None
             and resolved_taxonomy_path == preloaded_taxonomy.metadata.entry_point_path.resolve()
+            and getattr(preloaded_taxonomy, "instance_dts_roots", ()) == instance_dts_roots
+            and all(resolved is not None for _, resolved in additional_schema_refs)
         ):
             progress("Reusing loaded taxonomy…", 22)
-            taxonomy = preloaded_taxonomy
+            taxonomy = (
+                preloaded_taxonomy
+                if hasattr(preloaded_taxonomy, "instance_dts_roots")
+                else replace(preloaded_taxonomy, instance_dts_roots=())
+            )
         else:
             taxonomy = self._resolve_taxonomy(
                 path,
@@ -815,16 +887,9 @@ class InstanceParser:
                 path_str,
                 progress_callback=taxonomy_progress,
                 resolved_taxonomy_path=resolved_taxonomy_path,
+                instance_linkbase_seeds=instance_linkbase_refs or None,
             )
-            for extra_schema_ref_el in schema_ref_els[1:]:
-                extra_href = extra_schema_ref_el.get(_XLINK_HREF, "")
-                if not extra_href:
-                    continue
-                extra_resolved_path = self._resolve_taxonomy_path(
-                    path,
-                    extra_href,
-                    extra_schema_ref_el,
-                )
+            for extra_href, extra_resolved_path in additional_schema_refs:
                 try:
                     extra_taxonomy = self._resolve_taxonomy(
                         path,
@@ -838,6 +903,8 @@ class InstanceParser:
                         continue
                     raise
                 taxonomy = _merge_taxonomies(taxonomy, extra_taxonomy)
+            if getattr(taxonomy, "instance_dts_roots", ()) != instance_dts_roots:
+                taxonomy = replace(taxonomy, instance_dts_roots=instance_dts_roots)
         if taxonomy_resolved_callback is not None:
             taxonomy_resolved_callback(taxonomy)
         progress(
@@ -978,6 +1045,7 @@ class InstanceParser:
         found_preambulo = False
         filing_indicators: list[FilingIndicator] = []
         facts: list[Fact] = []
+        tuple_facts: list[Fact] = []
         orphaned: list[OrphanedFact] = []
         known_concepts = taxonomy.concepts if taxonomy else {}
         facts_seen = 0
@@ -1057,14 +1125,29 @@ class InstanceParser:
                                 path_str,
                                 f"Tuple '{concept_qname}' must not carry contextRef.",
                             )
+                        tuple_facts.append(
+                            Fact(
+                                concept=concept_qname,
+                                context_ref="",
+                                unit_ref=None,
+                                value="",
+                                is_tuple=True,
+                                tuple_path=(),
+                                tuple_ancestor_concepts=(),
+                                position_path=(root_idx,),
+                                source_element_xml=_source_element_xml(child),
+                            )
+                        )
                         facts_seen += 1
                         _collect_facts_under_element(
                             child,
                             tuple_path=(root_idx,),
+                            tuple_ancestor_concepts=(concept_qname,),
                             path_str=path_str,
                             known_concepts=known_concepts,
                             taxonomy=taxonomy,
                             facts=facts,
+                            tuple_facts=tuple_facts,
                             orphaned=orphaned,
                         )
                         continue
@@ -1103,10 +1186,11 @@ class InstanceParser:
                                 is_nil=is_nil,
                                 tuple_path=(),
                                 position_path=(root_idx,),
+                                source_element_xml=_source_element_xml(child),
                             )
                         )
                     else:
-                        raw_xml = etree.tostring(child, encoding="unicode").encode("utf-8")
+                        raw_xml = _source_element_xml(child)
                         orphaned.append(
                             OrphanedFact(
                                 concept_qname_str=tag,
@@ -1115,6 +1199,7 @@ class InstanceParser:
                                 value=value,
                                 decimals=decimals,
                                 raw_element_xml=raw_xml,
+                                position_path=(root_idx,),
                             )
                         )
 
@@ -1164,6 +1249,7 @@ class InstanceParser:
             contexts=contexts,
             units=units,
             facts=facts,
+            tuple_facts=tuple_facts,
             orphaned_facts=orphaned,
             bde_preambulo=bde_preambulo,
             source_path=path,

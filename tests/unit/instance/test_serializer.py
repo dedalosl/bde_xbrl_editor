@@ -253,7 +253,7 @@ class TestToXml:
         context_el = root.find(f"{{{XBRLI_NS}}}context")
         assert context_el is not None
 
-        segment_el = context_el.find(f"{{{XBRLI_NS}}}segment")
+        segment_el = context_el.find(f"{{{XBRLI_NS}}}entity/{{{XBRLI_NS}}}segment")
         scenario_el = context_el.find(f"{{{XBRLI_NS}}}scenario")
         assert segment_el is not None
         assert scenario_el is not None

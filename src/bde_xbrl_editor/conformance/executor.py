@@ -11,6 +11,7 @@ from lxml import etree
 from bde_xbrl_editor.conformance.models import (
     ExpectedOutcome,
     ExpectedOutcomeType,
+    ExpectedResultFileType,
     TestCase,
     TestCaseResult,
     TestResultOutcome,
@@ -24,6 +25,7 @@ from bde_xbrl_editor.taxonomy.linkbases.custom_functions import parse_custom_fun
 from bde_xbrl_editor.taxonomy.linkbases.formula import (
     linkbase_contains_formula_assertions,
     parse_formula_linkbase,
+    parse_formula_linkbase_bundle,
 )
 from bde_xbrl_editor.taxonomy.loader import TaxonomyLoader
 from bde_xbrl_editor.taxonomy.models import (
@@ -34,15 +36,22 @@ from bde_xbrl_editor.taxonomy.settings import LoaderSettings
 from bde_xbrl_editor.taxonomy.xml_utils import parse_xml_file
 from bde_xbrl_editor.validation.calculation import CalculationConsistencyValidator
 from bde_xbrl_editor.validation.essence_alias import EssenceAliasValidator
-from bde_xbrl_editor.validation.formula.output_runtime import OutputFormulaRuntimeEvaluator
+from bde_xbrl_editor.validation.formula.output_instance import (
+    OutputInstanceComparison,
+    compare_output_instances,
+)
+from bde_xbrl_editor.validation.formula.processor import FormulaProcessor
 from bde_xbrl_editor.validation.formula.static import (
-    FormulaStaticValidator,
     validate_assertion_severity_linkbases,
     validate_custom_function_linkbases,
     validate_generic_message_linkbases,
     validate_typed_dimension_equality_linkbases,
 )
-from bde_xbrl_editor.validation.models import ValidationFinding, ValidationSeverity
+from bde_xbrl_editor.validation.models import (
+    ValidationFinding,
+    ValidationSeverity,
+    ValidationStatus,
+)
 from bde_xbrl_editor.validation.orchestrator import InstanceValidator
 from bde_xbrl_editor.validation.relationships import RelationshipSetValidator
 from bde_xbrl_editor.validation.xbrl_documents import (
@@ -82,25 +91,6 @@ _STRUCTURAL_ONLY_TEST_IDS = frozenset(
         _USED_ON_TEST_ID,
     }
 )
-_OUTPUT_RUNTIME_ERROR_TEST_PREFIXES = ("22010", "22040", "22050", "22140", "22170", "60200")
-_INPUT_ASSERTION_STATIC_TEST_PREFIXES = (
-    "22010",
-    "31110",
-    "31130",
-    "32110",
-    "32210",
-    "33210",
-)
-
-
-def _should_include_input_formula_assertions(
-    test_case: TestCase,
-    variation: TestVariation,
-) -> bool:
-    return (
-        test_case.test_case_id.startswith(_INPUT_ASSERTION_STATIC_TEST_PREFIXES)
-        and variation.expected_outcome.outcome_type == ExpectedOutcomeType.ERROR
-    )
 
 
 def _concept_id_map(taxonomy: TaxonomyStructure) -> dict[str, QName]:
@@ -148,8 +138,6 @@ def _with_instance_calculation_linkbases(
 def _with_input_formula_linkbases(
     taxonomy: TaxonomyStructure,
     input_files: tuple[Path, ...],
-    *,
-    include_assertions: bool = False,
 ) -> TaxonomyStructure:
     """Merge Formula 1.0 resources from conformance variation input linkbases.
 
@@ -166,10 +154,73 @@ def _with_input_formula_linkbases(
     changed = False
     seen_assertions = {assertion.assertion_id for assertion in assertions}
     seen_formulas = {formula.formula_id for formula in output_formulas}
+    formula_indexes = {formula.formula_id: index for index, formula in enumerate(output_formulas)}
     seen_parameters = {parameter.parameter_name for parameter in global_parameters}
     seen_custom_functions = {
         (definition.name, definition.input_types) for definition in custom_functions
     }
+
+    def merge_formula(formula) -> None:
+        nonlocal changed
+        if formula.formula_id in seen_formulas:
+            existing_index = formula_indexes.get(formula.formula_id)
+            if existing_index is None:
+                return
+            existing = output_formulas[existing_index]
+            has_more_bindings = len(formula.variables) + len(formula.general_variables) > len(
+                existing.variables
+            ) + len(existing.general_variables)
+            has_source_path = existing.source_path is None and formula.source_path is not None
+            if has_more_bindings or has_source_path:
+                output_formulas[existing_index] = (
+                    replace(formula, source_path=existing.source_path or formula.source_path)
+                    if has_more_bindings
+                    else formula
+                )
+                changed = True
+            return
+        output_formulas.append(formula)
+        formula_indexes[formula.formula_id] = len(output_formulas) - 1
+        seen_formulas.add(formula.formula_id)
+        changed = True
+
+    def merge_assertion(assertion) -> None:
+        nonlocal changed
+        if assertion.assertion_id in seen_assertions:
+            existing_index = next(
+                (
+                    index
+                    for index, existing in enumerate(assertions)
+                    if existing.assertion_id == assertion.assertion_id
+                ),
+                None,
+            )
+            if existing_index is None:
+                return
+            existing = assertions[existing_index]
+            has_more_bindings = len(assertion.variables) + len(assertion.general_variables) > len(
+                existing.variables
+            ) + len(existing.general_variables)
+            has_typed_equality = bool(assertion.typed_dimension_equality_tests) and not bool(
+                existing.typed_dimension_equality_tests
+            )
+            has_custom_relationships = bool(assertion.custom_relationships) and not bool(
+                existing.custom_relationships
+            )
+            has_more_messages = len(assertion.message_resources) > len(existing.message_resources)
+            if (
+                has_more_bindings
+                or has_typed_equality
+                or has_custom_relationships
+                or has_more_messages
+            ):
+                assertions[existing_index] = assertion
+                changed = True
+            return
+        assertions.append(assertion)
+        seen_assertions.add(assertion.assertion_id)
+        changed = True
+
     for path in input_files:
         if path.suffix.lower() not in (".xml", ".xbrl"):
             continue
@@ -182,27 +233,32 @@ def _with_input_formula_linkbases(
             changed = True
         if linkbase_contains_formula_assertions(path):
             parsed = parse_formula_linkbase(path)
-            if include_assertions and parsed.assertions:
+            if parsed.assertions:
                 for assertion in parsed.assertions:
-                    if assertion.assertion_id in seen_assertions:
-                        continue
-                    assertions.append(assertion)
-                    seen_assertions.add(assertion.assertion_id)
-                    changed = True
+                    merge_assertion(assertion)
             if parsed.output_formulas:
                 for formula in parsed.output_formulas:
-                    if formula.formula_id in seen_formulas:
-                        continue
-                    output_formulas.append(formula)
-                    seen_formulas.add(formula.formula_id)
-                    changed = True
-            if include_assertions and parsed.global_parameters:
+                    merge_formula(formula)
+            if parsed.global_parameters:
                 for parameter in parsed.global_parameters:
                     if parameter.parameter_name in seen_parameters:
                         continue
                     global_parameters.append(parameter)
                     seen_parameters.add(parameter.parameter_name)
                     changed = True
+    bundled_input_formulas = parse_formula_linkbase_bundle(
+        tuple(path for path in input_files if path.suffix.lower() in (".xml", ".xbrl"))
+    )
+    for assertion in bundled_input_formulas.assertions:
+        merge_assertion(assertion)
+    for formula in bundled_input_formulas.output_formulas:
+        merge_formula(formula)
+    for parameter in bundled_input_formulas.global_parameters:
+        if parameter.parameter_name in seen_parameters:
+            continue
+        global_parameters.append(parameter)
+        seen_parameters.add(parameter.parameter_name)
+        changed = True
     if not changed:
         return taxonomy
     return replace(
@@ -217,26 +273,10 @@ def _with_input_formula_linkbases(
     )
 
 
-def _formula_discovery_seed_linkbases(instance_linkbase_refs: tuple[Path, ...]) -> tuple[Path, ...]:
-    """Return instance linkbaseRefs that should extend formula DTS discovery.
-
-    The v1 conformance runner feeds formula linkbases from testcase input files
-    explicitly. Instance linkbaseRefs that already contain formula resources would
-    therefore broaden the current runtime surface and mask the BDE-45 static/DTS
-    signal. Locator-only linkbases, however, are pure DTS discovery bridges; they
-    are required for cases such as 22090 V-05 where resources and arcs live in
-    files reached only through locators.
-    """
-    return tuple(
-        path
-        for path in instance_linkbase_refs
-        if path.suffix.lower() in (".xml", ".xbrl")
-        and not linkbase_contains_formula_assertions(path)
-    )
-
-
 class TestCaseExecutor:
     """Executes a single conformance test variation and returns a TestCaseResult."""
+
+    __test__ = False
 
     def __init__(
         self,
@@ -268,6 +308,7 @@ class TestCaseExecutor:
         start = time.time()
         load_error: Exception | None = None
         findings: tuple[ValidationFinding, ...] = ()
+        output_comparison: OutputInstanceComparison | None = None
 
         try:
             settings = LoaderSettings(allow_network=self._allow_network)
@@ -294,22 +335,18 @@ class TestCaseExecutor:
 
                 # Get taxonomy: use explicit taxonomy_file if given, otherwise
                 # resolve schemaRef relative to instance file
-                formula_seed_linkbases = (
-                    _formula_discovery_seed_linkbases(instance.instance_linkbase_refs)
-                    if test_case.suite_id == "formula"
-                    else instance.instance_linkbase_refs
-                )
+                instance_linkbase_seeds = instance.instance_linkbase_refs
                 if variation.taxonomy_file is not None and variation.taxonomy_file.exists():
                     taxonomy_struct = loader.load(
                         variation.taxonomy_file,
-                        instance_linkbase_seeds=formula_seed_linkbases,
+                        instance_linkbase_seeds=instance_linkbase_seeds,
                     )
                 elif parsed_taxonomies:
                     taxonomy_struct = parsed_taxonomies[-1]
-                    if formula_seed_linkbases:
+                    if instance_linkbase_seeds:
                         taxonomy_struct = loader.load(
                             taxonomy_struct.metadata.entry_point_path,
-                            instance_linkbase_seeds=formula_seed_linkbases,
+                            instance_linkbase_seeds=instance_linkbase_seeds,
                         )
                 else:
                     schema_href = instance.schema_ref_href
@@ -318,17 +355,17 @@ class TestCaseExecutor:
                         if schema_ref_path.exists():
                             taxonomy_struct = loader.load(
                                 schema_ref_path,
-                                instance_linkbase_seeds=formula_seed_linkbases,
+                                instance_linkbase_seeds=instance_linkbase_seeds,
                             )
                         else:
                             taxonomy_struct = loader.load(
                                 instance.taxonomy_entry_point,
-                                instance_linkbase_seeds=formula_seed_linkbases,
+                                instance_linkbase_seeds=instance_linkbase_seeds,
                             )
                     else:
                         taxonomy_struct = loader.load(
                             instance.taxonomy_entry_point,
-                            instance_linkbase_seeds=formula_seed_linkbases,
+                            instance_linkbase_seeds=instance_linkbase_seeds,
                         )
 
                 if taxonomy_struct is not None:
@@ -340,17 +377,16 @@ class TestCaseExecutor:
                         taxonomy_struct = _with_input_formula_linkbases(
                             taxonomy_struct,
                             variation.input_files,
-                            include_assertions=_should_include_input_formula_assertions(
-                                test_case, variation
-                            ),
                         )
                     validator = InstanceValidator(
                         taxonomy_struct,
-                        include_dimensional=test_case.suite_id not in {
+                        include_dimensional=test_case.suite_id
+                        not in {
                             "formula",
                             "table-linkbase",
                         },
                         include_relationships=test_case.suite_id == "xbrl21",
+                        include_formula=test_case.suite_id != "formula",
                     )
                     report = validator.validate_sync(instance)
                     findings = report.findings
@@ -359,7 +395,11 @@ class TestCaseExecutor:
                         EssenceAliasValidator().validate_taxonomy(taxonomy_struct)
                     )
                 if test_case.suite_id == "formula" and taxonomy_struct is not None:
-                    findings = findings + tuple(FormulaStaticValidator(taxonomy_struct).validate())
+                    formula_result = FormulaProcessor(taxonomy_struct).evaluate(
+                        instance,
+                        external_parameters=variation.external_parameters,
+                    )
+                    findings = findings + formula_result.findings
                     findings = findings + tuple(
                         validate_assertion_severity_linkbases(variation.input_files)
                     )
@@ -372,13 +412,21 @@ class TestCaseExecutor:
                     findings = findings + tuple(
                         validate_typed_dimension_equality_linkbases(variation.input_files)
                     )
-                    if (
-                        test_case.test_case_id.startswith(_OUTPUT_RUNTIME_ERROR_TEST_PREFIXES)
-                        and variation.expected_outcome.outcome_type == ExpectedOutcomeType.ERROR
-                    ):
-                        findings = findings + OutputFormulaRuntimeEvaluator(
-                            taxonomy_struct
-                        ).evaluate_runtime_errors(instance)
+                    expected_instances = tuple(
+                        result
+                        for result in variation.expected_outcome.result_files
+                        if result.file_type == ExpectedResultFileType.INSTANCE
+                    )
+                    if expected_instances:
+                        expected_instance, _ = inst_parser.load(
+                            expected_instances[0].path,
+                            preloaded_taxonomy=taxonomy_struct,
+                        )
+                        output_comparison = compare_output_instances(
+                            formula_result.output_instance,
+                            expected_instance,
+                            taxonomy_struct,
+                        )
                 if test_case.test_case_id == _LAX_VALIDATION_TEST_ID:
                     findings = findings + validate_lax_known_declarations(variation.input_files)
 
@@ -394,12 +442,9 @@ class TestCaseExecutor:
                     taxonomy_struct = _with_input_formula_linkbases(
                         taxonomy_struct,
                         variation.input_files,
-                        include_assertions=_should_include_input_formula_assertions(
-                            test_case, variation
-                        ),
                     )
                 if test_case.suite_id == "formula" and taxonomy_struct is not None:
-                    findings = findings + tuple(FormulaStaticValidator(taxonomy_struct).validate())
+                    findings = findings + FormulaProcessor(taxonomy_struct).validate_taxonomy()
                     findings = findings + tuple(
                         validate_assertion_severity_linkbases(variation.input_files)
                     )
@@ -463,12 +508,9 @@ class TestCaseExecutor:
                     taxonomy_struct = _with_input_formula_linkbases(
                         taxonomy_struct,
                         variation.input_files,
-                        include_assertions=_should_include_input_formula_assertions(
-                            test_case, variation
-                        ),
                     )
                 if test_case.suite_id == "formula" and taxonomy_struct is not None:
-                    findings = findings + tuple(FormulaStaticValidator(taxonomy_struct).validate())
+                    findings = findings + FormulaProcessor(taxonomy_struct).validate_taxonomy()
                     findings = findings + tuple(
                         validate_assertion_severity_linkbases(variation.input_files)
                     )
@@ -503,6 +545,7 @@ class TestCaseExecutor:
             findings,
             load_error,
             test_case.suite_id,
+            output_comparison,
         )
         duration_ms = int((time.time() - start) * 1000)
 
@@ -526,9 +569,86 @@ class TestCaseExecutor:
         findings: tuple[ValidationFinding, ...],
         load_error: Exception | None,
         suite_id: str | None = None,
+        output_comparison: OutputInstanceComparison | None = None,
     ) -> tuple[TestResultOutcome, tuple[str, ...]]:
         """Determine the test outcome by comparing expected with actual results."""
-        error_findings = tuple(f for f in findings if f.severity == ValidationSeverity.ERROR)
+        expected_assertion_ids = {
+            assertion_test.assertion_id
+            for assertion_test in expected.assertion_tests
+            if assertion_test.assertion_id
+        }
+        assertion_findings = tuple(
+            finding
+            for finding in findings
+            if finding.source == "formula" and finding.rule_id in expected_assertion_ids
+        )
+        for assertion_test in expected.assertion_tests:
+            matching = tuple(
+                finding
+                for finding in assertion_findings
+                if finding.rule_id == assertion_test.assertion_id
+            )
+            actual_satisfied = sum(finding.status == ValidationStatus.PASS for finding in matching)
+            actual_not_satisfied = sum(
+                finding.status == ValidationStatus.FAIL for finding in matching
+            )
+            if (
+                assertion_test.count_satisfied is not None
+                and actual_satisfied != assertion_test.count_satisfied
+            ) or (
+                assertion_test.count_not_satisfied is not None
+                and actual_not_satisfied != assertion_test.count_not_satisfied
+            ):
+                return (
+                    TestResultOutcome.FAIL,
+                    ("conformance:assertion-count-mismatch",),
+                )
+
+        for message_test in expected.message_tests:
+            matching = tuple(
+                finding
+                for finding in findings
+                if finding.source == "formula" and finding.rule_id == message_test.assertion_id
+            )
+            actual_messages = {
+                (
+                    finding.status == ValidationStatus.PASS,
+                    self._normalized_formula_message(finding.evaluated_rule_message),
+                )
+                for finding in matching
+                if finding.evaluated_rule_message
+            }
+            expected_messages = {
+                (message.satisfied, self._normalized_formula_message(message.text))
+                for message in message_test.messages
+            }
+            if actual_messages != expected_messages:
+                return TestResultOutcome.FAIL, ("conformance:message-mismatch",)
+
+        if expected.requires_output_comparison and output_comparison is None:
+            return (
+                TestResultOutcome.SKIPPED,
+                ("conformance:output-comparison-not-supported",),
+            )
+        if output_comparison is not None and not output_comparison.matched:
+            return (
+                TestResultOutcome.FAIL,
+                ("conformance:output-instance-mismatch",),
+            )
+        if expected.unsupported_result_elements:
+            return (
+                TestResultOutcome.SKIPPED,
+                ("conformance:output-comparison-not-supported",),
+            )
+
+        non_assertion_findings = tuple(
+            finding
+            for finding in findings
+            if not (finding.source == "formula" and finding.rule_id in expected_assertion_ids)
+        )
+        error_findings = tuple(
+            f for f in non_assertion_findings if f.severity == ValidationSeverity.ERROR
+        )
         if suite_id == "formula" and expected.outcome_type == ExpectedOutcomeType.VALID:
             error_findings = tuple(
                 f for f in error_findings if f.rule_id not in _FORMULA_VALID_IGNORE_RULE_IDS
@@ -537,7 +657,9 @@ class TestCaseExecutor:
             error_findings = tuple(
                 f for f in error_findings if f.rule_id not in _XBRL21_VALID_IGNORE_RULE_IDS
             )
-        warning_findings = tuple(f for f in findings if f.severity == ValidationSeverity.WARNING)
+        warning_findings = tuple(
+            f for f in non_assertion_findings if f.severity == ValidationSeverity.WARNING
+        )
         actual_error_codes = tuple(f.rule_id for f in error_findings)
         actual_warning_codes = tuple(f.rule_id for f in warning_findings)
         all_actual_codes = actual_error_codes + actual_warning_codes
@@ -584,3 +706,12 @@ class TestCaseExecutor:
 
         # Fallback
         return TestResultOutcome.ERROR, ()
+
+    @staticmethod
+    def _normalized_formula_message(message: str | None) -> str:
+        if message is None:
+            return ""
+        lines = message.strip().splitlines()
+        if lines and lines[-1].strip() in {"TRUE", "FALSE"}:
+            lines.pop()
+        return " ".join(" ".join(lines).split())

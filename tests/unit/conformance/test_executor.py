@@ -10,14 +10,21 @@ from bde_xbrl_editor.conformance.executor import (
     _with_input_formula_linkbases,
 )
 from bde_xbrl_editor.conformance.models import (
+    ExpectedAssertionTest,
     ExpectedOutcome,
     ExpectedOutcomeType,
+    ExpectedResultFile,
+    ExpectedResultFileType,
     TestResultOutcome,
 )
 from bde_xbrl_editor.taxonomy.cache import TaxonomyCache
 from bde_xbrl_editor.taxonomy.models import TaxonomyMetadata, TaxonomyStructure
 from bde_xbrl_editor.validation.formula.static import FormulaStaticValidator
-from bde_xbrl_editor.validation.models import ValidationFinding, ValidationSeverity
+from bde_xbrl_editor.validation.models import (
+    ValidationFinding,
+    ValidationSeverity,
+    ValidationStatus,
+)
 from bde_xbrl_editor.validation.xbrl_documents import (
     _validate_xlink_file,
     validate_lax_known_declarations,
@@ -47,6 +54,16 @@ def _warning_finding(rule_id: str) -> ValidationFinding:
         severity=ValidationSeverity.WARNING,
         message="test warning",
         source="structural",
+    )
+
+
+def _formula_finding(rule_id: str, status: ValidationStatus) -> ValidationFinding:
+    return ValidationFinding(
+        rule_id=rule_id,
+        severity=ValidationSeverity.ERROR if status == ValidationStatus.FAIL else None,
+        status=status,
+        message="formula result",
+        source="formula",
     )
 
 
@@ -456,6 +473,67 @@ def test_valid_with_only_warnings_passes() -> None:
     findings = (_warning_finding("xbrl:someWarning"),)
     outcome, codes = executor._match_outcome(expected, findings, None)
     assert outcome == TestResultOutcome.PASS
+
+
+def test_formula_assertion_counts_are_matched_exactly() -> None:
+    executor = _make_executor()
+    expected = ExpectedOutcome(
+        outcome_type=ExpectedOutcomeType.VALID,
+        assertion_tests=(
+            ExpectedAssertionTest(
+                assertion_id="assertion",
+                count_satisfied=1,
+                count_not_satisfied=1,
+            ),
+        ),
+    )
+    findings = (
+        _formula_finding("assertion", ValidationStatus.PASS),
+        _formula_finding("assertion", ValidationStatus.FAIL),
+    )
+
+    outcome, codes = executor._match_outcome(expected, findings, None, "formula")
+
+    assert outcome == TestResultOutcome.PASS
+    assert codes == ()
+
+
+def test_formula_assertion_count_mismatch_fails() -> None:
+    executor = _make_executor()
+    expected = ExpectedOutcome(
+        outcome_type=ExpectedOutcomeType.VALID,
+        assertion_tests=(
+            ExpectedAssertionTest(
+                assertion_id="assertion",
+                count_satisfied=2,
+                count_not_satisfied=0,
+            ),
+        ),
+    )
+    findings = (_formula_finding("assertion", ValidationStatus.PASS),)
+
+    outcome, codes = executor._match_outcome(expected, findings, None, "formula")
+
+    assert outcome == TestResultOutcome.FAIL
+    assert codes == ("conformance:assertion-count-mismatch",)
+
+
+def test_unverified_output_instance_is_skipped() -> None:
+    executor = _make_executor()
+    expected = ExpectedOutcome(
+        outcome_type=ExpectedOutcomeType.VALID,
+        result_files=(
+            ExpectedResultFile(
+                file_type=ExpectedResultFileType.INSTANCE,
+                path=Path("expected.xml"),
+            ),
+        ),
+    )
+
+    outcome, codes = executor._match_outcome(expected, (), None, "formula")
+
+    assert outcome == TestResultOutcome.SKIPPED
+    assert codes == ("conformance:output-comparison-not-supported",)
 
 
 # ---------------------------------------------------------------------------

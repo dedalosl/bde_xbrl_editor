@@ -1,0 +1,1267 @@
+{
+  "schema": "openai.presentation.layout/v4",
+  "unit": "px",
+  "slide": {
+    "aid": "sl/c9i5pb",
+    "id": "c9i5pb",
+    "slide": 4,
+    "layoutId": "d0417a24-6f59-4016-9dea-b2418fe62cf7",
+    "layoutName": "Title Slide",
+    "layoutType": "title",
+    "masterLayoutId": "4cda7bab-c072-405d-9b73-342247b830ad",
+    "masterLayoutName": "Master",
+    "frame": {
+      "left": 0,
+      "top": 0,
+      "width": 1280,
+      "height": 720
+    }
+  },
+  "theme": {
+    "colorSchemeName": "ChatGPT",
+    "colors": {
+      "accent1": "#156082",
+      "accent2": "#E97132",
+      "accent3": "#196B24",
+      "accent4": "#0F9ED5",
+      "accent5": "#A02B93",
+      "accent6": "#4EA72E",
+      "bg1": "#FFFFFF",
+      "bg2": "#000000",
+      "tx1": "#1F1F1F",
+      "tx2": "#FFFFFF",
+      "dk1": "#000000",
+      "lt1": "#FFFFFF",
+      "dk2": "#0E2841",
+      "lt2": "#E8E8E8",
+      "hlink": "#467886",
+      "folHlink": "#96607D"
+    },
+    "typefaces": [
+      "Aptos",
+      "Aptos Display"
+    ]
+  },
+  "inheritedLayers": [
+    {
+      "scope": "layout",
+      "id": "d0417a24-6f59-4016-9dea-b2418fe62cf7",
+      "name": "Title Slide",
+      "type": "title",
+      "parentLayoutId": "4cda7bab-c072-405d-9b73-342247b830ad",
+      "elements": []
+    },
+    {
+      "scope": "master",
+      "id": "4cda7bab-c072-405d-9b73-342247b830ad",
+      "name": "Master",
+      "type": "master",
+      "elements": []
+    }
+  ],
+  "elements": [
+    {
+      "order": 1,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/ap0b6xon",
+      "id": "1",
+      "bbox": [
+        0,
+        0,
+        1280,
+        720
+      ],
+      "geometry": "rect",
+      "fillColor": "#F6F8FA",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 2,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/xsra1s7e",
+      "id": "2",
+      "bbox": [
+        0,
+        0,
+        1280,
+        7
+      ],
+      "geometry": "rect",
+      "fillColor": "#15807A",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 3,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/writ8n6t",
+      "id": "3",
+      "bbox": [
+        64,
+        34,
+        430,
+        22
+      ],
+      "geometry": "rect",
+      "text": "BDE XBRL EDITOR",
+      "textPreview": "BDE XBRL EDITOR",
+      "resolvedFontSize": 12,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 12,
+        "typeface": "Aptos",
+        "color": "#15807A",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "BDE XBRL EDITOR"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "BDE XBRL EDITOR",
+          "resolvedTextStyle": {
+            "fontSize": 12,
+            "typeface": "Aptos",
+            "color": "#15807A",
+            "bold": true,
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "BDE XBRL EDITOR",
+              "fontSize": 12,
+              "typeface": "Aptos",
+              "color": "#15807A",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 4,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/nmpsvipc",
+      "id": "4",
+      "bbox": [
+        64,
+        58,
+        760,
+        56
+      ],
+      "geometry": "rect",
+      "text": "La arquitectura separa UI, servicios y nucleo XBRL",
+      "textPreview": "La arquitectura separa UI, servicios y nucleo XBRL",
+      "resolvedFontSize": 31,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 31,
+        "typeface": "Aptos Display",
+        "color": "#17212B",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "La arquitectura separa UI, servicios y nucleo XBRL"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "La arquitectura separa UI, servicios y nucleo XBRL",
+          "resolvedTextStyle": {
+            "fontSize": 31,
+            "typeface": "Aptos Display",
+            "color": "#17212B",
+            "bold": true,
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "La arquitectura separa UI, servicios y nucleo XBRL",
+              "fontSize": 31,
+              "typeface": "Aptos Display",
+              "color": "#17212B",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 5,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/m1gb2dor",
+      "id": "5",
+      "bbox": [
+        1168,
+        42,
+        48,
+        24
+      ],
+      "geometry": "rect",
+      "text": "04",
+      "textPreview": "04",
+      "resolvedFontSize": 12,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 12,
+        "typeface": "Aptos",
+        "color": "#566575",
+        "bold": true,
+        "alignment": "right",
+        "verticalAlignment": "top",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "04"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "04",
+          "resolvedTextStyle": {
+            "fontSize": 12,
+            "typeface": "Aptos",
+            "color": "#566575",
+            "bold": true,
+            "alignment": "right"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "04",
+              "fontSize": 12,
+              "typeface": "Aptos",
+              "color": "#566575",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 6,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/9oraxs7i",
+      "id": "6",
+      "bbox": [
+        64,
+        116,
+        560,
+        54
+      ],
+      "geometry": "rect",
+      "text": "La decision principal fue aislar el conocimiento XBRL de la interfaz: PySide6 queda en la capa visual y los modelos/reglas se prueban sin Qt.",
+      "textPreview": "La decision principal fue aislar el conocimiento XBRL de la interfaz: PySide6 queda en la capa visual y los modelos/reglas se prueban sin...",
+      "resolvedFontSize": 17,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 17,
+        "typeface": "Aptos",
+        "color": "#566575",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "La decision principal fue aislar el conocimiento XBRL de la interfaz:"
+          },
+          {
+            "index": 2,
+            "text": "PySide6 queda en la capa visual y los modelos/reglas se prueban sin Qt."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "La decision principal fue aislar el conocimiento XBRL de la interfaz: PySide6 queda en la capa visual y los modelos/reglas se prueban sin Qt.",
+          "lineSpacingPercent": 108000,
+          "resolvedTextStyle": {
+            "fontSize": 17,
+            "typeface": "Aptos",
+            "color": "#566575",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "La decision principal fue aislar el conocimiento XBRL de la interfaz: PySide6 queda en la capa visual y los modelos/reglas se prueban sin Qt.",
+              "fontSize": 17,
+              "typeface": "Aptos",
+              "color": "#566575"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 7,
+      "kind": "image",
+      "scope": "slide",
+      "aid": "im/t0b2hkna",
+      "id": "7",
+      "bbox": [
+        676,
+        118,
+        520,
+        392
+      ],
+      "alt": "Visual abstracto de arquitectura por capas con dependencias descendentes",
+      "contentType": "image/png",
+      "imageFit": "cover",
+      "asset": {
+        "assetId": "850661e8-6550-4378-9374-ece497d2ce5f",
+        "contentType": "image/png",
+        "byteLength": 2247321
+      }
+    },
+    {
+      "order": 8,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/zypsrip0",
+      "id": "8",
+      "bbox": [
+        676,
+        118,
+        520,
+        392
+      ],
+      "geometry": "rect",
+      "fillColor": "rgba(7, 17, 27, 0.20784)",
+      "lineColor": "rgba(255, 255, 255, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 9,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/yxgbydof",
+      "id": "9",
+      "bbox": [
+        676,
+        118,
+        520,
+        392
+      ],
+      "geometry": "rect",
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "#C6D1DB",
+      "lineWidth": 1
+    },
+    {
+      "order": 10,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/onylcj6t",
+      "id": "10",
+      "bbox": [
+        64,
+        196,
+        560,
+        74
+      ],
+      "geometry": "rect",
+      "fillColor": "#FFFFFF",
+      "lineColor": "#D7DEE6",
+      "lineWidth": 1
+    },
+    {
+      "order": 11,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/por2lony",
+      "id": "11",
+      "bbox": [
+        64,
+        196,
+        10,
+        74
+      ],
+      "geometry": "rect",
+      "fillColor": "#15395B",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 12,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/2lg3aton",
+      "id": "12",
+      "bbox": [
+        94,
+        209,
+        245,
+        26
+      ],
+      "geometry": "rect",
+      "text": "UI / API",
+      "textPreview": "UI / API",
+      "resolvedFontSize": 20,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 20,
+        "typeface": "Aptos",
+        "color": "#17212B",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "UI / API"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "UI / API",
+          "resolvedTextStyle": {
+            "fontSize": 20,
+            "typeface": "Aptos",
+            "color": "#17212B",
+            "bold": true,
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "UI / API",
+              "fontSize": 20,
+              "typeface": "Aptos",
+              "color": "#17212B",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 13,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/3mpkjy58",
+      "id": "13",
+      "bbox": [
+        94,
+        238,
+        486,
+        20
+      ],
+      "geometry": "rect",
+      "text": "PySide6: ventana principal, widgets, paneles, tablas, validacion",
+      "textPreview": "PySide6: ventana principal, widgets, paneles, tablas, validacion",
+      "resolvedFontSize": 12.8,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 12.8,
+        "typeface": "Aptos",
+        "color": "#566575",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "PySide6: ventana principal, widgets, paneles, tablas, validacion"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "PySide6: ventana principal, widgets, paneles, tablas, validacion",
+          "resolvedTextStyle": {
+            "fontSize": 12.8,
+            "typeface": "Aptos",
+            "color": "#566575",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "PySide6: ventana principal, widgets, paneles, tablas, validacion",
+              "fontSize": 12.8,
+              "typeface": "Aptos",
+              "color": "#566575"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 14,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/gjyl8j6h",
+      "id": "14",
+      "bbox": [
+        64,
+        282,
+        560,
+        74
+      ],
+      "geometry": "rect",
+      "fillColor": "#FFFFFF",
+      "lineColor": "#D7DEE6",
+      "lineWidth": 1
+    },
+    {
+      "order": 15,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/1k72hon2",
+      "id": "15",
+      "bbox": [
+        64,
+        282,
+        10,
+        74
+      ],
+      "geometry": "rect",
+      "fillColor": "#2B6EA6",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 16,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/ehg369ob",
+      "id": "16",
+      "bbox": [
+        94,
+        295,
+        245,
+        26
+      ],
+      "geometry": "rect",
+      "text": "Servicios de aplicacion",
+      "textPreview": "Servicios de aplicacion",
+      "resolvedFontSize": 20,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 20,
+        "typeface": "Aptos",
+        "color": "#17212B",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Servicios de aplicacion"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Servicios de aplicacion",
+          "resolvedTextStyle": {
+            "fontSize": 20,
+            "typeface": "Aptos",
+            "color": "#17212B",
+            "bold": true,
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Servicios de aplicacion",
+              "fontSize": 20,
+              "typeface": "Aptos",
+              "color": "#17212B",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 17,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/fipkfe5w",
+      "id": "17",
+      "bbox": [
+        94,
+        324,
+        486,
+        20
+      ],
+      "geometry": "rect",
+      "text": "orquestacion: crear instancia, editar, validar, renderizar",
+      "textPreview": "orquestacion: crear instancia, editar, validar, renderizar",
+      "resolvedFontSize": 12.8,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 12.8,
+        "typeface": "Aptos",
+        "color": "#566575",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "orquestacion: crear instancia, editar, validar, renderizar"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "orquestacion: crear instancia, editar, validar, renderizar",
+          "resolvedTextStyle": {
+            "fontSize": 12.8,
+            "typeface": "Aptos",
+            "color": "#566575",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "orquestacion: crear instancia, editar, validar, renderizar",
+              "fontSize": 12.8,
+              "typeface": "Aptos",
+              "color": "#566575"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 18,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/kfilk36l",
+      "id": "18",
+      "bbox": [
+        64,
+        368,
+        560,
+        74
+      ],
+      "geometry": "rect",
+      "fillColor": "#FFFFFF",
+      "lineColor": "#D7DEE6",
+      "lineWidth": 1
+    },
+    {
+      "order": 19,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/lgbmt8n6",
+      "id": "19",
+      "bbox": [
+        64,
+        368,
+        10,
+        74
+      ],
+      "geometry": "rect",
+      "fillColor": "#15807A",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 20,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/90nuhobe",
+      "id": "20",
+      "bbox": [
+        94,
+        381,
+        245,
+        26
+      ],
+      "geometry": "rect",
+      "text": "Adaptacion BDE",
+      "textPreview": "Adaptacion BDE",
+      "resolvedFontSize": 20,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 20,
+        "typeface": "Aptos",
+        "color": "#17212B",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Adaptacion BDE"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Adaptacion BDE",
+          "resolvedTextStyle": {
+            "fontSize": 20,
+            "typeface": "Aptos",
+            "color": "#17212B",
+            "bold": true,
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Adaptacion BDE",
+              "fontSize": 20,
+              "typeface": "Aptos",
+              "color": "#17212B",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 21,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/8zetojut",
+      "id": "21",
+      "bbox": [
+        94,
+        410,
+        486,
+        20
+      ],
+      "geometry": "rect",
+      "text": "Table Linkbase PWD, Eurofiling filing indicators, formulas",
+      "textPreview": "Table Linkbase PWD, Eurofiling filing indicators, formulas",
+      "resolvedFontSize": 12.8,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 12.8,
+        "typeface": "Aptos",
+        "color": "#566575",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Table Linkbase PWD, Eurofiling filing indicators, formulas"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Table Linkbase PWD, Eurofiling filing indicators, formulas",
+          "resolvedTextStyle": {
+            "fontSize": 12.8,
+            "typeface": "Aptos",
+            "color": "#566575",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Table Linkbase PWD, Eurofiling filing indicators, formulas",
+              "fontSize": 12.8,
+              "typeface": "Aptos",
+              "color": "#566575"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 22,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/ny5cfet8",
+      "id": "22",
+      "bbox": [
+        64,
+        454,
+        560,
+        74
+      ],
+      "geometry": "rect",
+      "fillColor": "#FFFFFF",
+      "lineColor": "#D7DEE6",
+      "lineWidth": 1
+    },
+    {
+      "order": 23,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/mxwbm9cn",
+      "id": "23",
+      "bbox": [
+        64,
+        454,
+        10,
+        74
+      ],
+      "geometry": "rect",
+      "fillColor": "#D59B2D",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 24,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/lw3ud4b2",
+      "id": "24",
+      "bbox": [
+        94,
+        467,
+        245,
+        26
+      ],
+      "geometry": "rect",
+      "text": "Core XBRL",
+      "textPreview": "Core XBRL",
+      "resolvedFontSize": 20,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 20,
+        "typeface": "Aptos",
+        "color": "#17212B",
+        "bold": true,
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Core XBRL"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Core XBRL",
+          "resolvedTextStyle": {
+            "fontSize": 20,
+            "typeface": "Aptos",
+            "color": "#17212B",
+            "bold": true,
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Core XBRL",
+              "fontSize": 20,
+              "typeface": "Aptos",
+              "color": "#17212B",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 25,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/0vutkzuh",
+      "id": "25",
+      "bbox": [
+        94,
+        496,
+        486,
+        20
+      ],
+      "geometry": "rect",
+      "text": "taxonomy/, instance/, validation/: modelos y reglas sin Qt",
+      "textPreview": "taxonomy/, instance/, validation/: modelos y reglas sin Qt",
+      "resolvedFontSize": 12.8,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 12.8,
+        "typeface": "Aptos",
+        "color": "#566575",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "taxonomy/, instance/, validation/: modelos y reglas sin Qt"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "taxonomy/, instance/, validation/: modelos y reglas sin Qt",
+          "resolvedTextStyle": {
+            "fontSize": 12.8,
+            "typeface": "Aptos",
+            "color": "#566575",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "taxonomy/, instance/, validation/: modelos y reglas sin Qt",
+              "fontSize": 12.8,
+              "typeface": "Aptos",
+              "color": "#566575"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 26,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/zulcbutc",
+      "id": "26",
+      "bbox": [
+        704,
+        544,
+        438,
+        52
+      ],
+      "geometry": "rect",
+      "fillColor": "#EAF4F3",
+      "lineColor": "#BBD9D6",
+      "lineWidth": 1
+    },
+    {
+      "order": 27,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/ytcbipcr",
+      "id": "27",
+      "bbox": [
+        728,
+        558,
+        390,
+        24
+      ],
+      "geometry": "rect",
+      "text": "Principio de dependencia: lo regulatorio vive en modelos y servicios; la UI solo orquesta experiencia.",
+      "textPreview": "Principio de dependencia: lo regulatorio vive en modelos y servicios; la UI solo orquesta experiencia.",
+      "resolvedFontSize": 15,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 15,
+        "typeface": "Aptos",
+        "color": "#17212B",
+        "bold": true,
+        "alignment": "center",
+        "verticalAlignment": "top",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 2,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Principio de dependencia: lo regulatorio vive en"
+          },
+          {
+            "index": 2,
+            "text": "modelos y servicios; la UI solo orquesta experiencia."
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Principio de dependencia: lo regulatorio vive en modelos y servicios; la UI solo orquesta experiencia.",
+          "resolvedTextStyle": {
+            "fontSize": 15,
+            "typeface": "Aptos",
+            "color": "#17212B",
+            "bold": true,
+            "alignment": "center"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Principio de dependencia: lo regulatorio vive en modelos y servicios; la UI solo orquesta experiencia.",
+              "fontSize": 15,
+              "typeface": "Aptos",
+              "color": "#17212B",
+              "bold": true
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 28,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/ds3u94b6",
+      "id": "28",
+      "bbox": [
+        64,
+        676,
+        1090,
+        1
+      ],
+      "geometry": "rect",
+      "fillColor": "#D7DEE6",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    },
+    {
+      "order": 29,
+      "kind": "shape",
+      "scope": "slide",
+      "aid": "sh/crutgzul",
+      "id": "29",
+      "bbox": [
+        64,
+        686,
+        720,
+        18
+      ],
+      "geometry": "rect",
+      "text": "Trabajo Fin de Master | Python 3.13+ + PySide6 | XBRL / BDE",
+      "textPreview": "Trabajo Fin de Master | Python 3.13+ + PySide6 | XBRL / BDE",
+      "resolvedFontSize": 9,
+      "resolvedTextStyle": {
+        "anchor": 1,
+        "fontSize": 9,
+        "typeface": "Aptos",
+        "color": "#566575",
+        "alignment": "left",
+        "verticalAlignment": "top",
+        "insets": {
+          "top": 0,
+          "right": 0,
+          "bottom": 0,
+          "left": 0
+        }
+      },
+      "textLayout": {
+        "lineCount": 1,
+        "lines": [
+          {
+            "index": 1,
+            "text": "Trabajo Fin de Master | Python 3.13+ + PySide6 | XBRL / BDE"
+          }
+        ]
+      },
+      "paragraphs": [
+        {
+          "index": 1,
+          "text": "Trabajo Fin de Master | Python 3.13+ + PySide6 | XBRL / BDE",
+          "resolvedTextStyle": {
+            "fontSize": 9,
+            "typeface": "Aptos",
+            "color": "#566575",
+            "alignment": "left"
+          },
+          "runs": [
+            {
+              "index": 1,
+              "text": "Trabajo Fin de Master | Python 3.13+ + PySide6 | XBRL / BDE",
+              "fontSize": 9,
+              "typeface": "Aptos",
+              "color": "#566575"
+            }
+          ],
+          "marginLeft": 0
+        }
+      ],
+      "fillColor": "rgba(0, 0, 0, 0)",
+      "lineColor": "rgba(0, 0, 0, 0)",
+      "lineWidth": 0
+    }
+  ],
+  "composeRuns": []
+}

@@ -168,6 +168,13 @@ class ReportingPeriod:
     instant_date: date | None = None
     start_date: date | None = None
     end_date: date | None = None
+    # XBRL date-only instant/end lexicals denote the following midnight for
+    # period S-equality and xfi:* boundary functions.
+    instant_date_only: bool = False
+    end_date_only: bool = False
+    instant_lexical: str | None = None
+    start_lexical: str | None = None
+    end_lexical: str | None = None
 
     def __post_init__(self) -> None:
         if self.period_type == "instant":
@@ -182,7 +189,11 @@ class ReportingPeriod:
                     "duration",
                     "start_date and end_date must both be set for duration periods",
                 )
-            if self.end_date < self.start_date:
+            if self.start_lexical or self.end_lexical:
+                from bde_xbrl_editor.instance.temporal import validate_duration
+
+                validate_duration(self)
+            elif self.end_date < self.start_date:
                 raise InvalidReportingPeriodError(
                     "duration",
                     "duration",
@@ -225,6 +236,7 @@ class XbrlContext:
     dimensions: dict[QName, QName] = field(default_factory=dict)
     typed_dimensions: dict[QName, str] = field(default_factory=dict)
     typed_dimension_elements: dict[QName, QName] = field(default_factory=dict)
+    typed_dimension_xml: dict[QName, bytes] = field(default_factory=dict)
     context_element: Literal["scenario", "segment"] = "scenario"
     # Per-dimension container: "segment" or "scenario" for each dimension QName.
     # Used to validate xbrldt:contextElement constraints on hypercubes.
@@ -314,10 +326,17 @@ class Fact:
     decimals: str | None = None
     precision: str | None = None
     is_nil: bool = False
+    # Tuple facts are kept separately from item facts on XbrlInstance.
+    is_tuple: bool = False
     # Indices of tuple ancestors from the xbrl root (empty = direct child of xbrl).
     tuple_path: tuple[int, ...] = ()
+    # QName chain of tuple ancestors, outermost first, for Formula tuple filters.
+    tuple_ancestor_concepts: tuple[QName, ...] = ()
     # Document position path (root child index, then tuple child indices) for duplicate detection.
     position_path: tuple[int, ...] = ()
+    # Original item element, retained so Formula general filters can evaluate
+    # node-sensitive XPath such as @customAttribute and text().
+    source_element_xml: bytes | None = None
 
 
 @dataclass
@@ -330,6 +349,8 @@ class OrphanedFact:
     value: str
     decimals: str | None
     raw_element_xml: bytes  # serialised XML element for lossless round-trip
+    tuple_path: tuple[int, ...] = ()
+    position_path: tuple[int, ...] = ()
 
 
 @dataclass
@@ -364,6 +385,8 @@ class XbrlInstance:
     contexts: dict[ContextId, XbrlContext] = field(default_factory=dict)
     units: dict[UnitId, XbrlUnit] = field(default_factory=dict)
     facts: list[Fact] = field(default_factory=list)
+    # Formula variables and serialization consume tuples separately from items.
+    tuple_facts: list[Fact] = field(default_factory=list)
     orphaned_facts: list[OrphanedFact] = field(default_factory=list)
     edit_history: list[EditOperation] = field(default_factory=list)
     # BDE IE_2008_02 preamble (EntidadPresentadora, TipoEnvio, EstadosReportados).
@@ -394,6 +417,7 @@ class XbrlInstance:
     def update_fact(self, index: int, new_value: str) -> None:
         """Update the value of an existing fact by index."""
         self.facts[index].value = new_value
+        self.facts[index].is_nil = False
         self._dirty = True
 
     def remove_fact(self, index: int) -> None:

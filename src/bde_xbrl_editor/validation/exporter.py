@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from bde_xbrl_editor.validation.errors import ExportPermissionError
-from bde_xbrl_editor.validation.models import ValidationReport
+from bde_xbrl_editor.validation.models import ValidationReport, ValidationRunStatus
 
 
 class ValidationReportExporter:
@@ -17,6 +17,10 @@ class ValidationReportExporter:
 
         Raises ExportPermissionError if path is not writable.
         """
+        if report.run_status is ValidationRunStatus.CANCELLED:
+            result = "CANCELLED"
+        else:
+            result = "PASSED" if report.passed else "FAILED"
         lines: list[str] = [
             "=" * 72,
             "XBRL Validation Report",
@@ -24,7 +28,8 @@ class ValidationReportExporter:
             f"Instance  : {report.instance_path}",
             f"Taxonomy  : {report.taxonomy_name} {report.taxonomy_version}",
             f"Timestamp : {report.run_timestamp.isoformat()}",
-            f"Result    : {'PASSED' if report.passed else 'FAILED'}",
+            f"Status    : {report.run_status.value.upper()}",
+            f"Result    : {result}",
             f"Passed    : {report.pass_count}",
             f"Not Eval. : {report.not_evaluated_count}",
             f"Errors    : {report.error_count}",
@@ -70,7 +75,12 @@ class ValidationReportExporter:
                     lines.append(f"  Precondition: {finding.formula_precondition}")
                 lines.append("")
         else:
-            lines.append("No findings — instance passes all validation checks.")
+            if report.run_status is ValidationRunStatus.CANCELLED:
+                lines.append(
+                    "No findings — validation was cancelled before all validation checks completed."
+                )
+            else:
+                lines.append("No findings — instance passes all validation checks.")
 
         content = "\n".join(lines)
         try:
@@ -90,6 +100,7 @@ class ValidationReportExporter:
                 "instance": report.instance_path,
                 "taxonomy": f"{report.taxonomy_name} {report.taxonomy_version}",
                 "run_timestamp": report.run_timestamp.isoformat(),
+                "run_status": report.run_status.value,
                 "passed": report.passed,
                 "pass_count": report.pass_count,
                 "not_evaluated_count": report.not_evaluated_count,

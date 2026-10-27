@@ -49,13 +49,6 @@ def _instance_load_process_entry(
             preloaded_taxonomy=preloaded_taxonomy,
         )
         taxonomy = resolved_taxonomy or preloaded_taxonomy
-        if resolved_taxonomy is not None and instance.instance_linkbase_refs:
-            on_progress("Preparing editor…", 96, 100)
-            taxonomy = loader.load(
-                instance.taxonomy_entry_point,
-                progress_callback=on_progress,
-                instance_linkbase_seeds=instance.instance_linkbase_refs,
-            )
         if taxonomy is None:
             on_progress("Preparing editor…", 96, 100)
             taxonomy = loader.load(
@@ -89,13 +82,21 @@ def _parse_instance_with_preloaded_taxonomy(
 
     loader = TaxonomyLoader(cache=TaxonomyCache(), settings=settings)
     parser = InstanceParser(taxonomy_loader=loader)
+    resolved_taxonomy = None
+
+    def on_taxonomy_ready(taxonomy: object) -> None:
+        nonlocal resolved_taxonomy
+        resolved_taxonomy = taxonomy
+
     instance, orphaned_facts = parser.load(
         path,
         progress_callback=progress_callback,
+        taxonomy_resolved_callback=on_taxonomy_ready,
         preloaded_taxonomy=preloaded_taxonomy,
     )
-
-    return instance, preloaded_taxonomy, len(orphaned_facts)
+    if resolved_taxonomy is None:
+        raise RuntimeError("Instance parser did not resolve a taxonomy")
+    return instance, resolved_taxonomy, len(orphaned_facts)
 
 
 def _table_layout_process_entry(
@@ -156,19 +157,29 @@ class TaxonomyLoadWorker(QObject):
         super().__init__()
         self._loader = loader
         self._path = str(path)
+        self._cancel_event = threading.Event()
+
+    def cancel(self) -> None:
+        """Discard callbacks from a load whose owner has been closed."""
+        self._cancel_event.set()
 
     def run(self) -> None:
         def on_progress(message: str, current: int, total: int) -> None:
-            self.progress.emit(message, current, total)
+            if not self._cancel_event.is_set():
+                self.progress.emit(message, current, total)
 
         try:
             structure = self._loader.load(self._path, progress_callback=on_progress)
+            if self._cancel_event.is_set():
+                return
             skipped = self._loader.last_skipped_urls
             self.finished.emit((structure, skipped))
         except TaxonomyLoadError as exc:
-            self.error.emit(str(exc))
+            if not self._cancel_event.is_set():
+                self.error.emit(str(exc))
         except Exception as exc:  # noqa: BLE001
-            self.error.emit(f"Unexpected error: {exc}")
+            if not self._cancel_event.is_set():
+                self.error.emit(f"Unexpected error: {exc}")
 
 
 class FormulaHydrationWorker(QObject):
@@ -232,12 +243,23 @@ class InstanceLoadWorker(QObject):
         self._settings = settings
         self._path = str(path)
         self._preloaded_taxonomy = None
+        self._cancel_event = threading.Event()
+        self._process = None
 
     def set_preloaded_taxonomy(self, taxonomy: object | None) -> None:
         """Provide a resolved taxonomy that can be reused inside the worker process."""
         self._preloaded_taxonomy = taxonomy
 
+    def cancel(self) -> None:
+        """Stop the supervised process and suppress late UI callbacks."""
+        self._cancel_event.set()
+        process = self._process
+        if process is not None and process.is_alive():
+            process.terminate()
+
     def run(self) -> None:
+        if self._cancel_event.is_set():
+            return
         if self._preloaded_taxonomy is not None:
             self._run_with_preloaded_taxonomy()
             return
@@ -249,12 +271,15 @@ class InstanceLoadWorker(QObject):
             args=(self._path, self._settings, self._preloaded_taxonomy, result_queue),
             daemon=True,
         )
+        self._process = process
 
         finished = False
         process.start()
 
         try:
             while True:
+                if self._cancel_event.is_set():
+                    break
                 try:
                     message = result_queue.get(timeout=0.1)
                 except queue.Empty:
@@ -271,6 +296,8 @@ class InstanceLoadWorker(QObject):
                     break
 
                 kind = message[0]
+                if self._cancel_event.is_set():
+                    break
                 if kind == "progress":
                     _, text, current, total = message
                     self.progress.emit(text, current, total)
@@ -301,6 +328,7 @@ class InstanceLoadWorker(QObject):
                 process.terminate()
                 process.join(timeout=0.5)
             result_queue.close()
+            self._process = None
 
     def _run_with_preloaded_taxonomy(self) -> None:
         """Load an instance in this worker thread when the taxonomy is already warm."""
@@ -315,6 +343,8 @@ class InstanceLoadWorker(QObject):
                 self._preloaded_taxonomy,
                 progress_callback=on_progress,
             )
+            if self._cancel_event.is_set():
+                return
             if orphaned_count:
                 self.orphaned.emit(orphaned_count)
             self.progress.emit(
@@ -324,7 +354,8 @@ class InstanceLoadWorker(QObject):
             )
             self.finished.emit(instance, taxonomy)
         except Exception as exc:  # noqa: BLE001
-            self.error.emit(str(exc))
+            if not self._cancel_event.is_set():
+                self.error.emit(str(exc))
 
 
 class TableLayoutLoadWorker(QObject):

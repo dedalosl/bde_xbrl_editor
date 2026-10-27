@@ -218,8 +218,7 @@ def _custom_function_linkbase_findings(
     for root in roots:
         used_functions.update(_used_custom_function_names(root))
         has_function_implementation_arcrole = (
-            has_function_implementation_arcrole
-            or _has_function_implementation_arcrole(root)
+            has_function_implementation_arcrole or _has_function_implementation_arcrole(root)
         )
 
         for function in root.iter(_TAG_FUNCTION):
@@ -459,9 +458,8 @@ def _generic_message_linkbase_findings(path: Path) -> list[ValidationFinding]:
                 )
             )
             continue
-        if (
-            (assertion_el.get("implicitFiltering") or "true").lower() == "false"
-            and any("xff:uncovered-aspect" in expression for expression in expressions)
+        if (assertion_el.get("implicitFiltering") or "true").lower() == "false" and any(
+            "xff:uncovered-aspect" in expression for expression in expressions
         ):
             findings.append(
                 _finding(
@@ -686,8 +684,7 @@ def _existence_assertion_static_findings(
             "xbrleae:variableReferenceNotAllowed",
             (
                 f"Existence assertion '{assertion.assertion_id}' test expression references "
-                "fact or general variables: "
-                + ", ".join(sorted(referenced_names))
+                "fact or general variables: " + ", ".join(sorted(referenced_names))
             ),
         )
     ]
@@ -881,7 +878,7 @@ class FormulaStaticValidator:
             if source in sequence_sources:
                 findings.append(
                     _finding(
-                        _sequence_source_code(formula),
+                        _sequence_source_code(formula, source),
                         f"Formula '{formula.formula_id}' uses sequence-valued source variable '{source}'",
                     )
                 )
@@ -1093,13 +1090,21 @@ def _rules_by_aspect(
 
 def _source_refs(formula: FormulaOutputDefinition) -> list[str]:
     refs: list[str] = []
-    if formula.source:
+    if formula.source and not _is_reserved_formula_source(formula.source):
         refs.append(formula.source)
-    refs.extend(rule.source for rule in formula.aspect_rules if rule.source)
+    refs.extend(
+        rule.source
+        for rule in formula.aspect_rules
+        if rule.source and not _is_reserved_formula_source(rule.source)
+    )
     return refs
 
 
-def _sequence_source_code(formula: FormulaOutputDefinition) -> str:
+def _is_reserved_formula_source(source: str) -> bool:
+    return source in {"formula:uncovered"}
+
+
+def _sequence_source_code(formula: FormulaOutputDefinition, source: str) -> str:
     source_path = (formula.source_path or "").lower()
     if "11204" in source_path and "v02" in source_path:
         return "xbrlfe:sequenceSAVConflicts"
@@ -1107,6 +1112,14 @@ def _sequence_source_code(formula: FormulaOutputDefinition) -> str:
         return "xbrlfe:bindEmptySourceVariable"
     if "11207" in source_path or "11207" in formula.formula_id:
         return "xbrlfe:defaultAspectValueConflicts"
+    if formula.source == source:
+        return "xbrlfe:defaultAspectValueConflicts"
+    source_variable = next(
+        (variable for variable in formula.variables if variable.variable_name == source),
+        None,
+    )
+    if source_variable is not None and source_variable.fallback_value == "()":
+        return "xbrlfe:bindEmptySourceVariable"
     return ""
 
 
@@ -1329,11 +1342,7 @@ def _variable_set_xpath_static_findings(
             code = getattr(exc, "code", None)
             if isinstance(code, str) and code == "err:XPST0017":
                 missing_function = _missing_custom_function_name(exc)
-                missing_text = (
-                    f": {missing_function}"
-                    if missing_function is not None
-                    else ""
-                )
+                missing_text = f": {missing_function}" if missing_function is not None else ""
                 findings.append(
                     _finding(
                         "xbrlve:noCustomFunctionSignature",
@@ -1402,7 +1411,7 @@ def _formula_aspect_model_findings(formula: FormulaOutputDefinition) -> list[Val
             )
     if formula.aspect_model == "dimensional":
         has_segment_scenario_filters = any(
-            xpath_filter.filter_type == "segment-scenario"
+            xpath_filter.filter_type in {"segment-scenario", "segment", "scenario"}
             for variable in formula.variables
             for xpath_filter in variable.xpath_filters
         )
@@ -1612,7 +1621,9 @@ def _strip_xpath_comments(expr: str) -> str:
     return _XPATH_COMMENT_RE.sub("", expr)
 
 
-def _variable_set_expressions(variable_set: FormulaAssertion | FormulaOutputDefinition) -> tuple[str, ...]:
+def _variable_set_expressions(
+    variable_set: FormulaAssertion | FormulaOutputDefinition,
+) -> tuple[str, ...]:
     expressions: list[str] = []
     if isinstance(variable_set, FormulaAssertion):
         test_xpath = getattr(variable_set, "test_xpath", None)
@@ -1758,6 +1769,12 @@ def _has_disallowed_variable_set_filter_reference(
     *,
     fact_and_general_names: set[str],
 ) -> bool:
+    for resource in variable_set.variable_set_filters:
+        references = resource.referenced_names or _extract_var_refs(resource.test_xpath)
+        for ref in references:
+            canonical, _failed = _resolve_name(ref, resource.namespaces)
+            if canonical in fact_and_general_names:
+                return True
     for variable in variable_set.variables:
         for xpath_filter in variable.xpath_filters:
             if xpath_filter.filter_type != "variable-set":
@@ -1785,6 +1802,7 @@ def _has_disallowed_fallback_value_reference(
             if not failed and resolved in fact_and_general_names:
                 return True
     return False
+
 
 def _report_formula_xpath_static_error(code: str, exc: Exception) -> bool:
     if code == "err:XPST0081":
@@ -1894,7 +1912,7 @@ def _variable_covers_aspect(variable: FactVariableDefinition, aspect: str) -> bo
     return any(
         resource.local_name == "aspectCover"
         and resource.cover is True
-        and aspect in resource.aspects
+        and (aspect in resource.aspects or "all" in resource.aspects)
         for resource in variable.filter_resources
     )
 

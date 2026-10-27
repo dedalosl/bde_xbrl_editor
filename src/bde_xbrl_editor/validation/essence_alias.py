@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+import threading
 from collections import Counter, defaultdict
-from decimal import Decimal, InvalidOperation
+from decimal import InvalidOperation
 
 from bde_xbrl_editor.instance.models import Fact, XbrlInstance, XbrlUnit
 from bde_xbrl_editor.instance.s_equal import canonical_context_refs_by_s_equal
 from bde_xbrl_editor.taxonomy.models import Concept, QName, TaxonomyStructure
-
-_ARCROLE_ESSENCE_ALIAS = "http://www.xbrl.org/2003/arcrole/essence-alias"
+from bde_xbrl_editor.taxonomy.type_traits import concept_is_numeric
 from bde_xbrl_editor.validation.calculation import _fact_is_nil_numeric, _round_fact
 from bde_xbrl_editor.validation.models import ValidationFinding, ValidationSeverity
+
+_ARCROLE_ESSENCE_ALIAS = "http://www.xbrl.org/2003/arcrole/essence-alias"
+
 
 def _unit_signature(unit: XbrlUnit) -> tuple:
     def _counter_key(values: tuple) -> tuple:
@@ -46,8 +49,7 @@ _EssenceKey = tuple[QName, tuple[int, ...], str]
 
 
 def _concept_is_numeric(concept: Concept) -> bool:
-    ln = concept.data_type.local_name.lower()
-    return any(k in ln for k in ("monetary", "decimal", "integer", "float", "double"))
+    return concept_is_numeric(concept)
 
 
 def _alias_values_equal(left: Fact, right: Fact, taxonomy: TaxonomyStructure) -> bool:
@@ -85,10 +87,23 @@ def _numeric_values_equal(left: Fact, right: Fact, taxonomy: TaxonomyStructure) 
 class EssenceAliasValidator:
     """Validate essence-alias relationships in taxonomy and instances."""
 
+    def __init__(self, cancel_event: threading.Event | None = None) -> None:
+        self._cancel_event = cancel_event
+
+    def _cancelled(self) -> bool:
+        return bool(self._cancel_event and self._cancel_event.is_set())
+
     def validate_taxonomy(self, taxonomy: TaxonomyStructure) -> list[ValidationFinding]:
         findings: list[ValidationFinding] = []
+        if self._cancelled():
+            return findings
+
         for elr, arcs in taxonomy.definition.items():
+            if self._cancelled():
+                break
             for arc in arcs:
+                if self._cancelled():
+                    return findings
                 if arc.arcrole != _ARCROLE_ESSENCE_ALIAS:
                     continue
                 essence = taxonomy.concepts.get(arc.source)
@@ -129,6 +144,9 @@ class EssenceAliasValidator:
         taxonomy: TaxonomyStructure,
     ) -> list[ValidationFinding]:
         findings: list[ValidationFinding] = []
+        if self._cancelled():
+            return findings
+
         essence_arcs = [
             arc
             for arcs in taxonomy.definition.values()
@@ -141,6 +159,8 @@ class EssenceAliasValidator:
         canon_ctx = canonical_context_refs_by_s_equal(instance, taxonomy)
         es_facts: dict[_EssenceKey, list[Fact]] = defaultdict(list)
         for fact in instance.facts:
+            if self._cancelled():
+                return findings
             if fact.context_ref not in instance.contexts:
                 continue
             bind_ctx = canon_ctx.get(fact.context_ref, fact.context_ref)
@@ -152,8 +172,12 @@ class EssenceAliasValidator:
 
         seen: set[tuple[QName, QName, str, tuple[int, ...], str, str]] = set()
         for arc in essence_arcs:
+            if self._cancelled():
+                return findings
             bound_keys = essence_bind.get(arc.source, set()) & essence_bind.get(arc.target, set())
             for anc_path, bind_ctx in bound_keys:
+                if self._cancelled():
+                    return findings
                 essence_facts = es_facts.get((arc.source, anc_path, bind_ctx), ())
                 alias_facts = es_facts.get((arc.target, anc_path, bind_ctx), ())
                 if not essence_facts or not alias_facts:
@@ -163,7 +187,11 @@ class EssenceAliasValidator:
                     essence_concept
                 )
                 for essence_fact in essence_facts:
+                    if self._cancelled():
+                        return findings
                     for alias_fact in alias_facts:
+                        if self._cancelled():
+                            return findings
                         pair_key = (arc.source, arc.target, bind_ctx, anc_path)
                         if pair_key in seen:
                             continue

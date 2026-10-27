@@ -5,8 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QObject, Signal
-
 from bde_xbrl_editor.instance.constants import is_bde_schema_ref
 from bde_xbrl_editor.instance.models import (
     BdeEstadoReportado,
@@ -23,17 +21,10 @@ if TYPE_CHECKING:
     from bde_xbrl_editor.taxonomy.models import QName
 
 
-class InstanceEditor(QObject):
-    """Mutation service wrapping an XbrlInstance with dirty-state tracking.
+class InstanceEditor:
+    """Qt-independent mutation service with dirty-state tracking."""
 
-    Emits `changes_made` after every successful mutation.
-    """
-
-    changes_made = Signal()
-    filing_indicators_changed = Signal()
-
-    def __init__(self, instance: XbrlInstance, parent: QObject | None = None) -> None:
-        super().__init__(parent)
+    def __init__(self, instance: XbrlInstance) -> None:
         self._instance = instance
 
     @property
@@ -48,7 +39,7 @@ class InstanceEditor(QObject):
         unit_ref: UnitId | None = None,
         decimals: str | None = None,
     ) -> Fact:
-        """Create and append a new Fact; emit changes_made.
+        """Create and append a new Fact.
 
         Raises:
             DuplicateFactError: if concept+context already has a fact.
@@ -65,24 +56,21 @@ class InstanceEditor(QObject):
             decimals=decimals,
         )
         self._instance.add_fact(fact)
-        self.changes_made.emit()
         return fact
 
     def update_fact(self, fact_index: int, new_value: str) -> None:
-        """Replace fact value at index; emit changes_made."""
+        """Replace fact value at index."""
         self._instance.update_fact(fact_index, new_value)
-        self.changes_made.emit()
 
     def remove_fact(self, fact_index: int) -> None:
-        """Remove fact at index; emit changes_made."""
+        """Remove fact at index."""
         self._instance.remove_fact(fact_index)
-        self.changes_made.emit()
 
-    def reassign_facts_context(self, fact_indexes: list[int], context_ref: ContextId) -> None:
-        """Move existing facts to a different context and emit one change notification."""
+    def reassign_facts_context(self, fact_indexes: list[int], context_ref: ContextId) -> bool:
+        """Move facts to a context; return whether a non-empty operation completed."""
         unique_indexes = sorted(set(fact_indexes))
         if not unique_indexes:
-            return
+            return False
 
         moving = set(unique_indexes)
         for fact_index in unique_indexes:
@@ -96,7 +84,7 @@ class InstanceEditor(QObject):
         for fact_index in unique_indexes:
             self._instance.facts[fact_index].context_ref = context_ref
         self._instance._dirty = True  # noqa: SLF001
-        self.changes_made.emit()
+        return True
 
     def mark_saved(self, path: Path) -> None:
         """Called by InstanceSerializer.save(). Sets source_path and clears dirty flag."""
@@ -114,7 +102,9 @@ class InstanceEditor(QObject):
             (fi for fi in self._instance.filing_indicators if fi.template_id == template_id),
             None,
         )
-        effective_context = context_ref or getattr(indicator, "context_ref", "") or self._default_context_ref()
+        effective_context = (
+            context_ref or getattr(indicator, "context_ref", "") or self._default_context_ref()
+        )
         if indicator is None:
             self._instance.filing_indicators.append(
                 FilingIndicator(
@@ -133,7 +123,6 @@ class InstanceEditor(QObject):
             fi.template_id for fi in self._instance.filing_indicators if fi.filed
         ]
         self._instance._dirty = True  # noqa: SLF001
-        self.filing_indicators_changed.emit()
 
     def _sync_bde_estado_reportado(
         self,
@@ -142,10 +131,7 @@ class InstanceEditor(QObject):
         context_ref: ContextId,
     ) -> None:
         instance = self._instance
-        if not (
-            instance.bde_preambulo is not None
-            or is_bde_schema_ref(instance.schema_ref_href)
-        ):
+        if not (instance.bde_preambulo is not None or is_bde_schema_ref(instance.schema_ref_href)):
             return
 
         if instance.bde_preambulo is None:

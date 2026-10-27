@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 
 from bde_xbrl_editor.taxonomy import LoaderSettings
 from bde_xbrl_editor.taxonomy_catalog.models import LoaderPageMode
+from bde_xbrl_editor.taxonomy_catalog.scraper import default_generated_catalog_path
 from bde_xbrl_editor.ui import theme
 
 _SETTINGS_FILE = Path.home() / ".bde_xbrl_editor" / "settings.json"
@@ -62,6 +63,21 @@ def load_saved_settings() -> LoaderSettings:
         )
     except Exception:  # noqa: BLE001
         return LoaderSettings()
+
+
+def load_decimal_separator() -> str:
+    """Load the UI-only decimal separator; missing/invalid preferences use dot."""
+    value = _read_raw().get("decimal_separator", ".")
+    return value if value in (".", ",") else "."
+
+
+def save_decimal_separator(separator: str) -> None:
+    """Persist presentation preferences without changing loader settings."""
+    if separator not in (".", ","):
+        raise ValueError("Decimal separator must be '.' or ','")
+    data = _read_raw()
+    data["decimal_separator"] = separator
+    _write_raw(data)
 
 
 def load_recent_files() -> list[str]:
@@ -160,6 +176,29 @@ def save_catalog_last_seen(
     data["taxonomy_catalog_last_seen"] = {
         "last_run": last_run,
         "file_snapshot": file_snapshot,
+    }
+    _write_raw(data)
+
+
+def load_catalog_web_check() -> tuple[str | None, str | None]:
+    """Return (checked_at, catalog_path) for the last BDE website catalog check."""
+    raw = _read_raw().get("taxonomy_catalog_web_check")
+    if not isinstance(raw, dict):
+        return None, None
+    checked_at = raw.get("checked_at")
+    catalog_path = raw.get("catalog_path")
+    if not isinstance(checked_at, str):
+        checked_at = None
+    if not isinstance(catalog_path, str):
+        catalog_path = None
+    return checked_at, catalog_path
+
+
+def save_catalog_web_check(checked_at: str, catalog_path: str | None = None) -> None:
+    data = _read_raw()
+    data["taxonomy_catalog_web_check"] = {
+        "checked_at": checked_at,
+        "catalog_path": catalog_path,
     }
     _write_raw(data)
 
@@ -277,9 +316,7 @@ class LoaderSettingsDialog(QDialog):
 
         catalog_row = QHBoxLayout()
         self._catalog_path_edit = QLineEdit()
-        self._catalog_path_edit.setPlaceholderText(
-            "Default: ~/git/bde_taxonomies_checker/scraper/data/taxonomies.json"
-        )
+        self._catalog_path_edit.setPlaceholderText(f"Default: {default_generated_catalog_path()}")
         saved_catalog = load_taxonomy_catalog_path()
         if saved_catalog:
             self._catalog_path_edit.setText(saved_catalog)
@@ -296,6 +333,20 @@ class LoaderSettingsDialog(QDialog):
         self._lang_edit = QLineEdit(", ".join(settings.language_preference))
         form.addRow("Language preference (comma-separated):", self._lang_edit)
 
+        self._decimal_separator = QComboBox()
+        self._decimal_separator.addItem("Dot (1234.56)", ".")
+        self._decimal_separator.addItem("Comma (1234,56)", ",")
+        self._decimal_separator.setCurrentIndex(
+            self._decimal_separator.findData(load_decimal_separator())
+        )
+        self._decimal_separator.setAccessibleName("Decimal separator for display and input")
+        form.addRow("Decimal separator (display and input):", self._decimal_separator)
+        decimal_help = QLabel(
+            "Applies to decimal values in tables and editors. Do not enter thousands separators. "
+            "XBRL files always use a dot. An editor already open keeps its previous separator."
+        )
+        decimal_help.setWordWrap(True)
+        form.addRow(decimal_help)
         layout.addLayout(form)
 
         # --- Catalog group ---
@@ -441,6 +492,7 @@ class LoaderSettingsDialog(QDialog):
     def _on_accept(self) -> None:
         settings = self.get_settings()
         save_settings(settings)
+        save_decimal_separator(self._decimal_separator.currentData())
         mode = self._loader_page_mode.currentData()
         if mode in ("classic", "catalog"):
             save_loader_page_mode(mode)  # type: ignore[arg-type]

@@ -10,6 +10,7 @@ from bde_xbrl_editor.taxonomy.cache import TaxonomyCache
 from bde_xbrl_editor.taxonomy.loader import TaxonomyLoader
 from bde_xbrl_editor.taxonomy.settings import LoaderSettings
 from bde_xbrl_editor.validation import InstanceValidator, ValidationReport
+from bde_xbrl_editor.validation.models import ValidationRunStatus
 
 TAXONOMY_PATH = Path("test_data/taxonomies/basicTaxonomy/sampleTaxonomy.xsd")
 
@@ -123,6 +124,44 @@ def test_validate_sync_progress_callback_called(taxonomy):
     assert len(calls) > 0
 
 
+def test_validate_sync_progress_uses_one_global_scale(taxonomy):
+    """Formula-level progress must not replace the pipeline's global denominator."""
+    instance = _make_clean_instance(taxonomy)
+    calls = []
+
+    validator = InstanceValidator(
+        taxonomy=taxonomy,
+        progress_callback=lambda current, total, message: calls.append(
+            (current, total, message)
+        ),
+    )
+
+    validator.validate_sync(instance)
+
+    assert calls
+    totals = {total for _current, total, _message in calls}
+    assert len(totals) == 1
+    assert calls[-1][0] == calls[-1][1]
+    assert any("essence-alias" in message for _current, _total, message in calls)
+
+
+def test_validate_sync_progress_excludes_disabled_dimensional_stage(taxonomy):
+    instance = _make_clean_instance(taxonomy)
+    calls = []
+
+    InstanceValidator(
+        taxonomy=taxonomy,
+        include_dimensional=False,
+        progress_callback=lambda current, total, message: calls.append(
+            (current, total, message)
+        ),
+    ).validate_sync(instance)
+
+    assert calls
+    assert {total for _current, total, _message in calls} == {4}
+    assert not any("dimensional" in message.lower() for _current, _total, message in calls)
+
+
 def test_validate_sync_skips_relationship_checks_by_default(taxonomy, monkeypatch):
     """Default UI-style validation should not run DTS-wide relationship checks."""
     from bde_xbrl_editor.validation import orchestrator
@@ -168,7 +207,49 @@ def test_validate_sync_cancel_event(taxonomy):
     cancel_event = threading.Event()
     cancel_event.set()  # cancel immediately
 
-    validator = InstanceValidator(taxonomy=taxonomy, cancel_event=cancel_event)
+    calls = []
+    validator = InstanceValidator(
+        taxonomy=taxonomy,
+        cancel_event=cancel_event,
+        progress_callback=lambda current, total, message: calls.append(
+            (current, total, message)
+        ),
+    )
     report = validator.validate_sync(instance)
-    # Still returns a report (even if partial/empty)
     assert isinstance(report, ValidationReport)
+    assert report.run_status is ValidationRunStatus.CANCELLED
+    assert not report.structural_checks_run
+    assert not report.passed
+    assert calls[-1][0] == 0
+    assert calls[-1][1] > 0
+    assert "cancelled" in calls[-1][2].lower()
+
+
+def test_validate_sync_propagates_cancellation_to_active_stage(taxonomy, monkeypatch):
+    """An active validator can stop the pipeline through the shared event."""
+    import threading
+
+    from bde_xbrl_editor.validation import orchestrator
+
+    instance = _make_clean_instance(taxonomy)
+    cancel_event = threading.Event()
+
+    class CancellingStructuralValidator:
+        def __init__(self, *, cancel_event):
+            assert cancel_event is not None
+            self._cancel_event = cancel_event
+
+        def validate(self, instance, taxonomy):
+            self._cancel_event.set()
+            return []
+
+    monkeypatch.setattr(
+        orchestrator, "StructuralConformanceValidator", CancellingStructuralValidator
+    )
+
+    report = InstanceValidator(
+        taxonomy=taxonomy, cancel_event=cancel_event
+    ).validate_sync(instance)
+
+    assert report.run_status is ValidationRunStatus.CANCELLED
+    assert [stage.name for stage in report.stage_timings] == ["structural"]

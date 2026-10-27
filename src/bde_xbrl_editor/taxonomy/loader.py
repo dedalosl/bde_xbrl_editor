@@ -16,6 +16,7 @@ from datetime import datetime
 from io import BytesIO
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlsplit
 
 from lxml import etree
 
@@ -51,6 +52,7 @@ from bde_xbrl_editor.taxonomy.linkbases.calculation import (
     parse_calculation_linkbase_from_root,
 )
 from bde_xbrl_editor.taxonomy.linkbases.custom_functions import (
+    linkbase_contains_custom_functions,
     parse_custom_function_linkbase,
 )
 from bde_xbrl_editor.taxonomy.linkbases.definition import parse_definition_linkbase
@@ -86,6 +88,7 @@ from bde_xbrl_editor.taxonomy.models import (
 from bde_xbrl_editor.taxonomy.schema import (
     XBRL_SG_ROOTS,
     build_global_named_type_registry,
+    build_named_type_base_map,
     collect_schema_element_defaults,
     extract_concept_enumerations_for_schema,
     extract_monetary_value_type_qnames,
@@ -443,6 +446,29 @@ def _build_concept_id_map(concepts: dict[QName, Concept]) -> dict[str, QName]:
         if concept.xml_id:
             id_map[concept.xml_id] = qname
     return id_map
+
+
+def _build_concept_prefix_map(concepts: dict[QName, Concept]) -> dict[str, str]:
+    """Return preferred QName prefixes declared by parsed taxonomy concepts."""
+    prefix_map: dict[str, str] = {}
+    for qname in concepts:
+        if qname.prefix and qname.namespace:
+            prefix_map.setdefault(qname.prefix, qname.namespace)
+    return prefix_map
+
+
+def _build_schema_prefix_map(schema_paths: list[Path]) -> dict[str, str]:
+    """Return prefix declarations from DTS schema roots."""
+    prefix_map: dict[str, str] = {}
+    for schema_path in schema_paths:
+        try:
+            root = parse_xml_file(schema_path).getroot()
+        except (OSError, etree.XMLSyntaxError):
+            continue
+        for prefix, namespace in (root.nsmap or {}).items():
+            if prefix and namespace:
+                prefix_map.setdefault(prefix, namespace)
+    return prefix_map
 
 
 def _extract_metadata(entry_point: Path, declared_languages: list[str]) -> TaxonomyMetadata:
@@ -852,12 +878,9 @@ def _check_dimensional_constraints(
             # Check 7: source of dimension-domain arc must be a dimension item
             # (xbrldte:DimensionDomainSourceError)
             if arcrole == ARCROLE_DIMENSION_DOMAIN:
-                if (
-                    arc.source in concepts
-                    and (
-                        arc.source not in dimension_qnames
-                        or concepts[arc.source].typed_domain_ref is not None
-                    )
+                if arc.source in concepts and (
+                    arc.source not in dimension_qnames
+                    or concepts[arc.source].typed_domain_ref is not None
                 ):
                     raise TaxonomyParseError(
                         file_path="",
@@ -988,11 +1011,15 @@ def _check_drs_directed_cycles(definition_arcs: dict[str, list[DefinitionArc]]) 
                 continue
             reachable_elrs.add(elr)
             for arc in definition_arcs.get(elr, []):
-                if arc.arcrole in (
-                    ARCROLE_HYPERCUBE_DIMENSION,
-                    ARCROLE_DIMENSION_DOMAIN,
-                    ARCROLE_DOMAIN_MEMBER,
-                ) and arc.target_role:
+                if (
+                    arc.arcrole
+                    in (
+                        ARCROLE_HYPERCUBE_DIMENSION,
+                        ARCROLE_DIMENSION_DOMAIN,
+                        ARCROLE_DOMAIN_MEMBER,
+                    )
+                    and arc.target_role
+                ):
                     queue.append(arc.target_role)
 
         for elr in reachable_elrs:
@@ -1401,7 +1428,7 @@ def _assertion_message_linkbases(paths: list[Path]) -> list[Path]:
 
 
 def _discover_formula_linkbases(linkbase_paths: list[Path]) -> list[Path]:
-    """Return linkbase paths that contain formula assertions (structural detection)."""
+    """Return the complete local Formula relationship graph."""
     candidates = [
         path
         for path in linkbase_paths
@@ -1410,9 +1437,8 @@ def _discover_formula_linkbases(linkbase_paths: list[Path]) -> list[Path]:
         and not _is_assertion_message_linkbase(path)
     ]
     if len(candidates) <= _LARGE_LINKBASE_SEQUENTIAL_THRESHOLD:
-        return [
-            path for path in candidates if linkbase_contains_formula_assertions(path)
-        ]
+        formula_paths = [path for path in candidates if linkbase_contains_formula_assertions(path)]
+        return _include_formula_locator_targets(formula_paths, candidates)
 
     # FINREP/EBA: thousands of label/presentation files — skip iterparse when the
     # path cannot be a validation-rule linkbase.
@@ -1429,8 +1455,7 @@ def _discover_formula_linkbases(linkbase_paths: list[Path]) -> list[Path]:
         ):
             likely.append(path)
         elif any(
-            token in name
-            for token in ("-pre", "-calc", "-def", "-ref", "-lab", "presentation")
+            token in name for token in ("-pre", "-calc", "-def", "-ref", "-lab", "presentation")
         ):
             continue
         else:
@@ -1440,7 +1465,87 @@ def _discover_formula_linkbases(linkbase_paths: list[Path]) -> list[Path]:
     for path in uncertain:
         if linkbase_contains_formula_assertions(path):
             formula_paths.append(path)
-    return formula_paths
+    return _include_formula_locator_targets(formula_paths, candidates)
+
+
+def _include_formula_locator_targets(
+    formula_paths: list[Path],
+    candidates: list[Path],
+) -> list[Path]:
+    """Include local linkbases reached by ``link:loc`` from Formula files.
+
+    Formula resources and their relationship arcs may be split across linkbases.
+    A target file containing only a parameter or filter is therefore part of the
+    Formula graph even though it has no assertion or output-formula resource of
+    its own.
+    """
+    candidate_by_path = {path.resolve(): path for path in candidates}
+    discovered = list(dict.fromkeys(formula_paths))
+    seen = {path.resolve() for path in discovered}
+    pending = deque(discovered)
+    locator_tag = f"{{{NS_LINK}}}loc"
+
+    while pending:
+        source = pending.popleft()
+        try:
+            root = parse_xml_file(source).getroot()
+        except (OSError, etree.XMLSyntaxError):
+            continue
+        for locator in root.iter(locator_tag):
+            href = (locator.get(_XLINK_HREF) or "").strip()
+            parsed_href = urlsplit(href)
+            if not parsed_href.path or parsed_href.scheme not in {"", "file"}:
+                continue
+            href_path = Path(unquote(parsed_href.path))
+            target_path = href_path if href_path.is_absolute() else source.parent / href_path
+            target = candidate_by_path.get(target_path.resolve())
+            if target is None or target.resolve() in seen:
+                continue
+            seen.add(target.resolve())
+            discovered.append(target)
+            pending.append(target)
+
+    return discovered
+
+
+def _discover_custom_function_linkbases(
+    linkbase_paths: list[Path],
+    formula_linkbases: list[Path] | tuple[Path, ...] = (),
+) -> list[Path]:
+    """Return linkbases that may declare Formula custom functions.
+
+    Function-only DTS files such as Eurofiling interval-arithmetics.xml do not
+    contain assertions, so they are not discovered by _discover_formula_linkbases.
+    """
+    candidates = [
+        path
+        for path in linkbase_paths
+        if path.suffix.lower() in (".xml", ".xbrl")
+        and not _should_skip_linkbase(path)
+        and not _is_assertion_message_linkbase(path)
+    ]
+    if len(candidates) <= _LARGE_LINKBASE_SEQUENTIAL_THRESHOLD:
+        function_paths = [path for path in candidates if linkbase_contains_custom_functions(path)]
+    else:
+        function_paths = []
+        for path in candidates:
+            name = path.name.lower()
+            path_text = str(path).lower()
+            if (
+                "/func/" in path_text or "function" in name or "arith" in name
+            ) and linkbase_contains_custom_functions(path):
+                function_paths.append(path)
+
+    if len(candidates) > _LARGE_LINKBASE_SEQUENTIAL_THRESHOLD:
+        formula_candidates = [
+            path for path in formula_linkbases if path in candidates and path not in function_paths
+        ]
+        if len(formula_candidates) <= _LARGE_LINKBASE_SEQUENTIAL_THRESHOLD:
+            function_paths.extend(
+                path for path in formula_candidates if linkbase_contains_custom_functions(path)
+            )
+
+    return list(dict.fromkeys(function_paths))
 
 
 def _run_path_jobs(
@@ -1533,6 +1638,13 @@ class TaxonomyLoader:
 
         cached = self._cache.get(cache_key)
         if cached is not None:
+            # Older cached structures lack provenance; the seed-keyed cache
+            # entry still identifies it. Repair by replacement, never mutation.
+            if not hasattr(cached, "instance_dts_roots") or (
+                seed_paths and cached.instance_dts_roots != seed_paths
+            ):
+                cached = replace(cached, instance_dts_roots=seed_paths)
+                self._cache.put(cache_key, cached)
             if progress_callback:
                 progress_callback(
                     (
@@ -1545,6 +1657,8 @@ class TaxonomyLoader:
             return cached
 
         structure = self._do_load(entry_point, progress_callback, seed_linkbases=seed_paths)
+        if seed_paths:
+            structure = replace(structure, instance_dts_roots=tuple(seed_paths))
         self._cache.put(cache_key, structure)
         return structure
 
@@ -1560,6 +1674,8 @@ class TaxonomyLoader:
         cache_key = _loader_cache_key(entry_point, seed_paths)
         self._cache.invalidate(cache_key)
         structure = self._do_load(entry_point, progress_callback, seed_linkbases=seed_paths)
+        if seed_paths:
+            structure = replace(structure, instance_dts_roots=tuple(seed_paths))
         self._cache.put(cache_key, structure)
         return structure
 
@@ -1593,6 +1709,14 @@ class TaxonomyLoader:
         if taxonomy.formula_assertion_set.assertions:
             return taxonomy
 
+        formula_namespace_map = _build_schema_prefix_map(list(taxonomy.schema_files))
+        formula_namespace_map.update(
+            {
+                prefix: namespace
+                for prefix, namespace in _build_concept_prefix_map(taxonomy.concepts).items()
+                if prefix not in formula_namespace_map
+            }
+        )
         formula_linkbases = _discover_formula_linkbases(list(taxonomy.linkbase_files))
         total = len(formula_linkbases)
         if not formula_linkbases:
@@ -1627,7 +1751,10 @@ class TaxonomyLoader:
         for index, linkbase_path in enumerate(formula_linkbases, start=1):
             if cancel_callback is not None and cancel_callback():
                 break
-            formula_set = parse_formula_linkbase(linkbase_path)
+            formula_set = parse_formula_linkbase(
+                linkbase_path,
+                namespace_map=formula_namespace_map,
+            )
             if cancel_callback is not None and cancel_callback():
                 break
             for assertion in formula_set.assertions:
@@ -1833,6 +1960,7 @@ class TaxonomyLoader:
             monetary_derived_types.update(mt_set)
 
         type_enum_registry = build_global_named_type_registry(schema_paths, include_ns_map)
+        type_bases = build_named_type_base_map(type_enum_registry)
         enum_workers = _schema_parse_workers(len(schema_paths))
         parsed_concept_enums = _run_path_jobs(
             schema_paths,
@@ -1852,16 +1980,35 @@ class TaxonomyLoader:
                 return True
             return c.data_type in monetary_derived_types
 
+        def _data_type_ancestry(data_type: QName) -> tuple[QName, ...]:
+            ancestry: list[QName] = []
+            seen: set[QName] = set()
+            current = type_bases.get(data_type)
+            while current is not None and current not in seen:
+                ancestry.append(current)
+                seen.add(current)
+                current = type_bases.get(current)
+            return tuple(ancestry)
+
         concepts = {
             qn: replace(
                 c,
                 monetary_item_type=_concept_is_monetary_item(c),
                 enumeration_values=enum_by_concept.get(qn, ()),
+                data_type_ancestry=_data_type_ancestry(c.data_type),
             )
             for qn, c in concepts.items()
         }
 
         concept_id_map = _build_concept_id_map(concepts)
+        formula_namespace_map = _build_schema_prefix_map(schema_paths)
+        formula_namespace_map.update(
+            {
+                prefix: namespace
+                for prefix, namespace in _build_concept_prefix_map(concepts).items()
+                if prefix not in formula_namespace_map
+            }
+        )
 
         # Build namespace-qualified map: "{namespace}#{xml_id}" → QName
         # Used by parse_definition_linkbase to resolve locator hrefs unambiguously
@@ -2067,7 +2214,10 @@ class TaxonomyLoader:
                 f"Parsing formula linkbases ({len(formula_linkbases)} files)…",
                 6,
             )
-            bundled_formula_set = parse_formula_linkbase_bundle(formula_linkbases)
+            bundled_formula_set = parse_formula_linkbase_bundle(
+                formula_linkbases,
+                namespace_map=formula_namespace_map,
+            )
             all_assertions = list(bundled_formula_set.assertions)
             all_output_formulas = list(bundled_formula_set.output_formulas)
             all_global_parameters = list(bundled_formula_set.global_parameters)
@@ -2185,15 +2335,25 @@ class TaxonomyLoader:
             progress("No formula linkbases in DTS", 6)
 
         custom_functions: list[CustomFunctionDefinition] = []
-        if formula_linkbases and len(formula_linkbases) <= _SKIP_FORMULA_ENRICHMENT_THRESHOLD:
+        custom_function_linkbases = _discover_custom_function_linkbases(
+            all_linkbase_paths,
+            formula_linkbases,
+        )
+        if (
+            custom_function_linkbases
+            and len(custom_function_linkbases) <= _SKIP_FORMULA_ENRICHMENT_THRESHOLD
+        ):
             custom_function_workers = (
                 1
-                if len(formula_linkbases) > _LARGE_LINKBASE_SEQUENTIAL_THRESHOLD
+                if len(custom_function_linkbases) > _LARGE_LINKBASE_SEQUENTIAL_THRESHOLD
                 else linkbase_workers
             )
-            progress("Parsing custom formula functions…", 9)
+            progress(
+                f"Parsing custom formula functions ({len(custom_function_linkbases)} files)…",
+                9,
+            )
             parsed_custom_function_linkbases = _run_path_jobs(
-                formula_linkbases,
+                custom_function_linkbases,
                 parse_custom_function_linkbase,
                 workers=custom_function_workers,
             )
@@ -2205,7 +2365,7 @@ class TaxonomyLoader:
                         continue
                     seen_custom_functions.add(key)
                     custom_functions.append(definition)
-        elif formula_linkbases:
+        elif custom_function_linkbases:
             progress("Skipping custom formula function scan (large taxonomy)", 9)
 
         metadata = _extract_metadata(entry_point, declared_languages)
