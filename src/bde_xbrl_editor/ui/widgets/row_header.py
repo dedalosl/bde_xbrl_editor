@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from PySide6.QtCore import QRect, QSize, Qt
-from PySide6.QtGui import QColor, QFont, QPainter
+from PySide6.QtCore import QEvent, QRect, QSize, Qt
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter
 from PySide6.QtWidgets import QHeaderView, QWidget
 
 from bde_xbrl_editor.table_renderer.models import HeaderGrid
@@ -49,6 +49,7 @@ class MultiLevelRowHeader(QHeaderView):
         # Pre-computed per-section depth (0 = outermost group)
         self._section_depth: list[int] = []
         self._section_cells: list[Any] = []
+        self._sizing_key: tuple[int, str] | None = None
         self.setDefaultSectionSize(_ROW_HEIGHT_MIN)
         self.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
 
@@ -59,8 +60,19 @@ class MultiLevelRowHeader(QHeaderView):
     def set_header_grid(self, header_grid: HeaderGrid) -> None:
         self._grid = header_grid
         self._build_section_map()
+        self._sizing_key = None
         self._auto_size_sections()
         self.viewport().update()
+
+    def changeEvent(self, event: QEvent) -> None:
+        super().changeEvent(event)
+        if event.type() in {QEvent.Type.FontChange, QEvent.Type.ApplicationFontChange}:
+            self._sizing_key = None
+            self._auto_size_sections()
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        self._auto_size_sections()
 
     def _build_section_map(self) -> None:
         """For each section index build (depth, cell).
@@ -91,8 +103,13 @@ class MultiLevelRowHeader(QHeaderView):
     def _auto_size_sections(self) -> None:
         if self._grid is None:
             return
-        fm = self.fontMetrics()
+        width = self.width() if self.width() > 0 else _COL_W
+        sizing_key = (width, self.font().toString())
+        if sizing_key == self._sizing_key:
+            return
+        self._sizing_key = sizing_key
         depth = self._grid.depth
+        base_font = _label_font(self.font())
 
         for section_idx, cell in enumerate(self._section_cells):
             if cell is None:
@@ -101,12 +118,18 @@ class MultiLevelRowHeader(QHeaderView):
                 self._section_depth[section_idx] if section_idx < len(self._section_depth) else 0
             )
             indent = _ACCENT_W + _INDENT_BASE + level * _INDENT_STEP
-            text_w = max(_COL_W - indent - 6, 20)
+            text_w = max(width - indent - 6, 20)
             label = _display_label(cell)
             if not label:
                 continue
+            # Use the same font settings as paintSection and measure via
+            # QFontMetrics for that font (not the platform/default painter font).
+            row_font = QFont(base_font)
+            is_leaf = (level == depth - 1) or getattr(cell, "is_leaf", True)
+            row_font.setBold(not is_leaf)
+            fm = QFontMetrics(row_font)
             text_h = fm.boundingRect(0, 0, text_w, 10000, int(_WRAP), label).height()
-            needed = text_h + _ROW_HEIGHT_PAD
+            needed = text_h + _ROW_HEIGHT_PAD + 4  # paintSection insets text by 2px
             # Outermost groups (depth 0) get a bit more height
             if level == 0 and depth > 1:
                 needed = max(needed, _ROW_HEIGHT_MIN + 6)
@@ -170,13 +193,7 @@ class MultiLevelRowHeader(QHeaderView):
             return
 
         # ── Text ──────────────────────────────────────────────────────
-        base_pts = self.font().pointSizeF()
-        if base_pts <= 0:
-            base_pts = 12.0
-        base_pts = max(base_pts, float(_MIN_LABEL_PT))
-
-        base_font = QFont(painter.font())
-        base_font.setPointSizeF(base_pts)
+        base_font = _label_font(self.font())
         # Group rows (not leaf-level) are bold
         base_font.setBold(not is_leaf)
         painter.setFont(base_font)
@@ -207,3 +224,18 @@ def _display_label(cell: Any) -> str:
     if rc and f"({rc})" not in label:
         return f"{label} ({rc})" if label else rc
     return label
+
+
+def _label_font(font: QFont) -> QFont:
+    """Return the font used for row labels in both measurement and painting."""
+    result = QFont(font)
+    # The application stylesheet specifies pixel-sized fonts. Converting that
+    # font to the 12pt fallback below makes labels substantially larger on some
+    # platforms (notably Windows at non-100% display scaling).
+    if result.pixelSize() > 0:
+        return result
+    point_size = result.pointSizeF()
+    if point_size <= 0:
+        point_size = 12.0
+    result.setPointSizeF(max(point_size, float(_MIN_LABEL_PT)))
+    return result

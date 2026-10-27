@@ -187,11 +187,20 @@ def _scraper_process_env(scraper_root: Path) -> dict[str, str]:
     return env
 
 
+def _npm_executable() -> str:
+    """Return an npm launcher that ``subprocess`` can execute directly."""
+    if os.name == "nt":
+        npm_cmd = shutil.which("npm.cmd")
+        if npm_cmd is not None:
+            return npm_cmd
+    return "npm"
+
+
 def _scrape_command(scraper_root: Path) -> list[str]:
     ts_node_entry = scraper_root / "node_modules" / "ts-node" / "dist" / "bin.js"
     if _node_dependencies_installed(scraper_root) and ts_node_entry.is_file():
         return [str(_node_executable(scraper_root)), str(ts_node_entry), "src/index.ts"]
-    return ["npm", "run", "scrape"]
+    return [_npm_executable(), "run", "scrape"]
 
 
 def _run_process(
@@ -261,7 +270,9 @@ def _ensure_node_dependencies(
         return
 
     command = (
-        ["npm", "ci"] if (scraper_root / "package-lock.json").is_file() else ["npm", "install"]
+        [_npm_executable(), "ci"]
+        if (scraper_root / "package-lock.json").is_file()
+        else [_npm_executable(), "install"]
     )
     install_env = _scraper_process_env(scraper_root)
     install_env["NODE_ENV"] = "development"
