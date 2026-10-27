@@ -231,7 +231,10 @@ El resultado se guarda en `dist/lite/windows-amd64/` y no incluye Node.js,
 `node_modules` ni Chromium. La aplicacion y el catalogo incluido funcionan sin
 ellos, pero para actualizar el catalogo mediante el scraper la maquina destino
 debe tener Node.js 20 o superior, npm y acceso a Internet. La primera
-actualizacion instala las dependencias del scraper en el perfil del usuario.
+actualizacion instala las dependencias del scraper en el perfil del usuario y
+descarga Chromium si no esta disponible. En Windows, el navegador se guarda en
+`%USERPROFILE%\\.bde_xbrl_editor\\playwright-browsers`, una ruta persistente que
+no depende de la caché temporal de Windows.
 
 Por defecto no copia el directorio local `cache/`, porque puede ser muy grande. Si se necesita un paquete tambien offline para taxonomias ya cacheadas, usar:
 

@@ -36,6 +36,11 @@ def default_runtime_scraper_root() -> Path:
     return Path.home() / ".bde_xbrl_editor" / "bde_taxonomies_scraper"
 
 
+def default_runtime_playwright_browsers_path() -> Path:
+    """Return a stable, user-writable location for downloaded Playwright browsers."""
+    return Path.home() / ".bde_xbrl_editor" / "playwright-browsers"
+
+
 def _offline_scraper_candidates() -> tuple[Path, ...]:
     candidates: list[Path] = []
     env_path = os.environ.get("BDE_XBRL_OFFLINE_RUNTIME_DIR", "").strip()
@@ -179,12 +184,69 @@ def _scraper_process_env(scraper_root: Path) -> dict[str, str]:
     env = os.environ.copy()
     browsers_path = _bundled_playwright_browsers_path(scraper_root)
     if browsers_path is not None:
-        env.setdefault("PLAYWRIGHT_BROWSERS_PATH", str(browsers_path))
+        # An offline package must use the browser binaries shipped beside it,
+        # even if the parent process has a different Playwright cache setting.
+        env["PLAYWRIGHT_BROWSERS_PATH"] = str(browsers_path)
+    elif sys.platform == "win32":
+        # On Windows, LOCALAPPDATA may be redirected to a per-session sandbox
+        # path. Keep browser installs with the writable scraper runtime instead.
+        env.setdefault(
+            "PLAYWRIGHT_BROWSERS_PATH",
+            str(default_runtime_playwright_browsers_path()),
+        )
 
     node_path = Path(_node_executable(scraper_root))
     if node_path.is_file() and node_path.parent.is_dir():
         env["PATH"] = str(node_path.parent) + os.pathsep + env.get("PATH", "")
     return env
+
+
+def _ensure_playwright_chromium(
+    scraper_root: Path,
+    *,
+    env: dict[str, str],
+    timeout_seconds: int,
+    should_cancel: Callable[[], bool] | None,
+) -> None:
+    """Ensure the Chromium executable used by Playwright is available."""
+    node = _node_executable(scraper_root)
+    executable_script = "process.stdout.write(require('playwright').chromium.executablePath())"
+    stdout, _ = _run_process(
+        [node, "-e", executable_script],
+        cwd=scraper_root,
+        env=env,
+        timeout_seconds=30,
+        should_cancel=should_cancel,
+        action="BDE Playwright Chromium check",
+    )
+    executable = Path(stdout.strip())
+    if executable.is_file():
+        return
+
+    if _bundled_playwright_browsers_path(scraper_root) is not None:
+        raise TaxonomyCatalogScrapeError(
+            "Bundled Playwright Chromium is missing: "
+            f"{executable}. Rebuild or reinstall the offline package."
+        )
+
+    playwright_cli = scraper_root / "node_modules" / "playwright" / "cli.js"
+    if not playwright_cli.is_file():
+        raise TaxonomyCatalogScrapeError(
+            f"Playwright CLI was not found at {playwright_cli}; reinstall scraper dependencies"
+        )
+    _run_process(
+        [node, str(playwright_cli), "install", "chromium"],
+        cwd=scraper_root,
+        env=env,
+        timeout_seconds=timeout_seconds,
+        should_cancel=should_cancel,
+        action="BDE Playwright Chromium installation",
+    )
+    if not executable.is_file():
+        raise TaxonomyCatalogScrapeError(
+            "Playwright Chromium installation finished, but its executable "
+            f"was not found at {executable}"
+        )
 
 
 def _npm_executable() -> str:
@@ -327,6 +389,12 @@ def run_catalog_scrape(
     )
 
     env = _scraper_process_env(scraper_root)
+    _ensure_playwright_chromium(
+        scraper_root,
+        env=env,
+        timeout_seconds=setup_timeout_seconds,
+        should_cancel=should_cancel,
+    )
     env["BDE_TAXONOMIES_OUTPUT_PATH"] = str(catalog_output_path)
     _run_process(
         _scrape_command(scraper_root),
@@ -359,6 +427,12 @@ def setup_catalog_scraper(
         )
     _ensure_node_dependencies(
         scraper_root,
+        timeout_seconds=setup_timeout_seconds,
+        should_cancel=should_cancel,
+    )
+    _ensure_playwright_chromium(
+        scraper_root,
+        env=_scraper_process_env(scraper_root),
         timeout_seconds=setup_timeout_seconds,
         should_cancel=should_cancel,
     )
